@@ -3,871 +3,739 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>نظام إدارة إيصالات الصيانة الشامل</title>
-  
-  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-
+  <title data-i18n="appTitle">نظام إدارة الصيانة والمبيعات</title>
   <style>
     :root {
+      --bg-color: #0f172a;
+      --card-bg: #1e293b;
+      --text-color: #f8fafc;
+      --border-color: #334155;
       --primary: #2563eb;
-      --bg: #f8fafc;
-      --surface: #ffffff;
-      --text: #0f172a;
-      --border: #cbd5e1;
+      --primary-hover: #1d4ed8;
+      --success: #16a34a;
+      --danger: #dc2626;
+      --warning: #d97706;
+      --admin: #0284c7;
     }
-    body {
-      font-family: system-ui, -apple-system, sans-serif;
-      background-color: var(--bg);
-      color: var(--text);
-      margin: 0;
-      padding: 20px;
-    }
-    .container {
-      max-width: 1050px;
-      margin: 0 auto 30px auto;
-      background: var(--surface);
-      padding: 25px;
-      border-radius: 12px;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    }
-    h2, h3 { text-align: center; color: var(--primary); margin-bottom: 20px; }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background-color: var(--bg-color); color: var(--text-color); padding: 20px; direction: rtl; }
+    [dir="ltr"] body { direction: ltr; }
+
+    /* شريط التنقل العلوي */
+    .header { display: flex; justify-content: space-between; align-items: center; background: var(--card-bg); padding: 15px 20px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 20px; }
+    .header-controls { display: flex; align-items: center; gap: 15px; }
+    .lang-btn { background: #475569; color: white; border: none; padding: 8px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+    
+    /* لوحة تحكم المدير (المحاسبة) */
+    .admin-dashboard { display: none; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 20px; }
+    .stat-card { background: var(--card-bg); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color); border-right: 4px solid var(--admin); }
+    [dir="ltr"] .stat-card { border-right: none; border-left: 4px solid var(--admin); }
+    .stat-card h4 { color: #94a3b8; margin-bottom: 10px; font-size: 14px; font-weight: normal; }
+    .stat-card h2 { color: #38bdf8; font-size: 24px; }
+
+    /* النموذج */
+    .card { background: var(--card-bg); padding: 25px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 20px; }
+    .card-title { margin-bottom: 20px; color: #f8fafc; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; font-size: 18px; }
+    
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+    @media (max-width: 768px) { .form-grid { grid-template-columns: 1fr; } }
+    
     .form-group { margin-bottom: 15px; }
-    .form-row { display: flex; gap: 15px; }
-    .form-row .form-group { flex: 1; }
-    label { display: block; font-weight: bold; margin-bottom: 5px; }
-    input, select, textarea {
-      width: 100%;
-      padding: 10px;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      box-sizing: border-box;
-      font-size: 14px;
-    }
-    .quick-date-btns { display: flex; gap: 5px; margin-top: 5px; }
-    .quick-btn {
-      background: #e2e8f0;
-      color: #334155;
-      border: none;
-      padding: 6px 10px;
-      font-size: 12px;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    .quick-btn:hover { background: #cbd5e1; }
-    .checkbox-group {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-      gap: 10px;
-      background: #f1f5f9;
-      padding: 12px;
-      border-radius: 6px;
-      border: 1px solid var(--border);
-    }
-    .checkbox-item { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-    .checkbox-item input { width: auto; }
-    
-    .btn-submit-group { display: flex; gap: 10px; margin-top: 15px; }
-    .btn-save-print {
-      flex: 2;
-      background: var(--primary);
-      color: white;
-      border: none;
-      padding: 12px;
-      font-size: 15px;
-      font-weight: bold;
-      border-radius: 6px;
-      cursor: pointer;
-    }
-    .btn-save-only {
-      flex: 2;
-      background: #16a34a;
-      color: white;
-      border: none;
-      padding: 12px;
-      font-size: 15px;
-      font-weight: bold;
-      border-radius: 6px;
-      cursor: pointer;
-    }
-    .btn-cancel {
-      flex: 1;
-      background: #64748b;
-      color: white;
-      border: none;
-      padding: 12px;
-      font-size: 14px;
-      font-weight: bold;
-      border-radius: 6px;
-      cursor: pointer;
-      display: none;
-    }
+    .form-group.full-width { grid-column: 1 / -1; }
+    label { display: block; margin-bottom: 6px; font-size: 13px; color: #cbd5e1; font-weight: 600; }
+    input, select, textarea { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); background: #0f172a; color: white; outline: none; transition: border 0.3s; }
+    input:focus, select:focus, textarea:focus { border-color: var(--primary); }
+
+    .btn-group { display: flex; gap: 10px; margin-top: 10px; }
+    button { cursor: pointer; padding: 12px 20px; border-radius: 6px; border: none; font-weight: bold; font-size: 14px; transition: opacity 0.3s; }
     button:hover { opacity: 0.9; }
+    .btn-primary { background: var(--primary); color: white; flex: 1; }
+    .btn-secondary { background: #475569; color: white; }
 
-    .dynamic-field {
-      display: none;
-      background: #f8fafc;
-      padding: 15px;
-      border-radius: 6px;
-      border: 1px dashed var(--border);
-      margin-bottom: 15px;
-    }
-
-    .archive-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-    .search-box { width: 40%; }
+    /* الجدول */
+    .table-container { overflow-x: auto; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); }
+    table { width: 100%; border-collapse: collapse; text-align: start; min-width: 1000px; }
+    th, td { padding: 12px 15px; border-bottom: 1px solid var(--border-color); font-size: 14px; }
+    th { background-color: #0f172a; color: #94a3b8; font-weight: 600; }
     
-    table.archive-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    table.archive-table th, table.archive-table td {
-      border: 1px solid var(--border);
-      padding: 8px;
-      text-align: right;
-      font-size: 13px;
+    .btn-action { padding: 6px 12px; margin: 2px; font-size: 12px; border-radius: 4px; }
+    .btn-print { background: var(--primary); color: white; }
+    .btn-invoice { background: var(--success); color: white; }
+    .btn-edit { background: var(--warning); color: white; }
+    .btn-delete { background: var(--danger); color: white; }
+    .btn-disabled { background: #64748b; color: #cbd5e1; cursor: not-allowed; }
+
+    /* نافذة الدخول */
+    .overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(15, 23, 42, 0.95); display: flex; justify-content: center; align-items: center; z-index: 999; }
+    .modal { background: var(--card-bg); padding: 30px; border-radius: 12px; border: 1px solid var(--border-color); width: 100%; max-width: 400px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+    .modal input { margin-bottom: 15px; }
+    .error-msg { color: #ef4444; font-size: 13px; display: none; margin-bottom: 15px; background: #450a0a; padding: 10px; border-radius: 6px; }
+
+    /* الطباعة وإعدادات A5 Landscape */
+    @media print {
+      @page { size: A5 landscape; margin: 5mm; }
+      body * { visibility: hidden; }
+      #printableArea, #printableArea * { visibility: visible; }
+      #printableArea { position: absolute; left: 0; top: 0; width: 100%; background: white; color: black; padding: 0; }
+      .no-print { display: none !important; }
     }
-    table.archive-table th { background-color: #e2e8f0; }
-
-    .status-badge {
-      display: inline-block;
-      padding: 3px 8px;
-      border-radius: 12px;
-      font-size: 11px;
-      font-weight: bold;
-      background-color: #fef08a;
-      color: #854d0e;
-    }
-
-    .btn-action {
-      padding: 5px 8px;
-      font-size: 11px;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      margin: 2px;
-      color: white;
-    }
-    .btn-print { background-color: #0284c7; }
-    .btn-edit { background-color: #d97706; }
-
-    #printSection { display: none; }
-
-  @media print {
-  /* 1. ضبط إعدادات الصفحة A5 بالعرض وتصفير الهوامش الخارجة */
-  @page {
-    size: A5 landscape;
-    margin: 0;
-  }
-
-  html, body {
-    width: 210mm !important;
-    height: 148mm !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: hidden !important;
-    background: #fff !important;
-  }
-
-  /* 2. إخفاء كل العناصر ما عدا قسم الطباعة */
-  body * {
-    display: none !important;
-  }
-
-  #printSection, #printSection * {
-    display: revert !important;
-    visibility: visible !important;
-  }
-
-  /* 3. حاوية الطباعة الرئيسية بحجم A5 دقيق */
-  @media print {
-  @page {
-    size: A5 landscape;
-    margin: 0;
-  }
-
-  html, body {
-    width: 210mm !important;
-    height: 148mm !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: hidden !important;
-    background: #fff !important;
-  }
-
-  body * {
-    display: none !important;
-  }
-
-  #printSection, #printSection * {
-    display: revert !important;
-    visibility: visible !important;
-  }
-
-  #printSection {
-    display: flex !important;
-    flex-direction: column !important;
-    justify-content: space-between !important;
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
-    width: 194mm !important;
-    height: 134mm !important;
-    margin: 7mm !important;
-    padding: 0 !important;
-    box-sizing: border-box !important;
-    overflow: hidden !important;
-    font-family: sans-serif;
-  }
-
-  /* Header Styles */
-  .receipt-header {
-    display: flex !important;
-    justify-content: space-between !important;
-    align-items: center !important;
-    border-bottom: 2px solid #000;
-    padding-bottom: 3px !important;
-    margin-bottom: 4px !important;
-  }
-
-  .header-titles h2 {
-    margin: 0 !important;
-    font-size: 16px !important;
-    font-weight: bold !important;
-  }
-
-  .header-titles h3 {
-    margin: 2px 0 0 0 !important;
-    font-size: 13px !important;
-    color: #333;
-  }
-
-  .receipt-no-box {
-    font-size: 13px !important;
-    border: 1.5px solid #000;
-    padding: 2px 8px !important;
-    border-radius: 4px;
-    text-align: center;
-  }
-
-  /* Table Styles */
-  .receipt-table {
-    width: 100% !important;
-    border-collapse: collapse !important;
-    margin-bottom: 4px !important;
-  }
-
-  .receipt-table th, .receipt-table td {
-    border: 1px solid #000 !important;
-    padding: 2px 5px !important;
-    text-align: right !important;
-    font-size: 10.5px !important;
-    line-height: 1.15 !important;
-  }
-
-  .receipt-table th {
-    background-color: #f0f0f0 !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-    width: 18%;
-    font-weight: bold;
-  }
-
-  /* Terms & Footer Styles */
-  .receipt-footer {
-    border-top: 1px dashed #000;
-    padding-top: 3px !important;
-    margin-top: auto !important;
-  }
-
-  .terms-section {
-    font-size: 9px !important;
-    line-height: 1.2 !important;
-  }
-
-  .terms-section ol {
-    margin: 2px 0 !important;
-    padding-right: 14px !important;
-  }
-
-  .terms-section li {
-    margin-bottom: 1px !important;
-  }
-
-  .work-hours {
-    font-weight: bold;
-    margin-top: 2px !important;
-    font-size: 9px !important;
-  }
-
-  .bottom-bar {
-    display: flex !important;
-    justify-content: space-between !important;
-    align-items: flex-end !important;
-    margin-top: 4px !important;
-  }
-
-  .signatures {
-    font-size: 10.5px !important;
-    font-weight: bold !important;
-    padding-bottom: 4px;
-  }
-
-  .codes-box {
-    display: flex !important;
-    align-items: center !important;
-    gap: 8px !important;
-  }
-
-  #barcode {
-    height: 20px !important;
-    width: 100px !important;
-  }
-
-  #qrcode img, #qrcode canvas {
-    width: 38px !important;
-    height: 38px !important;
-  }
   </style>
 </head>
 <body>
 
-<div class="container" id="formContainer">
-  <h2 id="formTitle">إيصال استلام صيانة جديد</h2>
-  <form id="receiptForm">
-    <input type="hidden" id="editReceiptNo" value="">
-
-    <div class="form-row">
-      <div class="form-group">
-        <label>اسم العميل:</label>
-        <input type="text" id="clientName" required placeholder="أدخل اسم العميل">
-      </div>
-      <div class="form-group">
-        <label>رقم الهاتف:</label>
-        <input type="tel" id="clientPhone" required placeholder="01xxxxxxxxx">
-      </div>
+  <!-- نافذة تسجيل الدخول -->
+  <div class="overlay no-print" id="loginOverlay">
+    <div class="modal">
+      <h2 data-i18n="loginTitle" style="margin-bottom: 20px; color: white;">تسجيل الدخول للنظام</h2>
+      <div id="loginError" class="error-msg"></div>
+      <input type="text" id="loginUser" data-i18n-ph="usernamePh" placeholder="اسم المستخدم" autofocus>
+      <input type="password" id="loginPass" data-i18n-ph="passwordPh" placeholder="كلمة المرور">
+      <button class="btn-primary" style="width: 100%" id="btnLogin" onclick="handleCloudLogin()" data-i18n="loginBtn">تسجيل الدخول</button>
     </div>
+  </div>
 
-    <div class="form-group">
-      <label>فئة الجهاز:</label>
-      <select id="deviceCategory" onchange="handleCategoryChange()" required>
-        <option value="">اختر الفئة...</option>
-        <option value="computer">كمبيوتر</option>
-        <option value="mobile">موبايل</option>
-        <option value="cctv">كاميرات مراقبة</option>
-        <option value="accessories">اكسسوارات</option>
-        <option value="other">أخرى</option>
-      </select>
+  <!-- الهيدر -->
+  <div class="header no-print">
+    <h2 data-i18n="appTitle" style="margin: 0;">نظام إدارة الصيانة</h2>
+    <div class="header-controls">
+      <span id="userInfo" style="color: #94a3b8; font-size: 14px;"></span>
+      <button class="lang-btn" onclick="toggleLanguage()">🌐 EN/AR</button>
+      <button id="btnLogout" style="display:none; background:var(--danger); color:white; border:none; padding: 8px 15px; border-radius: 6px; cursor: pointer;" onclick="logout()" data-i18n="logout">خروج</button>
     </div>
+  </div>
 
-    <div id="dynamicContainer" class="dynamic-field">
-      <div class="form-group" id="computerTypeGroup" style="display: none;">
-        <label>نوع الكمبيوتر:</label>
-        <select id="computerType">
-          <option value="Desktop">Desktop</option>
-          <option value="Laptop">Laptop</option>
-        </select>
-      </div>
-
-      <div class="form-group" id="mobileTypeGroup" style="display: none;">
-        <label>نوع الموبايل:</label>
-        <select id="mobileType">
-          <option value="iPhone">iPhone</option>
-          <option value="Android">Android</option>
-        </select>
-      </div>
-
-      <div class="form-group" id="modelGroup" style="display: none;">
-        <label>موديل الجهاز:</label>
-        <input type="text" id="deviceModel" placeholder="مثال: Dell XPS 15 / iPhone 13 Pro">
-      </div>
-
-      <div class="form-group" id="otherGroup" style="display: none;">
-        <label>تحديد الفئة الأخري:</label>
-        <input type="text" id="otherCategoryText" placeholder="اكتب اسم الفئة">
-      </div>
-
-      <div class="form-group" id="descriptionGroup" style="display: none;">
-        <label>الوصف / تفاصيل القطعة:</label>
-        <textarea id="deviceDescription" rows="2" placeholder="وصف حالة الجهاز أو القطعة..."></textarea>
-      </div>
+  <!-- لوحة المحاسبة (للمدير فقط) -->
+  <div id="adminFinancialPanel" class="admin-dashboard no-print">
+    <div class="stat-card">
+      <h4 data-i18n="accAdvances">السيولة الحالية (إجمالي المدفوع مقدماً)</h4>
+      <h2 id="valAdvances">0 EGP</h2>
     </div>
-
-    <div class="form-group">
-      <label>تحديد الأعطال الشائعة:</label>
-      <div class="checkbox-group">
-        <label class="checkbox-item"><input type="checkbox" name="issue" value="عطل باور"> عطل باور</label>
-        <label class="checkbox-item"><input type="checkbox" name="issue" value="كسر/تغيير شاشة"> كسر/تغيير شاشة</label>
-        <label class="checkbox-item"><input type="checkbox" name="issue" value="مشكلة شحن/سوكت"> مشكلة شحن/سوكت</label>
-        <label class="checkbox-item"><input type="checkbox" name="issue" value="مشكلة كارت شاشة"> مشكلة كارت شاشة</label>
-        <label class="checkbox-item"><input type="checkbox" name="issue" value="سخونية/توفير تبريد"> سخونية/توفير تبريد</label>
-        <label class="checkbox-item"><input type="checkbox" name="issue" value="عطل هاردوير/بوردة"> عطل هاردوير/بوردة</label>
-        <label class="checkbox-item"><input type="checkbox" name="issue" value="تنزيل نظام/سوفوير"> تنزيل نظام/سوفوير</label>
-        <label class="checkbox-item"><input type="checkbox" name="issue" value="مشكلة صوت/ميكروفون"> مشكلة صوت/ميكروفون</label>
-        <label class="checkbox-item"><input type="checkbox" name="issue" value="صيانة كاميرات/عدسة"> صيانة كاميرات/عدسة</label>
-      </div>
+    <div class="stat-card">
+      <h4 data-i18n="accPending">المستحقات الخارجية (متبقي لدى العملاء)</h4>
+      <h2 id="valPending">0 EGP</h2>
     </div>
-
-    <div class="form-group">
-      <label>وصف العطل بالتفصيل / ملاحظات الصيانة:</label>
-      <textarea id="issueNotes" rows="2" placeholder="اكتب أي أعطال إضافية أو ملاحظات خاصة..."></textarea>
+    <div class="stat-card">
+      <h4 data-i18n="accRevenue">أرباح الإيصالات المنتهية (المغلقة)</h4>
+      <h2 id="valRevenue">0 EGP</h2>
     </div>
+  </div>
 
-    <div class="form-row">
-      <div class="form-group">
-        <label>التكلفة المبدئية:</label>
-        <input type="number" id="initialCost" step="0.01" required placeholder="0.00">
-      </div>
-      <div class="form-group">
-        <label>الدفعة المقدمة:</label>
-        <input type="number" id="advancePayment" step="0.01" value="0" placeholder="0.00">
-      </div>
-    </div>
+  <!-- النموذج الرئيسي -->
+  <div class="card no-print">
+    <h3 class="card-title" id="formTitle" data-i18n="newReceiptTitle">إضافة إيصال جديد</h3>
+    <form id="receiptForm" onsubmit="saveReceipt(event)">
+      <input type="hidden" id="editingReceiptNo">
+      
+      <div class="form-grid">
+        <div class="form-group">
+          <label data-i18n="clientName">اسم العميل *</label>
+          <input type="text" id="clientName" required>
+        </div>
+        <div class="form-group">
+          <label data-i18n="clientPhone">رقم الهاتف *</label>
+          <input type="text" id="clientPhone" required>
+        </div>
+        
+        <div class="form-group">
+          <label data-i18n="deviceCategory">تصنيف الجهاز *</label>
+          <select id="deviceCategory" required onchange="toggleMobileOs()">
+            <option value="لاب توب">لاب توب (Laptop)</option>
+            <option value="ديسكتوب">ديسكتوب (Desktop)</option>
+            <option value="موبايل">موبايل (Mobile)</option>
+            <option value="كاميرات مراقبة">كاميرات مراقبة وأجهزة NVR</option>
+            <option value="إكسسوارات">إكسسوارات وقطع غيار</option>
+            <option value="أخرى">أخرى</option>
+          </select>
+        </div>
 
-    <div class="form-row">
-      <div class="form-group">
-        <label>ميعاد الاستلام التقديري:</label>
-        <input type="datetime-local" id="estimatedDelivery" required>
-        <div class="quick-date-btns">
-          <button type="button" class="quick-btn" onclick="setQuickDate(0)">اليوم</button>
-          <button type="button" class="quick-btn" onclick="setQuickDate(1)">غداً</button>
-          <button type="button" class="quick-btn" onclick="setQuickDate(2)">بعد يومين</button>
-          <button type="button" class="quick-btn" onclick="setQuickDate(7)">بعد أسبوع</button>
+        <div class="form-group" id="mobileOsGroup" style="display: none;">
+          <label>نظام التشغيل (للموبايل) *</label>
+          <select id="mobileOs">
+            <option value="Android">أندرويد (Android)</option>
+            <option value="iPhone">آيفون (iPhone)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label data-i18n="deviceModel">الماركة والموديل *</label>
+          <input type="text" id="deviceModel" placeholder="مثال: Dell Latitude, iPhone 13..." required>
+        </div>
+
+        <div class="form-group">
+          <label data-i18n="issueType">العطل الرئيسي *</label>
+          <select id="issueType" required>
+            <option value="سوفت وير / نظام تشغيل">سوفت وير / نظام تشغيل</option>
+            <option value="صيانة بوردة / دوائر إلكترونية">صيانة بوردة / دوائر إلكترونية</option>
+            <option value="مشكلة باور / شحن">مشكلة باور / شحن</option>
+            <option value="تغيير شاشة">تغيير شاشة</option>
+            <option value="تغيير بطارية">تغيير بطارية</option>
+            <option value="تغيير أو ترقية (هارد / رامات)">تغيير أو ترقية (هارد / رامات)</option>
+            <option value="تنظيف وتغيير معجون حراري">تنظيف وتغيير معجون حراري</option>
+            <option value="تركيب وبرمجة أجهزة">تركيب وبرمجة أجهزة</option>
+            <option value="أخرى">أخرى (يرجى التوضيح في الملاحظات)</option>
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label data-i18n="technician">المسؤول / الفني *</label>
+          <select id="technician" required>
+            <option value="أحمد سعيد">أحمد سعيد</option>
+            <option value="عمرو الحو">عمرو الحو</option>
+            <option value="أحمد رجب">أحمد رجب</option>
+            <option value="اسلام">اسلام</option>
+          </select>
+        </div>
+
+        <div class="form-group full-width">
+          <label data-i18n="extraNotes">تفاصيل العطل الإضافية / ملاحظات (اختياري)</label>
+          <textarea id="extraNotes" rows="2" placeholder="اكتب هنا حالة الجهاز الخارجية، المرفقات، أو تفاصيل العطل..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <label data-i18n="initialCost">التكلفة الإجمالية (تقديري)</label>
+          <input type="number" id="initialCost" value="0" min="0">
+        </div>
+        <div class="form-group">
+          <label data-i18n="advancePayment">المدفوع مقدماً (عربون)</label>
+          <input type="number" id="advancePayment" value="0" min="0">
+        </div>
+
+        <div class="form-group">
+          <label data-i18n="estimatedDelivery">تاريخ التسليم المتوقع</label>
+          <input type="date" id="estimatedDelivery">
         </div>
       </div>
-      <div class="form-group">
-        <label>مسؤول الصيانة:</label>
-        <select id="technician" required>
-          <option value="">اختر الفني...</option>
-          <option value="عمرو الحو">عمرو الحو</option>
-          <option value="اسلام">اسلام</option>
-          <option value="أحمد رجب عبسي">أحمد رجب عبسي</option>
-          <option value="أحمد سعيد">أحمد سعيد</option>
-        </select>
+
+      <div class="btn-group">
+        <button type="submit" class="btn-primary" id="btnSave" data-i18n="saveBtn">حفظ البيانات وإصدار الإيصال</button>
+        <button type="button" class="btn-secondary" onclick="resetForm()" data-i18n="cancelBtn">إفراغ النموذج</button>
       </div>
-    </div>
-
-    <div class="btn-submit-group">
-      <button type="button" class="btn-save-print" onclick="saveData(true)">حفظ وطباعة</button>
-      <button type="button" class="btn-save-only" onclick="saveData(false)">حفظ فقط دون طباعة</button>
-      <button type="button" id="cancelBtn" class="btn-cancel" onclick="resetForm()">إلغاء التعديل</button>
-    </div>
-  </form>
-</div>
-
-<div class="container">
-  <div class="archive-header">
-    <h3>أرشيف الإيصالات (السحابي)</h3>
-    <input type="text" id="searchInput" class="search-box" placeholder="بحث باسم العميل، الهاتف، أو رقم الإيصال..." onkeyup="filterArchive()">
+    </form>
   </div>
 
-  <table class="archive-table">
-    <thead>
-      <tr>
-        <th>رقم الإيصال</th>
-        <th>التاريخ</th>
-        <th>العميل</th>
-        <th>الجهاز/التفاصيل</th>
-        <th>الأعطال</th>
-        <th>المتبقي</th>
-        <th>مسؤول الصيانة</th>
-        <th>الحالة</th>
-        <th>خيارات التحكم</th>
-      </tr>
-    </thead>
-    <tbody id="archiveBody">
-      <tr>
-        <td colspan="9" style="text-align: center;">جاري تحميل البيانات من السحابة...</td>
-      </tr>
-    </tbody>
-  </table>
-</div>
-
-<!-- قسم الطباعة A5 -->
-<div id="printSection">
-  <!-- Header -->
-  <div class="receipt-header">
-    <div class="header-titles">
-      <h2>ميكروتك للكمبيوتر</h2>
-      <h3>إيصال استلام صيانة</h3>
-    </div>
-    <div class="receipt-no-box">
-      <span>رقم الإيصال:</span>
-      <strong id="p_receiptNo">---</strong>
-    </div>
+  <!-- جدول الأرشيف -->
+  <div class="table-container no-print">
+    <table>
+      <thead>
+        <tr>
+          <th data-i18n="receiptNo">رقم الإيصال</th>
+          <th data-i18n="date">التاريخ</th>
+          <th data-i18n="client">العميل</th>
+          <th data-i18n="device">الجهاز والعطل</th>
+          <th data-i18n="financials">الماليات</th>
+          <th data-i18n="technician">المسؤول</th>
+          <th data-i18n="status">حالة الجهاز</th>
+          <th data-i18n="audit">المُعدِّل</th>
+          <th data-i18n="actions">إجراءات النظام</th>
+        </tr>
+      </thead>
+      <tbody id="archiveBody">
+        <tr><td colspan="9" style="text-align: center; padding: 20px;" data-i18n="loading">جاري التحميل...</td></tr>
+      </tbody>
+    </table>
   </div>
 
-  <!-- Data Table -->
-  <table class="receipt-table">
-    <tr>
-      <th>التاريخ</th>
-      <td id="p_date"></td>
-      <th>مسؤول الصيانة</th>
-      <td id="p_tech"></td>
-    </tr>
-    <tr>
-      <th>اسم العميل</th>
-      <td id="p_name"></td>
-      <th>رقم الهاتف</th>
-      <td id="p_phone"></td>
-    </tr>
-    <tr>
-      <th>تفاصيل الجهاز</th>
-      <td colspan="3" id="p_device"></td>
-    </tr>
-    <tr>
-      <th>الأعطال والملاحظات</th>
-      <td colspan="3" id="p_issues"></td>
-    </tr>
-    <tr>
-      <th>التكلفة المبدئية</th>
-      <td id="p_initial"></td>
-      <th>الدفعة المقدمة</th>
-      <td id="p_advance"></td>
-    </tr>
-    <tr>
-      <th>المتبقي التقديري</th>
-      <td id="p_remaining"></td>
-      <th>ميعاد الاستلام التقديري</th>
-      <td id="p_delivery"></td>
-    </tr>
-  </table>
+  <!-- منطقة الطباعة -->
+  <div id="printableArea" style="display:none;"></div>
 
-  <!-- Footer Terms & Signatures -->
-  <div class="receipt-footer">
-    <div class="terms-section">
-      <strong>ملاحظات مهمة:</strong>
-      <ol>
-        <li>تكلفة الصيانة المبدئية قد تتغير بناء على تقدير الشركة بعد الاستلام.</li>
-        <li>الشركة غير مسؤولة عن أي بيانات على الجهاز وتأمين هذه البيانات مسؤولية العميل.</li>
-        <li>تعتبر دفعة الصيانة المقدمة نظير الفحص المبدئي (كشف العطل) وتخصم من إجمالي مبلغ الصيانة النهائي، وفي حالة قرار العميل بعدم الإصلاح أو تعذر إصلاح الجهاز فلا ترد هذه الدفعة.</li>
-      </ol>
-      <div class="work-hours">مواعيد العمل: من 1 مساءً إلى 11 مساءً كل أيام الأسبوع ماعدا الجمعة.</div>
-    </div>
+  <script>
+    // ** ضع رابط الـ Web App الخاص بك هنا **
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxK7xNpdddhZA7We87sWsr-p3zaw_pS2ow4TQZnvCzc1XQw_PYkREg_VeOBLn7P9tyu/exec";
 
-    <div class="bottom-bar">
-      <div class="signatures">
-        <span>توقيع العميل: ....................</span>
-      </div>
-      <div class="codes-box">
-        <svg id="barcode"></svg>
-        <div id="qrcode"></div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<script>
-  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyRAQ7MttLOGz5Bbghk6NBTw2zHOMvGwt_lh-4Oz7kBGnBgTgYdGgdzym-7uQa296CF/exec';
-  let archiveData = [];
-
-  window.onload = function() {
-    setQuickDate(1);
-    loadArchive();
-  };
-
-  function setQuickDate(daysToAdd) {
-    const d = new Date();
-    d.setDate(d.getDate() + daysToAdd);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    document.getElementById('estimatedDelivery').value = `${year}-${month}-${day}T20:00`;
-  }
-
-  function handleCategoryChange() {
-    const category = document.getElementById('deviceCategory').value;
-    const container = document.getElementById('dynamicContainer');
-    
-    document.getElementById('computerTypeGroup').style.display = 'none';
-    document.getElementById('mobileTypeGroup').style.display = 'none';
-    document.getElementById('modelGroup').style.display = 'none';
-    document.getElementById('descriptionGroup').style.display = 'none';
-    document.getElementById('otherGroup').style.display = 'none';
-
-    if (category) container.style.display = 'block';
-    else { container.style.display = 'none'; return; }
-
-    if (category === 'computer') {
-      document.getElementById('computerTypeGroup').style.display = 'block';
-      document.getElementById('modelGroup').style.display = 'block';
-    } else if (category === 'mobile') {
-      document.getElementById('mobileTypeGroup').style.display = 'block';
-      document.getElementById('modelGroup').style.display = 'block';
-    } else if (category === 'cctv' || category === 'accessories') {
-      document.getElementById('descriptionGroup').style.display = 'block';
-    } else if (category === 'other') {
-      document.getElementById('otherGroup').style.display = 'block';
-      document.getElementById('descriptionGroup').style.display = 'block';
-    }
-  }
-
-  function getSelectedIssues() {
-    const checkboxes = document.querySelectorAll('input[name="issue"]:checked');
-    let issues = Array.from(checkboxes).map(cb => cb.value);
-    const extraNotes = document.getElementById('issueNotes').value.trim();
-    if (extraNotes) issues.push(extraNotes);
-    return issues.join(' | ') || 'لم تحدد أعطال ظاهرة';
-  }
-
-  function changeReceiptStatus(receiptNo, newStatus) {
-  // إرسال الطلب لـ Google Sheets
-  fetch(SCRIPT_URL, {
-    method: 'POST',
-    mode: 'no-cors',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      receiptNo: receiptNo,
-      status: newStatus,
-      action: "updateStatus"
-    })
-  })
-  .then(() => {
-    alert(`تم تغيير حالة الإيصال رقم ${receiptNo} إلى: ${newStatus}`);
-  })
-  .catch(err => {
-    alert("حدث خطأ أثناء التحديث: " + err);
-  });
-}
-
-  function saveData(shouldPrint) {
-    const form = document.getElementById('receiptForm');
-    if (!form.checkValidity()) {
-      form.reportValidity();
-      return;
-    }
-
-    const existingNo = document.getElementById('editReceiptNo').value;
-    const tempReceiptNo = existingNo || ("REC-" + Math.floor(1000 + Math.random() * 9000));
-
-    const category = document.getElementById('deviceCategory').value;
-    let devDetailText = category;
-    if(category === 'computer') devDetailText = `كمبيوتر (${document.getElementById('computerType').value}) - ${document.getElementById('deviceModel').value}`;
-    else if(category === 'mobile') devDetailText = `موبايل (${document.getElementById('mobileType').value}) - ${document.getElementById('deviceModel').value}`;
-    else if(category === 'other') devDetailText = `${document.getElementById('otherCategoryText').value || 'أخرى'}: ${document.getElementById('deviceDescription').value}`;
-    else devDetailText = `${category} - ${document.getElementById('deviceDescription').value}`;
-
-    const payload = {
-      receiptNo: tempReceiptNo,
-      clientName: document.getElementById('clientName').value,
-      clientPhone: document.getElementById('clientPhone').value,
-      deviceDetail: devDetailText,
-      issues: getSelectedIssues(),
-      initialCost: document.getElementById('initialCost').value,
-      advancePayment: document.getElementById('advancePayment').value,
-      estimatedDelivery: document.getElementById('estimatedDelivery').value,
-      technician: document.getElementById('technician').value,
-      status: 'قيد الصيانة'
+    // قاموس الترجمة
+    const i18n = {
+      ar: {
+        appTitle: "نظام إدارة الصيانة", loginTitle: "تسجيل الدخول للنظام",
+        usernamePh: "اسم المستخدم", passwordPh: "كلمة المرور", loginBtn: "تسجيل الدخول", logout: "تسجيل خروج",
+        newReceiptTitle: "إضافة إيصال جديد", editReceiptTitle: "تعديل إيصال رقم: ",
+        clientName: "اسم العميل *", clientPhone: "رقم الهاتف *",
+        deviceCategory: "تصنيف الجهاز *", deviceModel: "الماركة والموديل *",
+        issueType: "العطل الرئيسي *", technician: "المسؤول / الفني *",
+        extraNotes: "تفاصيل العطل الإضافية / ملاحظات (اختياري)",
+        initialCost: "التكلفة الإجمالية (تقديري)", advancePayment: "المدفوع مقدماً (عربون)",
+        estimatedDelivery: "تاريخ التسليم المتوقع",
+        saveBtn: "حفظ البيانات وإصدار الإيصال", cancelBtn: "إفراغ النموذج",
+        receiptNo: "رقم الإيصال", date: "التاريخ", client: "بيانات العميل", device: "الجهاز والعطل",
+        financials: "الماليات", status: "الحالة", audit: "آخر تعديل", actions: "الإجراءات",
+        print: "إيصال", invoice: "فاتورة", edit: "تعديل", delete: "حذف", locked: "مقفل",
+        loading: "جاري تحميل البيانات...", empty: "لا توجد سجلات لعرضها.",
+        statusPending: "قيد الصيانة", statusDone: "تمت الصيانة", statusFailed: "تعذرت الصيانة", statusRefused: "رفض العميل",
+        accAdvances: "السيولة الحالية (المدفوع مقدماً)", accPending: "المستحقات الخارجية (لدى العملاء)", accRevenue: "أرباح الإيصالات المنتهية (المغلقة)"
+      },
+      en: {
+        appTitle: "Maintenance System", loginTitle: "System Login",
+        usernamePh: "Username", passwordPh: "Password", loginBtn: "Login", logout: "Logout",
+        newReceiptTitle: "Add New Receipt", editReceiptTitle: "Edit Receipt: ",
+        clientName: "Client Name *", clientPhone: "Phone Number *",
+        deviceCategory: "Device Category *", deviceModel: "Brand & Model *",
+        issueType: "Main Issue *", technician: "Technician / Rep *",
+        extraNotes: "Extra Details / Notes (Optional)",
+        initialCost: "Total Cost", advancePayment: "Advance Payment",
+        estimatedDelivery: "Delivery Date",
+        saveBtn: "Save & Issue", cancelBtn: "Clear Form",
+        receiptNo: "Receipt No", date: "Date", client: "Client Info", device: "Device & Issue",
+        financials: "Financials", status: "Status", audit: "Last Edit By", actions: "Actions",
+        print: "Receipt", invoice: "Invoice", edit: "Edit", delete: "Delete", locked: "Locked",
+        loading: "Loading data...", empty: "No records to display.",
+        statusPending: "In Progress", statusDone: "Completed", statusFailed: "Failed", statusRefused: "Refused",
+        accAdvances: "Current Cash (Advances)", accPending: "Pending Payments", accRevenue: "Revenue (Closed)"
+      }
     };
 
-    if (shouldPrint) {
-      triggerPrint(payload, tempReceiptNo);
-    }
+    let currentLang = localStorage.getItem('appLang') || 'ar';
+    let globalArchiveData = [];
 
-    fetch(SCRIPT_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(payload)
-    })
-    .then(() => {
-      resetForm();
-      setTimeout(loadArchive, 1500);
-    })
-    .catch(err => console.error('خطأ الإرسال:', err));
-  }
-
-  function editRow(idx) {
-    const item = archiveData[idx];
-    if(!item) return;
-
-    document.getElementById('editReceiptNo').value = item.receiptNo || '';
-    document.getElementById('formTitle').innerText = `تعديل إيصال صيانة: (${item.receiptNo})`;
-    document.getElementById('cancelBtn').style.display = 'block';
-
-    document.getElementById('clientName').value = item.clientName || '';
-    document.getElementById('clientPhone').value = item.clientPhone || '';
-    document.getElementById('initialCost').value = item.initialCost || 0;
-    document.getElementById('advancePayment').value = item.advancePayment || 0;
-    document.getElementById('technician').value = item.technician || '';
-
-    const devDetail = item.deviceDetail || '';
-    if (devDetail.startsWith('كمبيوتر')) {
-      document.getElementById('deviceCategory').value = 'computer';
-      handleCategoryChange();
-      if (devDetail.includes('Desktop')) document.getElementById('computerType').value = 'Desktop';
-      if (devDetail.includes('Laptop')) document.getElementById('computerType').value = 'Laptop';
-      document.getElementById('deviceModel').value = devDetail.split(' - ')[1] || '';
-    } else if (devDetail.startsWith('موبايل')) {
-      document.getElementById('deviceCategory').value = 'mobile';
-      handleCategoryChange();
-      if (devDetail.includes('iPhone')) document.getElementById('mobileType').value = 'iPhone';
-      if (devDetail.includes('Android')) document.getElementById('mobileType').value = 'Android';
-      document.getElementById('deviceModel').value = devDetail.split(' - ')[1] || '';
-    } else {
-      document.getElementById('deviceCategory').value = 'other';
-      handleCategoryChange();
-      document.getElementById('otherCategoryText').value = devDetail.split(' - ')[0] || '';
-      document.getElementById('deviceDescription').value = devDetail.split(' - ')[1] || devDetail;
-    }
-
-    document.querySelectorAll('input[name="issue"]').forEach(cb => cb.checked = false);
-    if (item.issues) {
-      const parts = item.issues.split(' | ');
-      const extraNotes = [];
-      parts.forEach(part => {
-        const checkbox = Array.from(document.querySelectorAll('input[name="issue"]')).find(cb => cb.value === part);
-        if (checkbox) checkbox.checked = true;
-        else extraNotes.push(part);
-      });
-      document.getElementById('issueNotes').value = extraNotes.join(' | ');
-    } else {
-      document.getElementById('issueNotes').value = '';
-    }
-
-    if (item.estimatedDelivery) {
-      let formattedDate = item.estimatedDelivery.replace(' ', 'T');
-      if (formattedDate.length >= 16) {
-        document.getElementById('estimatedDelivery').value = formattedDate.substring(0, 16);
+    function toggleLanguage() {
+      currentLang = currentLang === 'ar' ? 'en' : 'ar';
+      localStorage.setItem('appLang', currentLang);
+      applyLanguage();
+      if(sessionStorage.getItem('isLoggedIn') === 'true') {
+        renderArchive(globalArchiveData);
+        calculateFinancials(globalArchiveData);
       }
     }
 
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
-
-  function resetForm() {
-    document.getElementById('receiptForm').reset();
-    document.getElementById('editReceiptNo').value = '';
-    document.getElementById('formTitle').innerText = 'إيصال استلام صيانة جديد';
-    document.getElementById('cancelBtn').style.display = 'none';
-    handleCategoryChange();
-    setQuickDate(1);
-  }
-
-  function triggerPrint(data, receiptNo) {
-    const finalNo = receiptNo || data.receiptNo || 'REC-1000';
-    document.getElementById('p_receiptNo').innerText = finalNo;
-    document.getElementById('p_date').innerText = data.date || new Date().toLocaleDateString('ar-EG');
-    document.getElementById('p_name').innerText = data.clientName || '';
-    document.getElementById('p_phone').innerText = data.clientPhone || '';
-    document.getElementById('p_tech').innerText = data.technician || '';
-    document.getElementById('p_issues').innerText = data.issues || 'لا يوجد';
-    document.getElementById('p_device').innerText = data.deviceDetail || '';
-    
-    const init = parseFloat(data.initialCost) || 0;
-    const adv = parseFloat(data.advancePayment) || 0;
-    document.getElementById('p_initial').innerText = init.toFixed(2);
-    document.getElementById('p_advance').innerText = adv.toFixed(2);
-    document.getElementById('p_remaining').innerText = (init - adv).toFixed(2);
-    document.getElementById('p_delivery').innerText = (data.estimatedDelivery || '').replace('T', ' ');
-
-    try {
-      const cleanNum = finalNo.replace(/[^0-9]/g, '') || '1234';
-      JsBarcode("#barcode", cleanNum, { format: "CODE39", width: 1.2, height: 25, displayValue: true });
-    } catch(e) { console.error("Barcode Error:", e); }
-
-    try {
-      const qrContainer = document.getElementById("qrcode");
-      qrContainer.innerHTML = "";
-      new QRCode(qrContainer, {
-        text: `Receipt:${finalNo}\nClient:${data.clientName}\nDue:${(init - adv)}`,
-        width: 50,
-        height: 50
+    function applyLanguage() {
+      document.documentElement.dir = currentLang === 'ar' ? 'rtl' : 'ltr';
+      document.documentElement.lang = currentLang;
+      document.querySelectorAll('[data-i18n]').forEach(elem => {
+        const key = elem.getAttribute('data-i18n');
+        if (i18n[currentLang][key]) elem.innerText = i18n[currentLang][key];
       });
-    } catch(e) { console.error("QR Error:", e); }
-
-    setTimeout(() => { window.print(); }, 200);
-  }
-
-  function loadArchive() {
-    const oldScript = document.getElementById('jsonpScript');
-    if (oldScript) oldScript.remove();
-
-    window.handleData = function(data) {
-      archiveData = data || [];
-      renderArchive(archiveData);
-    };
-
-    const script = document.createElement('script');
-    script.id = 'jsonpScript';
-    script.src = `${SCRIPT_URL}?callback=handleData&_=${new Date().getTime()}`;
-    script.onerror = function() {
-      document.getElementById('archiveBody').innerHTML = 
-        `<tr><td colspan="9" style="text-align: center; color: red;">فشل استرجاع بيانات الأرشيف من Google Sheets.</td></tr>`;
-    };
-    document.body.appendChild(script);
-  }
-
-  function renderArchive(data) {
-    const tbody = document.getElementById('archiveBody');
-    tbody.innerHTML = '';
-
-    if(!data || data.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="9" style="text-align: center;">لا توجد إيصالات مسجلة بالسحابة.</td></tr>`;
-      return;
+      document.querySelectorAll('[data-i18n-ph]').forEach(elem => {
+        const key = elem.getAttribute('data-i18n-ph');
+        if (i18n[currentLang][key]) elem.placeholder = i18n[currentLang][key];
+      });
     }
 
-    data.slice().reverse().forEach((row, index) => {
-      const actualIndex = data.length - 1 - index;
-      const tr = document.createElement('tr');
-      const statusText = row.status || 'قيد الصيانة';
-      const remainingVal = row.remaining !== undefined ? row.remaining : (parseFloat(row.initialCost || 0) - parseFloat(row.advancePayment || 0));
+    function checkSession() {
+      applyLanguage();
+      if (sessionStorage.getItem('isLoggedIn') === 'true') {
+        document.getElementById('loginOverlay').style.display = 'none';
+        document.getElementById('btnLogout').style.display = 'inline-block';
+        document.getElementById('userInfo').innerText = `👤 ${sessionStorage.getItem('userName')} (${sessionStorage.getItem('userRole')})`;
+        
+        if (sessionStorage.getItem('userRole') === 'admin') {
+          document.getElementById('adminFinancialPanel').style.display = 'grid';
+        }
+        loadArchive();
+      }
+    }
 
-      tr.innerHTML = `
-        <td><b>${row.receiptNo || ''}</b></td>
-        <td>${row.date || ''}</td>
-        <td>${row.clientName || ''}<br><small style="color:#64748b">${row.clientPhone || ''}</small></td>
-        <td>${row.deviceDetail || ''}</td>
-        <td><small>${row.issues || 'غير محدد'}</small></td>
-        <td><b>${remainingVal}</b></td>
-        <td>${row.technician || ''}</td>
-        <td>
-  <select class="status-badge" onchange="changeReceiptStatus('${row.receiptNo}', this.value)" style="padding: 4px 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 13px; cursor: pointer;">
-    <option value="قيد الصيانة" ${statusText === 'قيد الصيانة' ? 'selected' : ''}>قيد الصيانة</option>
-    <option value="تمت الصيانة" ${statusText === 'تمت الصيانة' ? 'selected' : ''}>تمت الصيانة</option>
-    <option value="تعذرت الصيانة" ${statusText === 'تعذرت الصيانة' ? 'selected' : ''}>تعذرت الصيانة</option>
-    <option value="رفض العميل" ${statusText === 'رفض العميل' ? 'selected' : ''}>رفض العميل</option>
-  </select>
-</td>
-        <td>
-          <button class="btn-action btn-print" onclick="reprintRow(${actualIndex})">طباعة</button>
-          <button class="btn-action btn-edit" onclick="editRow(${actualIndex})">تعديل</button>
-        </td>
+    function handleCloudLogin() {
+      const u = document.getElementById('loginUser').value.trim();
+      const p = document.getElementById('loginPass').value.trim();
+      const btn = document.getElementById('btnLogin');
+      const err = document.getElementById('loginError');
+
+      if (!u || !p) {
+        err.innerText = currentLang === 'ar' ? "يرجى إدخال البيانات" : "Please enter credentials";
+        err.style.display = 'block'; return;
+      }
+
+      btn.disabled = true;
+      btn.innerText = currentLang === 'ar' ? "جاري الدخول..." : "Logging in...";
+      
+      fetch(`${SCRIPT_URL}?action=login&username=${encodeURIComponent(u)}&password=${encodeURIComponent(p)}`)
+        .then(res => res.json())
+        .then(data => {
+          btn.disabled = false;
+          btn.innerText = i18n[currentLang].loginBtn;
+          if (data.success) {
+            sessionStorage.setItem('isLoggedIn', 'true');
+            sessionStorage.setItem('userName', data.username);
+            sessionStorage.setItem('userRole', data.role || 'technician');
+            checkSession();
+          } else {
+            err.innerText = data.message;
+            err.style.display = 'block';
+          }
+        })
+        .catch(() => {
+          btn.disabled = false;
+          btn.innerText = i18n[currentLang].loginBtn;
+          err.innerText = currentLang === 'ar' ? "فشل الاتصال بالسيرفر" : "Connection failed";
+          err.style.display = 'block';
+        });
+    }
+
+    function logout() {
+      sessionStorage.clear();
+      window.location.reload();
+    }
+
+    function toggleMobileOs() {
+      const cat = document.getElementById('deviceCategory').value;
+      const osGroup = document.getElementById('mobileOsGroup');
+      if (cat === 'موبايل') {
+        osGroup.style.display = 'block';
+      } else {
+        osGroup.style.display = 'none';
+      }
+    }
+
+    function loadArchive() {
+      fetch(`${SCRIPT_URL}?action=getArchive`)
+        .then(res => res.json())
+        .then(data => {
+          globalArchiveData = data;
+          renderArchive(data);
+          calculateFinancials(data);
+        });
+    }
+
+    function calculateFinancials(data) {
+      if (sessionStorage.getItem('userRole') !== 'admin') return;
+      
+      let advances = 0, pending = 0, revenue = 0;
+      data.forEach(row => {
+        let cost = parseFloat(row.initialCost) || 0;
+        let adv = parseFloat(row.advancePayment) || 0;
+        let remain = cost - adv;
+        
+        advances += adv;
+        if (row.isLocked === true || row.isLocked === "true") {
+          revenue += cost; 
+        } else {
+          pending += remain; 
+        }
+      });
+
+      document.getElementById('valAdvances').innerText = advances.toLocaleString() + ' EGP';
+      document.getElementById('valPending').innerText = pending.toLocaleString() + ' EGP';
+      document.getElementById('valRevenue').innerText = revenue.toLocaleString() + ' EGP';
+    }
+
+    function saveReceipt(e) {
+      e.preventDefault();
+      const btn = document.getElementById('btnSave');
+      btn.disabled = true;
+      btn.innerText = currentLang === 'ar' ? "جاري الحفظ..." : "Saving...";
+
+      const editingNo = document.getElementById('editingReceiptNo').value;
+      const receiptNo = editingNo || ('REC-' + Date.now().toString().slice(-6));
+
+      // دمج التصنيف مع الموديل مع مراعاة نظام تشغيل الموبايل
+      const category = document.getElementById('deviceCategory').value;
+      let model = document.getElementById('deviceModel').value;
+      let fullDeviceDetail = `${category} - ${model}`;
+      
+      if (category === 'موبايل') {
+        const os = document.getElementById('mobileOs').value;
+        fullDeviceDetail = `موبايل (${os}) - ${model}`;
+      }
+
+      // دمج العطل مع الملاحظات
+      const issueType = document.getElementById('issueType').value;
+      const extraNotes = document.getElementById('extraNotes').value;
+      const fullIssueText = extraNotes ? `${issueType} | ملاحظات: ${extraNotes}` : issueType;
+
+      const payload = {
+        action: 'save',
+        receiptNo: receiptNo,
+        clientName: document.getElementById('clientName').value,
+        clientPhone: document.getElementById('clientPhone').value,
+        deviceDetail: fullDeviceDetail,
+        issues: fullIssueText,
+        initialCost: document.getElementById('initialCost').value,
+        advancePayment: document.getElementById('advancePayment').value,
+        estimatedDelivery: document.getElementById('estimatedDelivery').value,
+        technician: document.getElementById('technician').value,
+        currentUser: sessionStorage.getItem('userName'),
+        userRole: sessionStorage.getItem('userRole')
+      };
+
+      fetch(SCRIPT_URL, {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      })
+      .then(res => res.json())
+      .then(res => {
+        btn.disabled = false;
+        btn.innerText = i18n[currentLang].saveBtn;
+        if (res.status === 'success') {
+          resetForm();
+          loadArchive();
+        } else {
+          alert(res.message);
+        }
+      });
+    }
+
+    function renderArchive(data) {
+      const tbody = document.getElementById('archiveBody');
+      tbody.innerHTML = '';
+      const currentRole = sessionStorage.getItem('userRole') || 'technician';
+
+      if (!data || data.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; padding: 20px;">${i18n[currentLang].empty}</td></tr>`;
+        return;
+      }
+
+      data.slice().reverse().forEach((row) => {
+        const statusText = row.status || 'قيد الصيانة';
+        const cost = parseFloat(row.initialCost || 0);
+        const adv = parseFloat(row.advancePayment || 0);
+        const remainingVal = cost - adv;
+        const isLocked = (row.isLocked === true || row.isLocked === "true");
+        const isAdmin = currentRole === 'admin';
+        const canEdit = !isLocked || isAdmin;
+
+        // تنسيق عرض العطل
+        let issueDisplay = row.issues || '';
+        if (issueDisplay.includes('| ملاحظات:')) {
+            let parts = issueDisplay.split('| ملاحظات:');
+            issueDisplay = `<b>${parts[0]}</b><br><small style="color:#94a3b8">${parts[1]}</small>`;
+        } else {
+            issueDisplay = `<b>${issueDisplay}</b>`;
+        }
+        
+        // تنسيق عرض الجهاز
+        let deviceDisplay = row.deviceDetail || '';
+        if (deviceDisplay.includes(' - ')) {
+            let dParts = deviceDisplay.split(' - ');
+            deviceDisplay = `<span style="color:#f8fafc; font-weight:bold;">${dParts[0]}</span><br><small>${dParts.slice(1).join(' - ')}</small>`;
+        }
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><strong style="color: #38bdf8;">${row.receiptNo}</strong> ${isLocked ? '🔒' : ''}</td>
+          <td><small>${row.date}</small></td>
+          <td><b>${row.clientName}</b><br><small style="color:#94a3b8" dir="ltr">${row.clientPhone}</small></td>
+          <td>${deviceDisplay}<br><hr style="border-color:#334155; margin: 5px 0;">${issueDisplay}</td>
+          <td dir="ltr" style="text-align: right;">
+            <small>Total: ${cost}</small><br>
+            <small>Adv: ${adv}</small><br>
+            <strong style="color: #fbbf24;">Rem: ${remainingVal}</strong>
+          </td>
+          <td>${row.technician || '-'}</td>
+          <td>
+            <select ${!canEdit ? 'disabled' : ''} onchange="updateStatus('${row.receiptNo}', this.value)" style="padding: 5px; font-size: 13px;">
+              <option value="قيد الصيانة" ${statusText === 'قيد الصيانة' ? 'selected' : ''}>${i18n[currentLang].statusPending}</option>
+              <option value="تمت الصيانة" ${statusText === 'تمت الصيانة' ? 'selected' : ''}>${i18n[currentLang].statusDone}</option>
+              <option value="تعذرت الصيانة" ${statusText === 'تعذرت الصيانة' ? 'selected' : ''}>${i18n[currentLang].statusFailed}</option>
+              <option value="رفض العميل" ${statusText === 'رفض العميل' ? 'selected' : ''}>${i18n[currentLang].statusRefused}</option>
+            </select>
+          </td>
+          <td><small style="color:#94a3b8">${row.lastUpdatedBy || row.createdBy || '-'}</small></td>
+          <td>
+            <div style="display: flex; flex-wrap: wrap; gap: 4px; justify-content: center;">
+              <button class="btn-action btn-print" onclick="printDoc('${row.receiptNo}', 'receipt')">${i18n[currentLang].print}</button>
+              <button class="btn-action btn-invoice" onclick="printDoc('${row.receiptNo}', 'invoice')">${i18n[currentLang].invoice}</button>
+              <button class="btn-action ${canEdit ? 'btn-edit' : 'btn-disabled'}" ${!canEdit ? 'disabled' : ''} onclick="editReceipt('${row.receiptNo}')">
+                ${isLocked && !isAdmin ? i18n[currentLang].locked : i18n[currentLang].edit}
+              </button>
+              ${isAdmin ? `<button class="btn-action btn-delete" onclick="deleteReceipt('${row.receiptNo}')">${i18n[currentLang].delete}</button>` : ''}
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function editReceipt(receiptNo) {
+      const item = globalArchiveData.find(r => r.receiptNo.toString() === receiptNo.toString());
+      if (!item) return;
+
+      document.getElementById('editingReceiptNo').value = item.receiptNo;
+      document.getElementById('clientName').value = item.clientName;
+      document.getElementById('clientPhone').value = item.clientPhone;
+      document.getElementById('initialCost').value = item.initialCost;
+      document.getElementById('advancePayment').value = item.advancePayment;
+      document.getElementById('estimatedDelivery').value = item.estimatedDelivery || '';
+
+      // فك دمج تصنيف الجهاز والموديل (ومراعاة الموبايل)
+      let fullDevice = item.deviceDetail || '';
+      if(fullDevice.includes(' - ')) {
+         let parts = fullDevice.split(' - ');
+         let catSelect = document.getElementById('deviceCategory');
+         let catPart = parts[0];
+         
+         if(catPart.includes('موبايل')) {
+             catSelect.value = 'موبايل';
+             toggleMobileOs();
+             if(catPart.includes('iPhone')) {
+                 document.getElementById('mobileOs').value = 'iPhone';
+             } else {
+                 document.getElementById('mobileOs').value = 'Android';
+             }
+         } else {
+             let optionExists = [...catSelect.options].some(o => o.value === catPart);
+             if(optionExists) {
+                 catSelect.value = catPart;
+             } else {
+                 catSelect.value = 'أخرى';
+             }
+             toggleMobileOs();
+         }
+         document.getElementById('deviceModel').value = parts.slice(1).join(' - ');
+      } else {
+         document.getElementById('deviceCategory').value = 'أخرى';
+         document.getElementById('deviceModel').value = fullDevice;
+         toggleMobileOs();
+      }
+
+      // فك دمج العطل والملاحظات
+      let issueVal = item.issues || '';
+      let notesVal = '';
+      if(issueVal.includes('| ملاحظات:')) {
+        let parts = issueVal.split('| ملاحظات:');
+        issueVal = parts[0].trim();
+        notesVal = parts[1].trim();
+      }
+      
+      let issueSelect = document.getElementById('issueType');
+      let issueOptionExists = [...issueSelect.options].some(o => o.value === issueVal);
+      if(issueOptionExists) {
+          issueSelect.value = issueVal;
+      } else {
+          issueSelect.value = 'أخرى';
+          notesVal = issueVal + (notesVal ? " - " + notesVal : "");
+      }
+      document.getElementById('extraNotes').value = notesVal;
+
+      // فك الفني 
+      let techSelect = document.getElementById('technician');
+      let techVal = item.technician || '';
+      let techOptionExists = [...techSelect.options].some(o => o.value === techVal);
+      if(!techOptionExists && techVal !== '') {
+          let opt = document.createElement('option');
+          opt.value = techVal;
+          opt.text = techVal;
+          techSelect.add(opt);
+          techSelect.value = techVal;
+      } else {
+          techSelect.value = techVal;
+      }
+
+      document.getElementById('formTitle').innerText = i18n[currentLang].editReceiptTitle + item.receiptNo;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function resetForm() {
+      document.getElementById('receiptForm').reset();
+      document.getElementById('editingReceiptNo').value = '';
+      document.getElementById('formTitle').innerText = i18n[currentLang].newReceiptTitle;
+      toggleMobileOs();
+    }
+
+    function updateStatus(receiptNo, newStatus) {
+      fetch(SCRIPT_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'updateStatus',
+          receiptNo: receiptNo,
+          status: newStatus,
+          currentUser: sessionStorage.getItem('userName'),
+          userRole: sessionStorage.getItem('userRole')
+        })
+      }).then(() => loadArchive());
+    }
+
+    function deleteReceipt(receiptNo) {
+      if (confirm(currentLang === 'ar' ? "تأكيد حذف هذا الإيصال نهائياً؟" : "Confirm permanently deleting this receipt?")) {
+        fetch(SCRIPT_URL, {
+          method: 'POST',
+          body: JSON.stringify({
+            action: 'deleteReceipt',
+            receiptNo: receiptNo,
+            currentUser: sessionStorage.getItem('userName'),
+            userRole: sessionStorage.getItem('userRole')
+          })
+        }).then(() => loadArchive());
+      }
+    }
+
+    function printDoc(receiptNo, type) {
+      const item = globalArchiveData.find(r => r.receiptNo.toString() === receiptNo.toString());
+      if (!item) return;
+
+      const printArea = document.getElementById('printableArea');
+      const isInvoice = type === 'invoice';
+      const cost = parseFloat(item.initialCost||0);
+      const adv = parseFloat(item.advancePayment||0);
+      
+      let issueDisplay = item.issues || '';
+      if (issueDisplay.includes('| ملاحظات:')) {
+          issueDisplay = issueDisplay.replace('| ملاحظات:', '<br><b>ملاحظات:</b>');
+      }
+
+      printArea.innerHTML = `
+        <div style="border: 1px solid #000; padding: 15px; width: 100%; font-family: Arial, sans-serif; direction: rtl; box-sizing: border-box; font-size: 14px;">
+          
+          <div style="text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 15px;">
+            <h2 style="margin: 0; font-size: 20px;">${isInvoice ? 'فاتورة استلام نهائي' : 'إيصال استلام جهاز للصيانة'}</h2>
+          </div>
+          
+          <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+            <div><b>رقم الإيصال:</b> ${item.receiptNo}</div>
+            <div><b>التاريخ:</b> ${item.date}</div>
+          </div>
+
+          <div style="border: 1px solid #ddd; padding: 10px; margin-bottom: 15px;">
+            <p style="margin: 0 0 5px 0;"><b>العميل:</b> ${item.clientName} &nbsp;|&nbsp; <b>الهاتف:</b> <span dir="ltr">${item.clientPhone}</span></p>
+            <p style="margin: 0 0 5px 0;"><b>الجهاز:</b> ${item.deviceDetail}</p>
+            <p style="margin: 0;"><b>العطل / ملاحظات:</b> ${issueDisplay}</p>
+          </div>
+
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px; text-align: center;">
+            <tr>
+              <th style="border: 1px solid #000; padding: 5px; background: #eee;">إجمالي التكلفة</th>
+              <th style="border: 1px solid #000; padding: 5px; background: #eee;">المدفوع مقدماً (عربون)</th>
+              <th style="border: 1px solid #000; padding: 5px; background: #eee;">المتبقي للدفع</th>
+            </tr>
+            <tr>
+              <td style="border: 1px solid #000; padding: 5px; font-weight: bold;">${cost}</td>
+              <td style="border: 1px solid #000; padding: 5px; font-weight: bold;">${adv}</td>
+              <td style="border: 1px solid #000; padding: 5px; font-weight: bold; font-size: 16px;">${cost - adv}</td>
+            </tr>
+          </table>
+
+          <!-- قسم الشروط والملاحظات المطلوب -->
+          <div style="font-size: 11px; border: 1px dashed #333; padding: 10px; margin-bottom: 15px; border-radius: 4px;">
+            <b style="font-size: 12px; display:block; margin-bottom: 5px;">شروط وملاحظات الصيانة:</b>
+            <ul style="margin: 0; padding-right: 20px; list-style-type: square;">
+              <li>تكلفة الصيانة المبدئية قابلة للتغيير بعد الفحص الدقيق.</li>
+              <li>الشركة غير مسؤولة عن فقدان أي بيانات موجودة على الجهاز.</li>
+              <li>الدفعة المقدمة (العربون) تعتبر مقابل الفحص ولا تُرد في حال تعذر الإصلاح.</li>
+              <li>مواعيد العمل: من 1 مساءً إلى 11 مساءً طوال أيام الأسبوع (باستثناء يوم الجمعة).</li>
+            </ul>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; margin-top: 20px; font-size: 13px;">
+            <div style="text-align: center;">
+              <p style="margin-bottom: 25px;"><b>توقيع العميل بالموافقة على الشروط</b></p>
+              <p>.......................................</p>
+            </div>
+            <div style="text-align: center;">
+              <p style="margin-bottom: 25px;"><b>الفني / المسؤول</b></p>
+              <p>${item.technician || '---'}</p>
+            </div>
+          </div>
+        </div>
       `;
-      tbody.appendChild(tr);
-    });
-  }
-function changeReceiptStatus(receiptNo, newStatus) {
-  fetch(SCRIPT_URL, {
-    method: 'POST',
-    mode: 'no-cors',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      receiptNo: receiptNo,
-      status: newStatus,
-      action: "updateStatus"
-    })
-  })
-  .then(() => {
-    // تحديث القيمة محلياً في مصفوفة البيانات دون الحاجة لإعادة التحميل
-    const item = data.find(r => r.receiptNo.toString() === receiptNo.toString());
-    if (item) item.status = newStatus;
-  })
-  .catch(err => console.error("Error updating status:", err));
-}
 
-  function reprintRow(idx) {
-    const item = archiveData[idx];
-    if(!item) return;
-    triggerPrint(item, item.receiptNo);
-  }
+      printArea.style.display = 'block';
+      window.print();
+      printArea.style.display = 'none';
 
-  function filterArchive() {
-    const query = document.getElementById('searchInput').value.toLowerCase();
-    const filtered = archiveData.filter(row => 
-      (row.receiptNo && String(row.receiptNo).toLowerCase().includes(query)) ||
-      (row.clientName && String(row.clientName).toLowerCase().includes(query)) ||
-      (row.clientPhone && String(row.clientPhone).toLowerCase().includes(query))
-    );
-    renderArchive(filtered);
-  }
-</script>
+      // إغلاق الإيصال تلقائياً عند طباعة الفاتورة 
+      if (isInvoice && (!item.isLocked || item.isLocked === "false")) {
+        fetch(SCRIPT_URL, {
+          method: 'POST',
+          body: JSON.stringify({
+            action: 'updateStatus',
+            receiptNo: receiptNo,
+            isLocked: true,
+            currentUser: sessionStorage.getItem('userName'),
+            userRole: sessionStorage.getItem('userRole')
+          })
+        }).then(() => loadArchive());
+      }
+    }
 
+    document.addEventListener('DOMContentLoaded', checkSession);
+  </script>
 </body>
 </html>

@@ -606,6 +606,26 @@
     return issues.join(' | ') || 'لم تحدد أعطال ظاهرة';
   }
 
+  function changeReceiptStatus(receiptNo, newStatus) {
+  // إرسال الطلب لـ Google Sheets
+  fetch(SCRIPT_URL, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      receiptNo: receiptNo,
+      status: newStatus,
+      action: "updateStatus"
+    })
+  })
+  .then(() => {
+    alert(`تم تغيير حالة الإيصال رقم ${receiptNo} إلى: ${newStatus}`);
+  })
+  .catch(err => {
+    alert("حدث خطأ أثناء التحديث: " + err);
+  });
+}
+
   function saveData(shouldPrint) {
     const form = document.getElementById('receiptForm');
     if (!form.checkValidity()) {
@@ -797,7 +817,14 @@
         <td><small>${row.issues || 'غير محدد'}</small></td>
         <td><b>${remainingVal}</b></td>
         <td>${row.technician || ''}</td>
-        <td><span class="status-badge">${statusText}</span></td>
+        <td>
+  <select class="status-badge" onchange="changeReceiptStatus('${row.receiptNo}', this.value)" style="padding: 4px 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 13px; cursor: pointer;">
+    <option value="قيد الصيانة" ${statusText === 'قيد الصيانة' ? 'selected' : ''}>قيد الصيانة</option>
+    <option value="تمت الصيانة" ${statusText === 'تمت الصيانة' ? 'selected' : ''}>تمت الصيانة</option>
+    <option value="تعذرت الصيانة" ${statusText === 'تعذرت الصيانة' ? 'selected' : ''}>تعذرت الصيانة</option>
+    <option value="رفض العميل" ${statusText === 'رفض العميل' ? 'selected' : ''}>رفض العميل</option>
+  </select>
+</td>
         <td>
           <button class="btn-action btn-print" onclick="reprintRow(${actualIndex})">طباعة</button>
           <button class="btn-action btn-edit" onclick="editRow(${actualIndex})">تعديل</button>
@@ -806,6 +833,24 @@
       tbody.appendChild(tr);
     });
   }
+function changeReceiptStatus(receiptNo, newStatus) {
+  fetch(SCRIPT_URL, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      receiptNo: receiptNo,
+      status: newStatus,
+      action: "updateStatus"
+    })
+  })
+  .then(() => {
+    // تحديث القيمة محلياً في مصفوفة البيانات دون الحاجة لإعادة التحميل
+    const item = data.find(r => r.receiptNo.toString() === receiptNo.toString());
+    if (item) item.status = newStatus;
+  })
+  .catch(err => console.error("Error updating status:", err));
+}
 
   function reprintRow(idx) {
     const item = archiveData[idx];

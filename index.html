@@ -236,13 +236,17 @@ async function saveServiceRemote(s){ return apiPost('saveService', {data:s}); }
 
 /* ---- Purchases ---- */
 async function loadPurchases(){ try{ return await apiGet('getPurchases'); }catch(e){ console.error(e); return []; } }
-async function savePurchaseRemote(supplier, supplierId, itemsSummary, total, warrantyMonths){
-  return apiPost('savePurchase', {supplier, supplierId, itemsSummary, total, warrantyMonths, date: new Date().toISOString().slice(0,10), user: state.user.name});
+async function savePurchaseRemote(supplier, supplierId, itemsSummary, total, warrantyMonths, amountPaid){
+  return apiPost('savePurchase', {supplier, supplierId, itemsSummary, total, warrantyMonths, amountPaid, date: new Date().toISOString().slice(0,10), user: state.user.name});
+}
+async function settlePurchaseDebtRemote(purchaseId, supplierId, amount, note){
+  return apiPost('settlePurchaseDebt', {purchaseId, supplierId, amount, note, date: new Date().toISOString().slice(0,10), user: state.user.name});
 }
 
 /* ---- Suppliers ---- */
 async function loadSuppliers(){ try{ return await apiGet('getSuppliers'); }catch(e){ console.error(e); return []; } }
 async function saveSupplierRemote(s){ return apiPost('saveSupplier', {data:s}); }
+async function loadSupplierPayments(){ try{ return await apiGet('getSupplierPayments'); }catch(e){ console.error(e); return []; } }
 
 /* ---- Serial numbers (optional per-unit tracking for warranty) ---- */
 async function loadSerials(itemId, status){ try{ const p={}; if(itemId) p.itemId=itemId; if(status) p.status=status; return await apiGet('getSerials', p); }catch(e){ console.error(e); return []; } }
@@ -305,6 +309,8 @@ let state = {
   services: [],
   purchases: [],
   suppliers: [],
+  supplierPayments: [],
+  serials: [],
   serials: [],
   currentSection: null,
   cart: [],
@@ -347,8 +353,8 @@ async function nextReceiptNumber(){
 async function init(){
   const main = document.getElementById('app');
   if(main) main.innerHTML = '<div class="empty">جارٍ تحميل البيانات من قاعدة البيانات...</div>';
-  [state.receipts, state.customers, state.technicians, state.settings, state.payments, state.inventory, state.sales, state.returns, state.quotations, state.services, state.purchases, state.suppliers] = await Promise.all([
-    loadReceipts(), loadCustomers(), loadTechnicians(), loadSettings(), loadPayments(), loadInventory(), loadSales(), loadReturns(), loadQuotations(), loadServices(), loadPurchases(), loadSuppliers()
+  [state.receipts, state.customers, state.technicians, state.settings, state.payments, state.inventory, state.sales, state.returns, state.quotations, state.services, state.purchases, state.suppliers, state.supplierPayments] = await Promise.all([
+    loadReceipts(), loadCustomers(), loadTechnicians(), loadSettings(), loadPayments(), loadInventory(), loadSales(), loadReturns(), loadQuotations(), loadServices(), loadPurchases(), loadSuppliers(), loadSupplierPayments()
   ]);
   render();
 }
@@ -614,8 +620,9 @@ function renderInventoryHubApp(app){
     <div class="sidebar">
       <div class="brand"><h1>${state.settings.shopName}</h1><span>المخزن العام</span></div>
       ${sectionSwitcherHtml()}
-      ${['صيانة','كاميرات','كمبيوتر','إكسسوار','all','purchases','suppliers'].map(t=>{
-        const label = t==='all' ? 'كل الأصناف' : (t==='purchases' ? 'المشتريات من الموردين' : (t==='suppliers' ? 'الموردون' : t));
+      ${['صيانة','كاميرات','كمبيوتر','إكسسوار','all','purchases','suppliers','supplierAccounts','warranty'].map(t=>{
+        const labels = {all:'كل الأصناف', purchases:'المشتريات من الموردين', suppliers:'الموردون', supplierAccounts:'حسابات الموردين', warranty:'تتبع الضمان'};
+        const label = labels[t] || t;
         return `<div class="nav-item ${state.invHubTab===t?'active':''}" data-invhubtab="${t}">${label}</div>`;
       }).join('')}
       <div class="sidebar-foot">
@@ -633,6 +640,8 @@ function renderInventoryHubApp(app){
   const main = document.getElementById('main');
   if(state.invHubTab==='purchases') renderPurchases(main);
   else if(state.invHubTab==='suppliers') renderSuppliers(main);
+  else if(state.invHubTab==='supplierAccounts') renderSupplierAccounts(main);
+  else if(state.invHubTab==='warranty') renderWarrantyTracking(main);
   else renderInventory(main, state.invHubTab, state.invHubTab==='all' ? 'كل أصناف الشركة' : `مخزون: ${state.invHubTab}`);
 }
 
@@ -672,6 +681,106 @@ function renderSuppliers(main){
   };
 }
 
+function renderSupplierAccounts(main){
+  const bySupplier = {};
+  state.purchases.forEach(p=>{
+    const key = p.SupplierID || p.Supplier || 'غير محدد';
+    if(!bySupplier[key]) bySupplier[key] = {name: p.Supplier, purchases: [], totalDebt: 0};
+    const debt = Number(p.Total||0) - Number(p.AmountPaid!=null?p.AmountPaid:p.Total);
+    bySupplier[key].purchases.push(p);
+    bySupplier[key].totalDebt += debt;
+  });
+  const rows = Object.entries(bySupplier);
+  const grandTotalDebt = rows.reduce((s,[,v])=>s+v.totalDebt,0);
+  main.innerHTML = `
+    <h2 class="page-title">حسابات الموردين</h2>
+    <div class="subtitle">متابعة مديونيات الشركة تجاه كل مورد</div>
+    <div class="stat-grid">
+      <div class="stat-card red"><div class="num mono">${grandTotalDebt.toLocaleString()}</div><div class="lbl">إجمالي المديونية على الشركة (ج.م)</div></div>
+      <div class="stat-card"><div class="num mono">${rows.length}</div><div class="lbl">عدد الموردين اللي تعاملنا معاهم</div></div>
+    </div>
+    ${rows.length===0 ? '<div class="empty">لا توجد فواتير شراء بعد.</div>' : rows.map(([key,v])=>`
+      <div class="card">
+        <h3>${v.name} — <span style="${v.totalDebt>0?'color:var(--red);':'color:var(--green);'}">${v.totalDebt>0 ? 'مديونية: '+v.totalDebt+' ج.م' : 'الحساب متزن'}</span></h3>
+        <table><thead><tr><th>التاريخ</th><th>الأصناف</th><th>الإجمالي</th><th>المدفوع</th><th>المتبقي</th></tr></thead><tbody>
+          ${v.purchases.slice().reverse().map(p=>{
+            const debt = Number(p.Total||0) - Number(p.AmountPaid!=null?p.AmountPaid:p.Total);
+            return `<tr><td>${cleanDate(p.Date)}</td><td>${p.ItemsSummary}</td><td class="mono">${p.Total}</td><td class="mono">${p.AmountPaid!=null?p.AmountPaid:p.Total}</td>
+            <td class="mono" style="${debt>0?'color:var(--red);font-weight:900;':''}">${debt>0?debt:'-'}</td></tr>`;
+          }).join('')}
+        </tbody></table>
+      </div>
+    `).join('')}
+  `;
+}
+
+function renderWarrantyTracking(main){
+  if(!state.warrantyFilter) state.warrantyFilter = {q:'', status:''};
+  const f = state.warrantyFilter;
+  let list = [...state.serials];
+  if(f.q) list = list.filter(s=>String(s.Serial).includes(f.q) || String(s.ItemName).includes(f.q));
+  if(f.status) list = list.filter(s=>s.Status===f.status);
+
+  main.innerHTML = `
+    <h2 class="page-title">تتبع الضمان</h2>
+    <div class="subtitle">كل القطع المسجّلة برقم تسلسلي، وحالة ضمانها مع المورد والعميل</div>
+    <div class="filters">
+      <input id="warQ" placeholder="بحث بالرقم التسلسلي أو اسم الصنف" value="${f.q}">
+      <select id="warStatus"><option value="">كل الحالات</option><option ${f.status==='In Stock'?'selected':''}>In Stock</option><option ${f.status==='Sold'?'selected':''}>Sold</option></select>
+      <button class="btn btn-primary btn-sm" id="loadAllSerialsBtn">تحميل / تحديث القائمة</button>
+    </div>
+    <div id="warrantyList">${state.serials.length===0 ? '<div class="empty">اضغط "تحميل / تحديث القائمة" لعرض كل الأرقام التسلسلية المسجّلة.</div>' : ''}</div>
+  `;
+  document.getElementById('warQ').oninput = e=>{ f.q=e.target.value; renderWarrantyList(); };
+  document.getElementById('warStatus').onchange = e=>{ f.status=e.target.value; renderWarrantyList(); };
+  document.getElementById('loadAllSerialsBtn').onclick = async ()=>{
+    const btn = document.getElementById('loadAllSerialsBtn'); btn.disabled = true; btn.textContent = 'جارٍ التحميل...';
+    state.serials = await loadSerials();
+    renderWarrantyList();
+    btn.disabled = false; btn.textContent = 'تحميل / تحديث القائمة';
+  };
+  function renderWarrantyList(){
+    let l = [...state.serials];
+    if(f.q) l = l.filter(s=>String(s.Serial).includes(f.q) || String(s.ItemName).includes(f.q));
+    if(f.status) l = l.filter(s=>s.Status===f.status);
+    const box = document.getElementById('warrantyList');
+    if(l.length===0){ box.innerHTML = '<div class="empty">لا توجد نتائج.</div>'; return; }
+    box.innerHTML = `<table><thead><tr><th>الصنف</th><th>السيريال</th><th>المورد</th><th>الحالة</th><th>ضمان المورد ينتهي</th><th>تاريخ البيع</th><th>ضمان العميل ينتهي</th><th></th></tr></thead><tbody>
+      ${l.map(s=>{
+        const purchase = state.purchases.find(p=>p.ID===s.PurchaseID);
+        const supplier = state.suppliers.find(sup=>sup.ID===s.SupplierID);
+        const months = Number(s.WarrantyMonths||0);
+        let supplierEnd = '-', customerEnd = '-', supplierExpired = false, customerExpired = false;
+        if(purchase && months){
+          const d = new Date(purchase.Date); d.setMonth(d.getMonth()+months);
+          supplierEnd = d.toISOString().slice(0,10);
+          supplierExpired = d.getTime() < Date.now();
+        }
+        if(s.SoldDate && months){
+          const d = new Date(s.SoldDate); d.setMonth(d.getMonth()+months);
+          customerEnd = d.toISOString().slice(0,10);
+          customerExpired = d.getTime() < Date.now();
+        }
+        return `<tr>
+          <td>${s.ItemName}</td><td class="mono" style="font-weight:900;">${s.Serial}</td>
+          <td>${supplier ? supplier.Name+(supplier.Phone?' - '+supplier.Phone:'') : '-'}</td>
+          <td><span class="status-badge ${s.Status==='Sold'?'st-done':'st-check'}">${s.Status==='Sold'?'مباع':'بالمخزن'}</span></td>
+          <td style="${supplierExpired?'color:var(--red);':''}">${supplierEnd}</td>
+          <td>${s.SoldDate?cleanDate(s.SoldDate):'-'}</td>
+          <td style="${customerExpired?'color:var(--red);':''}">${customerEnd}</td>
+          <td>${purchase?`<button class="btn btn-sm btn-ghost" data-viewpurchase="${purchase.ID}">فاتورة الشراء</button>`:''}</td>
+        </tr>`;
+      }).join('')}
+    </tbody></table>`;
+    box.querySelectorAll('[data-viewpurchase]').forEach(btn=>{
+      btn.onclick = ()=>{
+        const p = state.purchases.find(x=>x.ID===btn.dataset.viewpurchase);
+        alert(`فاتورة شراء رقم: ${p.ID}\nالتاريخ: ${cleanDate(p.Date)}\nالمورد: ${p.Supplier}\nالأصناف: ${p.ItemsSummary}\nالإجمالي: ${p.Total} ج.م\nالمدفوع: ${p.AmountPaid!=null?p.AmountPaid:p.Total} ج.م`);
+      };
+    });
+  }
+}
+
 function renderPurchases(main){
   if(!state.purchaseCart) state.purchaseCart = [];
   const cart = state.purchaseCart;
@@ -691,6 +800,14 @@ function renderPurchases(main){
         <div class="field" id="newSupplierWrap" style="display:none;"><label>اسم المورد الجديد</label><input id="newSupplierName" placeholder="اسم الشركة الموردة"></div>
       </div>
       <div class="field"><label>مدة الضمان مع المورد (بالشهور، اختياري)</label><input id="purWarranty" type="number" value="0" style="max-width:160px;"></div>
+      <div class="field"><label>حالة السداد لهذه الفاتورة</label>
+        <div class="chip-group" id="purPayChips">
+          <div class="chip sel" data-pp="full">مدفوعة بالكامل</div>
+          <div class="chip" data-pp="partial">دفعة جزئية</div>
+          <div class="chip" data-pp="none">غير مدفوعة (دين كامل)</div>
+        </div>
+      </div>
+      <div class="field" id="purAmountPaidWrap" style="display:none;max-width:220px;"><label>المبلغ المدفوع الآن</label><input id="purAmountPaid" type="number" value="0"></div>
     </div>
     <div class="card">
       <h3>إضافة صنف للفاتورة</h3>
@@ -724,14 +841,30 @@ function renderPurchases(main){
     <div class="card">
       <h3>آخر فواتير الشراء (${state.purchases.length})</h3>
       ${state.purchases.length===0 ? '<div class="empty">لا توجد فواتير شراء بعد.</div>' : `
-      <table><thead><tr><th>التاريخ</th><th>المورد</th><th>الأصناف</th><th>الإجمالي</th><th>الضمان</th></tr></thead><tbody>
-        ${state.purchases.slice().reverse().map(p=>`<tr><td>${cleanDate(p.Date)}</td><td>${p.Supplier}</td><td>${p.ItemsSummary}</td><td class="mono">${p.Total}</td><td>${p.WarrantyMonths?p.WarrantyMonths+' شهر':'-'}</td></tr>`).join('')}
+      <table><thead><tr><th>التاريخ</th><th>المورد</th><th>الأصناف</th><th>الإجمالي</th><th>المدفوع</th><th>المتبقي (دين)</th><th>الضمان</th><th></th></tr></thead><tbody>
+        ${state.purchases.slice().reverse().map(p=>{
+          const debt = Number(p.Total||0) - Number(p.AmountPaid!=null?p.AmountPaid:p.Total);
+          return `<tr><td>${cleanDate(p.Date)}</td><td>${p.Supplier}</td><td>${p.ItemsSummary}</td><td class="mono">${p.Total}</td>
+          <td class="mono">${p.AmountPaid!=null?p.AmountPaid:p.Total}</td>
+          <td class="mono" style="${debt>0?'color:var(--red);font-weight:900;':''}">${debt>0?debt:'-'}</td>
+          <td>${p.WarrantyMonths?p.WarrantyMonths+' شهر':'-'}</td>
+          <td>${debt>0?`<button class="btn btn-sm btn-green" data-settlepurchase="${p.ID}" data-supplierid="${p.SupplierID||''}">تسجيل سداد</button>`:''}</td>
+        </tr>`;}).join('')}
       </tbody></table>`}
     </div>
   `;
   document.getElementById('purSupplierSelect').onchange = (e)=>{
     document.getElementById('newSupplierWrap').style.display = e.target.value==='__new__' ? '' : 'none';
   };
+  let payStatus = 'full';
+  document.querySelectorAll('#purPayChips .chip').forEach(c=>{
+    c.onclick = ()=>{
+      document.querySelectorAll('#purPayChips .chip').forEach(x=>x.classList.remove('sel'));
+      c.classList.add('sel');
+      payStatus = c.dataset.pp;
+      document.getElementById('purAmountPaidWrap').style.display = payStatus==='partial' ? '' : 'none';
+    };
+  });
   document.getElementById('purAddBtn').onclick = ()=>{
     const itemId = document.getElementById('purPickItem').value;
     const qty = Number(document.getElementById('purQty').value);
@@ -769,7 +902,8 @@ function renderPurchases(main){
         supplierName = (state.suppliers.find(s=>s.ID===supplierId)||{}).Name || '';
       }
       const itemsSummary = cart.map(c=>`${c.name} × ${c.qty} (${c.cost} ج.م/وحدة)`).join('، ');
-      const purRes = await savePurchaseRemote(supplierName, supplierId, itemsSummary, total, warrantyMonths);
+      const amountPaid = payStatus==='full' ? total : (payStatus==='none' ? 0 : Number(document.getElementById('purAmountPaid').value)||0);
+      const purRes = await savePurchaseRemote(supplierName, supplierId, itemsSummary, total, warrantyMonths, amountPaid);
       for(const c of cart){
         await adjustInventoryQtyRemote(c.itemId, c.qty);
         const invItem = state.inventory.find(x=>x.ID===c.itemId)||{};
@@ -787,6 +921,22 @@ function renderPurchases(main){
       alert('تم تسجيل فاتورة الشراء وتحديث المخزون بنجاح.');
     }catch(e){ alert('تعذر تسجيل الفاتورة: '+e.message); completeBtn.disabled=false; completeBtn.textContent='تسجيل الفاتورة وتحديث المخزون'; }
   };
+  main.querySelectorAll('[data-settlepurchase]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const purchase = state.purchases.find(p=>p.ID===btn.dataset.settlepurchase);
+      const debt = Number(purchase.Total||0) - Number(purchase.AmountPaid||0);
+      const amt = prompt(`الدين المتبقي للمورد: ${debt} ج.م\nأدخل المبلغ المسدد الآن:`, debt);
+      if(amt===null) return;
+      const n = Number(amt);
+      if(!n || n<=0){ alert('مبلغ غير صحيح'); return; }
+      try{
+        await settlePurchaseDebtRemote(purchase.ID, btn.dataset.supplierid, n, '');
+        state.purchases = await loadPurchases();
+        state.supplierPayments = await loadSupplierPayments();
+        renderPurchases(main);
+      }catch(e){ alert('تعذر تسجيل السداد: '+e.message); }
+    };
+  });
 }
 
 /* ---------------- POS Section ---------------- */
@@ -970,6 +1120,33 @@ function openSerialPickerForCartLine(cartIdx, availSerials, main){
   };
 }
 
+function pickSerialsGeneric(itemName, qty, availSerials){
+  return new Promise((resolve)=>{
+    const win = document.createElement('div');
+    win.style = 'position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:70;padding:16px;';
+    win.innerHTML = `<div style="background:#fff;padding:22px;border-radius:10px;max-width:420px;width:100%;">
+      <h3 style="margin-top:0;">اختر الرقم التسلسلي لـ ${itemName}</h3>
+      <p style="font-size:12.5px;color:#666;">مطلوب اختيار ${qty} رقم تسلسلي (اختياري — تقدر تتخطى).</p>
+      <div id="genSerialCheckList" style="max-height:240px;overflow:auto;">
+        ${availSerials.map(s=>`<label style="display:block;padding:4px 0;"><input type="checkbox" value="${s.ID}" data-serialdata='${JSON.stringify(s).replace(/'/g,"&apos;")}'> ${s.Serial} ${s.WarrantyMonths?`(ضمان ${s.WarrantyMonths} شهر)`:''}</label>`).join('')}
+      </div>
+      <div class="actions-row">
+        <button class="btn btn-ghost btn-sm" id="genSerialSkip">تخطي</button>
+        <button class="btn btn-primary btn-sm" id="genSerialConfirm">تأكيد الاختيار</button>
+      </div>
+    </div>`;
+    document.body.appendChild(win);
+    win.querySelector('#genSerialSkip').onclick = ()=>{ win.remove(); resolve([]); };
+    win.querySelector('#genSerialConfirm').onclick = ()=>{
+      const checked = [...win.querySelectorAll('#genSerialCheckList input:checked')];
+      if(checked.length !== qty){ alert('اختر بالظبط '+qty+' رقم تسلسلي، أو اضغط تخطي.'); return; }
+      const picked = checked.map(c=>JSON.parse(c.dataset.serialdata.replace(/&apos;/g,"'")));
+      win.remove();
+      resolve(picked);
+    };
+  });
+}
+
 async function refreshSales(){ state.sales = await loadSales(); }
 
 function renderPosSalesLog(main){
@@ -988,7 +1165,9 @@ function renderPosSalesLog(main){
         <td>${s.CustomerName||'-'}</td>
         <td class="row-actions">
           ${debt>0?`<button class="btn btn-sm btn-green" data-settle="${s.ID}">تحصيل دين</button>`:''}
-          <button class="btn btn-sm btn-red" data-returnSale="${s.ID}">إرجاع</button>
+          ${daysSince(s.Date) > RETURN_WINDOW_DAYS
+            ? `<button class="btn btn-sm btn-ghost" disabled title="انتهت مهلة الإرجاع (${RETURN_WINDOW_DAYS} يوم)" style="opacity:.5;cursor:not-allowed;">إرجاع (منتهي)</button>`
+            : `<button class="btn btn-sm btn-red" data-returnSale="${s.ID}">إرجاع</button>`}
         </td>
       </tr>`;}).join('')}
     </tbody></table>`}
@@ -1013,13 +1192,24 @@ function renderPosSalesLog(main){
   });
 }
 
+const RETURN_WINDOW_DAYS = 14;
+function daysSince(dateStr){
+  const d = new Date(cleanDate(dateStr));
+  return Math.floor((Date.now() - d.getTime()) / 86400000);
+}
 function openReturnModal(saleId, main){
   const sale = state.sales.find(s=>s.ID===saleId);
+  const age = daysSince(sale.Date);
+  if(age > RETURN_WINDOW_DAYS){
+    alert(`عذرًا، لا يمكن إرجاع أصناف هذه العملية — مرّ عليها ${age} يوم، وسياسة الإرجاع محدودة بـ ${RETURN_WINDOW_DAYS} يوم من تاريخ الشراء.`);
+    return;
+  }
   const win = document.createElement('div');
   win.style = 'position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:60;padding:16px;';
   win.innerHTML = `<div style="background:#fff;padding:22px;border-radius:10px;max-width:420px;width:100%;">
     <h3 style="margin-top:0;">إرجاع من عملية بيع</h3>
     <p style="font-size:12.5px;color:#666;">الأصناف الأصلية: ${sale.ItemsSummary}</p>
+    <p style="font-size:11.5px;color:var(--amber);">متبقي ${RETURN_WINDOW_DAYS - age} يوم على انتهاء مهلة الإرجاع لهذه العملية.</p>
     <div class="field"><label>الصنف المرتجع</label>
       <select id="retItem">${state.inventory.map(it=>`<option value="${it.ID}">${it.Name}</option>`).join('')}</select>
     </div>
@@ -1074,6 +1264,7 @@ function openSalePrint(sale, cartItems){
     <div class="fin-box">
       <div class="fin-cell hi"><div class="l">الإجمالي</div><div class="v">${sale.Total}</div></div>
     </div>
+    <div class="terms">سياسة الإرجاع: يُقبل إرجاع الأصناف خلال ${RETURN_WINDOW_DAYS} يومًا من تاريخ الشراء فقط، بشرط إحضار هذه الفاتورة الأصلية وأن يكون المنتج بحالته الأصلية.</div>
     <div class="sign-row"><div>توقيع العميل</div><div>بواسطة (${state.user.name})</div></div>
   </div>`;
   document.body.appendChild(mount);
@@ -1394,13 +1585,18 @@ function stepFinance(body,d){
     const btn = document.getElementById('draftUsePartBtn');
     btn.disabled = true; btn.textContent = '...';
     try{
+      const availSerials = await loadSerials(itemId, 'In Stock');
+      let pickedSerials = [];
+      if(availSerials.length>0){ pickedSerials = await pickSerialsGeneric(item.Name, qty, availSerials); }
       await adjustInventoryQtyRemote(itemId, -qty);
       item.Quantity = Number(item.Quantity) - qty;
       const cost = qty * Number(item.PurchasePrice||0);
       d.partsCost = Number(d.partsCost||0) + cost;
-      d.partsUsed = (d.partsUsed ? d.partsUsed + '، ' : '') + `${item.Name} × ${qty}`;
+      const snSuffix = pickedSerials.length ? ` [SN: ${pickedSerials.map(s=>s.Serial).join(',')}]` : '';
+      d.partsUsed = (d.partsUsed ? d.partsUsed + '، ' : '') + `${item.Name} × ${qty}${snSuffix}`;
       document.getElementById('finParts').value = d.partsCost;
       document.getElementById('draftPartsUsedList').innerHTML = d.partsUsed;
+      for(const sn of pickedSerials){ await markSerialSoldRemote(sn.ID, d.id).catch(()=>{}); }
     }catch(e){ alert('تعذر خصم الصنف من المخزن: '+e.message); }
     btn.disabled = false; btn.textContent = 'خصم من المخزن';
   };
@@ -1758,14 +1954,19 @@ async function openReceiptDetail(r){
     const btn = document.getElementById('usePartBtn');
     btn.disabled = true; btn.textContent = '...';
     try{
+      const availSerials = await loadSerials(itemId, 'In Stock');
+      let pickedSerials = [];
+      if(availSerials.length>0){ pickedSerials = await pickSerialsGeneric(item.Name, qty, availSerials); }
       await adjustInventoryQtyRemote(itemId, -qty);
       item.Quantity = Number(item.Quantity) - qty;
       const cost = qty * Number(item.PurchasePrice||0);
       r.partsCost = Number(r.partsCost||0) + cost;
-      r.partsUsed = (r.partsUsed ? r.partsUsed + '، ' : '') + `${item.Name} × ${qty}`;
+      const snSuffix = pickedSerials.length ? ` [SN: ${pickedSerials.map(s=>s.Serial).join(',')}]` : '';
+      r.partsUsed = (r.partsUsed ? r.partsUsed + '، ' : '') + `${item.Name} × ${qty}${snSuffix}`;
       document.getElementById('ePartsCost').value = r.partsCost;
       document.getElementById('partsUsedList').innerHTML = r.partsUsed;
       await saveReceiptRemote({...r, updatedBy: state.user.name, updatedAt: new Date().toISOString()});
+      for(const sn of pickedSerials){ await markSerialSoldRemote(sn.ID, r.id).catch(()=>{}); }
       renderMain();
     }catch(e){ alert('تعذر خصم الصنف من المخزن: '+e.message); }
     btn.disabled = false; btn.textContent = 'خصم من المخزن';

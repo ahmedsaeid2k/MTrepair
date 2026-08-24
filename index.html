@@ -201,7 +201,7 @@ function rowToReceipt(row){
   };
 }
 
-async function loadSettings(){ try{ const s = await apiGet('getSettings'); return {shopName: s.shopName || 'صيانة ميكروتك'}; }catch(e){ console.error(e); return {shopName:'صيانة ميكروتك'}; } }
+async function loadSettings(){ try{ const s = await apiGet('getSettings'); return {shopName: s.shopName || 'صيانة ميكروتك', logoUrl: s.logoUrl || ''}; }catch(e){ console.error(e); return {shopName:'صيانة ميكروتك', logoUrl:''}; } }
 async function saveSettingRemote(key, value){ return apiPost('saveSetting', {key, value}); }
 async function loadPayments(receiptId){ try{ return await apiGet('getPayments', receiptId ? {receiptId} : {}); }catch(e){ console.error(e); return []; } }
 async function savePaymentRemote(receiptId, amount, note){ return apiPost('savePayment', {receiptId, amount, note, date: new Date().toISOString().slice(0,10), user: state.user.name}); }
@@ -215,8 +215,8 @@ async function refreshInventory(){ state.inventory = await loadInventory(); }
 
 /* ---- Sales (POS) ---- */
 async function loadSales(){ try{ return await apiGet('getSales'); }catch(e){ console.error(e); return []; } }
-async function saveSaleRemote(itemsSummary, total, customerName, customerPhone, paymentMethod, amountPaid){
-  return apiPost('saveSale', {itemsSummary, total, customerName, customerPhone, paymentMethod, amountPaid, date: new Date().toISOString().slice(0,10), user: state.user.name});
+async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, customerPhone, paymentMethod, amountPaid){
+  return apiPost('saveSale', {itemsSummary, itemsJson, total, customerName, customerPhone, paymentMethod, amountPaid, date: new Date().toISOString().slice(0,10), user: state.user.name});
 }
 async function settleSaleDebtRemote(saleId, amount){ return apiPost('settleSaleDebt', {saleId, amount}); }
 
@@ -313,6 +313,7 @@ let state = {
   serials: [],
   serials: [],
   currentSection: null,
+  lastCompletedSale: null,
   cart: [],
   quoCart: []
 };
@@ -373,6 +374,7 @@ function render(){
   if(state.currentSection==='cameras') return renderCamerasApp(app);
   if(state.currentSection==='pos') return renderPosApp(app);
   if(state.currentSection==='inventory') return renderInventoryHubApp(app);
+  if(state.currentSection==='finance') return renderFinanceSectionApp(app);
   renderSectionPicker(app);
 }
 
@@ -380,15 +382,20 @@ const SECTION_INFO = {
   maintenance: {label:'الصيانة', icon:'🛠️', desc:'إيصالات وأرشيف الصيانة'},
   cameras: {label:'كاميرات المراقبة', icon:'📷', desc:'كتالوج المنتجات وعروض أسعار التركيب'},
   pos: {label:'نقطة البيع', icon:'🧾', desc:'بيع سريع من المخزون'},
-  inventory: {label:'المخزن العام', icon:'📦', desc:'كل أصناف الشركة والمشتريات من الموردين'}
+  inventory: {label:'المخزن العام', icon:'📦', desc:'كل أصناف الشركة والمشتريات من الموردين'},
+  finance: {label:'المالي', icon:'💰', desc:'كل الحسابات: عملاء، موردين، مكافآت، تقارير'}
 };
 const INVENTORY_CATEGORIES = ['صيانة','كاميرات','كمبيوتر','إكسسوار'];
 
 function renderSectionPicker(app){
   const sections = state.user.sections || [];
+  const logoUrl = state.settings.logoUrl;
   app.innerHTML = `
     <div style="max-width:640px;margin:60px auto;padding:0 20px;">
-      <div style="text-align:center;margin-bottom:8px;font-weight:900;font-size:13px;color:var(--copper-dark);letter-spacing:.05em;">ميكروERP</div>
+      <div style="text-align:center;margin-bottom:18px;">
+        ${logoUrl ? `<img src="${logoUrl}" alt="logo" style="max-height:64px;max-width:220px;object-fit:contain;margin-bottom:10px;">` : ''}
+        <div style="font-weight:900;font-size:26px;color:var(--copper-dark);letter-spacing:.03em;">ميكروERP</div>
+      </div>
       <h2 class="page-title">اختر القسم</h2>
       <div class="subtitle">مرحبًا ${state.user.name} — اختر القسم اللي عايز تشتغل عليه</div>
       <div class="stat-grid" id="sectionCards">
@@ -406,32 +413,57 @@ function renderSectionPicker(app){
   });
 }
 
+function brandHtml(subtitle){
+  const logoUrl = state.settings.logoUrl;
+  return `<div class="brand">
+    ${logoUrl ? `<img src="${logoUrl}" alt="logo" style="max-height:32px;max-width:150px;object-fit:contain;margin-bottom:6px;display:block;">` : ''}
+    <h1>${state.settings.shopName}</h1><span>${subtitle}</span>
+  </div>`;
+}
+
 function sectionSwitcherHtml(){
   const sections = state.user.sections || [];
   if(sections.length<=1) return '';
   return `<div class="nav-item" id="switchSectionBtn" style="color:var(--copper);border-bottom:1px solid #33404f;">↩ الأقسام</div>`;
 }
 
+function sidebarFootHtml(){
+  return `<div class="sidebar-foot">
+    مسجل الدخول: <b>${state.user.name}</b>
+    <div class="role-tag">${state.user.role === 'admin' ? 'مدير (Admin)' : 'مستخدم (User)'}</div>
+    <div style="margin-top:8px;"><span id="logoutBtn" style="cursor:pointer;color:#e08a8a;text-decoration:underline;">تسجيل الخروج</span></div>
+  </div>`;
+}
+
+function attachLogoutHandler(){
+  const btn = document.getElementById('logoutBtn');
+  if(btn) btn.onclick = logout;
+}
+
+function logout(){
+  try{ localStorage.removeItem('microerp_session'); }catch(e){ console.warn('localStorage unavailable', e); }
+  state.user = null;
+  state.currentSection = null;
+  render();
+}
+
 function renderMaintenanceApp(app){
   app.innerHTML = `
     <div class="sidebar">
-      <div class="brand"><h1>${state.settings.shopName}</h1><span>نظام إدارة الإيصالات</span></div>
+      ${brandHtml("نظام إدارة الإيصالات")}
       ${sectionSwitcherHtml()}
       ${navItem('dashboard','لوحة التحكم')}
       ${navItem('new','إيصال جديد')}
       ${navItem('archive','الأرشيف')}
-      ${state.user.role==='admin' ? navItem('finance','المالي') : ''}
       ${state.user.role==='admin' ? navItem('inventory','المخزن') : ''}
       ${state.user.role==='admin' ? navItem('settings','الإعدادات') : ''}
-      <div class="sidebar-foot">
-        مسجل الدخول: <b>${state.user.name}</b>
-        <div class="role-tag">${state.user.role === 'admin' ? 'مدير (Admin)' : 'مستخدم (User)'}</div>
-      </div>
+      ${sidebarFootHtml()}
     </div>
     <main id="main"></main>
   `;
   const sw = document.getElementById('switchSectionBtn');
   if(sw) sw.onclick = ()=>{ state.currentSection = null; render(); };
+  attachLogoutHandler();
   document.querySelectorAll('.nav-item[data-tab]').forEach(el=>{
     el.onclick = ()=>{ state.tab = el.dataset.tab; if(state.tab==='new' && !state.draft){ startNewDraft(); } else { renderMain(); } };
   });
@@ -447,20 +479,18 @@ function renderCamerasApp(app){
   if(!state.camTab) state.camTab = 'catalog';
   app.innerHTML = `
     <div class="sidebar">
-      <div class="brand"><h1>${state.settings.shopName}</h1><span>قسم الكاميرات</span></div>
+      ${brandHtml("قسم الكاميرات")}
       ${sectionSwitcherHtml()}
       <div class="nav-item ${state.camTab==='catalog'?'active':''}" data-camtab="catalog">كتالوج المنتجات</div>
       <div class="nav-item ${state.camTab==='quote'?'active':''}" data-camtab="quote">عرض سعر جديد</div>
       <div class="nav-item ${state.camTab==='quotes'?'active':''}" data-camtab="quotes">عروض الأسعار السابقة</div>
-      <div class="sidebar-foot">
-        مسجل الدخول: <b>${state.user.name}</b>
-        <div class="role-tag">${state.user.role === 'admin' ? 'مدير (Admin)' : 'مستخدم (User)'}</div>
-      </div>
+      ${sidebarFootHtml()}
     </div>
     <main id="main"></main>
   `;
   const sw = document.getElementById('switchSectionBtn');
   if(sw) sw.onclick = ()=>{ state.currentSection = null; render(); };
+  attachLogoutHandler();
   document.querySelectorAll('[data-camtab]').forEach(el=>{
     el.onclick = ()=>{ state.camTab = el.dataset.camtab; renderCamerasApp(app); };
   });
@@ -592,7 +622,7 @@ function openQuotationPrint(q, cartItems){
   mount.innerHTML = `
   <div id="receiptPaper">
     <div class="r-head">
-      <div><h4>${state.settings.shopName}</h4><div class="r-sub">عرض سعر - مشروع تركيب كاميرات مراقبة</div></div>
+      <div>${state.settings.logoUrl ? `<img src="${state.settings.logoUrl}" style="max-height:28px;max-width:120px;object-fit:contain;margin-bottom:2px;">` : ''}<h4>${state.settings.shopName}</h4><div class="r-sub">عرض سعر - مشروع تركيب كاميرات مراقبة</div></div>
       <div style="text-align:left;">
         <div class="r-badge mono" style="font-size:14px;padding:6px 16px;">${String(q.ID).slice(-8)}</div>
         <div class="r-meta">التاريخ: ${cleanDate(q.Date)}</div>
@@ -618,29 +648,26 @@ function renderInventoryHubApp(app){
   if(!state.invHubTab) state.invHubTab = 'صيانة';
   app.innerHTML = `
     <div class="sidebar">
-      <div class="brand"><h1>${state.settings.shopName}</h1><span>المخزن العام</span></div>
+      ${brandHtml("المخزن العام")}
       ${sectionSwitcherHtml()}
-      ${['صيانة','كاميرات','كمبيوتر','إكسسوار','all','purchases','suppliers','supplierAccounts','warranty'].map(t=>{
-        const labels = {all:'كل الأصناف', purchases:'المشتريات من الموردين', suppliers:'الموردون', supplierAccounts:'حسابات الموردين', warranty:'تتبع الضمان'};
+      ${['صيانة','كاميرات','كمبيوتر','إكسسوار','all','purchases','suppliers','warranty'].map(t=>{
+        const labels = {all:'كل الأصناف', purchases:'المشتريات من الموردين', suppliers:'الموردون', warranty:'تتبع الضمان'};
         const label = labels[t] || t;
         return `<div class="nav-item ${state.invHubTab===t?'active':''}" data-invhubtab="${t}">${label}</div>`;
       }).join('')}
-      <div class="sidebar-foot">
-        مسجل الدخول: <b>${state.user.name}</b>
-        <div class="role-tag">${state.user.role === 'admin' ? 'مدير (Admin)' : 'مستخدم (User)'}</div>
-      </div>
+      ${sidebarFootHtml()}
     </div>
     <main id="main"></main>
   `;
   const sw = document.getElementById('switchSectionBtn');
   if(sw) sw.onclick = ()=>{ state.currentSection = null; render(); };
+  attachLogoutHandler();
   document.querySelectorAll('[data-invhubtab]').forEach(el=>{
     el.onclick = ()=>{ state.invHubTab = el.dataset.invhubtab; renderInventoryHubApp(app); };
   });
   const main = document.getElementById('main');
   if(state.invHubTab==='purchases') renderPurchases(main);
   else if(state.invHubTab==='suppliers') renderSuppliers(main);
-  else if(state.invHubTab==='supplierAccounts') renderSupplierAccounts(main);
   else if(state.invHubTab==='warranty') renderWarrantyTracking(main);
   else renderInventory(main, state.invHubTab, state.invHubTab==='all' ? 'كل أصناف الشركة' : `مخزون: ${state.invHubTab}`);
 }
@@ -944,19 +971,17 @@ function renderPosApp(app){
   if(!state.posTab) state.posTab = 'sell';
   app.innerHTML = `
     <div class="sidebar">
-      <div class="brand"><h1>${state.settings.shopName}</h1><span>نقطة البيع</span></div>
+      ${brandHtml("نقطة البيع")}
       ${sectionSwitcherHtml()}
       <div class="nav-item ${state.posTab==='sell'?'active':''}" data-postab="sell">بيع جديد</div>
       ${state.user.role==='admin' ? `<div class="nav-item ${state.posTab==='sales'?'active':''}" data-postab="sales">سجل المبيعات</div>` : ''}
-      <div class="sidebar-foot">
-        مسجل الدخول: <b>${state.user.name}</b>
-        <div class="role-tag">${state.user.role === 'admin' ? 'مدير (Admin)' : 'مستخدم (User)'}</div>
-      </div>
+      ${sidebarFootHtml()}
     </div>
     <main id="main"></main>
   `;
   const sw = document.getElementById('switchSectionBtn');
   if(sw) sw.onclick = ()=>{ state.currentSection = null; render(); };
+  attachLogoutHandler();
   document.querySelectorAll('[data-postab]').forEach(el=>{
     el.onclick = ()=>{ state.posTab = el.dataset.postab; renderPosApp(app); };
   });
@@ -968,21 +993,36 @@ function renderPosApp(app){
 function renderPosSell(main){
   const cart = state.cart;
   const total = cart.reduce((s,c)=>s+c.qty*c.price,0);
+  if(!state.posSearch) state.posSearch = '';
   main.innerHTML = `
     <h2 class="page-title">بيع جديد</h2>
     <div class="subtitle">اختر الأصناف من المخزون (كل أقسام الشركة) وأضفها للسلة</div>
+
+    ${state.lastCompletedSale ? `
+    <div class="card" style="background:#eaf6ec;border-color:var(--green);">
+      <h3 style="color:var(--green);">✓ تمت عملية البيع بنجاح (${state.lastCompletedSale.sale.ID.slice(-8)})</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-primary btn-sm" id="printLastSaleBtn">طباعة الفاتورة</button>
+        ${state.lastCompletedSale.hasWarranty ? `<button class="btn btn-ghost btn-sm" id="printLastWarrantyBtn">طباعة بطاقة ضمان</button>` : ''}
+        <button class="btn btn-ghost btn-sm" id="dismissLastSaleBtn">بيع جديد آخر</button>
+      </div>
+    </div>` : ''}
+
     <div class="card">
-      <div style="display:flex;gap:8px;align-items:flex-end;">
-        <div class="field" style="flex:2;margin-bottom:0;"><label>الصنف</label>
-          <select id="posPickItem">
-            <option value="">-- اختر صنف --</option>
-            ${state.inventory.map(it=>`<option value="${it.ID}" ${Number(it.Quantity)<=0?'disabled':''}>${it.Name} (${it.Category||'صيانة'} - متاح: ${it.Quantity})</option>`).join('')}
-          </select>
+      <div class="grid2">
+        <div class="field"><label>ابحث عن صنف بالاسم</label>
+          <input id="posSearchInput" placeholder="اكتب اسم الصنف..." value="${state.posSearch}">
+          <div id="posSearchResults" style="border:1px solid var(--line);border-radius:7px;margin-top:4px;max-height:180px;overflow:auto;${state.posSearch?'':'display:none;'}"></div>
         </div>
+        <div class="field"><label>أو امسح / اكتب الباركود ثم Enter</label><input id="posBarcodeInput" placeholder="امسح الباركود هنا..."></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:flex-end;">
+        <div class="field" style="flex:2;margin-bottom:0;"><label>الصنف المحدد</label><input id="posSelectedItemLabel" disabled style="background:#eee;" placeholder="لم يتم اختيار صنف بعد"></div>
         <div class="field" style="flex:1;margin-bottom:0;"><label>الكمية</label><input id="posPickQty" type="number" value="1" min="1"></div>
         <button class="btn btn-primary btn-sm" id="posAddCartBtn">إضافة للسلة</button>
       </div>
     </div>
+
     <div class="card">
       <h3>السلة</h3>
       ${cart.length===0 ? '<div class="empty">السلة فارغة.</div>' : `
@@ -1007,36 +1047,58 @@ function renderPosSell(main){
         <div class="field"><label>اسم العميل <span id="custRequiredMark" style="display:none;color:var(--red);">*مطلوب للبيع الآجل</span></label><input id="posCustName"></div>
         <div class="field"><label>رقم الهاتف</label><input id="posCustPhone"></div>
       </div>
-      <button class="btn btn-green" id="completeSaleBtn" ${cart.length===0?'disabled':''}>إتمام البيع وطباعة الفاتورة</button>
+      <button class="btn btn-green" id="completeSaleBtn" ${cart.length===0?'disabled':''}>إتمام البيع</button>
     </div>
   `;
-  let paymentMethod = 'نقدي';
-  document.querySelectorAll('#payMethodChips .chip').forEach(c=>{
-    c.onclick = ()=>{
-      document.querySelectorAll('#payMethodChips .chip').forEach(x=>x.classList.remove('sel'));
-      c.classList.add('sel');
-      paymentMethod = c.dataset.pm;
-      const isCredit = paymentMethod==='آجل';
-      document.getElementById('amountPaidWrap').style.display = isCredit ? '' : 'none';
-      document.getElementById('custRequiredMark').style.display = isCredit ? '' : 'none';
-      if(isCredit) document.getElementById('posAmountPaid').value = 0;
-    };
-  });
-  document.getElementById('posAddCartBtn').onclick = async ()=>{
-    const itemId = document.getElementById('posPickItem').value;
-    const qty = Number(document.getElementById('posPickQty').value);
-    if(!itemId){ alert('اختر صنف'); return; }
-    if(!qty || qty<=0){ alert('أدخل كمية صحيحة'); return; }
-    const item = state.inventory.find(x=>x.ID===itemId);
-    if(!item){ alert('الصنف غير موجود'); return; }
-    const alreadyInCart = cart.filter(c=>c.itemId===itemId).reduce((s,c)=>s+c.qty,0);
-    if(qty + alreadyInCart > Number(item.Quantity)){ alert('الكمية أكبر من المتاح في المخزون ('+item.Quantity+')'); return; }
-    const availSerials = await loadSerials(itemId, 'In Stock');
-    const line = {itemId, name:item.Name, qty, price:Number(item.SellPrice||item.PurchasePrice||0), cost:Number(item.PurchasePrice||0), serials:[], serialsAvailable: availSerials.length>0};
-    cart.push(line);
-    renderPosSell(main);
-    if(availSerials.length>0) openSerialPickerForCartLine(cart.length-1, availSerials, main);
+
+  if(state.lastCompletedSale){
+    document.getElementById('printLastSaleBtn').onclick = ()=>openSalePrint(state.lastCompletedSale.sale, state.lastCompletedSale.cartSnapshot);
+    const wb = document.getElementById('printLastWarrantyBtn');
+    if(wb) wb.onclick = ()=>openWarrantyCardPrint(state.lastCompletedSale.sale, state.lastCompletedSale.cartSnapshot, state.lastCompletedSale.customerName, state.lastCompletedSale.customerPhone);
+    document.getElementById('dismissLastSaleBtn').onclick = ()=>{ state.lastCompletedSale = null; renderPosSell(main); };
+  }
+
+  let selectedItemId = null;
+  function renderSearchResults(){
+    const q = state.posSearch.trim();
+    const box = document.getElementById('posSearchResults');
+    if(!q){ box.style.display='none'; box.innerHTML=''; return; }
+    const matches = state.inventory.filter(it=>it.Name.includes(q) || String(it.Barcode||'').includes(q)).slice(0,20);
+    if(matches.length===0){ box.style.display=''; box.innerHTML = '<div style="padding:8px;color:#999;font-size:12px;">لا توجد نتائج</div>'; return; }
+    box.style.display = '';
+    box.innerHTML = matches.map(it=>`<div class="pos-search-item" data-pickid="${it.ID}" style="padding:7px 10px;cursor:pointer;border-bottom:1px solid #eee;font-size:13px;${Number(it.Quantity)<=0?'opacity:.5;':''}">${it.Name} <span style="color:#999;">(${it.Category||'صيانة'} - متاح: ${it.Quantity})</span></div>`).join('');
+    box.querySelectorAll('[data-pickid]').forEach(el=>{
+      el.onclick = ()=>{
+        const it = state.inventory.find(x=>x.ID===el.dataset.pickid);
+        selectedItemId = it.ID;
+        document.getElementById('posSelectedItemLabel').value = it.Name;
+        state.posSearch = '';
+        document.getElementById('posSearchInput').value = '';
+        box.style.display = 'none';
+      };
+    });
+  }
+  document.getElementById('posSearchInput').oninput = (e)=>{ state.posSearch = e.target.value; renderSearchResults(); };
+  renderSearchResults();
+
+  document.getElementById('posBarcodeInput').onkeydown = async (e)=>{
+    if(e.key !== 'Enter') return;
+    const code = e.target.value.trim();
+    if(!code) return;
+    const it = state.inventory.find(x=>String(x.Barcode||'').trim()===code);
+    if(!it){ alert('لا يوجد صنف بهذا الباركود: '+code); e.target.value=''; return; }
+    if(Number(it.Quantity)<=0){ alert('الصنف "'+it.Name+'" غير متاح في المخزون حاليًا'); e.target.value=''; return; }
+    e.target.value = '';
+    await addItemToCart(it.ID, 1, main);
   };
+
+  document.getElementById('posAddCartBtn').onclick = async ()=>{
+    const qty = Number(document.getElementById('posPickQty').value);
+    if(!selectedItemId){ alert('اختر صنف بالبحث أو الباركود أولاً'); return; }
+    if(!qty || qty<=0){ alert('أدخل كمية صحيحة'); return; }
+    await addItemToCart(selectedItemId, qty, main);
+  };
+
   main.querySelectorAll('[data-cartqtyidx]').forEach(inp=>{
     inp.onchange = ()=>{
       const idx = Number(inp.dataset.cartqtyidx);
@@ -1065,6 +1127,20 @@ function renderPosSell(main){
   main.querySelectorAll('[data-cartidx]').forEach(btn=>{
     btn.onclick = ()=>{ cart.splice(Number(btn.dataset.cartidx),1); renderPosSell(main); };
   });
+
+  let paymentMethod = 'نقدي';
+  document.querySelectorAll('#payMethodChips .chip').forEach(c=>{
+    c.onclick = ()=>{
+      document.querySelectorAll('#payMethodChips .chip').forEach(x=>x.classList.remove('sel'));
+      c.classList.add('sel');
+      paymentMethod = c.dataset.pm;
+      const isCredit = paymentMethod==='آجل';
+      document.getElementById('amountPaidWrap').style.display = isCredit ? '' : 'none';
+      document.getElementById('custRequiredMark').style.display = isCredit ? '' : 'none';
+      if(isCredit) document.getElementById('posAmountPaid').value = 0;
+    };
+  });
+
   const completeBtn = document.getElementById('completeSaleBtn');
   if(completeBtn) completeBtn.onclick = async ()=>{
     const customerName = document.getElementById('posCustName').value.trim();
@@ -1076,22 +1152,32 @@ function renderPosSell(main){
       for(const c of cart){ await adjustInventoryQtyRemote(c.itemId, -c.qty); }
       await refreshInventory();
       const itemsSummary = cart.map(c=>`${c.name} × ${c.qty} (${c.qty*c.price} ج.م)${c.serials&&c.serials.length?' [SN: '+c.serials.map(s=>s.Serial).join(',')+']':''}`).join('، ');
-      const saleRes = await saveSaleRemote(itemsSummary, total, customerName, customerPhone, paymentMethod, amountPaid);
+      const itemsJson = JSON.stringify(cart.map(c=>({name:c.name, qty:c.qty, price:c.price})));
+      const saleRes = await saveSaleRemote(itemsSummary, itemsJson, total, customerName, customerPhone, paymentMethod, amountPaid);
       for(const c of cart){
         if(c.serials && c.serials.length){
           for(const sn of c.serials){ await markSerialSoldRemote(sn.ID, saleRes.sale.ID).catch(()=>{}); }
         }
       }
       await refreshSales();
-      openSalePrint(saleRes.sale, cart);
       const hasWarranty = cart.some(c=>c.serials && c.serials.some(s=>Number(s.WarrantyMonths)>0));
-      if(hasWarranty && confirm('في أصناف عليها ضمان — تحب تطبع بطاقة ضمان كمان؟')){
-        openWarrantyCardPrint(saleRes.sale, cart, customerName, customerPhone);
-      }
+      state.lastCompletedSale = {sale: saleRes.sale, cartSnapshot: cart.slice(), hasWarranty, customerName, customerPhone};
       state.cart = [];
       renderPosSell(main);
-    }catch(e){ alert('تعذر إتمام البيع: '+e.message); completeBtn.disabled=false; completeBtn.textContent='إتمام البيع وطباعة الفاتورة'; }
+    }catch(e){ alert('تعذر إتمام البيع: '+e.message); completeBtn.disabled=false; completeBtn.textContent='إتمام البيع'; }
   };
+}
+
+async function addItemToCart(itemId, qty, main){
+  const item = state.inventory.find(x=>x.ID===itemId);
+  if(!item){ alert('الصنف غير موجود'); return; }
+  const alreadyInCart = state.cart.filter(c=>c.itemId===itemId).reduce((s,c)=>s+c.qty,0);
+  if(qty + alreadyInCart > Number(item.Quantity)){ alert('الكمية أكبر من المتاح في المخزون ('+item.Quantity+')'); return; }
+  const availSerials = await loadSerials(itemId, 'In Stock');
+  const line = {itemId, name:item.Name, qty, price:Number(item.SellPrice||item.PurchasePrice||0), cost:Number(item.PurchasePrice||0), serials:[], serialsAvailable: availSerials.length>0};
+  state.cart.push(line);
+  renderPosSell(main);
+  if(availSerials.length>0) openSerialPickerForCartLine(state.cart.length-1, availSerials, main);
 }
 
 function openSerialPickerForCartLine(cartIdx, availSerials, main){
@@ -1164,10 +1250,11 @@ function renderPosSalesLog(main){
         <td class="mono" style="${debt>0?'color:var(--red);font-weight:900;':''}">${debt>0?debt:'-'}</td>
         <td>${s.CustomerName||'-'}</td>
         <td class="row-actions">
+          <button class="btn btn-sm btn-ghost" data-reprint="${s.ID}">إعادة طباعة</button>
           ${debt>0?`<button class="btn btn-sm btn-green" data-settle="${s.ID}">تحصيل دين</button>`:''}
           ${daysSince(s.Date) > RETURN_WINDOW_DAYS
             ? `<button class="btn btn-sm btn-ghost" disabled title="انتهت مهلة الإرجاع (${RETURN_WINDOW_DAYS} يوم)" style="opacity:.5;cursor:not-allowed;">إرجاع (منتهي)</button>`
-            : `<button class="btn btn-sm btn-red" data-returnSale="${s.ID}">إرجاع</button>`}
+            : `<button class="btn btn-sm btn-red" data-return-sale="${s.ID}">إرجاع</button>`}
         </td>
       </tr>`;}).join('')}
     </tbody></table>`}
@@ -1187,7 +1274,19 @@ function renderPosSalesLog(main){
       }catch(e){ alert('تعذر تسجيل التحصيل: '+e.message); }
     };
   });
-  main.querySelectorAll('[data-returnSale]').forEach(btn=>{
+  main.querySelectorAll('[data-reprint]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const sale = state.sales.find(s=>s.ID===btn.dataset.reprint);
+      let items = [];
+      try{ items = JSON.parse(sale.ItemsJSON||'[]'); }catch(e){ items = []; }
+      if(items.length===0){
+        alert('لا تتوفر تفاصيل دقيقة لإعادة طباعة هذه الفاتورة (عملية بيع قديمة قبل إضافة هذه الميزة). سيتم طباعة ملخص فقط.');
+        items = [{name: sale.ItemsSummary, qty:1, price:Number(sale.Total||0)}];
+      }
+      openSalePrint(sale, items);
+    };
+  });
+  main.querySelectorAll('[data-return-sale]').forEach(btn=>{
     btn.onclick = ()=>openReturnModal(btn.dataset.returnSale, main);
   });
 }
@@ -1249,7 +1348,7 @@ function openSalePrint(sale, cartItems){
   mount.innerHTML = `
   <div id="receiptPaper">
     <div class="r-head">
-      <div><h4>${state.settings.shopName}</h4><div class="r-sub">فاتورة بيع</div></div>
+      <div>${state.settings.logoUrl ? `<img src="${state.settings.logoUrl}" style="max-height:28px;max-width:120px;object-fit:contain;margin-bottom:2px;">` : ''}<h4>${state.settings.shopName}</h4><div class="r-sub">فاتورة بيع</div></div>
       <div style="text-align:left;">
         <div class="r-badge mono" style="font-size:14px;padding:6px 16px;">${sale.ID.slice(-8)}</div>
         <div class="r-meta">التاريخ: ${cleanDate(sale.Date)}</div>
@@ -1283,7 +1382,7 @@ function openWarrantyCardPrint(sale, cartItems, customerName, customerPhone){
   mount.innerHTML = `
   <div id="receiptPaper">
     <div class="r-head">
-      <div><h4>${state.settings.shopName}</h4><div class="r-sub">بطاقة ضمان</div></div>
+      <div>${state.settings.logoUrl ? `<img src="${state.settings.logoUrl}" style="max-height:28px;max-width:120px;object-fit:contain;margin-bottom:2px;">` : ''}<h4>${state.settings.shopName}</h4><div class="r-sub">بطاقة ضمان</div></div>
       <div style="text-align:left;">
         <div class="r-badge mono" style="font-size:14px;padding:6px 16px;">${sale.ID.slice(-8)}</div>
         <div class="r-meta">تاريخ البيع: ${cleanDate(sale.Date)}</div>
@@ -1330,12 +1429,13 @@ function attachLogin(){
     try{
       const res = await loginRemote(name, pass);
       let sections;
-      if(res.role==='admin'){ sections = ['maintenance','cameras','pos','inventory']; }
+      if(res.role==='admin'){ sections = ['maintenance','cameras','pos','inventory','finance']; }
       else {
         sections = String(res.sections||'').split(',').map(s=>s.trim()).filter(Boolean);
         if(sections.length===0) sections = ['maintenance']; // safe default so a user is never fully locked out
       }
       state.user = {name: res.name, role: res.role, sections};
+      try{ localStorage.setItem('microerp_session', JSON.stringify(state.user)); }catch(e){ console.warn('localStorage unavailable', e); }
       await init();
     }catch(e){
       err.textContent = 'بيانات الدخول غير صحيحة أو تعذر الاتصال بقاعدة البيانات: '+e.message;
@@ -1347,11 +1447,11 @@ function attachLogin(){
 /* ---------------- Main router ---------------- */
 function renderMain(){
   const main = document.getElementById('main');
-  if((state.tab==='finance' || state.tab==='settings' || state.tab==='inventory') && state.user.role!=='admin'){ state.tab='dashboard'; }
+  if(state.tab==='settings' && state.user.role!=='admin'){ state.tab='dashboard'; }
   if(state.tab==='dashboard') return renderDashboard(main);
   if(state.tab==='new') return renderForm(main);
   if(state.tab==='archive') return renderArchive(main);
-  if(state.tab==='finance') return renderFinance(main);
+  if(state.tab==='finance') return; // moved to top-level "المالي" section
   if(state.tab==='inventory') return renderInventory(main, 'صيانة', 'المخزن (قطع الصيانة)');
   if(state.tab==='settings') return renderSettings(main);
 }
@@ -2029,7 +2129,7 @@ function openReceiptPrint(r, kind){
   mount.innerHTML = `
   <div id="receiptPaper">
     <div class="r-head">
-      <div><h4>${state.settings.shopName}</h4><div class="r-sub">${titles[kind]}</div></div>
+      <div>${state.settings.logoUrl ? `<img src="${state.settings.logoUrl}" style="max-height:28px;max-width:120px;object-fit:contain;margin-bottom:2px;">` : ''}<h4>${state.settings.shopName}</h4><div class="r-sub">${titles[kind]}</div></div>
       <div style="text-align:left;">
         <div class="r-badge mono" style="font-size:16px;padding:6px 16px;">${r.receiptNumber}</div>
         <div class="r-meta">التاريخ: ${cleanDate(r.date)}</div>
@@ -2067,26 +2167,118 @@ function openReceiptPrint(r, kind){
 }
 
 /* ---------------- Bonuses ---------------- */
-function renderFinance(main){
-  if(state.user.role!=='admin'){
-    main.innerHTML = `<h2 class="page-title">المالي</h2><div class="empty">هذه الصفحة متاحة للمدير (Admin) فقط.</div>`;
-    return;
-  }
-  if(!state.financeSubTab) state.financeSubTab = 'report';
-  main.innerHTML = `
-    <h2 class="page-title">المالي</h2>
-    <div class="subtitle">تقرير الدخل، تكلفة قطع الغيار، ومكافآت الفنيين</div>
-    <div class="stepper" style="max-width:420px;">
-      <div class="step-dot ${state.financeSubTab==='report'?'active':''}" data-sub="report">التقرير المالي</div>
-      <div class="step-dot ${state.financeSubTab==='bonus'?'active':''}" data-sub="bonus">مكافآت الفنيين</div>
+function renderFinanceSectionApp(app){
+  if(!state.financeTab) state.financeTab = 'overview';
+  app.innerHTML = `
+    <div class="sidebar">
+      ${brandHtml("القسم المالي")}
+      ${sectionSwitcherHtml()}
+      ${[
+        ['overview','نظرة عامة'],
+        ['income','تقرير دخل الصيانة'],
+        ['customers','حسابات العملاء'],
+        ['suppliers','حسابات الموردين'],
+        ['bonus','مكافآت الفنيين']
+      ].map(([k,label])=>`<div class="nav-item ${state.financeTab===k?'active':''}" data-fintab="${k}">${label}</div>`).join('')}
+      ${sidebarFootHtml()}
     </div>
-    <div id="financeBody"></div>
+    <main id="main"></main>
   `;
-  document.querySelectorAll('[data-sub]').forEach(el=>el.onclick=()=>{ state.financeSubTab = el.dataset.sub; renderMain(); });
-  const body = document.getElementById('financeBody');
-  if(state.financeSubTab==='report') renderFinanceReport(body);
-  else renderBonus(body);
+  const sw = document.getElementById('switchSectionBtn');
+  if(sw) sw.onclick = ()=>{ state.currentSection = null; render(); };
+  attachLogoutHandler();
+  document.querySelectorAll('[data-fintab]').forEach(el=>{
+    el.onclick = ()=>{ state.financeTab = el.dataset.fintab; renderFinanceSectionApp(app); };
+  });
+  const main = document.getElementById('main');
+  if(state.financeTab==='overview') renderFinanceOverview(main);
+  else if(state.financeTab==='income') renderFinanceReportPage(main);
+  else if(state.financeTab==='customers') renderCustomerAccounts(main);
+  else if(state.financeTab==='suppliers') renderSupplierAccounts(main);
+  else renderBonusPage(main);
 }
+
+function renderFinanceOverview(main){
+  const totalIncomeAllTime = state.payments.reduce((s,p)=>s+Number(p.Amount||0),0);
+  const posDebts = state.sales.reduce((s,sale)=>s+Math.max(0, Number(sale.Total||0)-Number(sale.AmountPaid!=null?sale.AmountPaid:sale.Total)),0);
+  const maintenanceDue = state.receipts.reduce((s,r)=>{
+    const remaining = Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0);
+    return s + Math.max(0, remaining);
+  },0);
+  const totalReceivables = posDebts + maintenanceDue;
+  const totalPayables = state.purchases.reduce((s,p)=>s+Math.max(0, Number(p.Total||0)-Number(p.AmountPaid!=null?p.AmountPaid:p.Total)),0);
+  const netPosition = totalReceivables - totalPayables;
+  main.innerHTML = `
+    <h2 class="page-title">نظرة عامة على الحسابات</h2>
+    <div class="subtitle">صورة سريعة لكل الجوانب المالية في الشركة</div>
+    <div class="stat-grid">
+      <div class="stat-card green"><div class="num mono">${totalIncomeAllTime.toLocaleString()}</div><div class="lbl">إجمالي المقبوضات (كل الوقت)</div></div>
+      <div class="stat-card amber"><div class="num mono">${totalReceivables.toLocaleString()}</div><div class="lbl">مستحقات لنا على العملاء (آجل + متبقي صيانة)</div></div>
+      <div class="stat-card red"><div class="num mono">${totalPayables.toLocaleString()}</div><div class="lbl">مستحقات علينا للموردين</div></div>
+      <div class="stat-card ${netPosition>=0?'green':'red'}"><div class="num mono">${netPosition.toLocaleString()}</div><div class="lbl">صافي المركز المالي (مستحقاتنا − مديونياتنا)</div></div>
+    </div>
+    <div class="card">
+      <h3>الوصول السريع</h3>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" data-fingo="income">تقرير دخل الصيانة</button>
+        <button class="btn btn-ghost btn-sm" data-fingo="customers">حسابات العملاء</button>
+        <button class="btn btn-ghost btn-sm" data-fingo="suppliers">حسابات الموردين</button>
+        <button class="btn btn-ghost btn-sm" data-fingo="bonus">مكافآت الفنيين</button>
+      </div>
+    </div>
+  `;
+  main.querySelectorAll('[data-fingo]').forEach(btn=>{
+    btn.onclick = ()=>{ state.financeTab = btn.dataset.fingo; renderFinanceSectionApp(document.getElementById('app')); };
+  });
+}
+
+function renderCustomerAccounts(main){
+  const posDebts = state.sales.filter(s=>(Number(s.Total||0)-Number(s.AmountPaid!=null?s.AmountPaid:s.Total))>0);
+  const maintenanceDebts = state.receipts.filter(r=>{
+    const remaining = Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0);
+    return remaining > 0;
+  });
+  const totalPos = posDebts.reduce((s,x)=>s+Number(x.Total||0)-Number(x.AmountPaid!=null?x.AmountPaid:x.Total),0);
+  const totalMaint = maintenanceDebts.reduce((s,r)=>s+(Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0)),0);
+  main.innerHTML = `
+    <h2 class="page-title">حسابات العملاء</h2>
+    <div class="subtitle">كل المبالغ المستحقة على العملاء (بيع آجل + إيصالات صيانة غير مسددة بالكامل)</div>
+    <div class="stat-grid">
+      <div class="stat-card amber"><div class="num mono">${totalPos.toLocaleString()}</div><div class="lbl">ديون بيع آجل (POS)</div></div>
+      <div class="stat-card amber"><div class="num mono">${totalMaint.toLocaleString()}</div><div class="lbl">مبالغ متبقية على إيصالات صيانة</div></div>
+    </div>
+    <div class="card">
+      <h3>ديون نقطة البيع (${posDebts.length})</h3>
+      ${posDebts.length===0 ? '<div class="empty">لا توجد ديون بيع آجل حاليًا.</div>' : `
+      <table><thead><tr><th>رقم البيع</th><th>التاريخ</th><th>العميل</th><th>الإجمالي</th><th>المتبقي</th></tr></thead><tbody>
+        ${posDebts.map(s=>`<tr><td class="mono">${s.ID.slice(-8)}</td><td>${cleanDate(s.Date)}</td><td>${s.CustomerName||'-'}</td><td class="mono">${s.Total}</td>
+        <td class="mono" style="color:var(--red);font-weight:900;">${Number(s.Total||0)-Number(s.AmountPaid||0)}</td></tr>`).join('')}
+      </tbody></table>`}
+    </div>
+    <div class="card">
+      <h3>إيصالات صيانة غير مسددة بالكامل (${maintenanceDebts.length})</h3>
+      ${maintenanceDebts.length===0 ? '<div class="empty">كل إيصالات الصيانة مسددة بالكامل.</div>' : `
+      <table><thead><tr><th>رقم الإيصال</th><th>العميل</th><th>المتبقي</th></tr></thead><tbody>
+        ${maintenanceDebts.map(r=>{
+          const remaining = Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0);
+          return `<tr><td class="mono" style="font-weight:900;color:var(--copper-dark);">${r.receiptNumber}</td><td>${r.customer.name}</td><td class="mono" style="color:var(--red);font-weight:900;">${remaining}</td></tr>`;
+        }).join('')}
+      </tbody></table>`}
+    </div>
+  `;
+}
+
+function renderFinanceReportPage(main){
+  main.innerHTML = `<h2 class="page-title">تقرير دخل الصيانة</h2><div class="subtitle">إجمالي المقبوضات، المسترجع، وتكلفة قطع الغيار خلال فترة محددة</div><div id="finReportBody"></div>`;
+  renderFinanceReport(document.getElementById('finReportBody'));
+}
+
+function renderBonusPage(main){
+  main.innerHTML = `<h2 class="page-title">مكافآت الفنيين</h2><div id="bonusBody"></div>`;
+  renderBonus(document.getElementById('bonusBody'));
+}
+
+
 
 function renderFinanceReport(body){
   if(!state.financeFilter) state.financeFilter = {from:'', to:''};
@@ -2218,16 +2410,18 @@ function renderInventory(main, categoryFilter, titleOverride){
         <div class="field"><label>التصنيف</label>
           <select id="invCategory">${INVENTORY_CATEGORIES.map(c=>`<option ${c===catValue?'selected':''}>${c}</option>`).join('')}</select>
         </div>
+        <div class="field"><label>الباركود (اختياري)</label><input id="invBarcode" placeholder="امسح أو اكتب الباركود"></div>
       </div>
       <button class="btn btn-primary btn-sm" id="addInvBtn">إضافة الصنف</button>
     </div>
     <div class="card">
       <h3>الأصناف المتاحة (${list.length})</h3>
       ${list.length===0 ? '<div class="empty">لا توجد أصناف بعد.</div>' : `
-      <table><thead><tr><th>الصنف</th>${categoryFilter==='all'?'<th>التصنيف</th>':''}<th>الكمية</th><th>سعر الشراء</th><th>سعر البيع</th><th>إجراءات</th></tr></thead><tbody>
+      <table><thead><tr><th>الصنف</th>${categoryFilter==='all'?'<th>التصنيف</th>':''}<th>الباركود</th><th>الكمية</th><th>سعر الشراء</th><th>سعر البيع</th><th>إجراءات</th></tr></thead><tbody>
         ${list.map(it=>`<tr>
           <td>${it.Name}</td>
           ${categoryFilter==='all'?`<td>${it.Category||'صيانة'}</td>`:''}
+          <td class="mono" style="font-size:11px;color:#888;">${it.Barcode||'-'}</td>
           <td class="mono" style="font-weight:${Number(it.Quantity)<=2?'900':'400'};color:${Number(it.Quantity)<=2?'var(--red)':'inherit'};">${it.Quantity}</td>
           <td class="mono">${it.PurchasePrice}</td>
           <td class="mono">${it.SellPrice||'-'}</td>
@@ -2246,10 +2440,11 @@ function renderInventory(main, categoryFilter, titleOverride){
     const buy = Number(document.getElementById('invBuy').value)||0;
     const sell = Number(document.getElementById('invSell').value)||0;
     const category = document.getElementById('invCategory').value;
+    const barcode = document.getElementById('invBarcode').value.trim();
     if(!name){ alert('اكتب اسم الصنف'); return; }
     const btn = document.getElementById('addInvBtn'); btn.disabled = true;
     try{
-      await saveInventoryItemRemote({ID:'', Name:name, Category:category, Quantity:qty, PurchasePrice:buy, SellPrice:sell});
+      await saveInventoryItemRemote({ID:'', Name:name, Category:category, Barcode:barcode, Quantity:qty, PurchasePrice:buy, SellPrice:sell});
       await refreshInventory();
       renderMain();
     }catch(e){ alert('تعذر إضافة الصنف: '+e.message); }
@@ -2280,6 +2475,7 @@ function openInventoryEditModal(item){
     <div class="field"><label>التصنيف</label>
       <select id="editInvCategory">${INVENTORY_CATEGORIES.map(c=>`<option ${c===(item.Category||'صيانة')?'selected':''}>${c}</option>`).join('')}</select>
     </div>
+    <div class="field"><label>الباركود (اختياري)</label><input id="editInvBarcode" value="${item.Barcode||''}"></div>
     <div class="grid3">
       <div class="field"><label>الكمية</label><input id="editInvQty" type="number" value="${item.Quantity}"></div>
       <div class="field"><label>سعر الشراء</label><input id="editInvBuy" type="number" value="${item.PurchasePrice}"></div>
@@ -2295,13 +2491,14 @@ function openInventoryEditModal(item){
   win.querySelector('#editInvSave').onclick = async ()=>{
     const name = document.getElementById('editInvName').value.trim();
     const category = document.getElementById('editInvCategory').value;
+    const barcode = document.getElementById('editInvBarcode').value.trim();
     const qty = Number(document.getElementById('editInvQty').value);
     const buy = Number(document.getElementById('editInvBuy').value);
     const sell = Number(document.getElementById('editInvSell').value);
     if(!name){ alert('اكتب اسم الصنف'); return; }
     const btn = win.querySelector('#editInvSave'); btn.disabled = true; btn.textContent = '...';
     try{
-      await saveInventoryItemRemote({ID:item.ID, Name:name, Category:category, Quantity:qty, PurchasePrice:buy, SellPrice:sell});
+      await saveInventoryItemRemote({ID:item.ID, Name:name, Category:category, Barcode:barcode, Quantity:qty, PurchasePrice:buy, SellPrice:sell});
       await refreshInventory();
       win.remove();
       renderMain();
@@ -2320,6 +2517,15 @@ function renderSettings(main){
         <button class="btn btn-primary btn-sm" id="saveShopNameBtn">حفظ</button>
       </div>
       <div class="hint">هذا الاسم يظهر في الشريط الجانبي وفي رأس الإيصال والفاتورة عند الطباعة.</div>
+    </div>
+    <div class="card">
+      <h3>شعار الشركة (لوجو)</h3>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input id="logoUrlInput" value="${state.settings.logoUrl||''}" placeholder="رابط صورة اللوجو (https://...)" style="width:auto;flex:1;">
+        <button class="btn btn-primary btn-sm" id="saveLogoBtn">حفظ</button>
+      </div>
+      ${state.settings.logoUrl ? `<div style="margin-top:10px;"><img src="${state.settings.logoUrl}" style="max-height:50px;max-width:180px;object-fit:contain;"></div>` : ''}
+      <div class="hint">الصق رابط مباشر لصورة اللوجو (من Google Drive بصلاحية عامة، أو أي استضافة صور). هيظهر في الشريط الجانبي وشاشة اختيار الأقسام.</div>
     </div>
     <div class="card">
       <h3>الفنيون</h3>
@@ -2380,6 +2586,13 @@ function renderSettings(main){
     try{ await saveSettingRemote('shopName', v); state.settings.shopName = v; render(); }
     catch(e){ alert('تعذر حفظ اسم الصيانة: '+e.message); btn.disabled=false; btn.textContent='حفظ'; }
   };
+  document.getElementById('saveLogoBtn').onclick = async ()=>{
+    const v = document.getElementById('logoUrlInput').value.trim();
+    const btn = document.getElementById('saveLogoBtn');
+    btn.disabled = true; btn.textContent = '...';
+    try{ await saveSettingRemote('logoUrl', v); state.settings.logoUrl = v; render(); }
+    catch(e){ alert('تعذر حفظ اللوجو: '+e.message); btn.disabled=false; btn.textContent='حفظ'; }
+  };
   document.getElementById('addTechBtn').onclick = async ()=>{
     const v = document.getElementById('newTech').value.trim();
     if(!v || state.technicians.includes(v)) return;
@@ -2395,6 +2608,12 @@ function renderSettings(main){
   };
 }
 
+(function restoreSession(){
+  try{
+    const saved = localStorage.getItem('microerp_session');
+    if(saved) state.user = JSON.parse(saved);
+  }catch(e){ console.warn('localStorage unavailable', e); }
+})();
 init();
 </script>
 </body>

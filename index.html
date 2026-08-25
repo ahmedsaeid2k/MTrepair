@@ -683,13 +683,19 @@ function renderSuppliers(main){
         <div class="field"><label>رقم الهاتف</label><input id="newSupPhone"></div>
         <div class="field"><label>ملاحظات</label><input id="newSupNotes"></div>
       </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:12px;">
+        <input type="checkbox" id="supAlsoCustomer"> هذا المورد عميل عندنا في نفس الوقت (يُسجَّل تلقائيًا في قائمة العملاء أيضًا)
+      </label>
       <button class="btn btn-primary btn-sm" id="addSupBtn">إضافة</button>
     </div>
     <div class="card">
       <h3>الموردون (${state.suppliers.length})</h3>
       ${state.suppliers.length===0 ? '<div class="empty">لا يوجد موردون بعد.</div>' : `
-      <table><thead><tr><th>الاسم</th><th>الهاتف</th><th>ملاحظات</th></tr></thead><tbody>
-        ${state.suppliers.map(s=>`<tr><td>${s.Name}</td><td>${s.Phone||'-'}</td><td>${s.Notes||'-'}</td></tr>`).join('')}
+      <table><thead><tr><th>الاسم</th><th>الهاتف</th><th>ملاحظات</th><th>عميل أيضًا؟</th></tr></thead><tbody>
+        ${state.suppliers.map(s=>{
+          const isAlsoCustomer = s.Phone && state.customers.some(c=>c.phone===s.Phone);
+          return `<tr><td>${s.Name}</td><td>${s.Phone||'-'}</td><td>${s.Notes||'-'}</td><td>${isAlsoCustomer?'<span class="status-badge st-done">نعم</span>':'-'}</td></tr>`;
+        }).join('')}
       </tbody></table>`}
     </div>
   `;
@@ -697,11 +703,19 @@ function renderSuppliers(main){
     const name = document.getElementById('newSupName').value.trim();
     const phone = document.getElementById('newSupPhone').value.trim();
     const notes = document.getElementById('newSupNotes').value.trim();
+    const alsoCustomer = document.getElementById('supAlsoCustomer').checked;
     if(!name){ alert('اكتب اسم المورد'); return; }
     const btn = document.getElementById('addSupBtn'); btn.disabled = true;
     try{
       const res = await saveSupplierRemote({ID:'', Name:name, Phone:phone, Notes:notes});
       state.suppliers.push(res.supplier);
+      if(alsoCustomer){
+        if(!phone){ alert('لازم رقم هاتف عشان نسجّله كعميل كمان'); }
+        else if(!state.customers.some(c=>c.phone===phone)){
+          await saveCustomerRemote({name, phone, email:''});
+          state.customers.push({name, phone, email:''});
+        }
+      }
       renderSuppliers(main);
     }catch(e){ alert('تعذر إضافة المورد: '+e.message); }
     btn.disabled = false;
@@ -1024,6 +1038,14 @@ function renderPosSell(main){
     </div>
 
     <div class="card">
+      <h3>وصول سريع للأصناف</h3>
+      <div class="chip-group" id="posQuickCatChips" style="margin-bottom:12px;">
+        ${['الكل',...INVENTORY_CATEGORIES].map(c=>`<div class="chip ${(state.posQuickCat||'الكل')===c?'sel':''}" data-qcat="${c}">${c}</div>`).join('')}
+      </div>
+      <div id="posQuickGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;"></div>
+    </div>
+
+    <div class="card">
       <h3>السلة</h3>
       ${cart.length===0 ? '<div class="empty">السلة فارغة.</div>' : `
       <table><thead><tr><th>الصنف</th><th>الكمية</th><th>السعر (قابل للتعديل/خصم)</th><th>الإجمالي</th><th>سيريال</th><th></th></tr></thead><tbody>
@@ -1043,6 +1065,7 @@ function renderPosSell(main){
     </div>
     <div class="card">
       <h3>بيانات العميل</h3>
+      <button class="btn btn-ghost btn-sm" id="posWalkInBtn" type="button" style="margin-bottom:10px;">عميل زائر / Walk-in</button>
       <div class="grid2">
         <div class="field"><label>اسم العميل <span id="custRequiredMark" style="display:none;color:var(--red);">*مطلوب للبيع الآجل</span></label><input id="posCustName"></div>
         <div class="field"><label>رقم الهاتف</label><input id="posCustPhone"></div>
@@ -1079,8 +1102,37 @@ function renderPosSell(main){
     });
   }
   document.getElementById('posSearchInput').oninput = (e)=>{ state.posSearch = e.target.value; renderSearchResults(); };
+
+  function renderQuickGrid(){
+    const cat = state.posQuickCat || 'الكل';
+    const grid = document.getElementById('posQuickGrid');
+    const items = (cat==='الكل' ? state.inventory : state.inventory.filter(it=>(it.Category||'صيانة')===cat)).filter(it=>Number(it.Quantity)>0);
+    if(items.length===0){ grid.innerHTML = '<div class="empty" style="grid-column:1/-1;">لا توجد أصناف متاحة في هذا التصنيف.</div>'; return; }
+    grid.innerHTML = items.map(it=>`
+      <div class="pos-quick-card" data-qpick="${it.ID}" style="border:1px solid var(--line);border-radius:8px;padding:8px;text-align:center;cursor:pointer;background:#fdfcf8;">
+        ${it.ImageURL ? `<img src="${it.ImageURL}" style="width:100%;height:60px;object-fit:contain;margin-bottom:4px;">` : `<div style="width:100%;height:60px;display:flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:4px;">📦</div>`}
+        <div style="font-size:11.5px;font-weight:700;line-height:1.3;">${it.Name}</div>
+        <div style="font-size:10px;color:#999;">${it.SellPrice||it.PurchasePrice||0} ج.م</div>
+      </div>`).join('');
+    grid.querySelectorAll('[data-qpick]').forEach(card=>{
+      card.onclick = ()=>addItemToCart(card.dataset.qpick, 1, main);
+    });
+  }
+  document.querySelectorAll('#posQuickCatChips .chip').forEach(c=>{
+    c.onclick = ()=>{
+      document.querySelectorAll('#posQuickCatChips .chip').forEach(x=>x.classList.remove('sel'));
+      c.classList.add('sel');
+      state.posQuickCat = c.dataset.qcat;
+      renderQuickGrid();
+    };
+  });
+  renderQuickGrid();
   renderSearchResults();
 
+  document.getElementById('posWalkInBtn').onclick = ()=>{
+    document.getElementById('posCustName').value = 'عميل زائر';
+    document.getElementById('posCustPhone').value = '';
+  };
   document.getElementById('posBarcodeInput').onkeydown = async (e)=>{
     if(e.key !== 'Enter') return;
     const code = e.target.value.trim();
@@ -1497,6 +1549,7 @@ function startNewDraft(){
 }
 
 const STEPS = ['بيانات العميل','بيانات الجهاز','الأعطال والصيانة','المالي والتسليم','مراجعة وحفظ'];
+let currentStepCollector = null; // reads current step's form fields into the draft before switching steps (fixes data loss on tab-dot navigation)
 
 function renderForm(main){
   if(!state.draft){ startNewDraft(); return; }
@@ -1509,7 +1562,10 @@ function renderForm(main){
     </div>
     <div id="stepBody"></div>
   `;
-  document.querySelectorAll('.step-dot').forEach(el=>el.onclick=()=>{ state.formStep = Number(el.dataset.i); renderMain(); });
+  document.querySelectorAll('.step-dot').forEach(el=>el.onclick=()=>{
+    if(typeof currentStepCollector==='function') currentStepCollector();
+    state.formStep = Number(el.dataset.i); renderMain();
+  });
   const body = document.getElementById('stepBody');
   if(state.formStep===0) return stepCustomer(body,d);
   if(state.formStep===1) return stepDevice(body,d);
@@ -1526,7 +1582,7 @@ function stepNav(body, canBack, canNext, nextLabel){
     <button class="btn btn-primary" id="nextBtn">${nextLabel||'التالي'}</button>
   `;
   body.appendChild(div);
-  if(canBack) div.querySelector('#backBtn').onclick = ()=>{ state.formStep--; renderMain(); };
+  if(canBack) div.querySelector('#backBtn').onclick = ()=>{ if(typeof currentStepCollector==='function') currentStepCollector(); state.formStep--; renderMain(); };
   div.querySelector('#nextBtn').onclick = canNext;
 }
 
@@ -1538,6 +1594,7 @@ function stepCustomer(body,d){
       <div class="field"><label>عميل سابق (اختياري)</label>
         <select id="custSelect"><option value="">-- اختر عميل مسجل --</option>${custOptions}</select>
       </div>
+      <button class="btn btn-ghost btn-sm" id="walkInBtn" type="button" style="margin-bottom:12px;">عميل زائر / Walk-in (بدون تسجيل بيانات)</button>
       <div class="grid3">
         <div class="field"><label>اسم العميل *</label><input id="cName" value="${d.customer.name}"></div>
         <div class="field"><label>رقم الهاتف *</label><input id="cPhone" value="${d.customer.phone}"></div>
@@ -1549,11 +1606,19 @@ function stepCustomer(body,d){
     const c = state.customers.find(x=>x.name===e.target.value);
     if(c){ document.getElementById('cName').value=c.name; document.getElementById('cPhone').value=c.phone; document.getElementById('cEmail').value=c.email||''; }
   };
-  stepNav(body, false, ()=>{
+  document.getElementById('walkInBtn').onclick = ()=>{
+    document.getElementById('cName').value = 'عميل زائر';
+    document.getElementById('cPhone').value = '0000000000';
+    document.getElementById('cEmail').value = '';
+  };
+  currentStepCollector = ()=>{
     d.customer.name = document.getElementById('cName').value.trim();
     d.customer.phone = document.getElementById('cPhone').value.trim();
     d.customer.email = document.getElementById('cEmail').value.trim();
-    if(!d.customer.name || !d.customer.phone){ alert('من فضلك أدخل اسم العميل ورقم الهاتف'); return; }
+  };
+  stepNav(body, false, ()=>{
+    currentStepCollector();
+    if(!d.customer.name || !d.customer.phone){ alert('من فضلك أدخل اسم العميل ورقم الهاتف (أو استخدم زر عميل زائر)'); return; }
     state.formStep=1; renderMain();
   });
 }
@@ -1584,12 +1649,15 @@ function stepDevice(body,d){
   document.getElementById('devCat').onchange = fillBrands;
   document.getElementById('devBrand').onchange = ()=>{ document.getElementById('brandOtherWrap').style.display = document.getElementById('devBrand').value==='أخرى'?'':'none'; };
 
-  stepNav(body, true, ()=>{
+  currentStepCollector = ()=>{
     d.device.category = document.getElementById('devCat').value;
     d.device.brand = document.getElementById('devBrand').value;
     d.device.brandOther = document.getElementById('devBrandOther') ? document.getElementById('devBrandOther').value : '';
     d.device.model = document.getElementById('devModel').value.trim();
     d.device.accessories = document.getElementById('devAcc').value.trim();
+  };
+  stepNav(body, true, ()=>{
+    currentStepCollector();
     state.formStep=2; renderMain();
   });
 }
@@ -1622,9 +1690,12 @@ function stepFaults(body,d){
       c.classList.toggle('sel');
     };
   });
-  stepNav(body, true, ()=>{
+  currentStepCollector = ()=>{
     d.faultNotes = document.getElementById('faultNotes').value.trim();
     d.technician = document.getElementById('techSelect').value;
+  };
+  stepNav(body, true, ()=>{
+    currentStepCollector();
     state.formStep=3; renderMain();
   });
 }
@@ -1700,15 +1771,19 @@ function stepFinance(body,d){
     }catch(e){ alert('تعذر خصم الصنف من المخزن: '+e.message); }
     btn.disabled = false; btn.textContent = 'خصم من المخزن';
   };
-  stepNav(body, true, ()=>{
+  currentStepCollector = ()=>{
     d.cost = document.getElementById('finCost').value;
     d.deposit = document.getElementById('finDep').value;
     d.deliveryDate = document.getElementById('finDate').value;
+  };
+  stepNav(body, true, ()=>{
+    currentStepCollector();
     state.formStep=4; renderMain();
   }, 'مراجعة');
 }
 
 function stepReview(body,d){
+  currentStepCollector = null;
   const remaining = (Number(d.cost||0) + Number(d.partsCost||0) - Number(d.deposit||0));
   body.innerHTML = `
     <div class="card">
@@ -2411,14 +2486,16 @@ function renderInventory(main, categoryFilter, titleOverride){
           <select id="invCategory">${INVENTORY_CATEGORIES.map(c=>`<option ${c===catValue?'selected':''}>${c}</option>`).join('')}</select>
         </div>
         <div class="field"><label>الباركود (اختياري)</label><input id="invBarcode" placeholder="امسح أو اكتب الباركود"></div>
+        <div class="field"><label>رابط صورة المنتج (اختياري)</label><input id="invImage" placeholder="https://..."></div>
       </div>
       <button class="btn btn-primary btn-sm" id="addInvBtn">إضافة الصنف</button>
     </div>
     <div class="card">
       <h3>الأصناف المتاحة (${list.length})</h3>
       ${list.length===0 ? '<div class="empty">لا توجد أصناف بعد.</div>' : `
-      <table><thead><tr><th>الصنف</th>${categoryFilter==='all'?'<th>التصنيف</th>':''}<th>الباركود</th><th>الكمية</th><th>سعر الشراء</th><th>سعر البيع</th><th>إجراءات</th></tr></thead><tbody>
+      <table><thead><tr><th></th><th>الصنف</th>${categoryFilter==='all'?'<th>التصنيف</th>':''}<th>الباركود</th><th>الكمية</th><th>سعر الشراء</th><th>سعر البيع</th><th>إجراءات</th></tr></thead><tbody>
         ${list.map(it=>`<tr>
+          <td>${it.ImageURL ? `<img src="${it.ImageURL}" style="width:32px;height:32px;object-fit:contain;">` : ''}</td>
           <td>${it.Name}</td>
           ${categoryFilter==='all'?`<td>${it.Category||'صيانة'}</td>`:''}
           <td class="mono" style="font-size:11px;color:#888;">${it.Barcode||'-'}</td>
@@ -2441,10 +2518,11 @@ function renderInventory(main, categoryFilter, titleOverride){
     const sell = Number(document.getElementById('invSell').value)||0;
     const category = document.getElementById('invCategory').value;
     const barcode = document.getElementById('invBarcode').value.trim();
+    const imageUrl = document.getElementById('invImage').value.trim();
     if(!name){ alert('اكتب اسم الصنف'); return; }
     const btn = document.getElementById('addInvBtn'); btn.disabled = true;
     try{
-      await saveInventoryItemRemote({ID:'', Name:name, Category:category, Barcode:barcode, Quantity:qty, PurchasePrice:buy, SellPrice:sell});
+      await saveInventoryItemRemote({ID:'', Name:name, Category:category, Barcode:barcode, ImageURL:imageUrl, Quantity:qty, PurchasePrice:buy, SellPrice:sell});
       await refreshInventory();
       renderMain();
     }catch(e){ alert('تعذر إضافة الصنف: '+e.message); }
@@ -2476,6 +2554,7 @@ function openInventoryEditModal(item){
       <select id="editInvCategory">${INVENTORY_CATEGORIES.map(c=>`<option ${c===(item.Category||'صيانة')?'selected':''}>${c}</option>`).join('')}</select>
     </div>
     <div class="field"><label>الباركود (اختياري)</label><input id="editInvBarcode" value="${item.Barcode||''}"></div>
+    <div class="field"><label>رابط صورة المنتج (اختياري)</label><input id="editInvImage" value="${item.ImageURL||''}"></div>
     <div class="grid3">
       <div class="field"><label>الكمية</label><input id="editInvQty" type="number" value="${item.Quantity}"></div>
       <div class="field"><label>سعر الشراء</label><input id="editInvBuy" type="number" value="${item.PurchasePrice}"></div>
@@ -2492,13 +2571,14 @@ function openInventoryEditModal(item){
     const name = document.getElementById('editInvName').value.trim();
     const category = document.getElementById('editInvCategory').value;
     const barcode = document.getElementById('editInvBarcode').value.trim();
+    const imageUrl = document.getElementById('editInvImage').value.trim();
     const qty = Number(document.getElementById('editInvQty').value);
     const buy = Number(document.getElementById('editInvBuy').value);
     const sell = Number(document.getElementById('editInvSell').value);
     if(!name){ alert('اكتب اسم الصنف'); return; }
     const btn = win.querySelector('#editInvSave'); btn.disabled = true; btn.textContent = '...';
     try{
-      await saveInventoryItemRemote({ID:item.ID, Name:name, Category:category, Barcode:barcode, Quantity:qty, PurchasePrice:buy, SellPrice:sell});
+      await saveInventoryItemRemote({ID:item.ID, Name:name, Category:category, Barcode:barcode, ImageURL:imageUrl, Quantity:qty, PurchasePrice:buy, SellPrice:sell});
       await refreshInventory();
       win.remove();
       renderMain();
@@ -2528,6 +2608,19 @@ function renderSettings(main){
       <div class="hint">الصق رابط مباشر لصورة اللوجو (من Google Drive بصلاحية عامة، أو أي استضافة صور). هيظهر في الشريط الجانبي وشاشة اختيار الأقسام.</div>
     </div>
     <div class="card">
+      <h3>إدارة العملاء</h3>
+      <div class="grid3">
+        <div class="field"><label>اسم العميل</label><input id="newCustName"></div>
+        <div class="field"><label>رقم الهاتف</label><input id="newCustPhone"></div>
+        <div class="field"><label>الإيميل (اختياري)</label><input id="newCustEmail"></div>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:12px;">
+        <input type="checkbox" id="custAlsoSupplier"> هذا العميل مورد لينا في نفس الوقت (يُسجَّل تلقائيًا في قائمة الموردين أيضًا)
+      </label>
+      <button class="btn btn-primary btn-sm" id="addCustBtn">إضافة عميل</button>
+      <div id="customersListSettings" style="margin-top:14px;max-height:220px;overflow:auto;"></div>
+    </div>
+    <div class="card">
       <h3>الفنيون</h3>
       <div id="techList" class="chip-group" style="margin-bottom:12px;"></div>
       <div style="display:flex;gap:8px;">
@@ -2552,6 +2645,38 @@ function renderSettings(main){
       </p>
     </div>
   `;
+  function renderCustomersListSettings(){
+    const box = document.getElementById('customersListSettings');
+    if(state.customers.length===0){ box.innerHTML = '<div class="hint">لا يوجد عملاء مسجلين بعد.</div>'; return; }
+    box.innerHTML = `<table><thead><tr><th>الاسم</th><th>الهاتف</th><th>مورد أيضًا؟</th></tr></thead><tbody>
+      ${state.customers.map(c=>{
+        const isAlsoSupplier = c.phone && state.suppliers.some(s=>s.Phone===c.phone);
+        return `<tr><td>${c.name}</td><td>${c.phone}</td><td>${isAlsoSupplier?'<span class="status-badge st-done">نعم</span>':'-'}</td></tr>`;
+      }).join('')}
+    </tbody></table>`;
+  }
+  renderCustomersListSettings();
+  document.getElementById('addCustBtn').onclick = async ()=>{
+    const name = document.getElementById('newCustName').value.trim();
+    const phone = document.getElementById('newCustPhone').value.trim();
+    const email = document.getElementById('newCustEmail').value.trim();
+    const alsoSupplier = document.getElementById('custAlsoSupplier').checked;
+    if(!name || !phone){ alert('اكتب اسم العميل ورقم الهاتف'); return; }
+    const btn = document.getElementById('addCustBtn'); btn.disabled = true;
+    try{
+      if(!state.customers.some(c=>c.phone===phone)){
+        await saveCustomerRemote({name, phone, email});
+        state.customers.push({name, phone, email});
+      }
+      if(alsoSupplier && !state.suppliers.some(s=>s.Phone===phone)){
+        const res = await saveSupplierRemote({ID:'', Name:name, Phone:phone, Notes:''});
+        state.suppliers.push(res.supplier);
+      }
+      document.getElementById('newCustName').value=''; document.getElementById('newCustPhone').value=''; document.getElementById('newCustEmail').value='';
+      renderCustomersListSettings();
+    }catch(e){ alert('تعذر إضافة العميل: '+e.message); }
+    btn.disabled = false;
+  };
   function renderTechList(){
     document.getElementById('techList').innerHTML = state.technicians.map(t=>`<div class="chip sel">${t}</div>`).join('')
       + '<div class="hint" style="width:100%;">الحذف من قائمة الفنيين يتم مباشرة من ورقة Technicians في قاعدة البيانات حالياً.</div>';

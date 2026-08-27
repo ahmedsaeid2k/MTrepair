@@ -1,8 +1,11 @@
 <!doctype html>
-<html lang="ar" dir="rtl">
+<html lang="ar" dir="rtl" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#2563eb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>ميكروERP | نظام إدارة الصيانة والمبيعات المتكامل</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -20,10 +23,6 @@
   --primary-light: #eff6ff;
   --primary-focus: rgba(37, 99, 235, 0.15);
   
-  --copper: #059669;
-  --copper-dark: #047857;
-  --copper-light: #ecfdf5;
-  
   --slate-900: #0f172a;
   --slate-800: #1e293b;
   --slate-700: #334155;
@@ -36,10 +35,13 @@
   --slate-50: #f8fafc;
   
   --ink: #0f172a;
-  --paper: #f8fafc;
+  --ink-secondary: #475569;
+  --paper: #f1f5f9;
   --paper2: #ffffff;
+  --paper3: #f8fafc;
   --line: #e2e8f0;
   --line-strong: #cbd5e1;
+  --card-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px 0 rgba(0, 0, 0, 0.04);
   
   --blue: #2563eb;
   --blue-bg: #dbeafe;
@@ -75,14 +77,53 @@
   --font-mono: 'IBM Plex Mono', monospace;
 }
 
+[data-theme="dark"] {
+  --primary: #3b82f6;
+  --primary-hover: #60a5fa;
+  --primary-light: rgba(59, 130, 246, 0.18);
+  --primary-focus: rgba(59, 130, 246, 0.25);
+  
+  --slate-900: #030712;
+  --slate-800: #0b0f19;
+  --slate-700: #1e293b;
+  --slate-600: #334155;
+  --slate-500: #94a3b8;
+  --slate-400: #cbd5e1;
+  --slate-300: #475569;
+  --slate-200: #334155;
+  --slate-100: #1e293b;
+  --slate-50: #0f172a;
+  
+  --ink: #f8fafc;
+  --ink-secondary: #94a3b8;
+  --paper: #0b0f19;
+  --paper2: #111827;
+  --paper3: #1f2937;
+  --line: #1f2937;
+  --line-strong: #374151;
+  --card-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  
+  --blue-bg: rgba(37, 99, 235, 0.2);
+  --blue-text: #93c5fd;
+  --amber-bg: rgba(217, 119, 6, 0.2);
+  --amber-text: #fcd34d;
+  --red-bg: rgba(225, 29, 72, 0.2);
+  --red-text: #fda4af;
+  --green-bg: rgba(16, 185, 129, 0.2);
+  --green-text: #6ee7b7;
+  --purple-bg: rgba(139, 92, 246, 0.2);
+  --purple-text: #c4b5fd;
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   font-family: var(--font-main);
-  background: #f1f5f9;
+  background: var(--paper);
   color: var(--ink);
   line-height: 1.5;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 .mono { font-family: var(--font-mono); letter-spacing: -0.02em; }
 
@@ -102,20 +143,20 @@ body {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  box-shadow: 4px 0 24px rgba(0,0,0,0.06);
+  box-shadow: 4px 0 24px rgba(0,0,0,0.1);
   z-index: 20;
   transition: all 0.2s ease;
 }
 .brand {
-  padding: 24px 20px 18px;
+  padding: 22px 18px 16px;
   border-bottom: 1px solid rgba(255,255,255,0.08);
   display: flex;
   align-items: center;
   gap: 12px;
 }
 .brand-logo-wrap {
-  width: 42px;
-  height: 42px;
+  width: 40px;
+  height: 40px;
   background: linear-gradient(135deg, var(--primary), #38bdf8);
   border-radius: var(--radius);
   display: flex;
@@ -127,14 +168,14 @@ body {
   flex-shrink: 0;
 }
 .brand-text h1 {
-  font-size: 17px;
+  font-size: 16.5px;
   font-weight: 800;
   margin: 0;
   color: #ffffff;
   letter-spacing: -0.01em;
 }
 .brand-text span {
-  font-size: 11.5px;
+  font-size: 11px;
   color: #38bdf8;
   display: block;
   margin-top: 1px;
@@ -142,8 +183,8 @@ body {
 }
 
 .nav-section {
-  padding: 14px 12px 6px;
-  font-size: 10.5px;
+  padding: 12px 12px 4px;
+  font-size: 10px;
   font-weight: 700;
   color: var(--slate-400);
   text-transform: uppercase;
@@ -151,10 +192,10 @@ body {
 }
 
 .nav-item {
-  margin: 3px 10px;
-  padding: 10px 14px;
+  margin: 3px 8px;
+  padding: 9px 12px;
   cursor: pointer;
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 600;
   color: #94a3b8;
   border-radius: var(--radius-sm);
@@ -184,8 +225,8 @@ body {
 
 .sidebar-foot {
   margin-top: auto;
-  padding: 16px;
-  background: rgba(0,0,0,0.2);
+  padding: 14px;
+  background: rgba(0,0,0,0.25);
   border-top: 1px solid rgba(255,255,255,0.06);
 }
 .user-card {
@@ -194,8 +235,8 @@ body {
   gap: 10px;
 }
 .user-avatar {
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   border-radius: var(--radius-full);
   background: linear-gradient(135deg, #10b981, #059669);
   color: white;
@@ -203,14 +244,14 @@ body {
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 14px;
+  font-size: 13.5px;
 }
 .user-info {
   flex: 1;
   min-width: 0;
 }
 .user-name {
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 700;
   color: #fff;
   white-space: nowrap;
@@ -221,18 +262,18 @@ body {
   display: inline-block;
   background: rgba(37,99,235,0.25);
   color: #60a5fa;
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 600;
-  padding: 1px 7px;
+  padding: 1px 6px;
   border-radius: var(--radius-full);
-  margin-top: 2px;
+  margin-top: 1px;
 }
 
 /* Main Content Area */
 main {
   flex: 1;
-  padding: 28px 36px;
-  max-width: 1380px;
+  padding: 24px 32px;
+  max-width: 1400px;
   width: 100%;
   box-sizing: border-box;
 }
@@ -242,14 +283,14 @@ main {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 14px;
 }
 .page-title {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 800;
-  color: var(--slate-900);
+  color: var(--ink);
   letter-spacing: -0.02em;
   margin: 0;
   display: flex;
@@ -257,9 +298,29 @@ main {
   gap: 10px;
 }
 .subtitle {
-  color: var(--slate-500);
-  font-size: 13.5px;
-  margin-top: 3px;
+  color: var(--ink-secondary);
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+/* Theme Toggle Button */
+.theme-toggle-btn {
+  background: var(--paper2);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  padding: 7px 12px;
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+.theme-toggle-btn:hover {
+  background: var(--paper3);
+  border-color: var(--primary);
 }
 
 /* Cards */
@@ -267,10 +328,10 @@ main {
   background: var(--paper2);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 22px 24px;
-  margin-bottom: 20px;
-  box-shadow: var(--shadow-sm);
-  transition: box-shadow 0.2s ease;
+  padding: 20px 22px;
+  margin-bottom: 18px;
+  box-shadow: var(--card-shadow);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 .card:hover {
   box-shadow: var(--shadow);
@@ -280,14 +341,14 @@ main {
   justify-content: space-between;
   align-items: center;
   border-bottom: 1px solid var(--line);
-  padding-bottom: 12px;
-  margin-bottom: 18px;
+  padding-bottom: 10px;
+  margin-bottom: 16px;
 }
 .card h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: 15.5px;
   font-weight: 800;
-  color: var(--slate-800);
+  color: var(--ink);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -296,18 +357,18 @@ main {
 /* Dashboard Stat Cards */
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
+  margin-bottom: 22px;
 }
 .stat-card {
   background: var(--paper2);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 18px 20px;
+  padding: 16px 18px;
   position: relative;
   overflow: hidden;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--card-shadow);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -333,13 +394,13 @@ main {
   align-items: flex-start;
 }
 .stat-card .icon-box {
-  width: 38px;
-  height: 38px;
+  width: 36px;
+  height: 36px;
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
+  font-size: 17px;
 }
 .stat-card.blue .icon-box { background: var(--blue-bg); color: var(--blue-text); }
 .stat-card.green .icon-box { background: var(--green-bg); color: var(--green-text); }
@@ -348,39 +409,39 @@ main {
 .stat-card.purple .icon-box { background: var(--purple-bg); color: var(--purple-text); }
 
 .stat-card .num {
-  font-size: 28px;
+  font-size: 26px;
   font-weight: 800;
-  color: var(--slate-900);
+  color: var(--ink);
   line-height: 1.2;
-  margin-top: 10px;
+  margin-top: 8px;
 }
 .stat-card .lbl {
-  font-size: 12.5px;
-  color: var(--slate-500);
+  font-size: 12px;
+  color: var(--ink-secondary);
   font-weight: 600;
-  margin-top: 4px;
+  margin-top: 3px;
 }
 
 /* Stepper */
 .stepper {
   display: flex;
   gap: 8px;
-  margin-bottom: 24px;
+  margin-bottom: 22px;
   background: var(--paper2);
   padding: 8px;
   border-radius: var(--radius);
   border: 1px solid var(--line);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--card-shadow);
 }
 .step-dot {
   flex: 1;
   text-align: center;
-  padding: 10px 8px;
-  background: var(--slate-100);
+  padding: 9px 8px;
+  background: var(--paper3);
   border-radius: var(--radius-sm);
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 700;
-  color: var(--slate-600);
+  color: var(--ink-secondary);
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
@@ -400,25 +461,25 @@ main {
 }
 
 /* Forms & Inputs */
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
-.grid4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+.grid4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 14px; }
 
 label {
   display: block;
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 700;
-  color: var(--slate-700);
-  margin-bottom: 6px;
+  color: var(--ink);
+  margin-bottom: 5px;
 }
 input, select, textarea {
   width: 100%;
-  padding: 10px 14px;
+  padding: 9px 12px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
   font-family: inherit;
-  font-size: 13.5px;
-  background: #ffffff;
+  font-size: 13px;
+  background: var(--paper2);
   color: var(--ink);
   outline: none;
   transition: all 0.15s ease;
@@ -427,20 +488,20 @@ input:focus, select:focus, textarea:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-focus);
 }
-.field { margin-bottom: 14px; }
-textarea { min-height: 80px; resize: vertical; }
+.field { margin-bottom: 12px; }
+textarea { min-height: 75px; resize: vertical; }
 
 /* Chips */
-.chip-group { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip-group { display: flex; flex-wrap: wrap; gap: 7px; }
 .chip {
-  padding: 7px 14px;
+  padding: 6px 12px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-full);
-  font-size: 12.5px;
+  font-size: 12px;
   cursor: pointer;
   background: var(--paper2);
   font-weight: 600;
-  color: var(--slate-700);
+  color: var(--ink);
   user-select: none;
   transition: all 0.15s ease;
   display: inline-flex;
@@ -448,7 +509,7 @@ textarea { min-height: 80px; resize: vertical; }
   gap: 5px;
 }
 .chip:hover {
-  background: var(--slate-100);
+  background: var(--paper3);
   border-color: var(--slate-400);
 }
 .chip.sel {
@@ -464,12 +525,12 @@ textarea { min-height: 80px; resize: vertical; }
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 9px 18px;
+  padding: 8px 16px;
   border-radius: var(--radius-sm);
   border: none;
   font-family: inherit;
   font-weight: 700;
-  font-size: 13px;
+  font-size: 12.5px;
   cursor: pointer;
   transition: all 0.15s ease;
   user-select: none;
@@ -478,8 +539,8 @@ textarea { min-height: 80px; resize: vertical; }
 .btn:active { transform: scale(0.98); }
 .btn-primary { background: var(--primary); color: #fff; box-shadow: 0 2px 6px rgba(37,99,235,0.25); }
 .btn-primary:hover { background: var(--primary-hover); }
-.btn-ghost { background: var(--paper2); border: 1px solid var(--line-strong); color: var(--slate-700); }
-.btn-ghost:hover { background: var(--slate-100); border-color: var(--slate-400); }
+.btn-ghost { background: var(--paper2); border: 1px solid var(--line-strong); color: var(--ink); }
+.btn-ghost:hover { background: var(--paper3); border-color: var(--slate-400); }
 .btn-green { background: var(--green); color: #fff; }
 .btn-green:hover { background: #059669; }
 .btn-blue { background: #0284c7; color: #fff; }
@@ -490,16 +551,16 @@ textarea { min-height: 80px; resize: vertical; }
 .btn-red:hover { background: #be123c; }
 .btn-whatsapp { background: #25D366; color: #fff; }
 .btn-whatsapp:hover { background: #1ebe57; }
-.wa-icon { width: 15px; height: 15px; flex-shrink: 0; }
-.btn-sm { padding: 6px 12px; font-size: 12px; }
-.btn-xs { padding: 4px 8px; font-size: 11px; border-radius: 4px; }
+.wa-icon { width: 14px; height: 14px; flex-shrink: 0; }
+.btn-sm { padding: 5px 11px; font-size: 11.5px; }
+.btn-xs { padding: 4px 8px; font-size: 10.5px; border-radius: 4px; }
 .actions-row { display: flex; gap: 10px; justify-content: space-between; align-items: center; margin-top: 14px; }
 
 /* Status Badges */
 .status-badge {
-  padding: 4px 10px;
+  padding: 3px 9px;
   border-radius: var(--radius-full);
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 700;
   display: inline-flex;
   align-items: center;
@@ -516,14 +577,14 @@ textarea { min-height: 80px; resize: vertical; }
 .btn-status-quick {
   background: var(--paper2);
   border: 1px solid var(--line-strong);
-  padding: 4px 10px;
+  padding: 3px 8px;
   border-radius: var(--radius-full);
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 700;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   transition: all 0.15s ease;
   box-shadow: 0 1px 2px rgba(0,0,0,0.03);
 }
@@ -538,8 +599,8 @@ textarea { min-height: 80px; resize: vertical; }
   background: var(--paper2);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  overflow: hidden;
-  box-shadow: var(--shadow-sm);
+  overflow: auto;
+  box-shadow: var(--card-shadow);
 }
 table {
   width: 100%;
@@ -547,45 +608,45 @@ table {
   text-align: right;
 }
 th, td {
-  padding: 12px 16px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--line);
-  font-size: 13px;
+  font-size: 12.5px;
 }
 th {
-  background: var(--slate-50);
+  background: var(--paper3);
   font-weight: 700;
-  color: var(--slate-600);
-  font-size: 12px;
+  color: var(--ink-secondary);
+  font-size: 11.5px;
   white-space: nowrap;
 }
 tbody tr { transition: background-color 0.1s ease; }
-tbody tr:hover { background-color: var(--slate-50); }
+tbody tr:hover { background-color: var(--paper3); }
 tr:last-child td { border-bottom: none; }
-.row-actions { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+.row-actions { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
 
 /* Filter Bar */
 .filters-bar {
   display: flex;
-  gap: 12px;
-  margin-bottom: 18px;
+  gap: 10px;
+  margin-bottom: 16px;
   flex-wrap: wrap;
   align-items: center;
   background: var(--paper2);
-  padding: 12px 16px;
+  padding: 10px 14px;
   border-radius: var(--radius);
   border: 1px solid var(--line);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--card-shadow);
 }
 .filters-bar input, .filters-bar select {
   width: auto;
-  min-width: 180px;
+  min-width: 160px;
 }
 
 /* Modal Windows */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(15, 23, 42, 0.7);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
@@ -598,16 +659,18 @@ tr:last-child td { border-bottom: none; }
 @keyframes slideUp { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
 
 .modal-content {
-  background: #ffffff;
+  background: var(--paper2);
+  border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   max-width: 680px;
   width: 100%;
   max-height: 90vh;
   overflow: auto;
-  padding: 24px;
+  padding: 22px;
   position: relative;
   animation: slideUp 0.2s ease-out;
+  color: var(--ink);
 }
 
 /* Toast Notifications */
@@ -625,9 +688,9 @@ tr:last-child td { border-bottom: none; }
   pointer-events: auto;
   background: var(--slate-900);
   color: #fff;
-  padding: 12px 18px;
+  padding: 11px 16px;
   border-radius: var(--radius-sm);
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
   box-shadow: var(--shadow-lg);
   display: flex;
@@ -644,38 +707,38 @@ tr:last-child td { border-bottom: none; }
 /* Section Picker */
 .section-picker-wrap {
   max-width: 820px;
-  margin: 40px auto;
+  margin: 36px auto;
   padding: 0 20px;
 }
 .section-card {
   background: var(--paper2);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  padding: 28px 20px;
+  padding: 24px 18px;
   text-align: center;
   cursor: pointer;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--card-shadow);
   transition: all 0.2s ease;
 }
 .section-card:hover {
-  transform: translateY(-4px);
+  transform: translateY(-3px);
   box-shadow: var(--shadow-md);
   border-color: var(--primary);
 }
 .section-card-icon {
-  width: 64px;
-  height: 64px;
-  border-radius: 18px;
-  margin: 0 auto 16px;
+  width: 58px;
+  height: 58px;
+  border-radius: 16px;
+  margin: 0 auto 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 30px;
-  background: var(--slate-100);
+  font-size: 28px;
+  background: var(--paper3);
   transition: all 0.2s ease;
 }
 .section-card:hover .section-card-icon {
-  transform: scale(1.08);
+  transform: scale(1.06);
   background: var(--primary-light);
   color: var(--primary);
 }
@@ -705,16 +768,16 @@ tr:last-child td { border-bottom: none; }
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  border-bottom: 2px solid var(--slate-900);
+  border-bottom: 2px solid #0f172a;
   padding-bottom: 4px;
   margin-bottom: 4px;
 }
-#receiptPaper h4 { margin: 0; font-size: 15px; font-weight: 900; line-height: 1.2; }
-#receiptPaper .r-sub { font-size: 9px; color: var(--slate-600); margin-top: 1px; }
+#receiptPaper h4 { margin: 0; font-size: 15px; font-weight: 900; line-height: 1.2; color: #0f172a; }
+#receiptPaper .r-sub { font-size: 9px; color: #475569; margin-top: 1px; }
 #receiptPaper .r-badge {
   font-size: 13px;
   font-weight: 900;
-  background: var(--slate-900);
+  background: #0f172a;
   color: #fff;
   padding: 3px 10px;
   border-radius: 4px;
@@ -724,42 +787,69 @@ tr:last-child td { border-bottom: none; }
 #receiptPaper .section-title {
   font-size: 9.5px;
   font-weight: 800;
-  color: var(--primary);
+  color: #2563eb;
   margin: 4px 0 2px;
   text-transform: uppercase;
   letter-spacing: .02em;
 }
 #receiptPaper table { width: 100%; border-collapse: collapse; font-size: 9.5px; margin-bottom: 2px; }
-#receiptPaper td { padding: 2px 4px; vertical-align: top; border-bottom: 1px solid #f1f5f9; }
+#receiptPaper td { padding: 2px 4px; vertical-align: top; border-bottom: 1px solid #f1f5f9; color: #111; }
 #receiptPaper td.k { color: #64748b; width: 18%; font-weight: 700; }
 #receiptPaper .fin-box {
   display: flex;
   gap: 0;
-  border: 1px solid var(--slate-300);
+  border: 1px solid #cbd5e1;
   border-radius: 5px;
   overflow: hidden;
   margin-top: 4px;
   background: #f8fafc;
 }
-#receiptPaper .fin-cell { flex: 1; padding: 3px 4px; border-left: 1px solid var(--slate-300); text-align: center; }
+#receiptPaper .fin-cell { flex: 1; padding: 3px 4px; border-left: 1px solid #cbd5e1; text-align: center; }
 #receiptPaper .fin-cell:last-child { border-left: none; }
-#receiptPaper .fin-cell .l { font-size: 8px; color: var(--slate-500); font-weight: 600; }
-#receiptPaper .fin-cell .v { font-size: 11.5px; font-weight: 900; }
-#receiptPaper .fin-cell.hi .v { color: var(--red); }
+#receiptPaper .fin-cell .l { font-size: 8px; color: #64748b; font-weight: 600; }
+#receiptPaper .fin-cell .v { font-size: 11.5px; font-weight: 900; color: #0f172a; }
+#receiptPaper .fin-cell.hi .v { color: #e11d48; }
 #receiptPaper .terms {
   font-size: 6.8px;
-  color: var(--slate-600);
+  color: #475569;
   margin-top: 4px;
-  border-top: 1px dashed var(--slate-400);
+  border-top: 1px dashed #94a3b8;
   padding-top: 2px;
   line-height: 1.25;
 }
 #receiptPaper .sign-row { display: flex; justify-content: space-between; margin-top: 6px; font-size: 8.5px; }
-#receiptPaper .sign-row div { width: 45%; border-top: 1px solid var(--slate-400); padding-top: 2px; text-align: center; color: var(--slate-600); }
+#receiptPaper .sign-row div { width: 45%; border-top: 1px solid #94a3b8; padding-top: 2px; text-align: center; color: #475569; }
+
+/* Thermal Sticker Paper (50mm x 30mm) */
+#stickerPaper {
+  width: 50mm;
+  height: 30mm;
+  max-height: 30mm;
+  background: #ffffff;
+  padding: 1.5mm 2.5mm;
+  font-size: 7.5px;
+  line-height: 1.15;
+  color: #000000;
+  box-sizing: border-box;
+  overflow: hidden;
+  font-family: var(--font-main);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
 
 @media print {
   @page {
     size: A5 landscape;
+    margin: 0;
+  }
+  body.printing-sticker {
+    width: 50mm !important;
+    height: 30mm !important;
+    max-height: 30mm !important;
+  }
+  body.printing-sticker @page {
+    size: 50mm 30mm;
     margin: 0;
   }
   *, *::before, *::after {
@@ -784,7 +874,7 @@ tr:last-child td { border-bottom: none; }
     break-inside: avoid !important;
     break-after: avoid !important;
   }
-  #app, #toastContainer, .modal-overlay, .login-screen {
+  #app, #toastContainer, .modal-overlay, .login-screen, .tracking-container {
     display: none !important;
   }
   #printMount {
@@ -799,6 +889,11 @@ tr:last-child td { border-bottom: none; }
     page-break-after: avoid !important;
     break-inside: avoid !important;
     break-after: avoid !important;
+  }
+  body.printing-sticker #printMount {
+    width: 50mm !important;
+    height: 30mm !important;
+    max-height: 30mm !important;
   }
   #receiptPaper {
     position: absolute !important;
@@ -822,6 +917,23 @@ tr:last-child td { border-bottom: none; }
     font-size: 10px !important;
     line-height: 1.3 !important;
   }
+  #stickerPaper {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 50mm !important;
+    height: 30mm !important;
+    max-height: 30mm !important;
+    box-shadow: none !important;
+    padding: 1.5mm 2mm !important;
+    font-size: 7.5px !important;
+    line-height: 1.15 !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    box-sizing: border-box !important;
+  }
 }
 
 /* Responsive */
@@ -836,17 +948,85 @@ tr:last-child td { border-bottom: none; }
   .grid2, .grid3, .grid4 { grid-template-columns: 1fr; }
 }
 
-.empty { padding: 40px; text-align: center; color: var(--slate-400); font-size: 13.5px; font-weight: 500; }
+.empty { padding: 36px; text-align: center; color: var(--ink-secondary); font-size: 13px; font-weight: 500; }
 .login-screen {
   max-width: 380px;
-  margin: 80px auto;
+  margin: 70px auto;
   background: var(--paper2);
-  padding: 32px 28px;
+  padding: 30px 26px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--line);
   box-shadow: var(--shadow-lg);
 }
-.hint { font-size: 11.5px; color: var(--slate-500); margin-top: 6px; line-height: 1.5; }
+
+/* Public Customer Tracking Portal */
+.tracking-container {
+  max-width: 600px;
+  margin: 40px auto;
+  padding: 0 16px;
+}
+.tracking-card {
+  background: var(--paper2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: var(--shadow-md);
+}
+.tracking-timeline {
+  display: flex;
+  justify-content: space-between;
+  position: relative;
+  margin: 24px 0;
+}
+.tracking-timeline::before {
+  content: '';
+  position: absolute;
+  top: 14px;
+  right: 20px;
+  left: 20px;
+  height: 3px;
+  background: var(--line-strong);
+  z-index: 1;
+}
+.timeline-step {
+  position: relative;
+  z-index: 2;
+  text-align: center;
+  flex: 1;
+}
+.timeline-node {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--paper2);
+  border: 3px solid var(--line-strong);
+  margin: 0 auto 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: bold;
+}
+.timeline-step.active .timeline-node {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  box-shadow: 0 0 0 4px var(--primary-focus);
+}
+.timeline-step.done .timeline-node {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+.timeline-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-secondary);
+}
+.timeline-step.active .timeline-title {
+  color: var(--primary);
+  font-weight: 800;
+}
 </style>
 </head>
 <body>
@@ -933,36 +1113,19 @@ async function loadSales(){ try{ return await apiGet('getSales'); }catch(e){ ret
 async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, customerPhone, paymentMethod, amountPaid){
   return apiPost('saveSale', {itemsSummary, itemsJson, total, customerName, customerPhone, paymentMethod, amountPaid, date: new Date().toISOString().slice(0,10), user: state.user.name});
 }
-async function settleSaleDebtRemote(saleId, amount){ return apiPost('settleSaleDebt', {saleId, amount}); }
-async function loadReturns(){ try{ return await apiGet('getReturns'); }catch(e){ return []; } }
-async function saveReturnRemote(saleId, itemsSummary, refundAmount){
-  return apiPost('saveReturn', {saleId, itemsSummary, refundAmount, date: new Date().toISOString().slice(0,10), user: state.user.name});
-}
 
 async function loadQuotations(){ try{ return await apiGet('getQuotations'); }catch(e){ return []; } }
 async function saveQuotationRemote(q){ return apiPost('saveQuotation', {data:q}); }
 async function loadServices(){ try{ return await apiGet('getServices'); }catch(e){ return []; } }
-async function saveServiceRemote(s){ return apiPost('saveService', {data:s}); }
 
 async function loadPurchases(){ try{ return await apiGet('getPurchases'); }catch(e){ return []; } }
-async function savePurchaseRemote(supplier, supplierId, itemsSummary, total, warrantyMonths, amountPaid){
-  return apiPost('savePurchase', {supplier, supplierId, itemsSummary, total, warrantyMonths, amountPaid, date: new Date().toISOString().slice(0,10), user: state.user.name});
-}
-async function settlePurchaseDebtRemote(purchaseId, supplierId, amount, note){
-  return apiPost('settlePurchaseDebt', {purchaseId, supplierId, amount, note, date: new Date().toISOString().slice(0,10), user: state.user.name});
-}
-
 async function loadSuppliers(){ try{ return await apiGet('getSuppliers'); }catch(e){ return []; } }
 async function saveSupplierRemote(s){ return apiPost('saveSupplier', {data:s}); }
-async function loadSupplierPayments(){ try{ return await apiGet('getSupplierPayments'); }catch(e){ return []; } }
-
 async function loadSerials(itemId, status){ try{ const p={}; if(itemId) p.itemId=itemId; if(status) p.status=status; return await apiGet('getSerials', p); }catch(e){ return []; } }
-async function saveSerialRemote(itemId, itemName, serial, purchaseId, supplierId, warrantyMonths){
-  return apiPost('saveSerial', {itemId, itemName, serial, purchaseId, supplierId, warrantyMonths});
-}
-async function markSerialSoldRemote(serialId, soldRef){
-  return apiPost('markSerialSold', {serialId, soldRef, soldDate: new Date().toISOString().slice(0,10)});
-}
+
+async function loadExpenses(){ try{ return await apiGet('getExpenses'); }catch(e){ return []; } }
+async function saveExpenseRemote(exp){ return apiPost('saveExpense', {data: exp, user: state.user.name}); }
+async function deleteExpenseRemote(id){ return apiPost('deleteExpense', {id, role: state.user.role}); }
 
 async function loadReceipts(){ try{ return (await apiGet('getReceipts')).map(rowToReceipt); }catch(e){ showToast('تعذر تحميل الإيصالات: '+e.message, 'error'); return []; } }
 async function loadCustomers(){ try{ return (await apiGet('getCustomers')).map(r=>({name:r.Name, phone:String(r.Phone||''), email:r.Email||''})); }catch(e){ return []; } }
@@ -994,6 +1157,7 @@ const STATUSES = [
   {v:'تعذرت الصيانة', cls:'st-failed', icon:'🚫', desc:'تعذر الإصلاح'},
   {v:'رفض العميل', cls:'st-rejected', icon:'❌', desc:'رفض العميل التكلفة/الإصلاح'}
 ];
+const EXPENSE_CATEGORIES = ['إيجار','كهرباء ومياه','بوفيه ونثريات','أدوات وصيانة مقر','شحن وتوصيل','رواتب وسلفيات','دعاية وإعلانات','أخرى'];
 const TERMS = `1) فترة الفحص: يتم فحص الجهاز وتسعير التكلفة خلال مدة أقصاها 48 ساعة من الاستلام، ولا يتم الإصلاح النهائي إلا بعد موافقة العميل.  2) استلام الأجهزة: الشركة غير مسؤولة عن أي جهاز متروك أكثر من 30 يوماً من إشعار العميل بالانتهاء.  3) الضمان: يسري على قطع الغيار المبدلة والخدمة لمدة محددة حسب نوع الإصلاح، ولا يشمل سوء الاستخدام أو السوائل أو الكسر.  4) البيانات: الشركة غير مسؤولة عن فقدان البيانات، يرجى أخذ نسخة احتياطية مسبقاً.  5) لا يُسلم الجهاز إلا بموجب هذا الإيصال الأصلي أو إثبات الهوية.`;
 function cleanDate(x){ return x ? String(x).slice(0,10) : ''; }
 const WA_ICON = `<svg class="wa-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12c0 1.85.5 3.58 1.35 5.07L2 22l5.07-1.35C8.55 21.5 10.27 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm0 18c-1.5 0-2.9-.41-4.1-1.13l-.29-.17-3.02.8.8-3.02-.17-.29A7.94 7.94 0 0 1 4 12c0-4.41 3.59-8 8-8s8 3.59 8 8-3.59 8-8 8z"/></svg>`;
@@ -1005,28 +1169,31 @@ let state = {
   receipts: [],
   customers: [],
   technicians: [],
+  expenses: [],
   formStep: 0,
   draft: null,
   archiveFilter: {q:'', status:'', tech:'', group:'all'},
-  bonusFilter: {tech:'', from:'', to:''},
-  bonusValues: {},
   settings: {shopName: 'صيانة ميكروتك', logoUrl: ''},
   payments: [],
   inventory: [],
   sales: [],
-  returns: [],
   quotations: [],
   services: [],
   purchases: [],
   suppliers: [],
-  supplierPayments: [],
   serials: [],
   currentSection: null,
-  lastCompletedSale: null,
   cart: [],
   quoCart: [],
-  purchaseCart: []
+  theme: localStorage.getItem('microerp_theme') || 'light'
 };
+
+function applyTheme(t){
+  state.theme = t;
+  document.documentElement.setAttribute('data-theme', t);
+  localStorage.setItem('microerp_theme', t);
+}
+applyTheme(state.theme);
 
 function newDraft(){
   const today = new Date();
@@ -1060,13 +1227,102 @@ async function nextReceiptNumber(){
   return 'MT-'+y+'-'+String(countThisYear+1).padStart(4,'0');
 }
 
+/* ---------------- Check URL for Public Customer Tracking ---------------- */
+function checkCustomerTrackingURL(){
+  const params = new URLSearchParams(window.location.search);
+  const trackNum = params.get('track') || params.get('r');
+  if(trackNum){
+    renderPublicTrackingPortal(trackNum);
+    return true;
+  }
+  return false;
+}
+
+async function renderPublicTrackingPortal(receiptNum){
+  const app = document.getElementById('app');
+  app.innerHTML = '<div class="empty" style="padding-top:100px;">⏳ جارٍ الاستعلام عن حالة جهازك...</div>';
+  let receipts = [];
+  try{ receipts = (await apiGet('getReceipts')).map(rowToReceipt); }catch(e){}
+  const r = receipts.find(x=>x.receiptNumber.trim()===receiptNum.trim());
+  
+  if(!r){
+    app.innerHTML = `
+      <div class="tracking-container">
+        <div class="tracking-card" style="text-align:center;">
+          <div style="font-size:40px;margin-bottom:12px;">🔍</div>
+          <h2>لم يتم العثور على الإيصال</h2>
+          <p class="subtitle" style="margin-bottom:20px;">تأكد من رقم الإيصال المكتوب: <b>${receiptNum}</b></p>
+          <a href="${window.location.pathname}" class="btn btn-primary">العودة لتسجيل الدخول</a>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  const remaining = Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0);
+  const isDone = r.status==='مكتمل';
+  const isRepair = r.status==='الصيانة';
+  const isCheck = r.status==='قيد الفحص';
+
+  app.innerHTML = `
+    <div class="tracking-container">
+      <div class="tracking-card">
+        <div style="text-align:center;border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:16px;">
+          <div style="font-size:28px;">⚡</div>
+          <h2 style="margin:4px 0;">بوابة تتبع الصيانة — ميكروتك</h2>
+          <div class="subtitle">رقم الإيصال: <b class="mono" style="color:var(--primary);font-size:16px;">${r.receiptNumber}</b></div>
+        </div>
+
+        <div class="tracking-timeline">
+          <div class="timeline-step done">
+            <div class="timeline-node">✓</div>
+            <div class="timeline-title">الاستلام</div>
+          </div>
+          <div class="timeline-step ${isCheck||isRepair||isDone?'active done':''}">
+            <div class="timeline-node">${isCheck?'🔍':'✓'}</div>
+            <div class="timeline-title">الفحص والتشخيص</div>
+          </div>
+          <div class="timeline-step ${isRepair||isDone?'active done':''}">
+            <div class="timeline-node">${isRepair?'🛠️':(isDone?'✓':'')}</div>
+            <div class="timeline-title">جاري الصيانة</div>
+          </div>
+          <div class="timeline-step ${isDone?'active done':''}">
+            <div class="timeline-node">${isDone?'✅':''}</div>
+            <div class="timeline-title">جاهز للاستلام</div>
+          </div>
+        </div>
+
+        <div style="background:var(--paper3);border-radius:var(--radius);padding:16px;margin-bottom:16px;line-height:1.8;">
+          <div><b>👤 اسم العميل:</b> ${r.customer.name}</div>
+          <div><b>💻 الجهاز:</b> ${r.device.category} - ${r.device.brand==='أخرى'?r.device.brandOther:r.device.brand} ${r.device.model||''}</div>
+          <div><b>⚠️ العطل المبلغ عنه:</b> ${r.faults.join('، ')||'-'}</div>
+          <div><b>📅 موعد التسليم المتوقع:</b> ${r.deliveryDate||'قيد التحديد'}</div>
+          <div><b>📌 الحالة الحالية:</b> <span class="status-badge ${(STATUSES.find(s=>s.v===r.status)||{}).cls||'st-check'}">${r.status}</span></div>
+        </div>
+
+        <div class="fin-box" style="margin-bottom:20px;">
+          <div class="fin-cell"><div class="l">إجمالي التكلفة</div><div class="v">${Number(r.cost||0)+Number(r.partsCost||0)} ج.م</div></div>
+          <div class="fin-cell"><div class="l">المدفوع مقدماً</div><div class="v">${Number(r.deposit||0)} ج.م</div></div>
+          <div class="fin-cell hi"><div class="l">المتبقي المطلوب</div><div class="v">${remaining} ج.م</div></div>
+        </div>
+
+        <div style="display:flex;gap:10px;justify-content:center;">
+          <a href="https://wa.me/201000000000?text=${encodeURIComponent('استفسار بخصوص إيصال رقم '+r.receiptNumber)}" target="_blank" class="btn btn-whatsapp">${WA_ICON} تواصل مع خدمة العملاء</a>
+          <a href="${window.location.pathname}" class="btn btn-ghost">🔒 دخول الموظفين</a>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 /* ---------------- Init ---------------- */
 async function init(){
+  if(checkCustomerTrackingURL()) return;
   const main = document.getElementById('app');
-  if(main) main.innerHTML = '<div class="empty" style="padding-top:100px;"><div style="font-size:32px;margin-bottom:12px;">⏳</div><div>جارٍ الاتصال بقاعدة البيانات السحابية وتحميل البيانات...</div></div>';
+  if(main) main.innerHTML = '<div class="empty" style="padding-top:100px;"><div style="font-size:32px;margin-bottom:12px;">⏳</div><div>جارٍ الاتصال بقاعدة البيانات وتحميل البيانات...</div></div>';
   try {
-    [state.receipts, state.customers, state.technicians, state.settings, state.payments, state.inventory, state.sales, state.returns, state.quotations, state.services, state.purchases, state.suppliers, state.supplierPayments] = await Promise.all([
-      loadReceipts(), loadCustomers(), loadTechnicians(), loadSettings(), loadPayments(), loadInventory(), loadSales(), loadReturns(), loadQuotations(), loadServices(), loadPurchases(), loadSuppliers(), loadSupplierPayments()
+    [state.receipts, state.customers, state.technicians, state.settings, state.payments, state.inventory, state.sales, state.quotations, state.services, state.purchases, state.suppliers, state.expenses] = await Promise.all([
+      loadReceipts(), loadCustomers(), loadTechnicians(), loadSettings(), loadPayments(), loadInventory(), loadSales(), loadQuotations(), loadServices(), loadPurchases(), loadSuppliers(), loadExpenses()
     ]);
   } catch(e) {
     console.error(e);
@@ -1075,6 +1331,7 @@ async function init(){
 }
 async function refreshPayments(){ state.payments = await loadPayments(); }
 async function refreshSales(){ state.sales = await loadSales(); }
+async function refreshExpenses(){ state.expenses = await loadExpenses(); }
 
 /* ---------------- Render Root ---------------- */
 function render(){
@@ -1098,7 +1355,7 @@ const SECTION_INFO = {
   cameras: {label:'كاميرات المراقبة', icon:'📷', desc:'كتالوج الكاميرات وعروض أسعار التركيب'},
   pos: {label:'نقطة البيع (POS)', icon:'🧾', desc:'بيع سريع بالفاتورة والباركود وضمان المنتجات'},
   inventory: {label:'المخزن العام', icon:'📦', desc:'الأصناف، المشتريات، الموردين، والأرقام التسلسلية'},
-  finance: {label:'القسم المالي', icon:'💰', desc:'حسابات العملاء والموردين ومكافآت الفنيين'}
+  finance: {label:'القسم المالي والمصروفات', icon:'💰', desc:'المقبوضات، المصروفات، تقفيل الخزينة، والمكافآت'}
 };
 const INVENTORY_CATEGORIES = ['صيانة','كاميرات','كمبيوتر','إكسسوار'];
 
@@ -1107,20 +1364,23 @@ function renderSectionPicker(app){
   const logoUrl = state.settings.logoUrl;
   app.innerHTML = `
     <div class="section-picker-wrap">
-      <div style="text-align:center;margin-bottom:30px;">
-        ${logoUrl ? `<img src="${logoUrl}" alt="logo" style="max-height:60px;max-width:200px;object-fit:contain;margin-bottom:12px;">` : ''}
-        <div style="font-weight:900;font-size:28px;color:var(--slate-900);">${state.settings.shopName || 'ميكروERP'}</div>
-        <div class="subtitle" style="font-size:14px;margin-top:4px;">مرحبًا <b>${state.user.name}</b> — اختر القسم الذي ترغب في العمل عليه</div>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+        <button class="theme-toggle-btn" id="themeTogglePicker">${state.theme==='dark'?'☀️ المظهر الفاتح':'🌙 المظهر الليلي'}</button>
       </div>
-      <div class="stat-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
+      <div style="text-align:center;margin-bottom:28px;">
+        ${logoUrl ? `<img src="${logoUrl}" alt="logo" style="max-height:55px;max-width:180px;object-fit:contain;margin-bottom:10px;">` : ''}
+        <div style="font-weight:900;font-size:26px;color:var(--ink);">${state.settings.shopName || 'ميكروERP'}</div>
+        <div class="subtitle" style="font-size:13.5px;margin-top:3px;">مرحبًا <b>${state.user.name}</b> — اختر القسم الذي ترغب في العمل عليه</div>
+      </div>
+      <div class="stat-grid" style="grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));">
         ${sections.length===0 ? '<div class="empty">لا توجد أقسام مخصصة لحسابك. يرجى مراجعة المسؤول.</div>' : sections.map(s=>`
           <div class="section-card" data-sec="${s}">
             <div class="section-card-icon">${SECTION_INFO[s].icon}</div>
-            <div style="font-weight:800;font-size:16px;color:var(--slate-800);">${SECTION_INFO[s].label}</div>
-            <div class="subtitle" style="margin-top:6px;">${SECTION_INFO[s].desc}</div>
+            <div style="font-weight:800;font-size:15.5px;color:var(--ink);">${SECTION_INFO[s].label}</div>
+            <div class="subtitle" style="margin-top:5px;font-size:12px;">${SECTION_INFO[s].desc}</div>
           </div>`).join('')}
       </div>
-      <div style="text-align:center;margin-top:30px;">
+      <div style="text-align:center;margin-top:28px;">
         <button class="btn btn-ghost btn-sm" id="logoutPickerBtn">🚪 تسجيل الخروج</button>
       </div>
     </div>
@@ -1130,13 +1390,17 @@ function renderSectionPicker(app){
   });
   const logoutBtn = document.getElementById('logoutPickerBtn');
   if(logoutBtn) logoutBtn.onclick = logout;
+  document.getElementById('themeTogglePicker').onclick = ()=>{
+    applyTheme(state.theme==='dark'?'light':'dark');
+    renderSectionPicker(app);
+  };
 }
 
 function brandHtml(subtitle){
   const logoUrl = state.settings.logoUrl;
   return `<div class="brand">
     <div class="brand-logo-wrap">
-      ${logoUrl ? `<img src="${logoUrl}" style="width:100%;height:100%;object-fit:contain;border-radius:10px;">` : `⚡`}
+      ${logoUrl ? `<img src="${logoUrl}" style="width:100%;height:100%;object-fit:contain;border-radius:8px;">` : `⚡`}
     </div>
     <div class="brand-text">
       <h1>${state.settings.shopName}</h1>
@@ -1148,7 +1412,7 @@ function brandHtml(subtitle){
 function sectionSwitcherHtml(){
   const sections = state.user.sections || [];
   if(sections.length<=1) return '';
-  return `<div class="nav-item" id="switchSectionBtn" style="color:#38bdf8;border:1px dashed rgba(56,189,248,0.3);margin:10px 10px 4px;">
+  return `<div class="nav-item" id="switchSectionBtn" style="color:#38bdf8;border:1px dashed rgba(56,189,248,0.3);margin:8px 8px 3px;">
     <span class="nav-item-icon">↩</span><span>الرجوع للأقسام</span>
   </div>`;
 }
@@ -1162,15 +1426,21 @@ function sidebarFootHtml(){
         <div class="role-badge">${state.user.role === 'admin' ? 'مدير عام' : 'مستخدم'}</div>
       </div>
     </div>
-    <div style="margin-top:12px;text-align:center;">
-      <span id="logoutBtn" style="cursor:pointer;color:#f87171;font-size:12px;font-weight:600;">🚪 تسجيل الخروج</span>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
+      <button class="theme-toggle-btn" id="sidebarThemeToggle" style="font-size:10.5px;padding:4px 8px;background:rgba(255,255,255,0.08);color:#fff;border:none;">${state.theme==='dark'?'☀️ فاتح':'🌙 ليلي'}</button>
+      <span id="logoutBtn" style="cursor:pointer;color:#f87171;font-size:11.5px;font-weight:600;">🚪 خروج</span>
     </div>
   </div>`;
 }
 
-function attachLogoutHandler(){
-  const btn = document.getElementById('logoutBtn');
-  if(btn) btn.onclick = logout;
+function attachSidebarHandlers(){
+  const lBtn = document.getElementById('logoutBtn');
+  if(lBtn) lBtn.onclick = logout;
+  const tBtn = document.getElementById('sidebarThemeToggle');
+  if(tBtn) tBtn.onclick = ()=>{
+    applyTheme(state.theme==='dark'?'light':'dark');
+    render();
+  };
 }
 
 function logout(){
@@ -1191,6 +1461,7 @@ function renderMaintenanceApp(app){
         ${navItem('dashboard','📊','لوحة التحكم')}
         ${navItem('new','➕','إيصال جديد')}
         ${navItem('archive','📁','أرشيف الصيانة')}
+        ${navItem('analytics','📈','التقارير والإحصائيات')}
         ${state.user.role==='admin' ? `<div class="nav-section">الإدارة</div>` : ''}
         ${state.user.role==='admin' ? navItem('inventory','📦','قطع الغيار') : ''}
         ${state.user.role==='admin' ? navItem('settings','⚙️','الإعدادات') : ''}
@@ -1201,7 +1472,7 @@ function renderMaintenanceApp(app){
   `;
   const sw = document.getElementById('switchSectionBtn');
   if(sw) sw.onclick = ()=>{ state.currentSection = null; render(); };
-  attachLogoutHandler();
+  attachSidebarHandlers();
   document.querySelectorAll('.nav-item[data-tab]').forEach(el=>{
     el.onclick = ()=>{
       state.tab = el.dataset.tab;
@@ -1225,6 +1496,7 @@ function renderMain(){
   if(state.tab==='dashboard') return renderDashboard(main);
   if(state.tab==='new') return renderForm(main);
   if(state.tab==='archive') return renderArchive(main);
+  if(state.tab==='analytics') return renderMaintenanceAnalytics(main);
   if(state.tab==='inventory') return renderInventory(main, 'صيانة', 'مخزن قطع الغيار');
   if(state.tab==='settings') return renderSettings(main);
 }
@@ -1236,11 +1508,11 @@ function renderDashboard(main){
   const inProgress = r.filter(x=>x.status==='قيد الفحص'||x.status==='الصيانة').length;
   const done = r.filter(x=>x.status==='مكتمل').length;
   const todayIncome = state.payments.filter(p=>String(p.Date||'').slice(0,10)===today).reduce((s,p)=>s+Number(p.Amount||0),0);
-  const overdue = r.filter(x=>{
+  const overdueList = r.filter(x=>{
     if(x.status!=='مكتمل') return false;
     const d = new Date(x.updatedAt||x.date);
-    return (Date.now()-d.getTime())/86400000 > 30;
-  }).length;
+    return (Date.now()-d.getTime())/86400000 > 7;
+  });
 
   main.innerHTML = `
     <div class="top-header">
@@ -1248,8 +1520,9 @@ function renderDashboard(main){
         <h2 class="page-title">📊 لوحة التحكم — قسم الصيانة</h2>
         <div class="subtitle">نظرة عامة على حالة الأجهزة ومتابعة سير العمل اليومي</div>
       </div>
-      <div>
-        <button class="btn btn-primary" id="dashNewReceiptBtn">➕ استلام جهاز جديد</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost btn-sm" id="exportExcelDashBtn">📥 تصدير الإيصالات Excel</button>
+        <button class="btn btn-primary btn-sm" id="dashNewReceiptBtn">➕ استلام جهاز جديد</button>
       </div>
     </div>
 
@@ -1273,14 +1546,14 @@ function renderDashboard(main){
           <span class="lbl">مقبوضات اليوم</span>
           <div class="icon-box">💵</div>
         </div>
-        <div class="num mono">${todayIncome.toLocaleString()} <span style="font-size:14px;font-weight:600;">ج.م</span></div>
+        <div class="num mono">${todayIncome.toLocaleString()} <span style="font-size:13px;font-weight:600;">ج.م</span></div>
       </div>
       <div class="stat-card red">
         <div class="top-row">
-          <span class="lbl">متروكة +30 يوم</span>
-          <div class="icon-box">⚠️</div>
+          <span class="lbl">متروكة +7 أيام</span>
+          <div class="icon-box">⏰</div>
         </div>
-        <div class="num mono">${overdue}</div>
+        <div class="num mono">${overdueList.length}</div>
       </div>
       <div class="stat-card">
         <div class="top-row">
@@ -1290,6 +1563,16 @@ function renderDashboard(main){
         <div class="num mono">${r.length}</div>
       </div>
     </div>
+
+    ${overdueList.length > 0 ? `
+    <div class="card" style="border-right: 4px solid var(--amber);background:var(--amber-bg);color:var(--amber-text);padding:14px 18px;margin-bottom:18px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+        <div style="font-size:13px;font-weight:700;">
+          ⚠️ يوجد <b>${overdueList.length}</b> أجهزة جاهزة ومكتملة الصيانة ولم يستلمها العملاء لأكثر من أسبوع!
+        </div>
+        <button class="btn btn-amber btn-sm" id="viewOverdueBtn">عرض الأجهزة وإرسال تذكير</button>
+      </div>
+    </div>` : ''}
 
     <div class="card">
       <div class="card-header">
@@ -1308,7 +1591,93 @@ function renderDashboard(main){
     state.tab = 'archive';
     renderMain();
   };
+  document.getElementById('exportExcelDashBtn').onclick = ()=>exportReceiptsToExcel(state.receipts);
+  const ovBtn = document.getElementById('viewOverdueBtn');
+  if(ovBtn) ovBtn.onclick = ()=>{
+    state.archiveFilter.group = 'overdue';
+    state.tab = 'archive';
+    renderMain();
+  };
   attachRowActions(main);
+}
+
+/* ---------------- Analytics & Charts ---------------- */
+function renderMaintenanceAnalytics(main){
+  const r = state.receipts;
+  const totalCost = r.reduce((s,x)=>s+Number(x.cost||0),0);
+  const totalParts = r.reduce((s,x)=>s+Number(x.partsCost||0),0);
+  const completed = r.filter(x=>x.status==='مكتمل').length;
+  const completionRate = r.length ? Math.round((completed/r.length)*100) : 0;
+
+  // Category counts
+  const catCounts = {};
+  r.forEach(x=>{ const c = x.device.category||'أخرى'; catCounts[c] = (catCounts[c]||0)+1; });
+
+  // Tech counts
+  const techCounts = {};
+  r.forEach(x=>{
+    const t = x.technician||'غير محدد';
+    if(!techCounts[t]) techCounts[t] = {total:0, done:0, income:0};
+    techCounts[t].total++;
+    if(x.status==='مكتمل') techCounts[t].done++;
+    techCounts[t].income += Number(x.cost||0);
+  });
+
+  main.innerHTML = `
+    <div class="top-header">
+      <div>
+        <h2 class="page-title">📈 التقارير والتحليلات البيانية</h2>
+        <div class="subtitle">إحصائيات تفصيلية لأداء الصيانة وفئات الأجهزة وإنتاجية الفنيين</div>
+      </div>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat-card green"><div class="num mono">${completionRate}%</div><div class="lbl">نسبة إنجاز الصيانة</div></div>
+      <div class="stat-card blue"><div class="num mono">${totalCost.toLocaleString()} ج.م</div><div class="lbl">إجمالي قيمة الخدمات</div></div>
+      <div class="stat-card amber"><div class="num mono">${totalParts.toLocaleString()} ج.م</div><div class="lbl">إجمالي تكلفة قطع الغيار</div></div>
+      <div class="stat-card purple"><div class="num mono">${(totalCost-totalParts).toLocaleString()} ج.م</div><div class="lbl">صافي عائد الصيانة</div></div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <h3>💻 فئات الأجهزة الأكثر استلاماً</h3>
+        <div style="margin-top:14px;">
+          ${Object.entries(catCounts).sort((a,b)=>b[1]-a[1]).map(([cat,count])=>{
+            const pct = Math.round((count/r.length)*100);
+            return `<div style="margin-bottom:12px;">
+              <div style="display:flex;justify-content:space-between;font-size:12.5px;font-weight:700;margin-bottom:4px;">
+                <span>${cat}</span><span class="mono">${count} جهاز (${pct}%)</span>
+              </div>
+              <div style="background:var(--paper3);border-radius:4px;height:8px;overflow:hidden;">
+                <div style="background:var(--primary);width:${pct}%;height:100%;border-radius:4px;"></div>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>👨‍🔧 إنتاجية وكفاءة الفنيين</h3>
+        <div class="table-wrap" style="margin-top:12px;">
+          <table>
+            <thead><tr><th>الفني</th><th>المسند</th><th>المكتمل</th><th>نسبة النجاح</th><th>عائد الخدمات</th></tr></thead>
+            <tbody>
+              ${Object.entries(techCounts).map(([tech,stat])=>{
+                const rate = stat.total ? Math.round((stat.done/stat.total)*100) : 0;
+                return `<tr>
+                  <td><b>${tech}</b></td>
+                  <td class="mono">${stat.total}</td>
+                  <td class="mono font-bold" style="color:var(--green);">${stat.done}</td>
+                  <td class="mono">${rate}%</td>
+                  <td class="mono font-bold">${stat.income.toLocaleString()} ج.م</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 /* ---------------- New Receipt Form ---------------- */
@@ -1484,12 +1853,12 @@ function stepFinance(body,d){
       <div class="grid3">
         <div class="field"><label>تكلفة الصيانة والخدمة (ج.م)</label><input id="finCost" type="number" value="${d.cost}" placeholder="0"></div>
         <div class="field"><label>الدفعة المقدمة (ج.م)</label><input id="finDep" type="number" value="${d.deposit}" placeholder="0"></div>
-        <div class="field"><label>تكلفة قطع الغيار المستخدمة (ج.م)</label><input id="finParts" type="number" value="${d.partsCost||0}" disabled style="background:var(--slate-100);"></div>
+        <div class="field"><label>تكلفة قطع الغيار المستخدمة (ج.م)</label><input id="finParts" type="number" value="${d.partsCost||0}" disabled style="background:var(--paper3);"></div>
       </div>
     </div>
-    <div class="card" style="background:#fafcff;border-color:#bfdbfe;">
+    <div class="card" style="background:var(--paper3);border-color:var(--line-strong);">
       <h3>📦 استخدام قطع غيار من المخزن (اختياري)</h3>
-      <div id="draftPartsUsedList" style="font-size:13px;margin-bottom:12px;color:var(--slate-700);">${d.partsUsed ? d.partsUsed : '<span style="color:#94a3b8;">لم تُضف قطع غيار بعد.</span>'}</div>
+      <div id="draftPartsUsedList" style="font-size:13px;margin-bottom:12px;color:var(--ink);">${d.partsUsed ? d.partsUsed : '<span style="color:var(--ink-secondary);">لم تُضف قطع غيار بعد.</span>'}</div>
       <div style="display:flex;gap:10px;align-items:flex-end;">
         <div class="field" style="flex:2;margin-bottom:0;"><label>الصنف من المخزن</label>
           <select id="draftInvPickItem">
@@ -1558,7 +1927,7 @@ function stepReview(body,d){
   body.innerHTML = `
     <div class="card">
       <h3>📋 مراجعة بيانات الإيصال قبل الحفظ</h3>
-      <div class="grid2" style="font-size:14px;line-height:2;">
+      <div class="grid2" style="font-size:13.5px;line-height:2;">
         <div><b>👤 العميل:</b> ${d.customer.name} — <span class="mono">${d.customer.phone}</span></div>
         <div><b>💻 الجهاز:</b> ${d.device.category} / ${d.device.brand==='أخرى'?d.device.brandOther:d.device.brand} / ${d.device.model||'-'}</div>
         <div><b>⚠️ الأعطال:</b> ${d.faults.join('، ')||'-'}</div>
@@ -1566,29 +1935,31 @@ function stepReview(body,d){
         <div><b>💵 تكلفة الخدمة:</b> ${d.cost||0} ج.م</div>
         <div><b>⚙️ تكلفة قطع الغيار:</b> ${d.partsCost||0} ج.م</div>
         <div><b>📥 الدفعة المقدمة:</b> ${d.deposit||0} ج.م</div>
-        <div><b style="color:var(--primary);">المبلغ المتبقي المطلوب:</b> <span class="mono" style="font-size:18px;font-weight:900;color:var(--primary);">${remaining}</span> ج.م</div>
+        <div><b style="color:var(--primary);">المبلغ المتبقي المطلوب:</b> <span class="mono" style="font-size:17px;font-weight:900;color:var(--primary);">${remaining}</span> ج.م</div>
         <div><b>📅 موعد التسليم:</b> ${d.deliveryDate||'غير محدد'}</div>
       </div>
     </div>
-    <div class="actions-row">
+    <div class="actions-row" style="flex-wrap:wrap;">
       <button class="btn btn-ghost" id="backBtn">السابق</button>
-      <div style="display:flex;gap:10px;">
-        <button class="btn btn-ghost" id="saveOnlyBtn">💾 حفظ فقط</button>
-        <button class="btn btn-whatsapp" id="saveWaBtn">${WA_ICON} حفظ وإرسال واتساب</button>
-        <button class="btn btn-primary" id="savePrintBtn">🖨️ حفظ وطباعة الإيصال</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" id="saveOnlyBtn">💾 حفظ فقط</button>
+        <button class="btn btn-whatsapp btn-sm" id="saveWaBtn">${WA_ICON} واتساب</button>
+        <button class="btn btn-amber btn-sm" id="saveStickerBtn">🏷️ حفظ وطباعة ملصق</button>
+        <button class="btn btn-primary btn-sm" id="savePrintBtn">🖨️ حفظ وطباعة A5</button>
       </div>
     </div>
   `;
   document.getElementById('backBtn').onclick = ()=>{ state.formStep=3; renderMain(); };
-  document.getElementById('saveOnlyBtn').onclick = ()=>saveReceipt(d,false,false);
-  document.getElementById('saveWaBtn').onclick = ()=>saveReceipt(d,false,true);
-  document.getElementById('savePrintBtn').onclick = ()=>saveReceipt(d,true,false);
+  document.getElementById('saveOnlyBtn').onclick = ()=>saveReceipt(d,false,false,false);
+  document.getElementById('saveWaBtn').onclick = ()=>saveReceipt(d,false,true,false);
+  document.getElementById('saveStickerBtn').onclick = ()=>saveReceipt(d,false,false,true);
+  document.getElementById('savePrintBtn').onclick = ()=>saveReceipt(d,true,false,false);
 }
 
-async function saveReceipt(d, print, sendWa){
+async function saveReceipt(d, printA5, sendWa, printSticker){
   d.updatedBy = state.user.name;
   d.updatedAt = new Date().toISOString();
-  const btns = document.querySelectorAll('#saveOnlyBtn,#savePrintBtn,#saveWaBtn');
+  const btns = document.querySelectorAll('#saveOnlyBtn,#savePrintBtn,#saveWaBtn,#saveStickerBtn');
   btns.forEach(b=>{ b.disabled = true; b.textContent = 'جارٍ الحفظ...'; });
   try{
     await saveReceiptRemote(d);
@@ -1606,7 +1977,8 @@ async function saveReceipt(d, print, sendWa){
     state.tab = 'archive';
     showToast(`تم حفظ الإيصال ${d.receiptNumber} بنجاح!`, 'success');
     renderMain();
-    if(print){ setTimeout(()=>openReceiptPrint(d,'receipt'), 300); }
+    if(printA5){ setTimeout(()=>openReceiptPrint(d,'receipt'), 300); }
+    if(printSticker){ setTimeout(()=>openStickerPrint(d), 300); }
     if(sendWa){ setTimeout(()=>openWhatsappChoice(d), 300); }
   }catch(e){
     showToast('تعذر حفظ الإيصال: '+e.message, 'error');
@@ -1614,11 +1986,12 @@ async function saveReceipt(d, print, sendWa){
   }
 }
 
-/* ---------------- Archive & Status Changer ---------------- */
+/* ---------------- Archive & Overdue Reminders ---------------- */
 const STATUS_GROUPS = {
   all: {label:'الكل', statuses:null},
   active: {label:'قيد العمل ⏳', statuses:['قيد الفحص','الصيانة']},
   done: {label:'جاهزة للاستلام ✅', statuses:['مكتمل']},
+  overdue: {label:'⏰ متروكة +7 أيام', statuses:null},
   rejected: {label:'تعذرت / مرفوضة ❌', statuses:['رفض العميل','تعذرت الصيانة']}
 };
 
@@ -1629,30 +2002,31 @@ function archiveTable(list){
   ${list.map(r=>{
     const st = STATUSES.find(s=>s.v===r.status) || STATUSES[0];
     const remaining = Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0);
-    return `<tr>
+    const isOverdue = r.status==='مكتمل' && (Date.now()-new Date(r.updatedAt||r.date).getTime())/86400000 > 7;
+    return `<tr style="${isOverdue?'background:rgba(245,158,11,0.08);':''}">
       <td>
-        <span class="mono" style="font-weight:800;font-size:13.5px;color:var(--primary);">${r.receiptNumber}</span>
-        <div style="color:var(--slate-400);font-size:11px;">${cleanDate(r.date)}</div>
+        <span class="mono" style="font-weight:800;font-size:13px;color:var(--primary);">${r.receiptNumber}</span>
+        <div style="color:var(--ink-secondary);font-size:11px;">${cleanDate(r.date)}</div>
       </td>
       <td>
         <b>${r.customer.name}</b>
-        <div style="color:var(--slate-500);font-size:11.5px;" class="mono">${r.customer.phone}</div>
+        <div style="color:var(--ink-secondary);font-size:11.5px;" class="mono">${r.customer.phone}</div>
       </td>
-      <td>${r.device.category} - ${r.device.brand==='أخرى'?r.device.brandOther:r.device.brand} <span style="color:var(--slate-500);">${r.device.model||''}</span></td>
-      <td>${r.technician ? `<span style="font-weight:600;">${r.technician}</span>` : '<span style="color:#94a3b8;">-</span>'}</td>
+      <td>${r.device.category} - ${r.device.brand==='أخرى'?r.device.brandOther:r.device.brand} <span style="color:var(--ink-secondary);">${r.device.model||''}</span></td>
+      <td>${r.technician ? `<span style="font-weight:600;">${r.technician}</span>` : '<span style="color:var(--slate-400);">-</span>'}</td>
       <td>
         <button class="btn-status-quick" data-quickstatus="${r.id}" title="اضغط لتغيير حالة الجهاز فورًا">
           <span class="status-badge ${st.cls}">${st.icon} ${r.status}</span>
-          <span style="font-size:10px;color:var(--slate-400);">⚡</span>
+          <span style="font-size:9.5px;color:var(--slate-400);">⚡</span>
         </button>
       </td>
       <td class="mono" style="font-weight:800;${remaining>0?'color:var(--red);':'color:var(--green);'}">${remaining} ج.م</td>
       <td class="row-actions">
-        <button class="btn btn-xs btn-ghost" data-act="view" data-id="${r.id}">تعديل / تفاصيل</button>
-        <button class="btn btn-xs btn-status-quick" style="background:#f0fdf4;color:#166534;border-color:#bbf7d0;" data-quickstatus="${r.id}">⚡ تغيير الحالة</button>
+        <button class="btn btn-xs btn-ghost" data-act="view" data-id="${r.id}">تعديل</button>
+        <button class="btn btn-xs btn-status-quick" style="background:var(--green-bg);color:var(--green-text);" data-quickstatus="${r.id}">⚡ الحالة</button>
+        <button class="btn btn-xs btn-amber" data-act="sticker" data-id="${r.id}">🏷️ ملصق</button>
         <button class="btn btn-xs btn-whatsapp" data-act="wa" data-id="${r.id}">${WA_ICON} واتساب</button>
-        <button class="btn btn-xs btn-green" data-act="print" data-id="${r.id}">طباعة</button>
-        <button class="btn btn-xs btn-ghost" data-act="workorder" data-id="${r.id}">أمر شغل</button>
+        <button class="btn btn-xs btn-green" data-act="print" data-id="${r.id}">طباعة A5</button>
         ${state.user.role==='admin' ? `<button class="btn btn-xs btn-red" data-act="del" data-id="${r.id}">حذف</button>`:''}
       </td>
     </tr>`;
@@ -1664,8 +2038,14 @@ function renderArchive(main){
   const f = state.archiveFilter;
   if(!f.group) f.group = 'all';
   let list = [...state.receipts];
-  const groupStatuses = STATUS_GROUPS[f.group].statuses;
-  if(groupStatuses) list = list.filter(r=>groupStatuses.includes(r.status));
+
+  if(f.group==='overdue'){
+    list = list.filter(r=>r.status==='مكتمل' && (Date.now()-new Date(r.updatedAt||r.date).getTime())/86400000 > 7);
+  } else {
+    const groupStatuses = STATUS_GROUPS[f.group].statuses;
+    if(groupStatuses) list = list.filter(r=>groupStatuses.includes(r.status));
+  }
+
   if(f.q) list = list.filter(r => r.receiptNumber.includes(f.q) || r.customer.name.includes(f.q) || r.customer.phone.includes(f.q) || (r.device.model&&r.device.model.includes(f.q)));
   if(f.status) list = list.filter(r=>r.status===f.status);
   if(f.tech) list = list.filter(r=>r.technician===f.tech);
@@ -1674,14 +2054,15 @@ function renderArchive(main){
     <div class="top-header">
       <div>
         <h2 class="page-title">📁 أرشيف إيصالات الصيانة</h2>
-        <div class="subtitle">البحث في الإيصالات وتحديث الحالات فورًا (${list.length} إيصال مطابق)</div>
+        <div class="subtitle">البحث في الإيصالات وتحديث الحالات وتصدير البيانات (${list.length} إيصال مطابق)</div>
       </div>
-      <div>
-        <button class="btn btn-primary" id="archNewReceiptBtn">➕ إيصال جديد</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost btn-sm" id="exportArchiveExcelBtn">📥 تصدير Excel</button>
+        <button class="btn btn-primary btn-sm" id="archNewReceiptBtn">➕ إيصال جديد</button>
       </div>
     </div>
 
-    <div class="chip-group" id="groupTabs" style="margin-bottom:14px;">
+    <div class="chip-group" id="groupTabs" style="margin-bottom:12px;">
       ${Object.entries(STATUS_GROUPS).map(([k,g])=>`<div class="chip ${f.group===k?'sel':''}" data-g="${k}">${g.label}</div>`).join('')}
     </div>
 
@@ -1696,6 +2077,7 @@ function renderArchive(main){
   `;
 
   document.getElementById('archNewReceiptBtn').onclick = ()=>{ state.tab='new'; startNewDraft(); };
+  document.getElementById('exportArchiveExcelBtn').onclick = ()=>exportReceiptsToExcel(list);
   document.querySelectorAll('#groupTabs .chip').forEach(c=>{ c.onclick = ()=>{ f.group = c.dataset.g; renderMain(); }; });
   document.getElementById('fq').oninput = e=>{ f.q=e.target.value; renderMain(); };
   document.getElementById('fstatus').onchange = e=>{ f.status=e.target.value.replace(/^[^\s]+\s/, ''); renderMain(); };
@@ -1715,7 +2097,7 @@ function attachRowActions(root){
       if(act==='view') openReceiptDetail(r);
       if(act==='wa') openWhatsapp(r);
       if(act==='print') openReceiptPrint(r,'receipt');
-      if(act==='workorder') openReceiptPrint(r,'workorder');
+      if(act==='sticker') openStickerPrint(r);
       if(act==='del'){
         if(confirm(`هل تريد حذف الإيصال ${r.receiptNumber} نهائياً؟`)){
           deleteReceiptRemote(r.id)
@@ -1742,30 +2124,30 @@ function openQuickStatusModal(r){
   const remaining = Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0);
 
   overlay.innerHTML = `
-    <div class="modal-content" style="max-width:480px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:16px;">
-        <h3 style="margin:0;font-size:17px;">⚡ تغيير حالة الجهاز السريع</h3>
+    <div class="modal-content" style="max-width:460px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
+        <h3 style="margin:0;font-size:16px;">⚡ تغيير حالة الجهاز السريع</h3>
         <button class="btn btn-ghost btn-xs" id="closeStatusModal">✕ إغلاق</button>
       </div>
 
-      <div style="background:var(--slate-50);padding:12px 14px;border-radius:var(--radius-sm);margin-bottom:16px;font-size:13px;line-height:1.6;">
+      <div style="background:var(--paper3);padding:10px 12px;border-radius:var(--radius-sm);margin-bottom:14px;font-size:12.5px;line-height:1.6;">
         <div><b>الإيصال:</b> <span class="mono" style="color:var(--primary);font-weight:700;">${r.receiptNumber}</span> | <b>العميل:</b> ${r.customer.name}</div>
         <div><b>الجهاز:</b> ${r.device.category} - ${r.device.brand==='أخرى'?r.device.brandOther:r.device.brand} ${r.device.model||''}</div>
         <div><b>الحالة الحالية:</b> <span class="status-badge ${(STATUSES.find(s=>s.v===r.status)||{}).cls||'st-check'}">${r.status}</span></div>
       </div>
 
-      <label style="margin-bottom:10px;font-size:13px;">اختر الحالة الجديدة للجهاز:</label>
-      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px;">
+      <label style="margin-bottom:8px;font-size:12.5px;">اختر الحالة الجديدة للجهاز:</label>
+      <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:16px;">
         ${STATUSES.map(s=>`
-          <button class="btn btn-ghost" data-setstatus="${s.v}" style="justify-content:space-between;padding:12px 16px;text-align:right;${r.status===s.v?'border-color:var(--primary);background:var(--primary-light);font-weight:800;':''}">
+          <button class="btn btn-ghost" data-setstatus="${s.v}" style="justify-content:space-between;padding:10px 14px;text-align:right;${r.status===s.v?'border-color:var(--primary);background:var(--primary-light);font-weight:800;':''}">
             <div style="display:flex;align-items:center;gap:8px;">
-              <span style="font-size:18px;">${s.icon}</span>
+              <span style="font-size:16px;">${s.icon}</span>
               <div>
-                <div style="font-size:13.5px;color:var(--slate-900);">${s.v}</div>
-                <div style="font-size:11px;color:var(--slate-500);font-weight:normal;">${s.desc}</div>
+                <div style="font-size:13px;color:var(--ink);">${s.v}</div>
+                <div style="font-size:10.5px;color:var(--ink-secondary);font-weight:normal;">${s.desc}</div>
               </div>
             </div>
-            ${r.status===s.v ? '<span style="color:var(--primary);font-size:12px;">(الحالة الحالية)</span>' : '<span>➔</span>'}
+            ${r.status===s.v ? '<span style="color:var(--primary);font-size:11.5px;">(الحالية)</span>' : '<span>➔</span>'}
           </button>
         `).join('')}
       </div>
@@ -1777,14 +2159,14 @@ function openQuickStatusModal(r){
         </select>
       </div>
 
-      <div style="background:#ecfdf5;border:1px solid #a7f3d0;padding:10px 14px;border-radius:var(--radius-sm);margin-bottom:16px;">
-        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#065f46;cursor:pointer;margin:0;">
+      <div style="background:var(--green-bg);border:1px solid var(--green);padding:9px 12px;border-radius:var(--radius-sm);margin-bottom:14px;">
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--green-text);cursor:pointer;margin:0;">
           <input type="checkbox" id="sendWaAfterStatus" checked style="width:auto;"> إرسال رسالة واتساب للعميل لإشعاره بتحديث الحالة فورًا
         </label>
       </div>
 
-      <div style="display:flex;justify-content:flex-end;gap:10px;">
-        <button class="btn btn-ghost" id="cancelQuickStatus">إلغاء</button>
+      <div style="display:flex;justify-content:flex-end;gap:8px;">
+        <button class="btn btn-ghost btn-sm" id="cancelQuickStatus">إلغاء</button>
       </div>
     </div>
   `;
@@ -1834,15 +2216,19 @@ function getStatusCustomMessage(r, status){
   const remaining = Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0);
   const shop = state.settings.shopName || 'مركز الصيانة';
   const device = `${r.device.category} ${r.device.brand==='أخرى'?r.device.brandOther:r.device.brand} ${r.device.model||''}`.trim();
+  const trackUrl = `${window.location.origin}${window.location.pathname}?track=${r.receiptNumber}`;
 
   if(status === 'مكتمل'){
-    return `مرحبًا ${r.customer.name} 👋\nنود إبلاغكم بأنه تم الانتهاء من صيانة جهازكم (${device}) بنجاح وجاهز للاستلام الآن في ${shop} ✅\n\n📌 رقم الإيصال: ${r.receiptNumber}\n💵 المبلغ المتبقي المطلوب: ${remaining} ج.م\n\nشكراً لثقتكم بنا!`;
+    return `مرحبًا ${r.customer.name} 👋\nنود إبلاغكم بأنه تم الانتهاء من صيانة جهازكم (${device}) بنجاح وجاهز للاستلام الآن في ${shop} ✅\n\n📌 رقم الإيصال: ${r.receiptNumber}\n💵 المبلغ المتبقي المطلوب: ${remaining} ج.م\n🔗 تتبع جهازك مباشرة: ${trackUrl}\n\nشكراً لثقتكم بنا!`;
   }
   if(status === 'الصيانة'){
-    return `مرحبًا ${r.customer.name} 👋\nنحيطكم علماً بأن جهازكم (${device}) قيد الصيانة والإصلاح حالياً في ${shop} 🛠️\nرقم الإيصال: ${r.receiptNumber}\nسنوافيكم فور اكتمال الصيانة.`;
+    return `مرحبًا ${r.customer.name} 👋\nنحيطكم علماً بأن جهازكم (${device}) قيد الصيانة والإصلاح حالياً في ${shop} 🛠️\nرقم الإيصال: ${r.receiptNumber}\n🔗 تتبع حالة جهازك: ${trackUrl}`;
   }
   if(status === 'قيد الفحص'){
-    return `مرحبًا ${r.customer.name} 👋\nتم استلام جهازكم (${device}) وهو قيد الفحص والتشخيص الفني حالياً 🔍\nرقم الإيصال: ${r.receiptNumber}`;
+    return `مرحبًا ${r.customer.name} 👋\nتم استلام جهازكم (${device}) وهو قيد الفحص والتشخيص الفني حالياً 🔍\nرقم الإيصال: ${r.receiptNumber}\n🔗 تتبع حالة جهازك: ${trackUrl}`;
+  }
+  if(status === 'overdue_reminder'){
+    return `مرحبًا ${r.customer.name} 👋\nنود تذكيركم بوجود جهازكم (${device}) جاهزاً للاستلام لدينا في ${shop} بموجب الإيصال رقم ${r.receiptNumber}.\nالمتبقي: ${remaining} ج.م.\nيرجى التفضل بالاستلام خلال أوقات العمل الرسمية.`;
   }
   if(status === 'تعذرت الصيانة'){
     return `مرحبًا ${r.customer.name} 👋\nبخصوص جهازكم (${device}) بموجب الإيصال رقم ${r.receiptNumber}، نعتذر منك حيث تعذر الإصلاح لعدم توفر قطع الغيار أو طبيعة العطل. يمكنك التفضل لاستلام الجهاز في أي وقت من ${shop}.`;
@@ -1869,12 +2255,12 @@ function openWhatsappChoice(r){
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.innerHTML = `
-    <div class="modal-content" style="max-width:420px;">
+    <div class="modal-content" style="max-width:400px;">
       <h3 style="margin-top:0;">💬 إرسال واتساب للعميل</h3>
-      <p style="font-size:13px;color:var(--slate-600);">اختر قالب الرسالة المناسب لإرساله لـ <b>${r.customer.name}</b>:</p>
-      <div style="display:flex;flex-direction:column;gap:10px;margin:16px 0;">
+      <p style="font-size:12.5px;color:var(--ink-secondary);">اختر قالب الرسالة المناسب لإرساله لـ <b>${r.customer.name}</b>:</p>
+      <div style="display:flex;flex-direction:column;gap:9px;margin:14px 0;">
         <button class="btn btn-whatsapp" id="waCurrentStatus">${WA_ICON} إشعار بالحالة الحالية (${r.status})</button>
-        <button class="btn btn-whatsapp" id="waFull">${WA_ICON} تفاصيل الإيصال كاملة</button>
+        <button class="btn btn-whatsapp" id="waFull">${WA_ICON} تفاصيل الإيصال + رابط التتبع</button>
         <button class="btn btn-ghost" id="waCancel">إلغاء</button>
       </div>
     </div>
@@ -1883,7 +2269,8 @@ function openWhatsappChoice(r){
   overlay.querySelector('#waCurrentStatus').onclick = ()=>{ sendWhatsappByStatus(r, r.status); overlay.remove(); };
   overlay.querySelector('#waFull').onclick = ()=>{
     const remaining = Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0);
-    const msg = `مرحبًا ${r.customer.name} 👋\n*إيصال صيانة رقم:* ${r.receiptNumber}\n*التاريخ:* ${cleanDate(r.date)}\n*الجهاز:* ${r.device.category} - ${r.device.brand==='أخرى'?r.device.brandOther:r.device.brand} ${r.device.model||''}\n*الأعطال:* ${r.faults.join('، ')||'-'}\n*الحالة الحالية:* ${r.status}\n*التكلفة:* ${Number(r.cost||0)} ج.م\n*المدفوع:* ${Number(r.deposit||0)} ج.م\n*المتبقي:* ${remaining} ج.م\n*موعد التسليم:* ${r.deliveryDate||'غير محدد'}\n\n${state.settings.shopName}`;
+    const trackUrl = `${window.location.origin}${window.location.pathname}?track=${r.receiptNumber}`;
+    const msg = `مرحبًا ${r.customer.name} 👋\n*إيصال صيانة رقم:* ${r.receiptNumber}\n*التاريخ:* ${cleanDate(r.date)}\n*الجهاز:* ${r.device.category} - ${r.device.brand==='أخرى'?r.device.brandOther:r.device.brand} ${r.device.model||''}\n*الأعطال:* ${r.faults.join('، ')||'-'}\n*الحالة الحالية:* ${r.status}\n*المتبقي المطلوب:* ${remaining} ج.م\n*رابط تتبع الجهاز مباشرة:* ${trackUrl}\n\n${state.settings.shopName}`;
     sendWhatsapp(r, msg);
     overlay.remove();
   };
@@ -1897,9 +2284,9 @@ async function openReceiptDetail(r){
   overlay.className = 'modal-overlay';
 
   overlay.innerHTML = `
-  <div class="modal-content" style="max-width:720px;">
-    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:18px;">
-      <h3 style="margin:0;font-size:18px;">⚙️ تعديل الإيصال: <span class="mono" style="color:var(--primary);">${r.receiptNumber}</span></h3>
+  <div class="modal-content" style="max-width:700px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:16px;">
+      <h3 style="margin:0;font-size:17px;">⚙️ تعديل الإيصال: <span class="mono" style="color:var(--primary);">${r.receiptNumber}</span></h3>
       <button class="btn btn-ghost btn-xs" id="closeDetailBtn">✕ إغلاق</button>
     </div>
 
@@ -1930,13 +2317,13 @@ async function openReceiptDetail(r){
 
     <div class="grid3">
       <div class="field"><label>تكلفة الخدمة (ج.م)</label><input id="eCost" type="number" value="${r.cost||0}"></div>
-      <div class="field"><label>إجمالي المدفوع (ج.م)</label><input id="eDeposit" type="number" value="${r.deposit||0}" disabled style="background:var(--slate-100);"></div>
-      <div class="field"><label>المتبقي حاليًا (ج.م)</label><input id="eRem" type="number" value="${remaining}" disabled style="background:var(--slate-100);font-weight:bold;color:var(--primary);"></div>
+      <div class="field"><label>إجمالي المدفوع (ج.م)</label><input id="eDeposit" type="number" value="${r.deposit||0}" disabled style="background:var(--paper3);"></div>
+      <div class="field"><label>المتبقي حاليًا (ج.م)</label><input id="eRem" type="number" value="${remaining}" disabled style="background:var(--paper3);font-weight:bold;color:var(--primary);"></div>
     </div>
 
-    <div class="card" style="background:var(--slate-50);padding:14px;border-radius:var(--radius-sm);margin-top:10px;">
-      <h3 style="font-size:14px;margin-bottom:8px;">سجل الدفعات</h3>
-      <div id="paymentsList" style="font-size:12.5px;margin-bottom:12px;">جارٍ التحميل...</div>
+    <div class="card" style="background:var(--paper3);padding:12px;border-radius:var(--radius-sm);margin-top:8px;">
+      <h3 style="font-size:13.5px;margin-bottom:6px;">سجل الدفعات</h3>
+      <div id="paymentsList" style="font-size:12px;margin-bottom:10px;">جارٍ التحميل...</div>
       <div style="display:flex;gap:8px;align-items:flex-end;">
         <div class="field" style="flex:1;margin-bottom:0;"><label>مبلغ دفعة جديدة</label><input id="newPayAmt" type="number" placeholder="0"></div>
         <div class="field" style="flex:2;margin-bottom:0;"><label>ملاحظة</label><input id="newPayNote" placeholder="دفعة تحت الحساب..."></div>
@@ -1944,12 +2331,13 @@ async function openReceiptDetail(r){
       </div>
     </div>
 
-    <div class="actions-row" style="flex-wrap:wrap;margin-top:20px;">
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        ${!r.paid ? `<button class="btn btn-green btn-sm" id="payBtn">✅ سداد المتبقي بالكامل</button>` : `<button class="btn btn-blue btn-sm" id="invBtn">🖨️ طباعة الفاتورة النهائية</button>`}
-        <button class="btn btn-ghost btn-sm" id="workOrderBtn">أمر شغل</button>
+    <div class="actions-row" style="flex-wrap:wrap;margin-top:16px;">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        ${!r.paid ? `<button class="btn btn-green btn-xs" id="payBtn">✅ سداد المتبقي</button>` : `<button class="btn btn-blue btn-xs" id="invBtn">🖨️ فاتورة نهائية</button>`}
+        <button class="btn btn-amber btn-xs" id="detailStickerBtn">🏷️ ملصق باركود</button>
+        <button class="btn btn-ghost btn-xs" id="workOrderBtn">أمر شغل</button>
       </div>
-      <div style="display:flex;gap:8px;">
+      <div style="display:flex;gap:6px;">
         <button class="btn btn-ghost btn-sm" id="closeModalBtn">إلغاء</button>
         <button class="btn btn-primary btn-sm" id="saveEditBtn">💾 حفظ التعديلات</button>
       </div>
@@ -1960,9 +2348,9 @@ async function openReceiptDetail(r){
 
   function renderPaymentsList(payments){
     const box = overlay.querySelector('#paymentsList');
-    if(!payments.length){ box.innerHTML = '<span style="color:#94a3b8;">لا توجد دفعات مسجلة بعد.</span>'; return; }
-    box.innerHTML = payments.map(p=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--line);">
-      <span>${p.Date} ${p.Note?'— '+p.Note:''} <span style="color:#94a3b8;">(${p.By})</span></span>
+    if(!payments.length){ box.innerHTML = '<span style="color:var(--ink-secondary);">لا توجد دفعات مسجلة بعد.</span>'; return; }
+    box.innerHTML = payments.map(p=>`<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--line);">
+      <span>${p.Date} ${p.Note?'— '+p.Note:''} <span style="color:var(--slate-400);">(${p.By})</span></span>
       <span class="mono" style="font-weight:700;">${p.Amount} ج.م</span>
     </div>`).join('');
   }
@@ -2049,10 +2437,12 @@ async function openReceiptDetail(r){
   const invBtn = overlay.querySelector('#invBtn');
   if(invBtn) invBtn.onclick = ()=>{ overlay.remove(); openReceiptPrint(r,'invoice'); };
   overlay.querySelector('#workOrderBtn').onclick = ()=>{ overlay.remove(); openReceiptPrint(r,'workorder'); };
+  overlay.querySelector('#detailStickerBtn').onclick = ()=>{ overlay.remove(); openStickerPrint(r); };
 }
 
-/* ---------------- Print A5 Receipts ---------------- */
+/* ---------------- Print A5 Single Sheet Guarantee ---------------- */
 function openReceiptPrint(r, kind){
+  document.body.classList.remove('printing-sticker');
   const remaining = Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0);
   const old = document.getElementById('printMount');
   if(old) old.remove();
@@ -2060,6 +2450,9 @@ function openReceiptPrint(r, kind){
   mount.id='printMount';
 
   const titles = {receipt:'إيصال استلام جهاز للصيانة', invoice:'فاتورة صيانة نهائية', workorder:'أمر شغل داخلي للفني'};
+  const trackUrl = `${window.location.origin}${window.location.pathname}?track=${r.receiptNumber}`;
+  const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=70x70&data=${encodeURIComponent(trackUrl)}`;
+
   const financeSection = `
     <div class="section-title">البيان المالي</div>
     <div class="fin-box">
@@ -2082,10 +2475,13 @@ function openReceiptPrint(r, kind){
           <h4>${state.settings.shopName}</h4>
           <div class="r-sub">${titles[kind]}</div>
         </div>
-        <div style="text-align:left;">
-          <div class="r-badge mono">${r.receiptNumber}</div>
-          <div class="r-meta">التاريخ: ${cleanDate(r.date)}</div>
-          <svg id="printBarcode" style="margin-top:2px;"></svg>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <img src="${qrApiUrl}" alt="QR" style="width:42px;height:42px;border:1px solid #cbd5e1;border-radius:4px;" title="امسح لتتبع حالة الجهاز">
+          <div style="text-align:left;">
+            <div class="r-badge mono">${r.receiptNumber}</div>
+            <div class="r-meta">التاريخ: ${cleanDate(r.date)}</div>
+            <svg id="printBarcode" style="margin-top:2px;"></svg>
+          </div>
         </div>
       </div>
 
@@ -2118,6 +2514,165 @@ function openReceiptPrint(r, kind){
   setTimeout(()=>{ window.print(); mount.remove(); }, 200);
 }
 
+/* ---------------- Print Thermal Barcode Sticker (50x30mm) ---------------- */
+function openStickerPrint(r){
+  document.body.classList.add('printing-sticker');
+  const old = document.getElementById('printMount');
+  if(old) old.remove();
+  const mount = document.createElement('div');
+  mount.id='printMount';
+
+  mount.innerHTML = `
+  <div id="stickerPaper">
+    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #000;padding-bottom:1px;">
+      <b style="font-size:8px;">${state.settings.shopName}</b>
+      <span class="mono" style="font-size:8px;font-weight:900;">${r.receiptNumber}</span>
+    </div>
+    <div style="text-align:center;margin:1px 0;">
+      <svg id="stickerBarcode"></svg>
+    </div>
+    <div style="font-size:7px;line-height:1.15;">
+      <div><b>العميل:</b> ${r.customer.name.slice(0,18)} | <span class="mono">${r.customer.phone}</span></div>
+      <div><b>الجهاز:</b> ${r.device.category} - ${r.device.brand==='أخرى'?r.device.brandOther:r.device.brand} ${r.device.model||''}</div>
+      <div><b>العطل:</b> ${(r.faults[0]||r.faultNotes||'-').slice(0,25)}</div>
+    </div>
+  </div>`;
+  document.body.appendChild(mount);
+  if(typeof JsBarcode !== 'undefined'){
+    try{ JsBarcode('#stickerBarcode', r.receiptNumber, {format:'CODE128', width:1.1, height:16, displayValue:false, margin:0}); }catch(e){}
+  }
+  setTimeout(()=>{
+    window.print();
+    mount.remove();
+    document.body.classList.remove('printing-sticker');
+  }, 200);
+}
+
+/* ---------------- Excel Export Utility ---------------- */
+function exportReceiptsToExcel(receipts){
+  if(!receipts || !receipts.length){ showToast('لا توجد بيانات للتصدير', 'error'); return; }
+  const headers = ['رقم الإيصال','التاريخ','الاسم','الهاتف','فئة الجهاز','الماركة','الموديل','الأعطال','الفني','التكلفة','المدفوع','قطع الغيار','المتبقي','الحالة','موعد التسليم'];
+  const rows = receipts.map(r=>{
+    const rem = Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0);
+    return [
+      r.receiptNumber, cleanDate(r.date), `"${r.customer.name}"`, `"${r.customer.phone}"`,
+      r.device.category, r.device.brand, `"${r.device.model||''}"`, `"${(r.faults||[]).join(' - ')}"`,
+      `"${r.technician||''}"`, r.cost||0, r.deposit||0, r.partsCost||0, rem, `"${r.status}"`, r.deliveryDate||''
+    ];
+  });
+  downloadCSV(`Receipts_Export_${new Date().toISOString().slice(0,10)}.csv`, headers, rows);
+}
+
+function exportInventoryToExcel(items){
+  if(!items || !items.length){ showToast('المخزن فارغ', 'error'); return; }
+  const headers = ['اسم الصنف','القسم','الباركود','الكمية المتاحة','سعر الشراء (تكلفة)','سعر البيع المقترح'];
+  const rows = items.map(it=>[
+    `"${it.Name}"`, it.Category||'صيانة', `"${it.Barcode||''}"`, it.Quantity, it.PurchasePrice, it.SellPrice||0
+  ]);
+  downloadCSV(`Inventory_Export_${new Date().toISOString().slice(0,10)}.csv`, headers, rows);
+}
+
+function downloadCSV(filename, headers, rows){
+  let csvContent = '\uFEFF' + headers.join(',') + '\n';
+  rows.forEach(r => { csvContent += r.join(',') + '\n'; });
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  showToast('تم تصدير ملف Excel بنجاح', 'success');
+}
+
+/* ---------------- Expenses & Cash Shift Management ---------------- */
+function renderExpensesPage(main){
+  const today = new Date().toISOString().slice(0,10);
+  const totalExpAll = state.expenses.reduce((s,x)=>s+Number(x.Amount||0),0);
+  const totalExpToday = state.expenses.filter(x=>String(x.Date||'').slice(0,10)===today).reduce((s,x)=>s+Number(x.Amount||0),0);
+  
+  // Daily Cash Register Calculation
+  const maintenanceCashToday = state.payments.filter(p=>String(p.Date||'').slice(0,10)===today).reduce((s,p)=>s+Number(p.Amount||0),0);
+  const posCashToday = state.sales.filter(s=>String(s.Date||'').slice(0,10)===today && (s.PaymentMethod||'نقدي')==='نقدي').reduce((s,s1)=>s+Number(s1.AmountPaid||s1.Total||0),0);
+  const totalCashInToday = maintenanceCashToday + posCashToday;
+  const netDrawerCash = totalCashInToday - totalExpToday;
+
+  main.innerHTML = `
+    <div class="top-header">
+      <div>
+        <h2 class="page-title">💸 المصروفات وتقفيل الخزينة اليومية</h2>
+        <div class="subtitle">تسجيل المصروفات النثرية وحساب النقدية الفعلية في الدرج</div>
+      </div>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat-card red"><div class="num mono">${totalExpToday.toLocaleString()} ج.م</div><div class="lbl">مصروفات اليوم</div></div>
+      <div class="stat-card green"><div class="num mono">${totalCashInToday.toLocaleString()} ج.م</div><div class="lbl">إجمالي المقبوضات النقدية اليوم</div></div>
+      <div class="stat-card purple"><div class="num mono" style="font-weight:900;">${netDrawerCash.toLocaleString()} ج.م</div><div class="lbl">الصافي الفعلي في الخزينة اليوم</div></div>
+      <div class="stat-card amber"><div class="num mono">${totalExpAll.toLocaleString()} ج.م</div><div class="lbl">إجمالي المصروفات الكلية</div></div>
+    </div>
+
+    <div class="card">
+      <h3>➕ تسجيل مصروف جديد</h3>
+      <div class="grid3">
+        <div class="field"><label>بيان المصروف *</label><input id="expTitle" placeholder="مثال: فاتورة كهرباء، بوفيه، أدوات..."></div>
+        <div class="field"><label>المبلغ (ج.م) *</label><input id="expAmount" type="number" placeholder="0"></div>
+        <div class="field"><label>بند المصروف</label>
+          <select id="expCategory">${EXPENSE_CATEGORIES.map(c=>`<option>${c}</option>`).join('')}</select>
+        </div>
+      </div>
+      <div class="field"><label>ملاحظات إضافية</label><input id="expNotes" placeholder="تفاصيل المصروف..."></div>
+      <button class="btn btn-red btn-sm" id="addExpBtn">تسجيل المصروف</button>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>سجل المصروفات المسجلة (${state.expenses.length})</h3>
+      </div>
+      ${state.expenses.length===0 ? '<div class="empty">لا توجد مصروفات مسجلة بعد.</div>' : `
+      <div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>البيان</th><th>البند</th><th>المبلغ</th><th>المسؤول</th><th>الإجراء</th></tr></thead><tbody>
+        ${state.expenses.slice().reverse().map(ex=>`<tr>
+          <td>${cleanDate(ex.Date)}</td>
+          <td><b>${ex.Title}</b> ${ex.Notes?`<div style="font-size:11px;color:var(--ink-secondary);">${ex.Notes}</div>`:''}</td>
+          <td><span class="status-badge st-repair">${ex.Category}</span></td>
+          <td class="mono font-bold" style="color:var(--red);font-size:13.5px;">${ex.Amount} ج.م</td>
+          <td>${ex.By||'-'}</td>
+          <td>${state.user.role==='admin' ? `<button class="btn btn-xs btn-red" data-expdel="${ex.ID}">حذف</button>`:''}</td>
+        </tr>`).join('')}
+      </tbody></table></div>`}
+    </div>
+  `;
+
+  document.getElementById('addExpBtn').onclick = async ()=>{
+    const title = document.getElementById('expTitle').value.trim();
+    const amount = Number(document.getElementById('expAmount').value);
+    const category = document.getElementById('expCategory').value;
+    const notes = document.getElementById('expNotes').value.trim();
+    if(!title || !amount || amount<=0){ showToast('أدخل بيان المصروف والمبلغ بشكل صحيح', 'error'); return; }
+    const btn = document.getElementById('addExpBtn'); btn.disabled = true; btn.textContent = '...';
+    try{
+      const res = await saveExpenseRemote({ID:'', Title:title, Amount:amount, Category:category, Notes:notes});
+      state.expenses.push(res.expense);
+      showToast('تم تسجيل المصروف بنجاح', 'success');
+      renderExpensesPage(main);
+    }catch(e){ showToast('تعذر الحفظ: '+e.message, 'error'); }
+    btn.disabled = false; btn.textContent = 'تسجيل المصروف';
+  };
+
+  main.querySelectorAll('[data-expdel]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      if(!confirm('هل تريد حذف هذا المصروف؟')) return;
+      try{
+        await deleteExpenseRemote(btn.dataset.expdel);
+        state.expenses = state.expenses.filter(x=>x.ID!==btn.dataset.expdel);
+        showToast('تم الحذف', 'success');
+        renderExpensesPage(main);
+      }catch(e){ showToast('تعذر الحذف: '+e.message, 'error'); }
+    };
+  });
+}
+
 /* ---------------- Cameras Section ---------------- */
 function renderCamerasApp(app){
   if(!state.camTab) state.camTab = 'catalog';
@@ -2137,7 +2692,7 @@ function renderCamerasApp(app){
   `;
   const sw = document.getElementById('switchSectionBtn');
   if(sw) sw.onclick = ()=>{ state.currentSection = null; render(); };
-  attachLogoutHandler();
+  attachSidebarHandlers();
   document.querySelectorAll('[data-camtab]').forEach(el=>{
     el.onclick = ()=>{ state.camTab = el.dataset.camtab; renderCamerasApp(app); };
   });
@@ -2196,11 +2751,11 @@ function renderQuotationBuilder(main){
       <h3>بنود عرض السعر</h3>
       ${cart.length===0 ? '<div class="empty">لم تتم إضافة بنود بعد.</div>' : `
       <div class="table-wrap"><table><thead><tr><th>البند</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th><th></th></tr></thead><tbody>
-        ${cart.map((c,i)=>`<tr><td>${c.name}${c.type==='service'?' <span style="color:var(--slate-400);font-size:11px;">(خدمة)</span>':''}</td><td class="mono">${c.qty}</td><td class="mono">${c.price}</td><td class="mono font-bold">${c.qty*c.price}</td>
+        ${cart.map((c,i)=>`<tr><td>${c.name}${c.type==='service'?' <span style="color:var(--ink-secondary);font-size:11px;">(خدمة)</span>':''}</td><td class="mono">${c.qty}</td><td class="mono">${c.price}</td><td class="mono font-bold">${c.qty*c.price}</td>
         <td><button class="btn btn-xs btn-red" data-quocartidx="${i}">إزالة</button></td></tr>`).join('')}
       </tbody></table></div>`}
-      <div style="text-align:left;font-size:22px;font-weight:900;margin-top:16px;">الإجمالي: <span class="mono" style="color:var(--primary);">${itemsTotal}</span> ج.م</div>
-      <button class="btn btn-green" id="saveQuoteBtn" style="margin-top:10px;" ${cart.length===0?'disabled':''}>💾 حفظ وطباعة عرض السعر</button>
+      <div style="text-align:left;font-size:20px;font-weight:900;margin-top:14px;">الإجمالي: <span class="mono" style="color:var(--primary);">${itemsTotal}</span> ج.م</div>
+      <button class="btn btn-green" id="saveQuoteBtn" style="margin-top:8px;" ${cart.length===0?'disabled':''}>💾 حفظ وطباعة عرض السعر</button>
     </div>
   `;
 
@@ -2314,8 +2869,8 @@ function renderInventoryHubApp(app){
       ${sectionSwitcherHtml()}
       <div class="sidebar-nav-wrap">
         <div class="nav-section">الأقسام</div>
-        ${['صيانة','كاميرات','كمبيوتر','إكسسوار','all','purchases','suppliers','warranty'].map(t=>{
-          const labels = {all:'📦 كل الأصناف', purchases:'📥 فواتير الشراء', suppliers:'👥 الموردون', warranty:'🛡️ تتبع الضمان'};
+        ${['صيانة','كاميرات','كمبيوتر','إكسسوار','all','purchases','suppliers'].map(t=>{
+          const labels = {all:'📦 كل الأصناف', purchases:'📥 فواتير الشراء', suppliers:'👥 الموردون'};
           const label = labels[t] || `🔹 ${t}`;
           return `<div class="nav-item ${state.invHubTab===t?'active':''}" data-invhubtab="${t}">${label}</div>`;
         }).join('')}
@@ -2326,14 +2881,13 @@ function renderInventoryHubApp(app){
   `;
   const sw = document.getElementById('switchSectionBtn');
   if(sw) sw.onclick = ()=>{ state.currentSection = null; render(); };
-  attachLogoutHandler();
+  attachSidebarHandlers();
   document.querySelectorAll('[data-invhubtab]').forEach(el=>{
     el.onclick = ()=>{ state.invHubTab = el.dataset.invhubtab; renderInventoryHubApp(app); };
   });
   const main = document.getElementById('main');
   if(state.invHubTab==='purchases') renderPurchases(main);
   else if(state.invHubTab==='suppliers') renderSuppliers(main);
-  else if(state.invHubTab==='warranty') renderWarrantyTracking(main);
   else renderInventory(main, state.invHubTab, state.invHubTab==='all' ? 'كل أصناف الشركة' : `مخزون: ${state.invHubTab}`);
 }
 
@@ -2346,6 +2900,9 @@ function renderInventory(main, categoryFilter, titleOverride){
       <div>
         <h2 class="page-title">📦 ${titleOverride || 'المخزن'}</h2>
         <div class="subtitle">إدارة ومتابعة الأصناف، الأسعار، وحركة المخزون (${list.length} صنف)</div>
+      </div>
+      <div>
+        <button class="btn btn-ghost btn-sm" id="exportInvExcelBtn">📥 تصدير المخزن Excel</button>
       </div>
     </div>
     <div class="card">
@@ -2371,8 +2928,8 @@ function renderInventory(main, categoryFilter, titleOverride){
         ${list.map(it=>`<tr>
           <td><b>${it.Name}</b></td>
           ${categoryFilter==='all'?`<td><span class="status-badge st-check">${it.Category||'صيانة'}</span></td>`:''}
-          <td class="mono" style="font-size:11.5px;color:var(--slate-500);">${it.Barcode||'-'}</td>
-          <td class="mono" style="font-weight:800;${Number(it.Quantity)<=2?'color:var(--red);':'color:var(--slate-800);'}">${it.Quantity} ${Number(it.Quantity)<=2?'⚠️':''}</td>
+          <td class="mono" style="font-size:11px;color:var(--ink-secondary);">${it.Barcode||'-'}</td>
+          <td class="mono" style="font-weight:800;${Number(it.Quantity)<=2?'color:var(--red);':'color:var(--ink);'}">${it.Quantity} ${Number(it.Quantity)<=2?'⚠️':''}</td>
           <td class="mono">${it.PurchasePrice} ج.م</td>
           <td class="mono">${it.SellPrice||'-'} ج.م</td>
           <td class="row-actions">
@@ -2383,6 +2940,7 @@ function renderInventory(main, categoryFilter, titleOverride){
       </tbody></table></div>`}
     </div>
   `;
+  document.getElementById('exportInvExcelBtn').onclick = ()=>exportInventoryToExcel(list);
   document.getElementById('addInvBtn').onclick = async ()=>{
     const name = document.getElementById('invName').value.trim();
     const qty = Number(document.getElementById('invQty').value)||0;
@@ -2475,7 +3033,7 @@ function renderPosApp(app){
   `;
   const sw = document.getElementById('switchSectionBtn');
   if(sw) sw.onclick = ()=>{ state.currentSection = null; render(); };
-  attachLogoutHandler();
+  attachSidebarHandlers();
   document.querySelectorAll('[data-postab]').forEach(el=>{
     el.onclick = ()=>{ state.posTab = el.dataset.postab; renderPosApp(app); };
   });
@@ -2512,7 +3070,7 @@ function renderPosSell(main){
           <td><button class="btn btn-xs btn-red" data-cartidx="${i}">إزالة</button></td>
         </tr>`).join('')}
       </tbody></table></div>`}
-      <div style="text-align:left;font-size:24px;font-weight:900;margin-top:16px;">الإجمالي: <span class="mono" style="color:var(--primary);">${total}</span> ج.م</div>
+      <div style="text-align:left;font-size:22px;font-weight:900;margin-top:14px;">الإجمالي: <span class="mono" style="color:var(--primary);">${total}</span> ج.م</div>
     </div>
     <div class="card">
       <h3>بيانات العميل والدفع</h3>
@@ -2520,7 +3078,7 @@ function renderPosSell(main){
         <div class="field"><label>اسم العميل</label><input id="posCustName" value="عميل زائر"></div>
         <div class="field"><label>رقم الهاتف</label><input id="posCustPhone"></div>
       </div>
-      <button class="btn btn-green" id="completeSaleBtn" style="width:100%;padding:14px;" ${cart.length===0?'disabled':''}>✅ إتمام عملية البيع وطباعة الفاتورة</button>
+      <button class="btn btn-green" id="completeSaleBtn" style="width:100%;padding:12px;" ${cart.length===0?'disabled':''}>✅ إتمام عملية البيع وطباعة الفاتورة</button>
     </div>
   `;
   document.getElementById('posBarcodeInput').onkeydown = async (e)=>{
@@ -2624,7 +3182,7 @@ function openSalePrint(sale, cartItems){
   setTimeout(()=>{ window.print(); mount.remove(); }, 200);
 }
 
-/* ---------------- Suppliers, Purchases & Warranty ---------------- */
+/* ---------------- Suppliers, Purchases ---------------- */
 function renderSuppliers(main){
   main.innerHTML = `
     <div class="top-header"><div><h2 class="page-title">👥 إدارة الموردين</h2><div class="subtitle">${state.suppliers.length} مورد مسجل</div></div></div>
@@ -2675,24 +3233,6 @@ function renderPurchases(main){
   `;
 }
 
-function renderWarrantyTracking(main){
-  main.innerHTML = `
-    <div class="top-header"><div><h2 class="page-title">🛡️ تتبع الضمان والأرقام التسلسلية</h2><div class="subtitle">متابعة فترة الضمان للأجهزة والقطع</div></div></div>
-    <div class="card">
-      <button class="btn btn-primary btn-sm" id="loadSerialsBtn">تحميل بيانات الضمان</button>
-      <div id="warrantyList" style="margin-top:14px;"><div class="empty">اضغط على زر التحميل لعرض السيريالات المسجلة.</div></div>
-    </div>
-  `;
-  document.getElementById('loadSerialsBtn').onclick = async ()=>{
-    state.serials = await loadSerials();
-    const box = document.getElementById('warrantyList');
-    if(!state.serials.length){ box.innerHTML = '<div class="empty">لا توجد أرقام تسلسلية مسجلة.</div>'; return; }
-    box.innerHTML = `<div class="table-wrap"><table><thead><tr><th>الصنف</th><th>السيريال</th><th>الحالة</th></tr></thead><tbody>
-      ${state.serials.map(s=>`<tr><td>${s.ItemName}</td><td class="mono font-bold">${s.Serial}</td><td><span class="status-badge ${s.Status==='Sold'?'st-done':'st-check'}">${s.Status}</span></td></tr>`).join('')}
-    </tbody></table></div>`;
-  };
-}
-
 /* ---------------- Finance Section ---------------- */
 function renderFinanceSectionApp(app){
   if(!state.financeTab) state.financeTab = 'overview';
@@ -2702,7 +3242,7 @@ function renderFinanceSectionApp(app){
       ${sectionSwitcherHtml()}
       <div class="sidebar-nav-wrap">
         <div class="nav-section">التقارير والحسابات</div>
-        ${[['overview','📊 نظرة عامة'],['income','📈 تقرير الدخل'],['bonus','🎁 مكافآت الفنيين']].map(([k,label])=>`
+        ${[['overview','📊 نظرة عامة'],['expenses','💸 المصروفات والخزينة'],['income','📈 تقرير الدخل'],['bonus','🎁 مكافآت الفنيين']].map(([k,label])=>`
           <div class="nav-item ${state.financeTab===k?'active':''}" data-fintab="${k}">${label}</div>
         `).join('')}
       </div>
@@ -2712,26 +3252,30 @@ function renderFinanceSectionApp(app){
   `;
   const sw = document.getElementById('switchSectionBtn');
   if(sw) sw.onclick = ()=>{ state.currentSection = null; render(); };
-  attachLogoutHandler();
+  attachSidebarHandlers();
   document.querySelectorAll('[data-fintab]').forEach(el=>{
     el.onclick = ()=>{ state.financeTab = el.dataset.fintab; renderFinanceSectionApp(app); };
   });
   const main = document.getElementById('main');
   if(state.financeTab==='overview') renderFinanceOverview(main);
+  else if(state.financeTab==='expenses') renderExpensesPage(main);
   else if(state.financeTab==='income') renderFinanceReportPage(main);
   else renderBonusPage(main);
 }
 
 function renderFinanceOverview(main){
   const totalIncomeAllTime = state.payments.reduce((s,p)=>s+Number(p.Amount||0),0);
+  const totalExpAll = state.expenses.reduce((s,x)=>s+Number(x.Amount||0),0);
   const maintenanceDue = state.receipts.reduce((s,r)=>{
     const remaining = Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0);
     return s + Math.max(0, remaining);
   },0);
   main.innerHTML = `
-    <div class="top-header"><div><h2 class="page-title">💰 النظرة المالية العامة</h2><div class="subtitle">ملخص الإيرادات والمستحقات المتبقية</div></div></div>
+    <div class="top-header"><div><h2 class="page-title">💰 النظرة المالية العامة</h2><div class="subtitle">ملخص الإيرادات والمصروفات والمستحقات المتبقية</div></div></div>
     <div class="stat-grid">
       <div class="stat-card green"><div class="num mono">${totalIncomeAllTime.toLocaleString()} ج.م</div><div class="lbl">إجمالي المقبوضات المسجلة</div></div>
+      <div class="stat-card red"><div class="num mono">${totalExpAll.toLocaleString()} ج.م</div><div class="lbl">إجمالي المصروفات</div></div>
+      <div class="stat-card purple"><div class="num mono">${(totalIncomeAllTime - totalExpAll).toLocaleString()} ج.م</div><div class="lbl">صافي الأرباح العام</div></div>
       <div class="stat-card amber"><div class="num mono">${maintenanceDue.toLocaleString()} ج.م</div><div class="lbl">مستحقات متبقية على إيصالات الصيانة</div></div>
     </div>
   `;
@@ -2740,12 +3284,14 @@ function renderFinanceOverview(main){
 function renderFinanceReportPage(main){
   const totalIncome = state.payments.reduce((s,p)=>s+Number(p.Amount||0),0);
   const totalParts = state.receipts.reduce((s,r)=>s+Number(r.partsCost||0),0);
+  const totalExp = state.expenses.reduce((s,x)=>s+Number(x.Amount||0),0);
   main.innerHTML = `
-    <div class="top-header"><div><h2 class="page-title">📈 تقرير دخل الصيانة</h2><div class="subtitle">إجمالي المقبوضات وتكاليف قطع الغيار</div></div></div>
+    <div class="top-header"><div><h2 class="page-title">📈 تقرير الدخل والأرباح</h2><div class="subtitle">تحليل شامل للمقبوضات، قطع الغيار، المصروفات، وصافي الأرباح</div></div></div>
     <div class="stat-grid">
       <div class="stat-card green"><div class="num mono">${totalIncome.toLocaleString()} ج.م</div><div class="lbl">إجمالي المقبوضات</div></div>
       <div class="stat-card blue"><div class="num mono">${totalParts.toLocaleString()} ج.م</div><div class="lbl">تكلفة قطع الغيار</div></div>
-      <div class="stat-card purple"><div class="num mono">${(totalIncome - totalParts).toLocaleString()} ج.م</div><div class="lbl">صافي أرباح الصيانة</div></div>
+      <div class="stat-card red"><div class="num mono">${totalExp.toLocaleString()} ج.م</div><div class="lbl">المصروفات التشغيلية</div></div>
+      <div class="stat-card purple"><div class="num mono">${(totalIncome - totalParts - totalExp).toLocaleString()} ج.م</div><div class="lbl">صافي الربح الفعلي</div></div>
     </div>
   `;
 }
@@ -2829,13 +3375,13 @@ function loginScreen(){
   return `
   <div class="login-screen">
     <div style="text-align:center;margin-bottom:20px;">
-      <div style="width:48px;height:48px;background:linear-gradient(135deg,var(--primary),#38bdf8);border-radius:12px;margin:0 auto 10px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:24px;">⚡</div>
-      <h2 style="margin:0;font-size:20px;font-weight:900;">ميكروERP</h2>
-      <div class="subtitle" style="font-size:12.5px;">تسجيل الدخول للنظام المتكامل</div>
+      <div style="width:46px;height:46px;background:linear-gradient(135deg,var(--primary),#38bdf8);border-radius:12px;margin:0 auto 10px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;">⚡</div>
+      <h2 style="margin:0;font-size:19px;font-weight:900;">ميكروERP</h2>
+      <div class="subtitle" style="font-size:12px;">تسجيل الدخول للنظام المتكامل</div>
     </div>
     <div class="field"><label>اسم المستخدم</label><input id="loginName" placeholder="ادخل اسم المستخدم" autofocus></div>
     <div class="field"><label>كلمة المرور</label><input id="loginPass" type="password" placeholder="كلمة المرور"></div>
-    <button class="btn btn-primary" id="loginBtn" style="width:100%;margin-top:10px;padding:12px;">تسجيل الدخول ➔</button>
+    <button class="btn btn-primary" id="loginBtn" style="width:100%;margin-top:8px;padding:11px;">تسجيل الدخول ➔</button>
     <div id="loginErr" style="color:var(--red);font-size:12px;margin-top:10px;text-align:center;"></div>
   </div>`;
 }

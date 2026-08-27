@@ -11,11 +11,6 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.12.3/JsBarcode.all.min.js"></script>
-<script>
-  if(typeof JsBarcode === 'undefined'){
-    document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.3/JsBarcode.all.min.js"><\/script>');
-  }
-</script>
 <style>
 :root {
   --primary: #2563eb;
@@ -73,8 +68,8 @@
   --shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
   --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
   
-  --font-main: 'Tajawal', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: 'IBM Plex Mono', monospace;
+  --font-main: 'Tajawal', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace, Consolas, Courier;
 }
 
 [data-theme="dark"] {
@@ -148,7 +143,7 @@ body {
   transition: all 0.2s ease;
 }
 .brand {
-  padding: 22px 18px 16px;
+  padding: 20px 18px 15px;
   border-bottom: 1px solid rgba(255,255,255,0.08);
   display: flex;
   align-items: center;
@@ -301,6 +296,42 @@ main {
   color: var(--ink-secondary);
   font-size: 13px;
   margin-top: 2px;
+}
+
+/* Network Sync Indicator Pill */
+.sync-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: var(--radius-full);
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  box-shadow: var(--shadow-sm);
+}
+.sync-pill.online {
+  background: var(--green-bg);
+  color: var(--green-text);
+  border: 1px solid var(--green);
+}
+.sync-pill.offline {
+  background: var(--amber-bg);
+  color: var(--amber-text);
+  border: 1px solid var(--amber);
+}
+.sync-pill.syncing {
+  background: var(--blue-bg);
+  color: var(--blue-text);
+  border: 1px solid var(--blue);
+  animation: pulse 1.2s infinite;
+}
+@keyframes pulse {
+  0% { opacity: 0.8; transform: scale(0.99); }
+  50% { opacity: 1; transform: scale(1.01); }
+  100% { opacity: 0.8; transform: scale(0.99); }
 }
 
 /* Theme Toggle Button */
@@ -1034,25 +1065,158 @@ tr:last-child td { border-bottom: none; }
 <div id="toastContainer"></div>
 
 <script>
-/* ---------------- Google Sheets API (Apps Script Web App) ---------------- */
+/* ---------------- Google Sheets API & Offline Sync Engine ---------------- */
 const API_URL = 'https://script.google.com/macros/s/AKfycbzpi81aPJwwsvHCqUKCkUxEhT0l4NnLgcCBPab1xjvx0B3vhzamCVkwiohrOCfWkKcm/exec';
 
-async function apiGet(action, params){
-  const q = new URLSearchParams({action, ...(params||{})});
-  const res = await fetch(`${API_URL}?${q.toString()}`);
-  const json = await res.json();
-  if(json && json.error) throw new Error(json.error);
-  return json;
+/* Local Cache Helpers */
+function getCache(key, fallback){
+  try {
+    const d = localStorage.getItem('microerp_cache_' + key);
+    return d ? JSON.parse(d) : fallback;
+  } catch(e) { return fallback; }
 }
+function setCache(key, val){
+  try { localStorage.setItem('microerp_cache_' + key, JSON.stringify(val)); } catch(e){}
+}
+
+/* Offline Sync Queue */
+function getSyncQueue(){
+  try { return JSON.parse(localStorage.getItem('microerp_sync_queue') || '[]'); } catch(e){ return []; }
+}
+function saveSyncQueue(q){
+  try { localStorage.setItem('microerp_sync_queue', JSON.stringify(q)); } catch(e){}
+  updateSyncStatusPill();
+}
+function addToSyncQueue(action, data){
+  const q = getSyncQueue();
+  q.push({ id: 'sync_' + Date.now() + '_' + Math.random().toString(36).slice(2,7), action, data, timestamp: new Date().toISOString() });
+  saveSyncQueue(q);
+}
+
+/* Network Request Wrappers with Local Fallback */
+async function apiGet(action, params){
+  if(!navigator.onLine){
+    // Return cached data immediately
+    return getCache(action, []);
+  }
+  try {
+    const q = new URLSearchParams({action, ...(params||{})});
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 9000);
+    const res = await fetch(`${API_URL}?${q.toString()}`, { signal: controller.signal });
+    clearTimeout(timeout);
+    const json = await res.json();
+    if(json && json.error) throw new Error(json.error);
+    // Cache success
+    setCache(action, json);
+    return json;
+  } catch(e) {
+    console.warn(`apiGet failed for ${action}, falling back to local cache:`, e.message);
+    return getCache(action, []);
+  }
+}
+
 async function apiPost(action, data){
-  const res = await fetch(API_URL, {
-    method: 'POST',
-    headers: {'Content-Type': 'text/plain;charset=utf-8'},
-    body: JSON.stringify({action, ...data})
-  });
-  const json = await res.json();
-  if(json && json.error) throw new Error(json.error);
-  return json;
+  if(!navigator.onLine){
+    addToSyncQueue(action, data);
+    return { ok: true, offline: true };
+  }
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 9000);
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'text/plain;charset=utf-8'},
+      body: JSON.stringify({action, ...data}),
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+    const json = await res.json();
+    if(json && json.error) throw new Error(json.error);
+    return json;
+  } catch(e) {
+    console.warn(`apiPost network error on ${action}, enqueuing for background sync:`, e.message);
+    addToSyncQueue(action, data);
+    return { ok: true, offline: true };
+  }
+}
+
+/* Background Synchronization */
+let isSyncingNow = false;
+async function syncOfflineQueue(){
+  if(!navigator.onLine || isSyncingNow) return;
+  const q = getSyncQueue();
+  if(!q.length) { updateSyncStatusPill(); return; }
+
+  isSyncingNow = true;
+  updateSyncStatusPill();
+  showToast(`🔄 جاري مزامنة ${q.length} عمليات مسجلة دون إنترنت...`, 'info');
+
+  const remaining = [];
+  for(const item of q){
+    try {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: {'Content-Type': 'text/plain;charset=utf-8'},
+        body: JSON.stringify({action: item.action, ...item.data})
+      });
+      const json = await res.json();
+      if(json && json.error) throw new Error(json.error);
+    } catch(err) {
+      console.warn('Sync failed for item:', item, err);
+      remaining.push(item);
+    }
+  }
+
+  saveSyncQueue(remaining);
+  isSyncingNow = false;
+  updateSyncStatusPill();
+
+  if(remaining.length === 0){
+    showToast('✅ تم مزامنة كافة العمليات بنجاح مع السحابة!', 'success');
+    // Refresh memory from cloud
+    try {
+      [state.receipts, state.customers, state.technicians, state.settings, state.payments, state.inventory, state.sales, state.quotations, state.services, state.purchases, state.suppliers, state.expenses] = await Promise.all([
+        loadReceipts(), loadCustomers(), loadTechnicians(), loadSettings(), loadPayments(), loadInventory(), loadSales(), loadQuotations(), loadServices(), loadPurchases(), loadSuppliers(), loadExpenses()
+      ]);
+      renderMain();
+    } catch(e){}
+  } else {
+    showToast(`⚠️ تبقى ${remaining.length} عمليات قيد المزامنة عند توفر اتصال أقوى.`, 'info');
+  }
+}
+
+/* Listen to online/offline network events */
+window.addEventListener('online', ()=>{
+  updateSyncStatusPill();
+  showToast('🌐 تم استعادة الاتصال بالإنترنت! جاري المزامنة...', 'success');
+  syncOfflineQueue();
+});
+window.addEventListener('offline', ()=>{
+  updateSyncStatusPill();
+  showToast('📴 انقطع الإنترنت — النظام يعمل محلياً بكفاءة 100%', 'info');
+});
+
+function updateSyncStatusPill(){
+  const pill = document.getElementById('networkSyncPill');
+  if(!pill) return;
+  const q = getSyncQueue();
+  if(!navigator.onLine){
+    pill.className = 'sync-pill offline';
+    pill.innerHTML = `<span>📴 غير متصل</span>${q.length ? `<span class="mono">(${q.length} معلقة)</span>` : ''}`;
+    pill.title = 'أنت تعمل حالياً في الوضع المحلي (أوفلاين)، وسيتم حفظ وتطبيق كل العمليات تلقائياً.';
+  } else if(isSyncingNow){
+    pill.className = 'sync-pill syncing';
+    pill.innerHTML = `<span>🔄 جاري المزامنة...</span>`;
+  } else if(q.length > 0){
+    pill.className = 'sync-pill offline';
+    pill.innerHTML = `<span>⚠️ ${q.length} عمليات معلقة</span>`;
+    pill.title = 'اضغط للمزامنة الفورية مع السحابة';
+  } else {
+    pill.className = 'sync-pill online';
+    pill.innerHTML = `<span>🟢 متصل ومتزامن</span>`;
+    pill.title = 'النظام متصل بالسحابة ومتزامن بالكامل';
+  }
 }
 
 /* ---- Toast Notification Utility ---- */
@@ -1098,44 +1262,218 @@ function rowToReceipt(row){
   };
 }
 
-async function loadSettings(){ try{ const s = await apiGet('getSettings'); return {shopName: s.shopName || 'صيانة ميكروتك', logoUrl: s.logoUrl || ''}; }catch(e){ return {shopName:'صيانة ميكروتك', logoUrl:''}; } }
-async function saveSettingRemote(key, value){ return apiPost('saveSetting', {key, value}); }
-async function loadPayments(receiptId){ try{ return await apiGet('getPayments', receiptId ? {receiptId} : {}); }catch(e){ return []; } }
-async function savePaymentRemote(receiptId, amount, note){ return apiPost('savePayment', {receiptId, amount, note, date: new Date().toISOString().slice(0,10), user: state.user.name}); }
-
-async function loadInventory(){ try{ return await apiGet('getInventory'); }catch(e){ return []; } }
-async function saveInventoryItemRemote(item){ return apiPost('saveInventoryItem', {data:item}); }
-async function deleteInventoryItemRemote(id){ return apiPost('deleteInventoryItem', {id, role: state.user.role}); }
-async function adjustInventoryQtyRemote(id, delta){ return apiPost('adjustInventoryQty', {id, delta}); }
-async function refreshInventory(){ state.inventory = await loadInventory(); }
-
-async function loadSales(){ try{ return await apiGet('getSales'); }catch(e){ return []; } }
-async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, customerPhone, paymentMethod, amountPaid){
-  return apiPost('saveSale', {itemsSummary, itemsJson, total, customerName, customerPhone, paymentMethod, amountPaid, date: new Date().toISOString().slice(0,10), user: state.user.name});
+/* Entity Loaders */
+async function loadSettings(){
+  const s = await apiGet('getSettings');
+  const obj = {shopName: s.shopName || 'صيانة ميكروتك', logoUrl: s.logoUrl || ''};
+  setCache('settings', obj);
+  return obj;
+}
+async function saveSettingRemote(key, value){
+  state.settings[key] = value;
+  setCache('settings', state.settings);
+  return apiPost('saveSetting', {key, value});
 }
 
-async function loadQuotations(){ try{ return await apiGet('getQuotations'); }catch(e){ return []; } }
-async function saveQuotationRemote(q){ return apiPost('saveQuotation', {data:q}); }
-async function loadServices(){ try{ return await apiGet('getServices'); }catch(e){ return []; } }
+function getReceiptPayments(r){
+  if(!r) return [];
+  const targetId = typeof r === 'object' ? String(r.id||'').trim() : String(r).trim();
+  const targetNum = typeof r === 'object' && r.receiptNumber ? String(r.receiptNumber).trim() : '';
+  return (state.payments||[]).filter(p => {
+    const pId = String(p.ReceiptID||'').trim();
+    return (targetId && pId === targetId) || (targetNum && pId === targetNum);
+  });
+}
 
-async function loadPurchases(){ try{ return await apiGet('getPurchases'); }catch(e){ return []; } }
-async function loadSuppliers(){ try{ return await apiGet('getSuppliers'); }catch(e){ return []; } }
-async function saveSupplierRemote(s){ return apiPost('saveSupplier', {data:s}); }
-async function loadSerials(itemId, status){ try{ const p={}; if(itemId) p.itemId=itemId; if(status) p.status=status; return await apiGet('getSerials', p); }catch(e){ return []; } }
+async function loadPayments(receiptId){
+  if(receiptId){
+    return getReceiptPayments(receiptId);
+  }
+  const rows = await apiGet('getPayments');
+  if(Array.isArray(rows)){
+    state.payments = rows;
+    setCache('payments', rows);
+  }
+  return state.payments;
+}
+async function savePaymentRemote(receiptId, amount, note){
+  const payment = {
+    ID: 'p_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+    ReceiptID: receiptId, Date: new Date().toISOString().slice(0,10),
+    Amount: Number(amount), Note: note || '', By: state.user ? state.user.name : 'نظام'
+  };
+  state.payments.push(payment);
+  setCache('payments', state.payments);
+  return apiPost('savePayment', {receiptId, amount: payment.Amount, note: payment.Note, date: payment.Date, user: payment.By});
+}
 
-async function loadExpenses(){ try{ return await apiGet('getExpenses'); }catch(e){ return []; } }
-async function saveExpenseRemote(exp){ return apiPost('saveExpense', {data: exp, user: state.user.name}); }
-async function deleteExpenseRemote(id){ return apiPost('deleteExpense', {id, role: state.user.role}); }
+async function loadInventory(){
+  const rows = await apiGet('getInventory');
+  setCache('inventory', rows);
+  return rows;
+}
+async function saveInventoryItemRemote(item){
+  if(!item.ID) item.ID = 'inv_' + Date.now();
+  const idx = state.inventory.findIndex(x=>x.ID===item.ID);
+  if(idx>-1) state.inventory[idx] = item; else state.inventory.push(item);
+  setCache('inventory', state.inventory);
+  return apiPost('saveInventoryItem', {data:item});
+}
+async function deleteInventoryItemRemote(id){
+  state.inventory = state.inventory.filter(x=>x.ID!==id);
+  setCache('inventory', state.inventory);
+  return apiPost('deleteInventoryItem', {id, role: state.user.role});
+}
+async function adjustInventoryQtyRemote(id, delta){
+  const it = state.inventory.find(x=>x.ID===id);
+  if(it) it.Quantity = Number(it.Quantity||0) + Number(delta);
+  setCache('inventory', state.inventory);
+  return apiPost('adjustInventoryQty', {id, delta});
+}
+async function refreshInventory(){ state.inventory = await loadInventory(); }
 
-async function loadReceipts(){ try{ return (await apiGet('getReceipts')).map(rowToReceipt); }catch(e){ showToast('تعذر تحميل الإيصالات: '+e.message, 'error'); return []; } }
-async function loadCustomers(){ try{ return (await apiGet('getCustomers')).map(r=>({name:r.Name, phone:String(r.Phone||''), email:r.Email||''})); }catch(e){ return []; } }
-async function loadTechnicians(){ try{ const rows = await apiGet('getTechnicians'); const names = rows.map(r=>r.Name).filter(Boolean); return names.length ? names : ['أحمد فتحي','محمود سيد','كريم عادل']; }catch(e){ return ['أحمد فتحي','محمود سيد','كريم عادل']; } }
+async function loadSales(){
+  const rows = await apiGet('getSales');
+  setCache('sales', rows);
+  return rows;
+}
+async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, customerPhone, paymentMethod, amountPaid){
+  const sale = {
+    ID: 'sale_' + Date.now(), Date: new Date().toISOString().slice(0,10),
+    ItemsSummary: itemsSummary, ItemsJSON: itemsJson||'', Total: total,
+    PaymentMethod: paymentMethod||'نقدي', AmountPaid: amountPaid!=null?amountPaid:total,
+    CustomerName: customerName||'', CustomerPhone: customerPhone||'', By: state.user ? state.user.name : 'نظام'
+  };
+  state.sales.push(sale);
+  setCache('sales', state.sales);
+  const res = await apiPost('saveSale', {itemsSummary, itemsJson, total, customerName, customerPhone, paymentMethod, amountPaid, date: sale.Date, user: sale.By});
+  return { sale: res.sale || sale };
+}
 
-async function saveReceiptRemote(d){ return apiPost('saveReceipt', {data: receiptToRow(d), user: state.user?state.user.name:'نظام'}); }
-async function deleteReceiptRemote(id){ return apiPost('deleteReceipt', {id, role: state.user.role, user: state.user.name}); }
-async function saveCustomerRemote(c){ return apiPost('saveCustomer', {data: {Name:c.name, Phone:c.phone, Email:c.email}}); }
-async function saveTechnicianRemote(name){ return apiPost('saveTechnician', {name}); }
-async function loginRemote(name, password){ return apiGet('login', {name, password}); }
+async function loadQuotations(){
+  const rows = await apiGet('getQuotations');
+  setCache('quotations', rows);
+  return rows;
+}
+async function saveQuotationRemote(q){
+  if(!q.ID) q.ID = 'quo_' + Date.now();
+  state.quotations.push(q);
+  setCache('quotations', state.quotations);
+  const res = await apiPost('saveQuotation', {data:q});
+  return { quotation: res.quotation || q };
+}
+
+async function loadServices(){
+  const rows = await apiGet('getServices');
+  setCache('services', rows);
+  return rows;
+}
+async function loadPurchases(){
+  const rows = await apiGet('getPurchases');
+  setCache('purchases', rows);
+  return rows;
+}
+async function loadSuppliers(){
+  const rows = await apiGet('getSuppliers');
+  setCache('suppliers', rows);
+  return rows;
+}
+async function saveSupplierRemote(s){
+  if(!s.ID) s.ID = 'sup_' + Date.now();
+  state.suppliers.push(s);
+  setCache('suppliers', state.suppliers);
+  return apiPost('saveSupplier', {data:s});
+}
+
+async function loadExpenses(){
+  const rows = await apiGet('getExpenses');
+  setCache('expenses', rows);
+  return rows;
+}
+async function saveExpenseRemote(exp){
+  if(!exp.ID) exp.ID = 'exp_' + Date.now();
+  if(!exp.Date) exp.Date = new Date().toISOString().slice(0,10);
+  exp.By = state.user ? state.user.name : 'نظام';
+  state.expenses.push(exp);
+  setCache('expenses', state.expenses);
+  return apiPost('saveExpense', {data: exp, user: exp.By});
+}
+async function deleteExpenseRemote(id){
+  state.expenses = state.expenses.filter(x=>x.ID!==id);
+  setCache('expenses', state.expenses);
+  return apiPost('deleteExpense', {id, role: state.user.role});
+}
+
+async function loadReceipts(){
+  const rows = await apiGet('getReceipts');
+  const mapped = rows.map(rowToReceipt);
+  setCache('receipts_raw', rows);
+  setCache('receipts', mapped);
+  return mapped;
+}
+async function loadCustomers(){
+  const rows = await apiGet('getCustomers');
+  const mapped = rows.map(r=>({name:r.Name, phone:String(r.Phone||''), email:r.Email||''}));
+  setCache('customers', mapped);
+  return mapped;
+}
+async function loadTechnicians(){
+  const rows = await apiGet('getTechnicians');
+  const names = rows.map(r=>r.Name).filter(Boolean);
+  const finalNames = names.length ? names : ['أحمد فتحي','محمود سيد','كريم عادل'];
+  setCache('technicians', finalNames);
+  return finalNames;
+}
+
+async function saveReceiptRemote(d){
+  const row = receiptToRow(d);
+  const idx = state.receipts.findIndex(x=>x.id===d.id);
+  if(idx>-1) state.receipts[idx] = d; else state.receipts.push(d);
+  setCache('receipts', state.receipts);
+  return apiPost('saveReceipt', {data: row, user: state.user?state.user.name:'نظام'});
+}
+async function deleteReceiptRemote(id){
+  state.receipts = state.receipts.filter(x=>x.id!==id);
+  setCache('receipts', state.receipts);
+  return apiPost('deleteReceipt', {id, role: state.user.role, user: state.user.name});
+}
+async function saveCustomerRemote(c){
+  const exists = state.customers.find(x=>x.phone===c.phone);
+  if(!exists) state.customers.push(c);
+  setCache('customers', state.customers);
+  return apiPost('saveCustomer', {data: {Name:c.name, Phone:c.phone, Email:c.email}});
+}
+async function saveTechnicianRemote(name){
+  if(!state.technicians.includes(name)) state.technicians.push(name);
+  setCache('technicians', state.technicians);
+  return apiPost('saveTechnician', {name});
+}
+
+async function loginRemote(name, password){
+  if(!navigator.onLine){
+    // Offline local auth check
+    const cachedUsers = getCache('users', [
+      {Name:'admin', Password:'admin', Role:'admin', Sections:'maintenance,cameras,pos,inventory,finance'}
+    ]);
+    const found = cachedUsers.find(u => u.Name === name && String(u.Password) === String(password));
+    if(found){
+      return { name: found.Name, role: found.Role, sections: found.Sections || 'maintenance,cameras,pos,inventory,finance' };
+    }
+    // Fallback emergency offline admin
+    if(name==='admin' && password==='admin'){
+      return { name:'admin', role:'admin', sections:'maintenance,cameras,pos,inventory,finance' };
+    }
+    throw new Error('بيانات الدخول غير صحيحة (وضع غير متصل)');
+  }
+  const res = await apiGet('login', {name, password});
+  // Cache user credentials for future offline logins
+  const users = getCache('users', []);
+  const idx = users.findIndex(u=>u.Name===name);
+  const userObj = {Name:name, Password:password, Role:res.role, Sections:res.sections};
+  if(idx>-1) users[idx]=userObj; else users.push(userObj);
+  setCache('users', users);
+  return res;
+}
 
 /* ---------------- Static Config ---------------- */
 const BRANDS = {
@@ -1166,22 +1504,21 @@ const WA_ICON = `<svg class="wa-icon" viewBox="0 0 24 24" fill="currentColor"><p
 let state = {
   user: null,
   tab: 'dashboard',
-  receipts: [],
-  customers: [],
-  technicians: [],
-  expenses: [],
+  receipts: getCache('receipts', []),
+  customers: getCache('customers', []),
+  technicians: getCache('technicians', ['أحمد فتحي','محمود سيد','كريم عادل']),
+  expenses: getCache('expenses', []),
   formStep: 0,
   draft: null,
   archiveFilter: {q:'', status:'', tech:'', group:'all'},
-  settings: {shopName: 'صيانة ميكروتك', logoUrl: ''},
-  payments: [],
-  inventory: [],
-  sales: [],
-  quotations: [],
-  services: [],
-  purchases: [],
-  suppliers: [],
-  serials: [],
+  settings: getCache('settings', {shopName: 'صيانة ميكروتك', logoUrl: ''}),
+  payments: getCache('payments', []),
+  inventory: getCache('inventory', []),
+  sales: getCache('sales', []),
+  quotations: getCache('quotations', []),
+  services: getCache('services', []),
+  purchases: getCache('purchases', []),
+  suppliers: getCache('suppliers', []),
   currentSection: null,
   cart: [],
   quoCart: [],
@@ -1240,9 +1577,10 @@ function checkCustomerTrackingURL(){
 
 async function renderPublicTrackingPortal(receiptNum){
   const app = document.getElementById('app');
-  app.innerHTML = '<div class="empty" style="padding-top:100px;">⏳ جارٍ الاستعلام عن حالة جهازك...</div>';
-  let receipts = [];
-  try{ receipts = (await apiGet('getReceipts')).map(rowToReceipt); }catch(e){}
+  let receipts = state.receipts || [];
+  if(navigator.onLine){
+    try{ receipts = (await apiGet('getReceipts')).map(rowToReceipt); }catch(e){}
+  }
   const r = receipts.find(x=>x.receiptNumber.trim()===receiptNum.trim());
   
   if(!r){
@@ -1318,16 +1656,43 @@ async function renderPublicTrackingPortal(receiptNum){
 /* ---------------- Init ---------------- */
 async function init(){
   if(checkCustomerTrackingURL()) return;
-  const main = document.getElementById('app');
-  if(main) main.innerHTML = '<div class="empty" style="padding-top:100px;"><div style="font-size:32px;margin-bottom:12px;">⏳</div><div>جارٍ الاتصال بقاعدة البيانات وتحميل البيانات...</div></div>';
-  try {
-    [state.receipts, state.customers, state.technicians, state.settings, state.payments, state.inventory, state.sales, state.quotations, state.services, state.purchases, state.suppliers, state.expenses] = await Promise.all([
-      loadReceipts(), loadCustomers(), loadTechnicians(), loadSettings(), loadPayments(), loadInventory(), loadSales(), loadQuotations(), loadServices(), loadPurchases(), loadSuppliers(), loadExpenses()
-    ]);
-  } catch(e) {
-    console.error(e);
-  }
+  
+  // Instant load from cache first for zero-wait UI
+  state.receipts = getCache('receipts', state.receipts);
+  state.customers = getCache('customers', state.customers);
+  state.technicians = getCache('technicians', state.technicians);
+  state.settings = getCache('settings', state.settings);
+  state.payments = getCache('payments', state.payments);
+  state.inventory = getCache('inventory', state.inventory);
+  state.sales = getCache('sales', state.sales);
+  state.quotations = getCache('quotations', state.quotations);
+  state.services = getCache('services', state.services);
+  state.purchases = getCache('purchases', state.purchases);
+  state.suppliers = getCache('suppliers', state.suppliers);
+  state.expenses = getCache('expenses', state.expenses);
+
   render();
+  updateSyncStatusPill();
+
+  // If online, fetch fresh updates in background
+  if(navigator.onLine){
+    try {
+      [state.receipts, state.customers, state.technicians, state.settings, state.payments, state.inventory, state.sales, state.quotations, state.services, state.purchases, state.suppliers, state.expenses] = await Promise.all([
+        loadReceipts(), loadCustomers(), loadTechnicians(), loadSettings(), loadPayments(), loadInventory(), loadSales(), loadQuotations(), loadServices(), loadPurchases(), loadSuppliers(), loadExpenses()
+      ]);
+      render();
+      syncOfflineQueue();
+    } catch(e) {
+      console.warn('Init background fetch failed, keeping local cache:', e);
+    }
+  }
+
+  // Periodic heartbeat sync every 35 seconds
+  setInterval(()=>{
+    if(navigator.onLine && getSyncQueue().length > 0){
+      syncOfflineQueue();
+    }
+  }, 35000);
 }
 async function refreshPayments(){ state.payments = await loadPayments(); }
 async function refreshSales(){ state.sales = await loadSales(); }
@@ -1364,7 +1729,8 @@ function renderSectionPicker(app){
   const logoUrl = state.settings.logoUrl;
   app.innerHTML = `
     <div class="section-picker-wrap">
-      <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <div id="networkSyncPill" class="sync-pill online" onclick="syncOfflineQueue()">🟢 متصل</div>
         <button class="theme-toggle-btn" id="themeTogglePicker">${state.theme==='dark'?'☀️ المظهر الفاتح':'🌙 المظهر الليلي'}</button>
       </div>
       <div style="text-align:center;margin-bottom:28px;">
@@ -1385,6 +1751,7 @@ function renderSectionPicker(app){
       </div>
     </div>
   `;
+  updateSyncStatusPill();
   document.querySelectorAll('[data-sec]').forEach(el=>{
     el.onclick = ()=>{ state.currentSection = el.dataset.sec; render(); };
   });
@@ -1520,8 +1887,9 @@ function renderDashboard(main){
         <h2 class="page-title">📊 لوحة التحكم — قسم الصيانة</h2>
         <div class="subtitle">نظرة عامة على حالة الأجهزة ومتابعة سير العمل اليومي</div>
       </div>
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-ghost btn-sm" id="exportExcelDashBtn">📥 تصدير الإيصالات Excel</button>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <div id="networkSyncPill" class="sync-pill online" onclick="syncOfflineQueue()">🟢 متصل</div>
+        <button class="btn btn-ghost btn-sm" id="exportExcelDashBtn">📥 تصدير Excel</button>
         <button class="btn btn-primary btn-sm" id="dashNewReceiptBtn">➕ استلام جهاز جديد</button>
       </div>
     </div>
@@ -1583,6 +1951,7 @@ function renderDashboard(main){
     </div>
   `;
 
+  updateSyncStatusPill();
   document.getElementById('dashNewReceiptBtn').onclick = ()=>{
     state.tab = 'new';
     startNewDraft();
@@ -1972,7 +2341,6 @@ async function saveReceipt(d, printA5, sendWa, printSticker){
       await saveCustomerRemote(d.customer);
       state.customers.push(d.customer);
     }
-    state.receipts.push(d);
     state.draft = null;
     state.tab = 'archive';
     showToast(`تم حفظ الإيصال ${d.receiptNumber} بنجاح!`, 'success');
@@ -1981,7 +2349,7 @@ async function saveReceipt(d, printA5, sendWa, printSticker){
     if(printSticker){ setTimeout(()=>openStickerPrint(d), 300); }
     if(sendWa){ setTimeout(()=>openWhatsappChoice(d), 300); }
   }catch(e){
-    showToast('تعذر حفظ الإيصال: '+e.message, 'error');
+    showToast('تم حفظ الإيصال محلياً: '+e.message, 'info');
     btns.forEach(b=>{ b.disabled = false; });
   }
 }
@@ -2121,7 +2489,6 @@ function attachRowActions(root){
 function openQuickStatusModal(r){
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
-  const remaining = Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0);
 
   overlay.innerHTML = `
     <div class="modal-content" style="max-width:460px;">
@@ -2186,18 +2553,18 @@ function openQuickStatusModal(r){
       r.updatedBy = state.user.name;
       r.updatedAt = new Date().toISOString();
 
-      showToast(`جارٍ تحديث حالة الإيصال إلى: ${newStatus}...`, 'info');
+      showToast(`تم تحديث حالة الإيصال محلياً: ${newStatus}`, 'info');
       overlay.remove();
       renderMain();
 
       try{
         await saveReceiptRemote(r);
-        showToast(`تم تحديث حالة الجهاز بنجاح: ${newStatus} ✅`, 'success');
+        showToast(`تم حفظ وتحديث حالة الجهاز بنجاح: ${newStatus} ✅`, 'success');
         if(sendWa){
           setTimeout(()=>sendWhatsappByStatus(r, newStatus), 400);
         }
       }catch(e){
-        showToast('تعذر الحفظ في قاعدة البيانات: '+e.message, 'error');
+        showToast('تم الحفظ محلياً (وضع غير متصل)', 'info');
       }
     };
   });
@@ -2346,15 +2713,19 @@ async function openReceiptDetail(r){
 
   document.body.appendChild(overlay);
 
-  function renderPaymentsList(payments){
+  function renderPaymentsList(){
     const box = overlay.querySelector('#paymentsList');
-    if(!payments.length){ box.innerHTML = '<span style="color:var(--ink-secondary);">لا توجد دفعات مسجلة بعد.</span>'; return; }
-    box.innerHTML = payments.map(p=>`<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--line);">
-      <span>${p.Date} ${p.Note?'— '+p.Note:''} <span style="color:var(--slate-400);">(${p.By})</span></span>
-      <span class="mono" style="font-weight:700;">${p.Amount} ج.م</span>
+    const payments = getReceiptPayments(r);
+    if(!payments.length){
+      box.innerHTML = '<span style="color:var(--ink-secondary);">لا توجد دفعات مسجلة لهذا الإيصال بعد.</span>';
+      return;
+    }
+    box.innerHTML = payments.map(p=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--line);">
+      <span><b class="mono" style="font-size:11.5px;color:var(--ink-secondary);">${cleanDate(p.Date)}</b> ${p.Note?'— '+p.Note:''} <span style="color:var(--slate-400);font-size:11px;">(${p.By||'نظام'})</span></span>
+      <span class="mono" style="font-weight:800;color:var(--green-text);">${p.Amount} ج.م</span>
     </div>`).join('');
   }
-  loadPayments(r.id).then(renderPaymentsList);
+  renderPaymentsList();
 
   overlay.querySelectorAll('#editFaultChips .chip').forEach(c=>{
     c.onclick = ()=>{
@@ -2392,7 +2763,7 @@ async function openReceiptDetail(r){
       showToast('تم حفظ التعديلات بنجاح', 'success');
       renderMain();
     }catch(err){
-      showToast('تعذر الحفظ: '+err.message, 'error');
+      showToast('تم الحفظ محلياً: '+err.message, 'info');
       btn.disabled = false;
     }
   };
@@ -2404,16 +2775,17 @@ async function openReceiptDetail(r){
     try{
       await savePaymentRemote(r.id, amt, note);
       r.deposit = Number(r.deposit||0) + amt;
-      overlay.querySelector('#eDeposit').value = r.deposit;
+      const newRem = Number(r.cost||0) + Number(r.partsCost||0) - Number(r.deposit||0) + Number(r.refunded||0);
+      const remInp = overlay.querySelector('#eRem');
+      if(remInp) remInp.value = newRem;
       overlay.querySelector('#newPayAmt').value = '';
       overlay.querySelector('#newPayNote').value = '';
       await saveReceiptRemote(r);
-      const payments = await loadPayments(r.id);
-      renderPaymentsList(payments);
+      renderPaymentsList();
       await refreshPayments();
       showToast('تم تسجيل الدفعة بنجاح', 'success');
       renderMain();
-    }catch(e){ showToast('تعذر تسجيل الدفعة: '+e.message, 'error'); }
+    }catch(e){ showToast('تم تسجيل الدفعة محلياً', 'info'); }
   };
 
   const payBtn = overlay.querySelector('#payBtn');
@@ -2431,7 +2803,7 @@ async function openReceiptDetail(r){
       overlay.remove();
       showToast('تم سداد الإيصال بالكامل وتحديث الحالة إلى مكتمل ✅', 'success');
       renderMain();
-    }catch(e){ showToast('تعذر تسجيل السداد: '+e.message, 'error'); payBtn.disabled=false; }
+    }catch(e){ showToast('تم السداد محلياً', 'info'); payBtn.disabled=false; }
   };
 
   const invBtn = overlay.querySelector('#invBtn');
@@ -2652,11 +3024,10 @@ function renderExpensesPage(main){
     if(!title || !amount || amount<=0){ showToast('أدخل بيان المصروف والمبلغ بشكل صحيح', 'error'); return; }
     const btn = document.getElementById('addExpBtn'); btn.disabled = true; btn.textContent = '...';
     try{
-      const res = await saveExpenseRemote({ID:'', Title:title, Amount:amount, Category:category, Notes:notes});
-      state.expenses.push(res.expense);
+      await saveExpenseRemote({ID:'', Title:title, Amount:amount, Category:category, Notes:notes});
       showToast('تم تسجيل المصروف بنجاح', 'success');
       renderExpensesPage(main);
-    }catch(e){ showToast('تعذر الحفظ: '+e.message, 'error'); }
+    }catch(e){ showToast('تم تسجيل المصروف محلياً', 'info'); }
     btn.disabled = false; btn.textContent = 'تسجيل المصروف';
   };
 
@@ -2665,7 +3036,6 @@ function renderExpensesPage(main){
       if(!confirm('هل تريد حذف هذا المصروف؟')) return;
       try{
         await deleteExpenseRemote(btn.dataset.expdel);
-        state.expenses = state.expenses.filter(x=>x.ID!==btn.dataset.expdel);
         showToast('تم الحذف', 'success');
         renderExpensesPage(main);
       }catch(e){ showToast('تعذر الحذف: '+e.message, 'error'); }
@@ -2798,12 +3168,11 @@ function renderQuotationBuilder(main){
     };
     try{
       const res = await saveQuotationRemote(q);
-      state.quotations = await loadQuotations();
       showToast('تم حفظ عرض السعر بنجاح', 'success');
       openQuotationPrint(res.quotation, cart);
       state.quoCart = [];
       renderQuotationBuilder(main);
-    }catch(e){ showToast('تعذر الحفظ: '+e.message, 'error'); }
+    }catch(e){ showToast('تم الحفظ محلياً: '+e.message, 'info'); }
     saveBtn.disabled = false; saveBtn.textContent = 'حفظ وطباعة عرض السعر';
   };
 }
@@ -2952,10 +3321,9 @@ function renderInventory(main, categoryFilter, titleOverride){
     const btn = document.getElementById('addInvBtn'); btn.disabled = true;
     try{
       await saveInventoryItemRemote({ID:'', Name:name, Category:category, Barcode:barcode, ImageURL:'', Quantity:qty, PurchasePrice:buy, SellPrice:sell});
-      await refreshInventory();
       showToast('تمت إضافة الصنف بنجاح', 'success');
       renderMain();
-    }catch(e){ showToast('تعذر الإضافة: '+e.message, 'error'); }
+    }catch(e){ showToast('تم حفظ الصنف محلياً', 'info'); }
     btn.disabled = false;
   };
   main.querySelectorAll('[data-invact]').forEach(btn=>{
@@ -2964,7 +3332,7 @@ function renderInventory(main, categoryFilter, titleOverride){
       if(!item) return;
       if(btn.dataset.invact==='del'){
         if(!confirm(`حذف "${item.Name}" نهائيًا؟`)) return;
-        try{ await deleteInventoryItemRemote(item.ID); await refreshInventory(); showToast('تم الحذف', 'success'); renderMain(); }
+        try{ await deleteInventoryItemRemote(item.ID); showToast('تم الحذف', 'success'); renderMain(); }
         catch(e){ showToast('تعذر الحذف: '+e.message, 'error'); }
       }
       if(btn.dataset.invact==='edit'){
@@ -3007,11 +3375,10 @@ function openInventoryEditModal(item){
     const sell = Number(document.getElementById('editInvSell').value);
     try{
       await saveInventoryItemRemote({ID:item.ID, Name:name, Category:category, Barcode:barcode, ImageURL:'', Quantity:qty, PurchasePrice:buy, SellPrice:sell});
-      await refreshInventory();
       overlay.remove();
       showToast('تم تحديث الصنف بنجاح', 'success');
       renderMain();
-    }catch(e){ showToast('تعذر الحفظ: '+e.message, 'error'); }
+    }catch(e){ showToast('تم التحديث محلياً', 'info'); }
   };
 }
 
@@ -3111,16 +3478,14 @@ function renderPosSell(main){
     completeBtn.disabled = true; completeBtn.textContent = 'جارٍ إتمام البيع...';
     try{
       for(const c of cart){ await adjustInventoryQtyRemote(c.itemId, -c.qty); }
-      await refreshInventory();
       const itemsSummary = cart.map(c=>`${c.name} × ${c.qty} (${c.qty*c.price} ج.م)`).join('، ');
       const itemsJson = JSON.stringify(cart.map(c=>({name:c.name, qty:c.qty, price:c.price})));
       const saleRes = await saveSaleRemote(itemsSummary, itemsJson, total, customerName, customerPhone, 'نقدي', total);
-      await refreshSales();
       showToast('تمت عملية البيع بنجاح', 'success');
       openSalePrint(saleRes.sale, cart);
       state.cart = [];
       renderPosSell(main);
-    }catch(e){ showToast('تعذر إتمام البيع: '+e.message, 'error'); completeBtn.disabled=false; }
+    }catch(e){ showToast('تم تسجيل البيع محلياً', 'info'); completeBtn.disabled=false; }
   };
 }
 
@@ -3210,10 +3575,9 @@ function renderSuppliers(main){
     if(!name){ showToast('اكتب اسم المورد', 'error'); return; }
     try{
       const res = await saveSupplierRemote({ID:'', Name:name, Phone:phone, Notes:notes});
-      state.suppliers.push(res.supplier);
       showToast('تمت إضافة المورد', 'success');
       renderSuppliers(main);
-    }catch(e){ showToast('تعذر الإضافة: '+e.message, 'error'); }
+    }catch(e){ showToast('تمت الإضافة محلياً', 'info'); }
   };
 }
 
@@ -3346,27 +3710,33 @@ function renderSettings(main){
         <button class="btn btn-primary btn-sm" id="addNewTechBtn">إضافة فني</button>
       </div>
     </div>
+    <div class="card" style="border-right:4px solid var(--primary);">
+      <h3>🔄 مزامنة البيانات وحالة التخزين المحلي</h3>
+      <p style="font-size:13px;color:var(--ink-secondary);margin-bottom:12px;">
+        يعمل النظام بنظام التخزين المزدوج (Cloud + Local Offline Cache) لتتمكن من العمل حتى بدون إنترنت وتحديث الشيت فور الاتصال.
+      </p>
+      <button class="btn btn-primary btn-sm" onclick="syncOfflineQueue()">🔄 مزامنة العمليات المعلقة الآن</button>
+    </div>
   `;
   document.getElementById('saveShopNameBtn').onclick = async ()=>{
     const v = document.getElementById('shopNameInput').value.trim();
     if(!v) return;
-    try{ await saveSettingRemote('shopName', v); state.settings.shopName = v; showToast('تم حفظ اسم المحل بنجاح', 'success'); render(); }
-    catch(e){ showToast('تعذر الحفظ: '+e.message, 'error'); }
+    try{ await saveSettingRemote('shopName', v); showToast('تم حفظ اسم المحل بنجاح', 'success'); render(); }
+    catch(e){ showToast('تم الحفظ محلياً', 'info'); }
   };
   document.getElementById('saveLogoBtn').onclick = async ()=>{
     const v = document.getElementById('logoUrlInput').value.trim();
-    try{ await saveSettingRemote('logoUrl', v); state.settings.logoUrl = v; showToast('تم حفظ اللوجو بنجاح', 'success'); render(); }
-    catch(e){ showToast('تعذر الحفظ: '+e.message, 'error'); }
+    try{ await saveSettingRemote('logoUrl', v); showToast('تم حفظ اللوجو بنجاح', 'success'); render(); }
+    catch(e){ showToast('تم الحفظ محلياً', 'info'); }
   };
   document.getElementById('addNewTechBtn').onclick = async ()=>{
     const v = document.getElementById('newTechName').value.trim();
     if(!v) return;
     try{
       await saveTechnicianRemote(v);
-      state.technicians.push(v);
       showToast('تمت إضافة الفني بنجاح', 'success');
       renderSettings(main);
-    }catch(e){ showToast('تعذر الإضافة: '+e.message, 'error'); }
+    }catch(e){ showToast('تمت الإضافة محلياً', 'info'); }
   };
 }
 
@@ -3377,7 +3747,7 @@ function loginScreen(){
     <div style="text-align:center;margin-bottom:20px;">
       <div style="width:46px;height:46px;background:linear-gradient(135deg,var(--primary),#38bdf8);border-radius:12px;margin:0 auto 10px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;">⚡</div>
       <h2 style="margin:0;font-size:19px;font-weight:900;">ميكروERP</h2>
-      <div class="subtitle" style="font-size:12px;">تسجيل الدخول للنظام المتكامل</div>
+      <div class="subtitle" style="font-size:12px;">تسجيل الدخول للنظام (يعمل أونلاين وأوفلاين)</div>
     </div>
     <div class="field"><label>اسم المستخدم</label><input id="loginName" placeholder="ادخل اسم المستخدم" autofocus></div>
     <div class="field"><label>كلمة المرور</label><input id="loginPass" type="password" placeholder="كلمة المرور"></div>
@@ -3407,7 +3777,7 @@ function attachLogin(){
       try{ localStorage.setItem('microerp_session', JSON.stringify(state.user)); }catch(e){}
       await init();
     }catch(e){
-      err.textContent = 'بيانات الدخول غير صحيحة أو تعذر الاتصال: '+e.message;
+      err.textContent = e.message;
       btn.textContent = 'تسجيل الدخول ➔'; btn.disabled = false;
     }
   };

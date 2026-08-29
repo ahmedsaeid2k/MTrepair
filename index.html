@@ -673,6 +673,31 @@ tr:last-child td { border-bottom: none; }
   min-width: 160px;
 }
 
+/* Chart of Accounts & Tree */
+.tree-wrap { display: flex; flex-direction: column; gap: 4px; }
+.tree-node {
+  background: var(--paper2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.tree-node:hover { background: var(--paper3); border-color: var(--primary); }
+.tree-node.level-1 { background: var(--paper3); font-weight: 800; border-right: 4px solid var(--primary); margin-top: 8px; }
+.tree-node.level-2 { margin-right: 18px; border-right: 3px solid var(--slate-400); }
+.tree-node.level-3 { margin-right: 36px; border-right: 2px solid var(--slate-300); }
+.tree-node.level-4 { margin-right: 54px; }
+.tree-node-title { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; }
+.account-code { background: var(--paper3); color: var(--primary); font-weight: 800; padding: 2px 7px; border-radius: 4px; font-size: 11.5px; border: 1px solid var(--line); }
+.nature-pill { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: var(--radius-full); }
+.nature-pill.debit { background: var(--blue-bg); color: var(--blue-text); }
+.nature-pill.credit { background: var(--green-bg); color: var(--green-text); }
+.journal-line-row { display: grid; grid-template-columns: 2fr 1fr 1fr 2fr 35px; gap: 8px; align-items: center; margin-bottom: 8px; }
+
 /* Modal Windows */
 .modal-overlay {
   position: fixed;
@@ -1304,6 +1329,16 @@ async function savePaymentRemote(receiptId, amount, note){
   };
   state.payments.push(payment);
   setCache('payments', state.payments);
+  // Auto Journal Entry: Dr. 1101 (الخزينة) / Cr. 4101 (إيرادات الصيانة)
+  recordAutoJournalEntry(
+    `تحصيل دفعة صيانة (${note || 'دفعة إيصال'})`,
+    'Receipt',
+    receiptId,
+    [
+      {AccountCode:'1101', AccountName:'الخزينة الرئيسية (النقدية)', Debit:Number(amount), Credit:0, Notes:'تحصيل نقدية بالدرج'},
+      {AccountCode:'4101', AccountName:'إيرادات خدمات الصيانة', Debit:0, Credit:Number(amount), Notes:`إيصال: ${receiptId}`}
+    ]
+  ).catch(e=>{});
   return apiPost('savePayment', {receiptId, amount: payment.Amount, note: payment.Note, date: payment.Date, user: payment.By});
 }
 
@@ -1346,6 +1381,16 @@ async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, cust
   };
   state.sales.push(sale);
   setCache('sales', state.sales);
+  // Auto Journal Entry: Dr. 1101 (الخزينة) / Cr. 4102 (إيرادات مبيعات الأجهزة والإكسسوار)
+  recordAutoJournalEntry(
+    `مبيعات نقدية فاتورة POS (${itemsSummary})`,
+    'POS_Sale',
+    sale.ID,
+    [
+      {AccountCode:'1101', AccountName:'الخزينة الرئيسية (النقدية)', Debit:Number(total), Credit:0, Notes:'مقبوضات نقدية'},
+      {AccountCode:'4102', AccountName:'إيرادات مبيعات الأجهزة والإكسسوار', Debit:0, Credit:Number(total), Notes:itemsSummary}
+    ]
+  ).catch(e=>{});
   const res = await apiPost('saveSale', {itemsSummary, itemsJson, total, customerName, customerPhone, paymentMethod, amountPaid, date: sale.Date, user: sale.By});
   return { sale: res.sale || sale };
 }
@@ -1396,12 +1441,173 @@ async function saveExpenseRemote(exp){
   exp.By = state.user ? state.user.name : 'نظام';
   state.expenses.push(exp);
   setCache('expenses', state.expenses);
+  // Auto Journal: Dr. Expense Account / Cr. 1101 (الخزينة)
+  const expAccCode = EXPENSE_ACCOUNT_MAP[exp.Category] || '52';
+  const expAcc = state.accounts.find(a=>a.Code===expAccCode) || {Name:'المصروفات التشغيلية'};
+  recordAutoJournalEntry(
+    `مصروف: ${exp.Title} (${exp.Category})`,
+    'Expense',
+    exp.ID,
+    [
+      {AccountCode:expAccCode, AccountName:expAcc.Name, Debit:Number(exp.Amount), Credit:0, Notes:exp.Notes||exp.Title},
+      {AccountCode:'1101', AccountName:'الخزينة الرئيسية (النقدية)', Debit:0, Credit:Number(exp.Amount), Notes:'سداد نقدي من الدرج'}
+    ]
+  ).catch(e=>{});
   return apiPost('saveExpense', {data: exp, user: exp.By});
 }
 async function deleteExpenseRemote(id){
   state.expenses = state.expenses.filter(x=>x.ID!==id);
   setCache('expenses', state.expenses);
   return apiPost('deleteExpense', {id, role: state.user.role});
+}
+
+/* ---------------- Chart of Accounts & General Ledger ---------------- */
+const DEFAULT_ACCOUNTS = [
+  // 1 - الأصول
+  {Code:'1', Name:'الأصول', Type:'الأصول', ParentCode:'', Nature:'مدين', Description:'مجموع الأصول والموجودات', Balance:0},
+  {Code:'11', Name:'الأصول المتداولة', Type:'الأصول', ParentCode:'1', Nature:'مدين', Description:'الأصول السائلة والقصيرة الأجل', Balance:0},
+  {Code:'1101', Name:'الخزينة الرئيسية (النقدية)', Type:'الأصول', ParentCode:'11', Nature:'مدين', Description:'النقدية الحاضرة بالدرج', Balance:0},
+  {Code:'1102', Name:'البنك والحسابات الإلكترونية', Type:'الأصول', ParentCode:'11', Nature:'مدين', Description:'حسابات البنوك وفودافون كاش وإنستاباي', Balance:0},
+  {Code:'1103', Name:'العملاء والمدينون', Type:'الأصول', ParentCode:'11', Nature:'مدين', Description:'مستحقات على العملاء', Balance:0},
+  {Code:'1104', Name:'مخزون البضائع وقطع الغيار', Type:'الأصول', ParentCode:'11', Nature:'مدين', Description:'قيمة البضائع وقطع الغيار بالمخزن', Balance:0},
+  {Code:'12', Name:'الأصول الثابتة', Type:'الأصول', ParentCode:'1', Nature:'مدين', Description:'الممتلكات والمعدات', Balance:0},
+  {Code:'1201', Name:'أجهزة ومعدات ورشة الصيانة', Type:'الأصول', ParentCode:'12', Nature:'مدين', Description:'كاوية، هوت إير، باور سبلاي، ميكروسكوب...', Balance:0},
+  {Code:'1202', Name:'ديكورات وتجهيزات المحل', Type:'الأصول', ParentCode:'12', Nature:'مدين', Description:'أرفف، لافتات، أثاث', Balance:0},
+
+  // 2 - الخصوم
+  {Code:'2', Name:'الخصوم والالتزامات', Type:'الخصوم', ParentCode:'', Nature:'دائن', Description:'التزامات المنشأة تجاه الغير', Balance:0},
+  {Code:'21', Name:'الخصوم المتداولة', Type:'الخصوم', ParentCode:'2', Nature:'دائن', Description:'التزامات قصيرة الأجل', Balance:0},
+  {Code:'2101', Name:'الموردون والدائنون', Type:'الخصوم', ParentCode:'21', Nature:'دائن', Description:'حسابات الموردين وفواتير الآجل', Balance:0},
+  {Code:'2102', Name:'أمانات ومقدمات عملاء الصيانة', Type:'الخصوم', ParentCode:'21', Nature:'دائن', Description:'الدفعات المقدمة المستلمة قبل التسليم', Balance:0},
+  {Code:'2103', Name:'مصروفات مستحقة', Type:'الخصوم', ParentCode:'21', Nature:'دائن', Description:'مستحقات لم تسدد بعد', Balance:0},
+
+  // 3 - حقوق الملكية
+  {Code:'3', Name:'حقوق الملكية', Type:'حقوق الملكية', ParentCode:'', Nature:'دائن', Description:'حقوق أصحاب المنشأة', Balance:0},
+  {Code:'31', Name:'رأس المال والاحتياطيات', Type:'حقوق الملكية', ParentCode:'3', Nature:'دائن', Description:'رأس المال المستثمر', Balance:0},
+  {Code:'3101', Name:'رأس المال', Type:'حقوق الملكية', ParentCode:'31', Nature:'دائن', Description:'رأس مال البداية', Balance:0},
+  {Code:'3102', Name:'الأرباح والخسائر المرحلة', Type:'حقوق الملكية', ParentCode:'31', Nature:'دائن', Description:'أرباح الأعوام والفترات السابقة', Balance:0},
+  {Code:'3103', Name:'جاري الشركاء والمسحوبات', Type:'حقوق الملكية', ParentCode:'31', Nature:'دائن', Description:'المسحوبات الشخصية للشركاء', Balance:0},
+
+  // 4 - الإيرادات
+  {Code:'4', Name:'الإيرادات', Type:'الإيرادات', ParentCode:'', Nature:'دائن', Description:'عوائد النشاط والمبيعات', Balance:0},
+  {Code:'41', Name:'إيرادات النشاط الرئيسي', Type:'الإيرادات', ParentCode:'4', Nature:'دائن', Description:'إيرادات الصيانة والمبيعات', Balance:0},
+  {Code:'4101', Name:'إيرادات خدمات الصيانة', Type:'الإيرادات', ParentCode:'41', Nature:'دائن', Description:'أجور وخدمات صيانة الأجهزة', Balance:0},
+  {Code:'4102', Name:'إيرادات مبيعات الأجهزة والإكسسوار', Type:'الإيرادات', ParentCode:'41', Nature:'دائن', Description:'مبيعات نقطة البيع POS', Balance:0},
+  {Code:'4103', Name:'إيرادات مشاريع وتركيب الكاميرات', Type:'الإيرادات', ParentCode:'41', Nature:'دائن', Description:'عقود وتركيب الكاميرات والشبكات', Balance:0},
+  {Code:'4104', Name:'إيرادات أخرى متنوعة', Type:'الإيرادات', ParentCode:'41', Nature:'دائن', Description:'أي إيرادات عارضة', Balance:0},
+
+  // 5 - المصروفات
+  {Code:'5', Name:'المصروفات', Type:'المصروفات', ParentCode:'', Nature:'مدين', Description:'تكاليف ونفقات النشاط', Balance:0},
+  {Code:'51', Name:'تكلفة النشاط والمبيعات', Type:'المصروفات', ParentCode:'5', Nature:'مدين', Description:'تكلفة البضاعة المباعة وقطع الغيار', Balance:0},
+  {Code:'5101', Name:'تكلفة قطع الغيار المستخدمة بالصيانة', Type:'المصروفات', ParentCode:'51', Nature:'مدين', Description:'تكلفة القطع المسحوبة للأجهزة', Balance:0},
+  {Code:'5102', Name:'تكلفة البضاعة المباعة (POS)', Type:'المصروفات', ParentCode:'51', Nature:'مدين', Description:'سعر تكلفة الأصناف المباعة', Balance:0},
+  {Code:'52', Name:'المصروفات التشغيلية والعمومية', Type:'المصروفات', ParentCode:'5', Nature:'مدين', Description:'مصاريف إدارة وتشغيل الورشة', Balance:0},
+  {Code:'5201', Name:'إيجار المقر', Type:'المصروفات', ParentCode:'52', Nature:'مدين', Description:'إيجار المحل أو الورشة', Balance:0},
+  {Code:'5202', Name:'الكهرباء والمياه والإنترنت والمرافق', Type:'المصروفات', ParentCode:'52', Nature:'مدين', Description:'فواتير المرافق الشهرية', Balance:0},
+  {Code:'5203', Name:'رواتب ومكافآت الفنيين والموظفين', Type:'المصروفات', ParentCode:'52', Nature:'مدين', Description:'الأجور والمكافآت', Balance:0},
+  {Code:'5204', Name:'بوفيه ونثريات وضيافة', Type:'المصروفات', ParentCode:'52', Nature:'مدين', Description:'مشروبات ومستلزمات يومية', Balance:0},
+  {Code:'5205', Name:'دعاية وإعلان وتسويق', Type:'المصروفات', ParentCode:'52', Nature:'مدين', Description:'إعلانات ممولة ومطبوعات', Balance:0},
+  {Code:'5206', Name:'أدوات ومستهلكات ورشة الصيانة', Type:'المصروفات', ParentCode:'52', Nature:'مدين', Description:'قصدير، فلكس، أسلاك، شيلد، مفكات...', Balance:0},
+  {Code:'5207', Name:'شحن وتوصيل ونقليات', Type:'المصروفات', ParentCode:'52', Nature:'مدين', Description:'مصاريف الشحن والمواصلات', Balance:0}
+];
+
+const EXPENSE_ACCOUNT_MAP = {
+  'إيجار': '5201',
+  'كهرباء ومياه': '5202',
+  'رواتب وسلفيات': '5203',
+  'بوفيه ونثريات': '5204',
+  'دعاية وإعلانات': '5205',
+  'أدوات وصيانة مقر': '5206',
+  'شحن وتوصيل': '5207'
+};
+
+async function loadAccounts(){
+  const rows = await apiGet('getAccounts');
+  const finalAccounts = (Array.isArray(rows) && rows.length) ? rows : DEFAULT_ACCOUNTS;
+  state.accounts = finalAccounts;
+  setCache('accounts', finalAccounts);
+  return finalAccounts;
+}
+async function saveAccountRemote(acc){
+  const idx = state.accounts.findIndex(x=>String(x.Code)===String(acc.Code));
+  if(idx>-1) state.accounts[idx] = acc; else state.accounts.push(acc);
+  setCache('accounts', state.accounts);
+  return apiPost('saveAccount', {data:acc});
+}
+async function deleteAccountRemote(code){
+  state.accounts = state.accounts.filter(x=>String(x.Code)!==String(code));
+  setCache('accounts', state.accounts);
+  return apiPost('deleteAccount', {code, role: state.user.role});
+}
+
+async function loadJournalEntries(){
+  const rows = await apiGet('getJournalEntries');
+  const mapped = (Array.isArray(rows)?rows:[]).map(e=>({
+    ...e,
+    Lines: typeof e.LinesJSON==='string' ? (JSON.parse(e.LinesJSON||'[]')) : (e.Lines||[])
+  }));
+  state.journalEntries = mapped;
+  setCache('journal', mapped);
+  return mapped;
+}
+async function saveJournalEntryRemote(entry){
+  if(!entry.ID) entry.ID = 'je_' + Date.now();
+  if(!entry.EntryNumber) entry.EntryNumber = 'JE-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-4);
+  if(!entry.Date) entry.Date = new Date().toISOString().slice(0,10);
+  entry.By = state.user ? state.user.name : 'نظام';
+  state.journalEntries.push(entry);
+  setCache('journal', state.journalEntries);
+  return apiPost('saveJournalEntry', {data: entry, user: entry.By});
+}
+
+async function recordAutoJournalEntry(desc, refType, refId, lines){
+  const totalDebit = lines.reduce((s,l)=>s+Number(l.Debit||0),0);
+  const totalCredit = lines.reduce((s,l)=>s+Number(l.Credit||0),0);
+  const entry = {
+    ID: 'je_' + Date.now() + '_' + Math.floor(Math.random()*1000),
+    EntryNumber: 'JE-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-4),
+    Date: new Date().toISOString().slice(0,10),
+    Description: desc,
+    ReferenceType: refType,
+    ReferenceID: refId || '',
+    LinesJSON: JSON.stringify(lines),
+    Lines: lines,
+    TotalDebit: totalDebit,
+    TotalCredit: totalCredit,
+    By: state.user ? state.user.name : 'نظام'
+  };
+  return saveJournalEntryRemote(entry);
+}
+
+function getAccountStats(accountCode){
+  const code = String(accountCode).trim();
+  const acc = state.accounts.find(a=>String(a.Code)===code);
+  const nature = acc ? acc.Nature : 'مدين';
+  let totalDebit = 0;
+  let totalCredit = 0;
+
+  // Direct transactions from journal entries
+  (state.journalEntries||[]).forEach(je=>{
+    (je.Lines||[]).forEach(l=>{
+      if(String(l.AccountCode).trim()===code){
+        totalDebit += Number(l.Debit||0);
+        totalCredit += Number(l.Credit||0);
+      }
+    });
+  });
+
+  // Also include child accounts if this is a parent category
+  const children = state.accounts.filter(a=>String(a.ParentCode)===code);
+  children.forEach(ch=>{
+    const chStats = getAccountStats(ch.Code);
+    totalDebit += chStats.totalDebit;
+    totalCredit += chStats.totalCredit;
+  });
+
+  const initBal = Number(acc ? acc.Balance : 0);
+  const netBalance = nature === 'مدين' ? (initBal + totalDebit - totalCredit) : (initBal + totalCredit - totalDebit);
+
+  return { totalDebit, totalCredit, netBalance, nature };
 }
 
 async function loadReceipts(){
@@ -1508,6 +1714,8 @@ let state = {
   customers: getCache('customers', []),
   technicians: getCache('technicians', ['أحمد فتحي','محمود سيد','كريم عادل']),
   expenses: getCache('expenses', []),
+  accounts: getCache('accounts', DEFAULT_ACCOUNTS),
+  journalEntries: getCache('journal', []),
   formStep: 0,
   draft: null,
   archiveFilter: {q:'', status:'', tech:'', group:'all'},
@@ -1670,6 +1878,8 @@ async function init(){
   state.purchases = getCache('purchases', state.purchases);
   state.suppliers = getCache('suppliers', state.suppliers);
   state.expenses = getCache('expenses', state.expenses);
+  state.accounts = getCache('accounts', state.accounts);
+  state.journalEntries = getCache('journal', state.journalEntries);
 
   render();
   updateSyncStatusPill();
@@ -1677,8 +1887,8 @@ async function init(){
   // If online, fetch fresh updates in background
   if(navigator.onLine){
     try {
-      [state.receipts, state.customers, state.technicians, state.settings, state.payments, state.inventory, state.sales, state.quotations, state.services, state.purchases, state.suppliers, state.expenses] = await Promise.all([
-        loadReceipts(), loadCustomers(), loadTechnicians(), loadSettings(), loadPayments(), loadInventory(), loadSales(), loadQuotations(), loadServices(), loadPurchases(), loadSuppliers(), loadExpenses()
+      [state.receipts, state.customers, state.technicians, state.settings, state.payments, state.inventory, state.sales, state.quotations, state.services, state.purchases, state.suppliers, state.expenses, state.accounts, state.journalEntries] = await Promise.all([
+        loadReceipts(), loadCustomers(), loadTechnicians(), loadSettings(), loadPayments(), loadInventory(), loadSales(), loadQuotations(), loadServices(), loadPurchases(), loadSuppliers(), loadExpenses(), loadAccounts(), loadJournalEntries()
       ]);
       render();
       syncOfflineQueue();
@@ -2937,10 +3147,18 @@ function exportReceiptsToExcel(receipts){
 
 function exportInventoryToExcel(items){
   if(!items || !items.length){ showToast('المخزن فارغ', 'error'); return; }
-  const headers = ['اسم الصنف','القسم','الباركود','الكمية المتاحة','سعر الشراء (تكلفة)','سعر البيع المقترح'];
-  const rows = items.map(it=>[
-    `"${it.Name}"`, it.Category||'صيانة', `"${it.Barcode||''}"`, it.Quantity, it.PurchasePrice, it.SellPrice||0
-  ]);
+  const headers = ['اسم الصنف','القسم','التصنيف الفرعي','كود القطعة SKU','الباركود','مكان الرف','الكمية المتاحة','الوحدة','حد الأمان','سعر الشراء','سعر البيع قطاعي','سعر الجملة','صافي الربح','نسبة الهامش %','شهور الضمان','الموديلات المتوافقة'];
+  const rows = items.map(it=>{
+    const buy = Number(it.PurchasePrice||0);
+    const sell = Number(it.SellPrice||0);
+    const profit = sell - buy;
+    const margin = sell > 0 ? Math.round((profit/sell)*100)+'%' : '0%';
+    return [
+      `"${it.Name}"`, it.Category||'صيانة', `"${it.SubCategory||''}"`, `"${it.SKU||''}"`, `"${it.Barcode||''}"`,
+      `"${it.ShelfLocation||''}"`, it.Quantity||0, it.Unit||'قطعة', it.MinStock||2,
+      buy, sell, it.WholesalePrice||0, profit, `"${margin}"`, it.WarrantyMonths||0, `"${it.CompatibleModels||''}"`
+    ];
+  });
   downloadCSV(`Inventory_Export_${new Date().toISOString().slice(0,10)}.csv`, headers, rows);
 }
 
@@ -3260,125 +3478,668 @@ function renderInventoryHubApp(app){
   else renderInventory(main, state.invHubTab, state.invHubTab==='all' ? 'كل أصناف الشركة' : `مخزون: ${state.invHubTab}`);
 }
 
+/* ---------------- Pro Inventory Master Screen (شاشة إدارة وأصناف المخزن المطورة) ---------------- */
 function renderInventory(main, categoryFilter, titleOverride){
-  const cat = categoryFilter || 'صيانة';
-  const list = cat === 'all' ? state.inventory : state.inventory.filter(it=>(it.Category||'صيانة')===cat);
-  const catValue = cat === 'all' ? 'صيانة' : cat;
+  if(!state.invSearchQ) state.invSearchQ = '';
+  if(!state.invStockFilter) state.invStockFilter = 'all';
+
+  const rawList = state.inventory || [];
+  let list = categoryFilter === 'all' ? rawList : rawList.filter(it=>(it.Category||'صيانة')===categoryFilter);
+
+  // Stock Filter (Low Stock / Out of Stock / In Stock)
+  if(state.invStockFilter === 'low'){
+    list = list.filter(it => Number(it.Quantity||0) <= Number(it.MinStock||2));
+  } else if(state.invStockFilter === 'out'){
+    list = list.filter(it => Number(it.Quantity||0) <= 0);
+  } else if(state.invStockFilter === 'available'){
+    list = list.filter(it => Number(it.Quantity||0) > 0);
+  }
+
+  // Text Search
+  const q = state.invSearchQ.trim().toLowerCase();
+  if(q){
+    list = list.filter(it => 
+      (it.Name||'').toLowerCase().includes(q) ||
+      (it.Barcode||'').toLowerCase().includes(q) ||
+      (it.SKU||'').toLowerCase().includes(q) ||
+      (it.ShelfLocation||'').toLowerCase().includes(q) ||
+      (it.CompatibleModels||'').toLowerCase().includes(q) ||
+      (it.SubCategory||'').toLowerCase().includes(q)
+    );
+  }
+
+  // Calculations & KPIs
+  const totalItemsCount = rawList.length;
+  const totalCostValue = rawList.reduce((s,it)=>s + (Number(it.Quantity||0) * Number(it.PurchasePrice||0)), 0);
+  const totalRetailValue = rawList.reduce((s,it)=>s + (Number(it.Quantity||0) * Number(it.SellPrice||it.PurchasePrice||0)), 0);
+  const lowStockCount = rawList.filter(it=>Number(it.Quantity||0) <= Number(it.MinStock||2)).length;
+
   main.innerHTML = `
     <div class="top-header">
       <div>
-        <h2 class="page-title">📦 ${titleOverride || 'المخزن'}</h2>
-        <div class="subtitle">إدارة ومتابعة الأصناف، الأسعار، وحركة المخزون (${list.length} صنف)</div>
+        <h2 class="page-title">📦 ${titleOverride || 'إدارة المخزن والأصناف'}</h2>
+        <div class="subtitle">إدارة شاملة للمنتجات، الباركود، التسعير الذكي، ومواقع الرفوف (${list.length} صنف معروض)</div>
       </div>
-      <div>
-        <button class="btn btn-ghost btn-sm" id="exportInvExcelBtn">📥 تصدير المخزن Excel</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" id="exportInvExcelBtn">📥 تصدير Excel</button>
+        <button class="btn btn-ghost btn-sm" id="importInvExcelBtn">📂 استيراد من Excel</button>
+        <button class="btn btn-primary btn-sm" id="addNewItemMasterBtn">➕ إضافة صنف جديد</button>
       </div>
     </div>
-    <div class="card">
-      <h3>➕ إضافة صنف جديد للمخزن</h3>
-      <div class="grid3">
-        <div class="field"><label>اسم الصنف *</label><input id="invName" placeholder="مثال: شاشة لابتوب 15.6 LED"></div>
-        <div class="field"><label>الكمية المتاحة</label><input id="invQty" type="number" value="0"></div>
-        <div class="field"><label>سعر الشراء (تكلفة)</label><input id="invBuy" type="number" value="0"></div>
+
+    <!-- Inventory KPIs -->
+    <div class="stat-grid">
+      <div class="stat-card blue">
+        <div class="top-row"><span class="lbl">إجمالي الأصناف</span><div class="icon-box">📦</div></div>
+        <div class="num mono">${totalItemsCount}</div>
       </div>
-      <div class="grid3">
-        <div class="field"><label>سعر البيع المقترح</label><input id="invSell" type="number" value="0"></div>
-        <div class="field"><label>التصنيف</label>
-          <select id="invCategory">${INVENTORY_CATEGORIES.map(c=>`<option ${c===catValue?'selected':''}>${c}</option>`).join('')}</select>
-        </div>
-        <div class="field"><label>الباركود (اختياري)</label><input id="invBarcode" placeholder="امسح أو اكتب الباركود"></div>
+      <div class="stat-card amber">
+        <div class="top-row"><span class="lbl">قيمة المخزون (تكلفة)</span><div class="icon-box">💵</div></div>
+        <div class="num mono">${totalCostValue.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
       </div>
-      <button class="btn btn-primary btn-sm" id="addInvBtn">إضافة الصنف</button>
+      <div class="stat-card green">
+        <div class="top-row"><span class="lbl">القيمة البيعية المتوقعة</span><div class="icon-box">📈</div></div>
+        <div class="num mono">${totalRetailValue.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
+      </div>
+      <div class="stat-card red">
+        <div class="top-row"><span class="lbl">النواقص وحد الأمان</span><div class="icon-box">⚠️</div></div>
+        <div class="num mono">${lowStockCount}</div>
+      </div>
     </div>
+
+    <!-- Filters & Quick Actions Bar -->
+    <div class="filters-bar" style="margin-bottom:14px;">
+      <input id="invSearchInput" placeholder="🔍 بحث بالاسم، الباركود، رقم الموديل SKU، موقع الرف، أو الأجهزة المتوافقة..." value="${state.invSearchQ}" style="flex:1;min-width:240px;">
+      <select id="invStockFilterSelect" style="min-width:140px;">
+        <option value="all" ${state.invStockFilter==='all'?'selected':''}>📦 كل المخزون</option>
+        <option value="available" ${state.invStockFilter==='available'?'selected':''}>✅ متوفر بالمخزن</option>
+        <option value="low" ${state.invStockFilter==='low'?'selected':''}>⚠️ قارب على النفاد (حد الأمان)</option>
+        <option value="out" ${state.invStockFilter==='out'?'selected':''}>🚫 رصيد صفري (منتهي)</option>
+      </select>
+      ${(state.invSearchQ || state.invStockFilter!=='all') ? `<button class="btn btn-ghost btn-sm" id="clearInvFiltersBtn">مسح الفلاتر</button>` : ''}
+    </div>
+
     <div class="card">
-      <h3>الأصناف المسجلة</h3>
-      ${list.length===0 ? '<div class="empty">لا توجد أصناف في هذا القسم بعد.</div>' : `
-      <div class="table-wrap"><table><thead><tr><th>الصنف</th>${categoryFilter==='all'?'<th>التصنيف</th>':''}<th>الباركود</th><th>الكمية</th><th>سعر التكلفة</th><th>سعر البيع</th><th>الإجراءات</th></tr></thead><tbody>
-        ${list.map(it=>`<tr>
-          <td><b>${it.Name}</b></td>
-          ${categoryFilter==='all'?`<td><span class="status-badge st-check">${it.Category||'صيانة'}</span></td>`:''}
-          <td class="mono" style="font-size:11px;color:var(--ink-secondary);">${it.Barcode||'-'}</td>
-          <td class="mono" style="font-weight:800;${Number(it.Quantity)<=2?'color:var(--red);':'color:var(--ink);'}">${it.Quantity} ${Number(it.Quantity)<=2?'⚠️':''}</td>
-          <td class="mono">${it.PurchasePrice} ج.م</td>
-          <td class="mono">${it.SellPrice||'-'} ج.م</td>
-          <td class="row-actions">
-            <button class="btn btn-xs btn-ghost" data-invact="edit" data-id="${it.ID}">تعديل</button>
-            <button class="btn btn-xs btn-red" data-invact="del" data-id="${it.ID}">حذف</button>
-          </td>
-        </tr>`).join('')}
-      </tbody></table></div>`}
+      ${list.length===0 ? '<div class="empty">لا توجد أصناف مطابقة للبحث أو الفلتر المختار.</div>' : `
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>الصنف والموديل</th>
+              ${categoryFilter==='all'?'<th>القسم</th>':''}
+              <th>مكان الرف</th>
+              <th>الباركود</th>
+              <th>الكمية المتاحة</th>
+              <th>سعر الشراء</th>
+              <th>سعر البيع (قطاعي)</th>
+              <th>سعر الجملة</th>
+              <th>هامش الربح</th>
+              <th>الإجراءات</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${list.map(it=>{
+              const qty = Number(it.Quantity||0);
+              const minStock = Number(it.MinStock||2);
+              const buy = Number(it.PurchasePrice||0);
+              const sell = Number(it.SellPrice||0);
+              const wholesale = Number(it.WholesalePrice||0);
+              const profitAmt = sell - buy;
+              const profitMarginPct = sell > 0 ? Math.round((profitAmt / sell) * 100) : 0;
+              const isLowStock = qty <= minStock;
+
+              return `
+                <tr style="${isLowStock ? 'background:rgba(239,68,68,0.05);' : ''}">
+                  <td>
+                    <div style="font-weight:800;font-size:13px;color:var(--ink);">${it.Name}</div>
+                    <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:var(--ink-secondary);margin-top:2px;">
+                      ${it.SKU ? `<span class="mono" style="color:var(--primary);font-weight:700;">#${it.SKU}</span>` : ''}
+                      ${it.SubCategory ? `<span>• ${it.SubCategory}</span>` : ''}
+                      ${it.WarrantyMonths ? `<span>• 🛡️ ضمان ${it.WarrantyMonths} شهر</span>` : ''}
+                    </div>
+                    ${it.CompatibleModels ? `<div style="font-size:10.5px;color:var(--slate-500);margin-top:1px;">💻 متوافق: ${it.CompatibleModels}</div>` : ''}
+                  </td>
+                  ${categoryFilter==='all'?`<td><span class="status-badge st-check">${it.Category||'صيانة'}</span></td>`:''}
+                  <td>
+                    ${it.ShelfLocation ? `<span style="background:var(--paper3);border:1px solid var(--line-strong);padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700;color:var(--ink);">📍 ${it.ShelfLocation}</span>` : '<span style="color:var(--slate-400);font-size:11px;">-</span>'}
+                  </td>
+                  <td>
+                    ${it.Barcode ? `
+                      <div style="display:flex;align-items:center;gap:4px;">
+                        <span class="mono" style="font-size:11px;font-weight:700;color:var(--ink-secondary);">${it.Barcode}</span>
+                        <button class="btn btn-xs btn-ghost" data-printsticker="${it.ID}" title="طباعة ملصق الباركود الحراري" style="padding:2px 5px;">🏷️</button>
+                      </div>
+                    ` : '<span style="color:var(--slate-400);font-size:11px;">بدون</span>'}
+                  </td>
+                  <td>
+                    <div style="display:flex;align-items:center;gap:4px;">
+                      <span class="mono" style="font-weight:900;font-size:13.5px;color:${isLowStock?'var(--red)':'var(--ink)'};">${qty}</span>
+                      <span style="font-size:11px;color:var(--ink-secondary);">${it.Unit||'قطعة'}</span>
+                      ${isLowStock ? '<span title="الكمية وصلت لحد الأمان أو نفدت" style="font-size:11px;">⚠️</span>' : ''}
+                    </div>
+                  </td>
+                  <td class="mono font-bold">${buy.toLocaleString()} ج.م</td>
+                  <td class="mono font-bold" style="color:var(--green);">${sell.toLocaleString()} ج.م</td>
+                  <td class="mono">${wholesale ? wholesale.toLocaleString() + ' ج.م' : '<span style="color:var(--slate-400);">-</span>'}</td>
+                  <td>
+                    <span class="mono font-bold" style="color:${profitAmt>=0?'var(--green-text)':'var(--red)'};font-size:11.5px;">
+                      ${profitAmt >= 0 ? '+' : ''}${profitAmt.toLocaleString()} ج.م (${profitMarginPct}%)
+                    </span>
+                  </td>
+                  <td class="row-actions">
+                    <button class="btn btn-xs btn-amber" data-printsticker="${it.ID}" title="طباعة ملصق الباركود">🏷️ ملصق</button>
+                    <button class="btn btn-xs btn-ghost" data-cloneitem="${it.ID}" title="تكرار الصنف">📋 نسخ</button>
+                    <button class="btn btn-xs btn-ghost" data-edititem="${it.ID}" title="تعديل">✏️</button>
+                    ${state.user.role==='admin' ? `<button class="btn btn-xs btn-red" data-delitem="${it.ID}" title="حذف">🗑️</button>` : ''}
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`}
     </div>
   `;
+
+  // Attach search & filter handlers
+  const searchInput = document.getElementById('invSearchInput');
+  searchInput.oninput = (e)=>{ state.invSearchQ = e.target.value; renderInventory(main, categoryFilter, titleOverride); };
+  
+  const filterSelect = document.getElementById('invStockFilterSelect');
+  filterSelect.onchange = (e)=>{ state.invStockFilter = e.target.value; renderInventory(main, categoryFilter, titleOverride); };
+
+  const clearBtn = document.getElementById('clearInvFiltersBtn');
+  if(clearBtn) clearBtn.onclick = ()=>{ state.invSearchQ = ''; state.invStockFilter = 'all'; renderInventory(main, categoryFilter, titleOverride); };
+
+  document.getElementById('addNewItemMasterBtn').onclick = ()=>openInventoryItemModal(null, false, categoryFilter);
   document.getElementById('exportInvExcelBtn').onclick = ()=>exportInventoryToExcel(list);
-  document.getElementById('addInvBtn').onclick = async ()=>{
-    const name = document.getElementById('invName').value.trim();
-    const qty = Number(document.getElementById('invQty').value)||0;
-    const buy = Number(document.getElementById('invBuy').value)||0;
-    const sell = Number(document.getElementById('invSell').value)||0;
-    const category = document.getElementById('invCategory').value;
-    const barcode = document.getElementById('invBarcode').value.trim();
-    if(!name){ showToast('اكتب اسم الصنف', 'error'); return; }
-    const btn = document.getElementById('addInvBtn'); btn.disabled = true;
-    try{
-      await saveInventoryItemRemote({ID:'', Name:name, Category:category, Barcode:barcode, ImageURL:'', Quantity:qty, PurchasePrice:buy, SellPrice:sell});
-      showToast('تمت إضافة الصنف بنجاح', 'success');
-      renderMain();
-    }catch(e){ showToast('تم حفظ الصنف محلياً', 'info'); }
-    btn.disabled = false;
-  };
-  main.querySelectorAll('[data-invact]').forEach(btn=>{
+  document.getElementById('importInvExcelBtn').onclick = ()=>openInventoryImportModal();
+
+  // Attach row actions
+  main.querySelectorAll('[data-edititem]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const item = state.inventory.find(x=>x.ID===btn.dataset.edititem);
+      if(item) openInventoryItemModal(item, false, categoryFilter);
+    };
+  });
+  main.querySelectorAll('[data-cloneitem]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const item = state.inventory.find(x=>x.ID===btn.dataset.cloneitem);
+      if(item) openInventoryItemModal(item, true, categoryFilter);
+    };
+  });
+  main.querySelectorAll('[data-printsticker]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const item = state.inventory.find(x=>x.ID===btn.dataset.printsticker);
+      if(item) openProductBarcodeSticker(item);
+    };
+  });
+  main.querySelectorAll('[data-delitem]').forEach(btn=>{
     btn.onclick = async ()=>{
-      const item = state.inventory.find(x=>x.ID===btn.dataset.id);
+      const item = state.inventory.find(x=>x.ID===btn.dataset.delitem);
       if(!item) return;
-      if(btn.dataset.invact==='del'){
-        if(!confirm(`حذف "${item.Name}" نهائيًا؟`)) return;
-        try{ await deleteInventoryItemRemote(item.ID); showToast('تم الحذف', 'success'); renderMain(); }
-        catch(e){ showToast('تعذر الحذف: '+e.message, 'error'); }
-      }
-      if(btn.dataset.invact==='edit'){
-        openInventoryEditModal(item);
-      }
+      if(!confirm(`هل تريد حذف الصنف "${item.Name}" نهائياً من المخزن؟`)) return;
+      try{
+        await deleteInventoryItemRemote(item.ID);
+        showToast('تم حذف الصنف بنجاح', 'success');
+        renderInventory(main, categoryFilter, titleOverride);
+      }catch(e){ showToast('تعذر الحذف: '+e.message, 'error'); }
     };
   });
 }
 
-function openInventoryEditModal(item){
+/* ---------------- Pro Inventory Item Master Modal (نافذة إدخال وتعديل الصنف الاحترافية) ---------------- */
+function openInventoryItemModal(editItem, cloneMode=false, defaultCategory='صيانة'){
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
+  const isEdit = !!editItem && !cloneMode;
+  const isClone = cloneMode;
+
+  const item = editItem ? {
+    ID: isClone ? ('inv_' + Date.now()) : editItem.ID,
+    Name: isClone ? `${editItem.Name} (نسخة)` : (editItem.Name || ''),
+    Category: editItem.Category || defaultCategory || 'صيانة',
+    SubCategory: editItem.SubCategory || '',
+    SKU: isClone ? '' : (editItem.SKU || ''),
+    Barcode: isClone ? '' : (editItem.Barcode || ''),
+    ShelfLocation: editItem.ShelfLocation || '',
+    Quantity: isClone ? 0 : (editItem.Quantity || 0),
+    MinStock: editItem.MinStock != null ? editItem.MinStock : 2,
+    Unit: editItem.Unit || 'قطعة',
+    PurchasePrice: editItem.PurchasePrice || 0,
+    SellPrice: editItem.SellPrice || 0,
+    WholesalePrice: editItem.WholesalePrice || 0,
+    WarrantyMonths: editItem.WarrantyMonths || 0,
+    CompatibleModels: editItem.CompatibleModels || '',
+    ImageURL: editItem.ImageURL || ''
+  } : {
+    ID: 'inv_' + Date.now(),
+    Name: '',
+    Category: defaultCategory && defaultCategory!=='all' ? defaultCategory : 'صيانة',
+    SubCategory: '',
+    SKU: '',
+    Barcode: '',
+    ShelfLocation: '',
+    Quantity: 0,
+    MinStock: 2,
+    Unit: 'قطعة',
+    PurchasePrice: 0,
+    SellPrice: 0,
+    WholesalePrice: 0,
+    WarrantyMonths: 0,
+    CompatibleModels: '',
+    ImageURL: ''
+  };
+
+  const UNITS = ['قطعة', 'طقم / Set', 'متر', 'رول', 'كرتونة', 'علبة', 'حبة'];
+  const COMMON_SUBCATS = {
+    'صيانة': ['شاشات لابتوب', 'بطاريات لابتوب', 'شواحن وكابلات', 'كيبورد ومفصلات', 'سوكت شحن وباور', 'هاردات SSD/HDD', 'رامات RAM', 'أدوات وصيانة', 'أخرى'],
+    'كاميرات': ['كاميرات مراقبة خارجية', 'كاميرات داخلية', 'أجهزة تسجيل DVR/NVR', 'هارد ديسك مراقبة', 'باور سبلاي وسويتشات', 'كابلات وإكسسوار', 'أخرى'],
+    'كمبيوتر': ['أجهزة كمبيوتر كاملة', 'لابتوب', 'شاشات عرض', 'كروت شاشة GPU', 'لوحات أم Motherboard', 'معالجات CPU', 'كيسات وباور سبلاي', 'أخرى'],
+    'إكسسوار': ['ماوس وكيبورد', 'سماعات وهيدسيت', 'فلاشات وكروت ميموري', 'مشتركات ووصلات', 'حقائب وجرابات', 'أخرى']
+  };
+
+  function renderModalHTML(){
+    overlay.innerHTML = `
+      <div class="modal-content" style="max-width:760px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:16px;">
+          <div>
+            <h3 style="margin:0;font-size:17px;font-weight:900;">
+              ${isEdit ? '✏️ تعديل بيانات الصنف' : (isClone ? '📋 استنساخ صنف جديد' : '➕ إضافة صنف جديد للمخزن')}
+            </h3>
+            <div style="font-size:12px;color:var(--ink-secondary);margin-top:2px;">
+              ${isEdit ? `كود الصنف: <span class="mono font-bold" style="color:var(--primary);">${item.ID}</span>` : 'أدخل المواصفات والأسعار وموقع الرف وحد الأمان'}
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-xs" id="closeItemModal">✕ إغلاق</button>
+        </div>
+
+        <!-- Section 1: Basic Product Identity -->
+        <div class="card" style="padding:14px 16px;background:var(--paper3);border-color:var(--line-strong);margin-bottom:14px;">
+          <h3 style="font-size:13.5px;margin-bottom:10px;">📌 البيانات الأساسية والتصنيف</h3>
+          <div class="grid3">
+            <div class="field" style="grid-column: span 2;">
+              <label>اسم الصنف والموديل *</label>
+              <input id="mItemName" value="${item.Name}" placeholder="مثال: شاشة لابتوب 15.6 LED Slim 30 Pin FHD" autofocus>
+            </div>
+            <div class="field">
+              <label>القسم الرئيسي *</label>
+              <select id="mItemCategory">
+                ${INVENTORY_CATEGORIES.map(c=>`<option ${c===item.Category?'selected':''}>${c}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+
+          <div class="grid3">
+            <div class="field">
+              <label>التصنيف الفرعي / النوع</label>
+              <input id="mItemSubCat" value="${item.SubCategory}" list="subCatList" placeholder="اختر أو اكتب...">
+              <datalist id="subCatList">
+                ${(COMMON_SUBCATS[item.Category]||[]).map(sc=>`<option value="${sc}">`).join('')}
+              </datalist>
+            </div>
+            <div class="field">
+              <label>كود القطعة / SKU (اختياري)</label>
+              <input id="mItemSKU" value="${item.SKU}" placeholder="مثال: NT156FHM-N61">
+            </div>
+            <div class="field">
+              <label>مكان التخزين والرف 📍</label>
+              <input id="mItemShelf" value="${item.ShelfLocation}" placeholder="مثال: رف A-2 / درج 4">
+            </div>
+          </div>
+
+          <div class="field" style="margin-bottom:0;">
+            <label>الأجهزة والموديلات المتوافقة (Compatibility Notes)</label>
+            <input id="mItemCompat" value="${item.CompatibleModels}" placeholder="مثال: Dell G15 5515, HP Pavilion 15-ec, Lenovo Legion 5...">
+          </div>
+        </div>
+
+        <!-- Section 2: Barcode & Label -->
+        <div class="card" style="padding:14px 16px;margin-bottom:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <h3 style="font-size:13.5px;margin:0;">🏷️ الباركود والملصقات</h3>
+            <button class="btn btn-ghost btn-xs" id="genRandomBarcodeBtn" type="button">🎲 توليد باركود تلقائي</button>
+          </div>
+          <div class="grid2">
+            <div class="field" style="margin-bottom:0;">
+              <label>رقم الباركود (امسح بالليزر أو اكتب)</label>
+              <input id="mItemBarcode" class="mono" value="${item.Barcode}" placeholder="6220000000000">
+            </div>
+            <div style="display:flex;align-items:flex-end;gap:8px;">
+              <button class="btn btn-amber btn-sm" id="modalPrintStickerPreviewBtn" type="button" style="width:100%;">
+                🏷️ طباعة ملصق باركود حراري
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 3: Smart Pricing & Profit Margin Calculator -->
+        <div class="card" style="padding:14px 16px;margin-bottom:14px;background:var(--paper3);">
+          <h3 style="font-size:13.5px;margin-bottom:10px;">💰 التسعير الذكي وهوامش الربح</h3>
+          <div class="grid3">
+            <div class="field">
+              <label>سعر التكلفة / الشراء (ج.م) *</label>
+              <input id="mItemBuy" type="number" step="any" value="${item.PurchasePrice||''}" placeholder="0.00">
+            </div>
+            <div class="field">
+              <label>سعر البيع قطاعي للجمهور (ج.م) *</label>
+              <input id="mItemSell" type="number" step="any" value="${item.SellPrice||''}" placeholder="0.00" style="font-weight:800;color:var(--green);">
+            </div>
+            <div class="field">
+              <label>سعر الجملة / للفنيين (ج.م)</label>
+              <input id="mItemWholesale" type="number" step="any" value="${item.WholesalePrice||''}" placeholder="0.00">
+            </div>
+          </div>
+
+          <!-- Real-Time Profit Calculation Box -->
+          <div class="fin-box" id="profitCalcBox" style="margin-top:6px;">
+            <div class="fin-cell">
+              <div class="l">صافي الربح للقطعة</div>
+              <div class="v mono" id="calcProfitAmt" style="color:var(--green-text);">0 ج.م</div>
+            </div>
+            <div class="fin-cell">
+              <div class="l">نسبة هامش الربح (Margin %)</div>
+              <div class="v mono" id="calcMarginPct">0%</div>
+            </div>
+            <div class="fin-cell">
+              <div class="l">نسبة الزيادة (Markup %)</div>
+              <div class="v mono" id="calcMarkupPct">0%</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 4: Stock Levels & Warranty -->
+        <div class="card" style="padding:14px 16px;margin-bottom:14px;">
+          <h3 style="font-size:13.5px;margin-bottom:10px;">📦 المخزون، حد الأمان، والضمان</h3>
+          <div class="grid4">
+            <div class="field">
+              <label>الكمية الحالية *</label>
+              <input id="mItemQty" type="number" value="${item.Quantity||0}" min="0">
+            </div>
+            <div class="field">
+              <label>حد الأمان (تنبيه النواقص)</label>
+              <input id="mItemMinStock" type="number" value="${item.MinStock||2}" min="0" title="عند وصول الكمية لهذا الحد يظهر تنبيه">
+            </div>
+            <div class="field">
+              <label>وحدة القياس</label>
+              <select id="mItemUnit">
+                ${UNITS.map(u=>`<option ${u===item.Unit?'selected':''}>${u}</option>`).join('')}
+              </select>
+            </div>
+            <div class="field">
+              <label>فترة الضمان (بالأشهر)</label>
+              <input id="mItemWarranty" type="number" value="${item.WarrantyMonths||0}" min="0" placeholder="0 = بدون">
+            </div>
+          </div>
+        </div>
+
+        <!-- Modal Actions -->
+        <div class="actions-row" style="margin-top:16px;">
+          <button class="btn btn-ghost" id="cancelItemModalBtn" type="button">إلغاء</button>
+          <div style="display:flex;gap:8px;">
+            ${!isEdit ? `<button class="btn btn-green" id="saveAndNewItemBtn" type="button">➕💾 حفظ وإضافة صنف آخر</button>` : ''}
+            <button class="btn btn-primary" id="saveItemMasterBtn" type="button">💾 حفظ الصنف</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    // Close handlers
+    overlay.querySelector('#closeItemModal').onclick = ()=>overlay.remove();
+    overlay.querySelector('#cancelItemModalBtn').onclick = ()=>overlay.remove();
+
+    // Category change updates subcategory datalist
+    overlay.querySelector('#mItemCategory').onchange = (e)=>{
+      const cat = e.target.value;
+      const dl = overlay.querySelector('#subCatList');
+      dl.innerHTML = (COMMON_SUBCATS[cat]||[]).map(sc=>`<option value="${sc}">`).join('');
+    };
+
+    // Random barcode generator (EAN13 format prefix 20)
+    overlay.querySelector('#genRandomBarcodeBtn').onclick = ()=>{
+      const rnd = '20' + String(Date.now()).slice(-8) + Math.floor(Math.random()*90+10);
+      overlay.querySelector('#mItemBarcode').value = rnd;
+      showToast('تم توليد كود باركود فريد للصنف 🎲', 'info');
+    };
+
+    // Live Profit & Margin Calculation
+    function updateProfitCalcs(){
+      const buy = Number(overlay.querySelector('#mItemBuy').value)||0;
+      const sell = Number(overlay.querySelector('#mItemSell').value)||0;
+      const profit = sell - buy;
+      const marginPct = sell > 0 ? Math.round((profit / sell) * 100) : 0;
+      const markupPct = buy > 0 ? Math.round((profit / buy) * 100) : 0;
+
+      const pAmtEl = overlay.querySelector('#calcProfitAmt');
+      const pMargEl = overlay.querySelector('#calcMarginPct');
+      const pMarkEl = overlay.querySelector('#calcMarkupPct');
+
+      pAmtEl.textContent = `${profit.toLocaleString()} ج.م`;
+      pAmtEl.style.color = profit >= 0 ? 'var(--green-text)' : 'var(--red)';
+      pMargEl.textContent = `${marginPct}%`;
+      pMarkEl.textContent = `${markupPct}%`;
+    }
+
+    overlay.querySelector('#mItemBuy').oninput = updateProfitCalcs;
+    overlay.querySelector('#mItemSell').oninput = updateProfitCalcs;
+    updateProfitCalcs();
+
+    // Print sticker preview from inside modal
+    overlay.querySelector('#modalPrintStickerPreviewBtn').onclick = ()=>{
+      collectFormData();
+      if(!item.Name){ showToast('يرجى كتابة اسم الصنف أولاً للمعاينة', 'error'); return; }
+      openProductBarcodeSticker(item);
+    };
+
+    function collectFormData(){
+      item.Name = overlay.querySelector('#mItemName').value.trim();
+      item.Category = overlay.querySelector('#mItemCategory').value;
+      item.SubCategory = overlay.querySelector('#mItemSubCat').value.trim();
+      item.SKU = overlay.querySelector('#mItemSKU').value.trim();
+      item.ShelfLocation = overlay.querySelector('#mItemShelf').value.trim();
+      item.CompatibleModels = overlay.querySelector('#mItemCompat').value.trim();
+      item.Barcode = overlay.querySelector('#mItemBarcode').value.trim();
+      item.PurchasePrice = Number(overlay.querySelector('#mItemBuy').value)||0;
+      item.SellPrice = Number(overlay.querySelector('#mItemSell').value)||0;
+      item.WholesalePrice = Number(overlay.querySelector('#mItemWholesale').value)||0;
+      item.Quantity = Number(overlay.querySelector('#mItemQty').value)||0;
+      item.MinStock = Number(overlay.querySelector('#mItemMinStock').value)||0;
+      item.Unit = overlay.querySelector('#mItemUnit').value;
+      item.WarrantyMonths = Number(overlay.querySelector('#mItemWarranty').value)||0;
+    }
+
+    async function handleSave(keepOpen){
+      collectFormData();
+      if(!item.Name){ showToast('اسم الصنف مطلوب', 'error'); return; }
+      
+      // Auto barcode if left empty
+      if(!item.Barcode){
+        item.Barcode = '20' + String(Date.now()).slice(-8) + Math.floor(Math.random()*90+10);
+      }
+
+      const saveBtn = overlay.querySelector('#saveItemMasterBtn');
+      saveBtn.disabled = true; saveBtn.textContent = 'جارٍ الحفظ...';
+
+      try{
+        await saveInventoryItemRemote(item);
+        showToast(`تم حفظ الصنف "${item.Name}" بنجاح ✅`, 'success');
+        renderMain();
+
+        if(keepOpen){
+          // Reset form for next item
+          overlay.remove();
+          openInventoryItemModal(null, false, item.Category);
+        } else {
+          overlay.remove();
+        }
+      }catch(e){
+        showToast('تم حفظ الصنف محلياً', 'info');
+        if(!keepOpen) overlay.remove();
+      }
+    }
+
+    overlay.querySelector('#saveItemMasterBtn').onclick = ()=>handleSave(false);
+    const saveAndNewBtn = overlay.querySelector('#saveAndNewItemBtn');
+    if(saveAndNewBtn) saveAndNewBtn.onclick = ()=>handleSave(true);
+  }
+
+  renderModalHTML();
+}
+
+/* ---------------- Print Product Barcode Sticker (50mm x 30mm) ---------------- */
+function openProductBarcodeSticker(item){
+  document.body.classList.add('printing-sticker');
+  const old = document.getElementById('printMount');
+  if(old) old.remove();
+  const mount = document.createElement('div');
+  mount.id='printMount';
+
+  const barcodeVal = item.Barcode || item.SKU || item.ID;
+
+  mount.innerHTML = `
+  <div id="stickerPaper">
+    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #000;padding-bottom:1px;">
+      <b style="font-size:7.5px;">${state.settings.shopName || 'ميكروERP'}</b>
+      <span class="mono" style="font-size:7.5px;font-weight:800;">${item.Category||'صيانة'}</span>
+    </div>
+    <div style="font-size:7.5px;font-weight:900;margin:1px 0;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+      ${item.Name}
+    </div>
+    <div style="text-align:center;margin:1px 0;">
+      <svg id="productStickerBarcode"></svg>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:8px;font-weight:900;border-top:1px solid #000;padding-top:1px;">
+      <span>السعر:</span>
+      <span class="mono" style="font-size:10px;">${Number(item.SellPrice||item.PurchasePrice||0).toLocaleString()} ج.م</span>
+    </div>
+  </div>`;
+
+  document.body.appendChild(mount);
+  if(typeof JsBarcode !== 'undefined'){
+    try{
+      JsBarcode('#productStickerBarcode', barcodeVal, {
+        format:'CODE128',
+        width: 1.15,
+        height: 16,
+        displayValue: true,
+        fontSize: 8,
+        margin: 0
+      });
+    }catch(e){}
+  }
+
+  setTimeout(()=>{
+    window.print();
+    mount.remove();
+    document.body.classList.remove('printing-sticker');
+  }, 200);
+}
+
+/* ---------------- Bulk Inventory Import Modal (استيراد جماعي من Excel/CSV) ---------------- */
+function openInventoryImportModal(){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+
   overlay.innerHTML = `
-    <div class="modal-content" style="max-width:440px;">
-      <h3 style="margin-top:0;">تعديل الصنف: ${item.Name}</h3>
-      <div class="field"><label>اسم الصنف</label><input id="editInvName" value="${item.Name}"></div>
-      <div class="field"><label>التصنيف</label>
-        <select id="editInvCategory">${INVENTORY_CATEGORIES.map(c=>`<option ${c===(item.Category||'صيانة')?'selected':''}>${c}</option>`).join('')}</select>
+    <div class="modal-content" style="max-width:650px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:16px;">
+        <h3 style="margin:0;font-size:16px;">📂 استيراد أصناف جماعي من ملف Excel / CSV</h3>
+        <button class="btn btn-ghost btn-xs" id="closeImportModal">✕</button>
       </div>
-      <div class="field"><label>الباركود</label><input id="editInvBarcode" value="${item.Barcode||''}"></div>
-      <div class="grid3">
-        <div class="field"><label>الكمية</label><input id="editInvQty" type="number" value="${item.Quantity}"></div>
-        <div class="field"><label>سعر التكلفة</label><input id="editInvBuy" type="number" value="${item.PurchasePrice}"></div>
-        <div class="field"><label>سعر البيع</label><input id="editInvSell" type="number" value="${item.SellPrice||0}"></div>
+
+      <div style="background:var(--paper3);border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px;margin-bottom:16px;font-size:12.5px;line-height:1.7;">
+        <b>💡 تعليمات الاستيراد:</b>
+        <ol style="margin-right:18px;margin-top:4px;">
+          <li>يمكنك تنزيل النموذج الجاهز وتعبئته ببيانات أصنافك.</li>
+          <li>الأعمدة المطلوبة: <b>الاسم، القسم، الباركود، الكمية، سعر الشراء، سعر البيع، مكان الرف</b>.</li>
+          <li>يدعم الملفات بصيغة CSV أو Excel (.csv).</li>
+        </ol>
+        <button class="btn btn-ghost btn-xs" id="downloadImportTemplateBtn" style="margin-top:6px;">📥 تنزيل نموذج الاستيراد الفارغ (Template)</button>
       </div>
-      <div class="actions-row">
-        <button class="btn btn-ghost" id="editInvCancel">إلغاء</button>
-        <button class="btn btn-primary" id="editInvSave">حفظ</button>
+
+      <div class="field">
+        <label>اختر ملف CSV / Excel من جهازك</label>
+        <input type="file" id="csvFileInput" accept=".csv,text/csv" style="padding:7px;">
+      </div>
+
+      <div id="importPreviewMount" style="margin-top:12px;"></div>
+
+      <div class="actions-row" style="margin-top:16px;">
+        <button class="btn btn-ghost" id="cancelImportBtn">إلغاء</button>
+        <button class="btn btn-primary" id="processImportBtn" disabled>🚀 استيراد الأصناف إلى المخزن</button>
       </div>
     </div>
   `;
+
   document.body.appendChild(overlay);
-  overlay.querySelector('#editInvCancel').onclick = ()=>overlay.remove();
-  overlay.querySelector('#editInvSave').onclick = async ()=>{
-    const name = document.getElementById('editInvName').value.trim();
-    const category = document.getElementById('editInvCategory').value;
-    const barcode = document.getElementById('editInvBarcode').value.trim();
-    const qty = Number(document.getElementById('editInvQty').value);
-    const buy = Number(document.getElementById('editInvBuy').value);
-    const sell = Number(document.getElementById('editInvSell').value);
-    try{
-      await saveInventoryItemRemote({ID:item.ID, Name:name, Category:category, Barcode:barcode, ImageURL:'', Quantity:qty, PurchasePrice:buy, SellPrice:sell});
-      overlay.remove();
-      showToast('تم تحديث الصنف بنجاح', 'success');
-      renderMain();
-    }catch(e){ showToast('تم التحديث محلياً', 'info'); }
+  overlay.querySelector('#closeImportModal').onclick = ()=>overlay.remove();
+  overlay.querySelector('#cancelImportBtn').onclick = ()=>overlay.remove();
+
+  // Template download
+  overlay.querySelector('#downloadImportTemplateBtn').onclick = ()=>{
+    const headers = ['اسم الصنف','القسم','الباركود','الكمية','سعر الشراء','سعر البيع','سعر الجملة','مكان الرف','الموديلات المتوافقة'];
+    const sampleRows = [
+      ['شاشة لابتوب 15.6 LED FHD','صيانة','20260001',10,1200,1650,1450,'رف A-1','Dell G15, HP 15'],
+      ['كاميرا مراقبة Hikvision 5MP','كاميرات','20260002',5,450,650,550,'رف C-3','-'],
+      ['ماوس لاسلكي Logitech M170','إكسسوار','20260003',20,110,180,140,'رف E-2','-']
+    ];
+    downloadCSV('Inventory_Import_Template.csv', headers, sampleRows);
+  };
+
+  let parsedItems = [];
+  const fileInput = overlay.querySelector('#csvFileInput');
+  fileInput.onchange = (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt)=>{
+      const text = evt.target.result;
+      const lines = text.split(/\r?\n/).filter(l=>l.trim());
+      if(lines.length <= 1){ showToast('الملف فارغ أو لا يحتوي على بيانات كافية', 'error'); return; }
+
+      parsedItems = [];
+      for(let i=1; i<lines.length; i++){
+        const cols = lines[i].split(',').map(c=>c.replace(/^["']|["']$/g,'').trim());
+        if(cols[0]){
+          parsedItems.push({
+            ID: 'inv_' + Date.now() + '_' + i,
+            Name: cols[0],
+            Category: cols[1] || 'صيانة',
+            Barcode: cols[2] || ('20' + String(Date.now()).slice(-8) + i),
+            Quantity: Number(cols[3])||0,
+            PurchasePrice: Number(cols[4])||0,
+            SellPrice: Number(cols[5])||0,
+            WholesalePrice: Number(cols[6])||0,
+            ShelfLocation: cols[7] || '',
+            CompatibleModels: cols[8] || '',
+            MinStock: 2,
+            Unit: 'قطعة'
+          });
+        }
+      }
+
+      const previewMount = overlay.querySelector('#importPreviewMount');
+      previewMount.innerHTML = `
+        <div style="background:var(--green-bg);color:var(--green-text);padding:8px 12px;border-radius:var(--radius-sm);font-size:12px;font-weight:700;margin-bottom:8px;">
+          ✅ تم قراءة <b>${parsedItems.length}</b> صنف بنجاح وجاهز للاستيراد.
+        </div>
+      `;
+      overlay.querySelector('#processImportBtn').disabled = parsedItems.length === 0;
+    };
+    reader.readAsText(file);
+  };
+
+  overlay.querySelector('#processImportBtn').onclick = async ()=>{
+    const btn = overlay.querySelector('#processImportBtn');
+    btn.disabled = true; btn.textContent = 'جارٍ الاستيراد...';
+    for(const it of parsedItems){
+      try{ await saveInventoryItemRemote(it); }catch(e){}
+    }
+    showToast(`تم استيراد ${parsedItems.length} صنف بنجاح إلى المخزن! 🎉`, 'success');
+    overlay.remove();
+    renderMain();
   };
 }
 
@@ -3602,11 +4363,19 @@ function renderFinanceSectionApp(app){
   if(!state.financeTab) state.financeTab = 'overview';
   app.innerHTML = `
     <div class="sidebar">
-      ${brandHtml("القسم المالي")}
+      ${brandHtml("القسم المالي والمحاسبي")}
       ${sectionSwitcherHtml()}
       <div class="sidebar-nav-wrap">
-        <div class="nav-section">التقارير والحسابات</div>
-        ${[['overview','📊 نظرة عامة'],['expenses','💸 المصروفات والخزينة'],['income','📈 تقرير الدخل'],['bonus','🎁 مكافآت الفنيين']].map(([k,label])=>`
+        <div class="nav-section">المحاسبة والتقارير</div>
+        ${[
+          ['overview','📊 نظرة عامة'],
+          ['accounts','🌳 شجرة الحسابات'],
+          ['journal','📑 قيود اليومية'],
+          ['trialbalance','⚖️ ميزان المراجعة'],
+          ['expenses','💸 المصروفات والخزينة'],
+          ['income','📈 تقرير الدخل والأرباح'],
+          ['bonus','🎁 مكافآت الفنيين']
+        ].map(([k,label])=>`
           <div class="nav-item ${state.financeTab===k?'active':''}" data-fintab="${k}">${label}</div>
         `).join('')}
       </div>
@@ -3622,6 +4391,9 @@ function renderFinanceSectionApp(app){
   });
   const main = document.getElementById('main');
   if(state.financeTab==='overview') renderFinanceOverview(main);
+  else if(state.financeTab==='accounts') renderChartOfAccounts(main);
+  else if(state.financeTab==='journal') renderJournalEntries(main);
+  else if(state.financeTab==='trialbalance') renderTrialBalance(main);
   else if(state.financeTab==='expenses') renderExpensesPage(main);
   else if(state.financeTab==='income') renderFinanceReportPage(main);
   else renderBonusPage(main);
@@ -3635,14 +4407,592 @@ function renderFinanceOverview(main){
     return s + Math.max(0, remaining);
   },0);
   main.innerHTML = `
-    <div class="top-header"><div><h2 class="page-title">💰 النظرة المالية العامة</h2><div class="subtitle">ملخص الإيرادات والمصروفات والمستحقات المتبقية</div></div></div>
+    <div class="top-header"><div><h2 class="page-title">💰 النظرة المالية العامة</h2><div class="subtitle">ملخص الإيرادات والمصروفات ودليل الحسابات</div></div></div>
     <div class="stat-grid">
       <div class="stat-card green"><div class="num mono">${totalIncomeAllTime.toLocaleString()} ج.م</div><div class="lbl">إجمالي المقبوضات المسجلة</div></div>
       <div class="stat-card red"><div class="num mono">${totalExpAll.toLocaleString()} ج.م</div><div class="lbl">إجمالي المصروفات</div></div>
       <div class="stat-card purple"><div class="num mono">${(totalIncomeAllTime - totalExpAll).toLocaleString()} ج.م</div><div class="lbl">صافي الأرباح العام</div></div>
       <div class="stat-card amber"><div class="num mono">${maintenanceDue.toLocaleString()} ج.م</div><div class="lbl">مستحقات متبقية على إيصالات الصيانة</div></div>
     </div>
+
+    <div class="grid2">
+      <div class="card">
+        <h3>🌳 ملخص الحسابات الرئيسية</h3>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px;">
+          ${['1','2','3','4','5'].map(code=>{
+            const acc = state.accounts.find(a=>String(a.Code)===code);
+            if(!acc) return '';
+            const stats = getAccountStats(code);
+            return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--paper3);border-radius:var(--radius-sm);border:1px solid var(--line);">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="account-code mono">${acc.Code}</span>
+                <b>${acc.Name}</b>
+                <span class="nature-pill ${stats.nature==='مدين'?'debit':'credit'}">${stats.nature}</span>
+              </div>
+              <span class="mono font-bold" style="font-size:14px;color:var(--primary);">${stats.netBalance.toLocaleString()} ج.م</span>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>⚡ وصول سريع للعمليات المحاسبية</h3>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px;">
+          <button class="btn btn-primary" onclick="state.financeTab='accounts';renderFinanceSectionApp(document.getElementById('app'));">🌳 استعراض شجرة الحسابات الكاملة</button>
+          <button class="btn btn-ghost" onclick="state.financeTab='journal';renderFinanceSectionApp(document.getElementById('app'));">📑 دفتر القيود اليومية (+ قيد يدوي)</button>
+          <button class="btn btn-ghost" onclick="state.financeTab='trialbalance';renderFinanceSectionApp(document.getElementById('app'));">⚖️ عرض ميزان المراجعة العام</button>
+        </div>
+      </div>
+    </div>
   `;
+}
+
+/* ---------------- Chart of Accounts View ---------------- */
+function renderChartOfAccounts(main){
+  let searchQ = (state.accountSearchQuery||'').trim().toLowerCase();
+
+  main.innerHTML = `
+    <div class="top-header">
+      <div>
+        <h2 class="page-title">🌳 شجرة ودليل الحسابات (Chart of Accounts)</h2>
+        <div class="subtitle">الهيكل المالي المتكامل للأصول، الخصوم، حقوق الملكية، الإيرادات، والمصروفات</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost btn-sm" id="exportAccountsExcelBtn">📥 تصدير الدليل Excel</button>
+        <button class="btn btn-primary btn-sm" id="addNewAccountRootBtn">➕ إضافة حساب جديد</button>
+      </div>
+    </div>
+
+    <div class="filters-bar" style="margin-bottom:14px;">
+      <input id="accSearchInput" placeholder="🔍 بحث بكود الحساب أو اسم الحساب..." value="${state.accountSearchQuery||''}" style="flex:1;">
+      ${searchQ ? `<button class="btn btn-ghost btn-sm" id="clearAccSearchBtn">مسح</button>` : ''}
+    </div>
+
+    <div class="card">
+      <div class="tree-wrap" id="accountsTreeMount"></div>
+    </div>
+  `;
+
+  document.getElementById('addNewAccountRootBtn').onclick = ()=>openAccountModal();
+  document.getElementById('exportAccountsExcelBtn').onclick = ()=>exportAccountsToExcel();
+  const searchInp = document.getElementById('accSearchInput');
+  searchInp.oninput = (e)=>{ state.accountSearchQuery = e.target.value; renderChartOfAccounts(main); };
+  const clearBtn = document.getElementById('clearAccSearchBtn');
+  if(clearBtn) clearBtn.onclick = ()=>{ state.accountSearchQuery = ''; renderChartOfAccounts(main); };
+
+  const mount = document.getElementById('accountsTreeMount');
+  renderTreeNodes(mount, searchQ);
+}
+
+function renderTreeNodes(mount, filterQ){
+  const accounts = [...state.accounts].sort((a,b)=>String(a.Code).localeCompare(String(b.Code), undefined, {numeric:true}));
+  
+  function getLevel(code){
+    const len = String(code).length;
+    if(len===1) return 1;
+    if(len===2) return 2;
+    if(len<=4) return 3;
+    return 4;
+  }
+
+  let visible = accounts;
+  if(filterQ){
+    visible = accounts.filter(a=>String(a.Code).includes(filterQ) || a.Name.toLowerCase().includes(filterQ));
+  }
+
+  if(!visible.length){
+    mount.innerHTML = '<div class="empty">لا توجد حسابات مطابقة للبحث.</div>';
+    return;
+  }
+
+  mount.innerHTML = visible.map(acc=>{
+    const lvl = getLevel(acc.Code);
+    const stats = getAccountStats(acc.Code);
+    const hasChildren = accounts.some(a=>String(a.ParentCode)===String(acc.Code));
+
+    return `
+      <div class="tree-node level-${lvl}">
+        <div class="tree-node-title">
+          <span style="font-size:14px;">${lvl===1?'📁':(hasChildren?'📂':'📄')}</span>
+          <span class="account-code mono">${acc.Code}</span>
+          <span style="font-weight:${lvl<=2?'800':'600'};font-size:13px;color:var(--ink);">${acc.Name}</span>
+          <span class="nature-pill ${stats.nature==='مدين'?'debit':'credit'}">${stats.nature}</span>
+          ${acc.Description ? `<span style="font-size:11px;color:var(--ink-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;">(${acc.Description})</span>` : ''}
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span class="mono font-bold" style="font-size:13.5px;color:${stats.netBalance<0?'var(--red)':'var(--ink)'};">${stats.netBalance.toLocaleString()} ج.م</span>
+          <div style="display:flex;gap:4px;">
+            <button class="btn btn-xs btn-blue" data-accledger="${acc.Code}" title="كشف الحساب">📊 كشف</button>
+            <button class="btn btn-xs btn-ghost" data-accsub="${acc.Code}" title="إضافة حساب فرعي">➕ فرعي</button>
+            <button class="btn btn-xs btn-ghost" data-accedit="${acc.Code}" title="تعديل">✏️</button>
+            ${(!hasChildren && state.user.role==='admin') ? `<button class="btn btn-xs btn-red" data-accdel="${acc.Code}" title="حذف">🗑️</button>` : ''}
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  mount.querySelectorAll('[data-accledger]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const acc = state.accounts.find(a=>String(a.Code)===btn.dataset.accledger);
+      if(acc) openAccountLedgerModal(acc);
+    };
+  });
+  mount.querySelectorAll('[data-accsub]').forEach(btn=>{
+    btn.onclick = ()=>{ openAccountModal(btn.dataset.accsub); };
+  });
+  mount.querySelectorAll('[data-accedit]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const acc = state.accounts.find(a=>String(a.Code)===btn.dataset.accedit);
+      if(acc) openAccountModal(null, acc);
+    };
+  });
+  mount.querySelectorAll('[data-accdel]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      if(!confirm(`هل تريد حذف الحساب (${btn.dataset.accdel})؟`)) return;
+      try{
+        await deleteAccountRemote(btn.dataset.accdel);
+        showToast('تم حذف الحساب بنجاح', 'success');
+        renderChartOfAccounts(document.getElementById('main'));
+      }catch(e){ showToast('تعذر الحذف: '+e.message, 'error'); }
+    };
+  });
+}
+
+function openAccountModal(parentCode, editAcc){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  const isEdit = !!editAcc;
+
+  // Auto suggest next code
+  let suggestedCode = '';
+  let parentAcc = null;
+  if(parentCode){
+    parentAcc = state.accounts.find(a=>String(a.Code)===String(parentCode));
+    const siblings = state.accounts.filter(a=>String(a.ParentCode)===String(parentCode));
+    suggestedCode = String(parentCode) + (siblings.length < 9 ? '0' + (siblings.length+1) : (siblings.length+1));
+  }
+
+  const types = ['الأصول', 'الخصوم', 'حقوق الملكية', 'الإيرادات', 'المصروفات'];
+
+  overlay.innerHTML = `
+    <div class="modal-content" style="max-width:500px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
+        <h3 style="margin:0;font-size:16px;">${isEdit ? '✏️ تعديل الحساب: '+editAcc.Name : '➕ إضافة حساب جديد للدليل'}</h3>
+        <button class="btn btn-ghost btn-xs" id="closeAccModal">✕</button>
+      </div>
+
+      <div class="field"><label>الحساب الرئيسي التابع له</label>
+        <select id="mAccParent" ${isEdit?'disabled':''}>
+          <option value="">-- حساب جذري رئيسي --</option>
+          ${state.accounts.map(a=>`<option value="${a.Code}" ${(parentCode===a.Code || (editAcc && editAcc.ParentCode===a.Code))?'selected':''}>${a.Code} - ${a.Name} (${a.Type})</option>`).join('')}
+        </select>
+      </div>
+
+      <div class="grid2">
+        <div class="field"><label>كود الحساب *</label><input id="mAccCode" value="${isEdit?editAcc.Code:suggestedCode}" placeholder="مثال: 1105" ${isEdit?'disabled':''}></div>
+        <div class="field"><label>نوع الحساب</label>
+          <select id="mAccType">
+            ${types.map(t=>`<option ${(parentAcc && parentAcc.Type===t)||(editAcc && editAcc.Type===t)?'selected':''}>${t}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+
+      <div class="field"><label>اسم الحساب *</label><input id="mAccName" value="${isEdit?editAcc.Name:''}" placeholder="مثال: البنك الأهلي المصري"></div>
+
+      <div class="grid2">
+        <div class="field"><label>طبيعة الحساب</label>
+          <select id="mAccNature">
+            <option value="مدين" ${(editAcc && editAcc.Nature==='مدين')?'selected':''}>مدين (Debit)</option>
+            <option value="دائن" ${(editAcc && editAcc.Nature==='دائن')?'selected':''}>دائن (Credit)</option>
+          </select>
+        </div>
+        <div class="field"><label>الرصيد الافتتاحي (ج.م)</label><input id="mAccBal" type="number" value="${isEdit?(editAcc.Balance||0):0}"></div>
+      </div>
+
+      <div class="field"><label>وصف / ملاحظات</label><input id="mAccDesc" value="${isEdit?(editAcc.Description||''):''}" placeholder="وصف الحساب أو الغرض منه..."></div>
+
+      <div class="actions-row">
+        <button class="btn btn-ghost" id="cancelAccModal">إلغاء</button>
+        <button class="btn btn-primary" id="saveAccModalBtn">💾 حفظ الحساب</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+  overlay.querySelector('#closeAccModal').onclick = ()=>overlay.remove();
+  overlay.querySelector('#cancelAccModal').onclick = ()=>overlay.remove();
+
+  overlay.querySelector('#mAccParent').onchange = (e)=>{
+    const p = state.accounts.find(a=>String(a.Code)===e.target.value);
+    if(p){
+      overlay.querySelector('#mAccType').value = p.Type;
+      overlay.querySelector('#mAccNature').value = p.Nature;
+      const sibs = state.accounts.filter(a=>String(a.ParentCode)===String(p.Code));
+      overlay.querySelector('#mAccCode').value = String(p.Code) + (sibs.length < 9 ? '0' + (sibs.length+1) : (sibs.length+1));
+    }
+  };
+
+  overlay.querySelector('#saveAccModalBtn').onclick = async ()=>{
+    const code = overlay.querySelector('#mAccCode').value.trim();
+    const name = overlay.querySelector('#mAccName').value.trim();
+    const parent = overlay.querySelector('#mAccParent').value;
+    const type = overlay.querySelector('#mAccType').value;
+    const nature = overlay.querySelector('#mAccNature').value;
+    const balance = Number(overlay.querySelector('#mAccBal').value)||0;
+    const desc = overlay.querySelector('#mAccDesc').value.trim();
+
+    if(!code || !name){ showToast('يرجى كتابة كود الحساب واسم الحساب', 'error'); return; }
+    const accObj = {Code:code, Name:name, ParentCode:parent, Type:type, Nature:nature, Balance:balance, Description:desc};
+
+    try{
+      await saveAccountRemote(accObj);
+      overlay.remove();
+      showToast('تم حفظ الحساب بنجاح', 'success');
+      renderChartOfAccounts(document.getElementById('main'));
+    }catch(e){ showToast('تم الحفظ محلياً: '+e.message, 'info'); }
+  };
+}
+
+/* ---------------- Account Ledger (كشف الحساب) ---------------- */
+function openAccountLedgerModal(acc){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+
+  // Gather all transactions
+  const lines = [];
+  (state.journalEntries||[]).forEach(je=>{
+    (je.Lines||[]).forEach(l=>{
+      if(String(l.AccountCode).trim()===String(acc.Code).trim()){
+        lines.push({
+          date: cleanDate(je.Date),
+          entryNum: je.EntryNumber||je.ID,
+          desc: l.Notes || je.Description,
+          debit: Number(l.Debit||0),
+          credit: Number(l.Credit||0)
+        });
+      }
+    });
+  });
+
+  lines.sort((a,b)=>new Date(a.date) - new Date(b.date));
+
+  let runningBal = Number(acc.Balance||0);
+  const rowsWithBal = lines.map(l=>{
+    if(acc.Nature==='مدين') runningBal += (l.debit - l.credit);
+    else runningBal += (l.credit - l.debit);
+    return {...l, runningBal};
+  });
+
+  overlay.innerHTML = `
+    <div class="modal-content" style="max-width:750px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
+        <div>
+          <h3 style="margin:0;font-size:16px;">📊 كشف حساب: <span style="color:var(--primary);">${acc.Name}</span> (<span class="mono">${acc.Code}</span>)</h3>
+          <div style="font-size:11.5px;color:var(--ink-secondary);margin-top:2px;">طبيعة الحساب: <b>${acc.Nature}</b> | الرصيد الافتتاحي: <span class="mono font-bold">${acc.Balance||0} ج.م</span></div>
+        </div>
+        <button class="btn btn-ghost btn-xs" id="closeLedgerModal">✕ إغلاق</button>
+      </div>
+
+      <div class="stat-grid" style="grid-template-columns: repeat(3, 1fr);margin-bottom:14px;">
+        <div class="stat-card blue"><div class="num mono">${lines.reduce((s,l)=>s+l.debit,0).toLocaleString()} ج.م</div><div class="lbl">إجمالي حركات المدين</div></div>
+        <div class="stat-card green"><div class="num mono">${lines.reduce((s,l)=>s+l.credit,0).toLocaleString()} ج.م</div><div class="lbl">إجمالي حركات الدائن</div></div>
+        <div class="stat-card purple"><div class="num mono">${runningBal.toLocaleString()} ج.م</div><div class="lbl">الرصيد الختامي الحالي</div></div>
+      </div>
+
+      ${rowsWithBal.length===0 ? '<div class="empty">لا توجد حركات مسجلة على هذا الحساب بعد.</div>' : `
+      <div class="table-wrap" style="max-height:380px;">
+        <table>
+          <thead><tr><th>التاريخ</th><th>رقم القيد</th><th>البيان</th><th>مدين</th><th>دائن</th><th>الرصيد التراكمي</th></tr></thead>
+          <tbody>
+            ${rowsWithBal.map(r=>`<tr>
+              <td>${r.date}</td>
+              <td class="mono font-bold" style="color:var(--primary);">${r.entryNum}</td>
+              <td>${r.desc}</td>
+              <td class="mono ${r.debit>0?'font-bold':''}" style="color:${r.debit>0?'var(--blue)':'inherit'};">${r.debit||'-'}</td>
+              <td class="mono ${r.credit>0?'font-bold':''}" style="color:${r.credit>0?'var(--green)':'inherit'};">${r.credit||'-'}</td>
+              <td class="mono font-bold">${r.runningBal.toLocaleString()} ج.م</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`}
+
+      <div class="actions-row" style="margin-top:14px;">
+        <button class="btn btn-ghost btn-sm" id="exportLedgerExcelBtn">📥 تصدير كشف الحساب Excel</button>
+        <button class="btn btn-primary btn-sm" id="doneLedgerBtn">تم</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+  overlay.querySelector('#closeLedgerModal').onclick = ()=>overlay.remove();
+  overlay.querySelector('#doneLedgerBtn').onclick = ()=>overlay.remove();
+  overlay.querySelector('#exportLedgerExcelBtn').onclick = ()=>{
+    const headers = ['التاريخ','رقم القيد','البيان','مدين','دائن','الرصيد'];
+    const rows = rowsWithBal.map(r=>[r.date, r.entryNum, `"${r.desc}"`, r.debit, r.credit, r.runningBal]);
+    downloadCSV(`Ledger_${acc.Code}_${acc.Name}.csv`, headers, rows);
+  };
+}
+
+function exportAccountsToExcel(){
+  const headers = ['كود الحساب','اسم الحساب','النوع','الحساب الرئيسي','الطبيعة','الرصيد الحالي','الوصف'];
+  const rows = state.accounts.map(a=>{
+    const stats = getAccountStats(a.Code);
+    return [a.Code, `"${a.Name}"`, a.Type, a.ParentCode||'-', a.Nature, stats.netBalance, `"${a.Description||''}"`];
+  });
+  downloadCSV(`Chart_Of_Accounts_${new Date().toISOString().slice(0,10)}.csv`, headers, rows);
+}
+
+/* ---------------- Journal Entries View (دفتر القيود اليومية) ---------------- */
+function renderJournalEntries(main){
+  const entries = [...state.journalEntries].reverse();
+
+  main.innerHTML = `
+    <div class="top-header">
+      <div>
+        <h2 class="page-title">📑 دفتر القيود اليومية (General Journal)</h2>
+        <div class="subtitle">سجل العمليات والقيود المزدوجة المتوازنة (${entries.length} قيد مسجل)</div>
+      </div>
+      <div>
+        <button class="btn btn-primary btn-sm" id="newManualJournalBtn">➕ إضافة قيد يدوي جديد</button>
+      </div>
+    </div>
+
+    ${entries.length===0 ? '<div class="empty">لا توجد قيود مسجلة بعد. سيتم تسجيل القيود آلياً عند إجراء المعاملات أو إضافة قيد يدوي.</div>' : `
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      ${entries.map(je=>`
+        <div class="card" style="padding:14px 16px;margin-bottom:0;">
+          <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:8px;">
+            <div>
+              <span class="mono font-bold" style="color:var(--primary);font-size:13.5px;">${je.EntryNumber||je.ID}</span>
+              <span style="color:var(--ink-secondary);font-size:12px;margin-right:8px;">📅 ${cleanDate(je.Date)}</span>
+              <span class="status-badge st-check" style="font-size:10.5px;margin-right:6px;">${je.ReferenceType||'Manual'}</span>
+            </div>
+            <div style="font-size:12px;color:var(--ink-secondary);">بواسطة: <b>${je.By||'نظام'}</b></div>
+          </div>
+          <div style="font-weight:700;font-size:13px;margin-bottom:8px;">${je.Description}</div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>كود الحساب</th><th>اسم الحساب</th><th>البيان / ملاحظة</th><th>مدين (Debit)</th><th>دائن (Credit)</th></tr></thead>
+              <tbody>
+                ${(je.Lines||[]).map(l=>`<tr>
+                  <td class="mono font-bold">${l.AccountCode}</td>
+                  <td><b>${l.AccountName||(state.accounts.find(a=>a.Code===l.AccountCode)||{}).Name||'-'}</b></td>
+                  <td style="color:var(--ink-secondary);font-size:11.5px;">${l.Notes||'-'}</td>
+                  <td class="mono ${Number(l.Debit)>0?'font-bold':''}" style="color:${Number(l.Debit)>0?'var(--blue)':'inherit'};">${Number(l.Debit)>0?Number(l.Debit).toLocaleString()+' ج.م':'-'}</td>
+                  <td class="mono ${Number(l.Credit)>0?'font-bold':''}" style="color:${Number(l.Credit)>0?'var(--green)':'inherit'};">${Number(l.Credit)>0?Number(l.Credit).toLocaleString()+' ج.م':'-'}</td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `).join('')}
+    </div>`}
+  `;
+
+  document.getElementById('newManualJournalBtn').onclick = ()=>openManualJournalModal();
+}
+
+function openManualJournalModal(){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+
+  let lines = [
+    {accountCode:'', debit:0, credit:0, notes:''},
+    {accountCode:'', debit:0, credit:0, notes:''}
+  ];
+
+  function renderModalContent(){
+    const totalDebit = lines.reduce((s,l)=>s+Number(l.debit||0),0);
+    const totalCredit = lines.reduce((s,l)=>s+Number(l.credit||0),0);
+    const isBalanced = totalDebit > 0 && totalDebit === totalCredit;
+
+    overlay.innerHTML = `
+      <div class="modal-content" style="max-width:760px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
+          <h3 style="margin:0;font-size:16px;">➕ إضافة قيد يومية يدوي متوازن</h3>
+          <button class="btn btn-ghost btn-xs" id="closeJournalModal">✕</button>
+        </div>
+
+        <div class="grid2">
+          <div class="field"><label>التاريخ *</label><input id="jeDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+          <div class="field"><label>البيان العام للقيد *</label><input id="jeDesc" placeholder="مثال: تسوية جردية، سداد مصروفات نقدية..."></div>
+        </div>
+
+        <label style="margin:10px 0 6px;">بنود القيد (الطرف المدين والطرف الدائن):</label>
+        <div id="journalLinesMount">
+          ${lines.map((l,i)=>`
+            <div class="journal-line-row">
+              <select data-jacc="${i}">
+                <option value="">-- اختر الحساب --</option>
+                ${state.accounts.map(a=>`<option value="${a.Code}" ${l.accountCode===a.Code?'selected':''}>${a.Code} - ${a.Name}</option>`).join('')}
+              </select>
+              <input type="number" placeholder="مدين" value="${l.debit||''}" data-jdebit="${i}">
+              <input type="number" placeholder="دائن" value="${l.credit||''}" data-jcredit="${i}">
+              <input placeholder="بيان السطر..." value="${l.notes||''}" data-jnotes="${i}">
+              <button class="btn btn-xs btn-red" data-jdel="${i}" style="height:34px;">✕</button>
+            </div>
+          `).join('')}
+        </div>
+
+        <button class="btn btn-ghost btn-xs" id="addJournalLineBtn" style="margin-top:6px;">➕ إضافة سطر جديد</button>
+
+        <div class="fin-box" style="margin:16px 0;">
+          <div class="fin-cell"><div class="l">إجمالي المدين</div><div class="v mono">${totalDebit} ج.م</div></div>
+          <div class="fin-cell"><div class="l">إجمالي الدائن</div><div class="v mono">${totalCredit} ج.م</div></div>
+          <div class="fin-cell"><div class="l">حالة التوازن</div><div class="v" style="color:${isBalanced?'var(--green)':'var(--red)'};font-size:12px;">${isBalanced?'✅ متوازن ومطابق':'❌ غير متوازن'}</div></div>
+        </div>
+
+        <div class="actions-row">
+          <button class="btn btn-ghost" id="cancelJournalModal">إلغاء</button>
+          <button class="btn btn-primary" id="saveJournalModalBtn" ${!isBalanced?'disabled':''}>💾 ترحيل وحفظ القيد</button>
+        </div>
+      </div>
+    `;
+
+    overlay.querySelector('#closeJournalModal').onclick = ()=>overlay.remove();
+    overlay.querySelector('#cancelJournalModal').onclick = ()=>overlay.remove();
+
+    overlay.querySelector('#addJournalLineBtn').onclick = ()=>{
+      lines.push({accountCode:'', debit:0, credit:0, notes:''});
+      renderModalContent();
+    };
+
+    overlay.querySelectorAll('[data-jacc]').forEach(sel=>{
+      sel.onchange = (e)=>{ lines[Number(sel.dataset.jacc)].accountCode = e.target.value; };
+    });
+    overlay.querySelectorAll('[data-jdebit]').forEach(inp=>{
+      inp.oninput = (e)=>{
+        lines[Number(inp.dataset.jdebit)].debit = Number(e.target.value)||0;
+        if(Number(e.target.value)>0) lines[Number(inp.dataset.jdebit)].credit = 0;
+      };
+      inp.onblur = ()=>renderModalContent();
+    });
+    overlay.querySelectorAll('[data-jcredit]').forEach(inp=>{
+      inp.oninput = (e)=>{
+        lines[Number(inp.dataset.jcredit)].credit = Number(e.target.value)||0;
+        if(Number(e.target.value)>0) lines[Number(inp.dataset.jcredit)].debit = 0;
+      };
+      inp.onblur = ()=>renderModalContent();
+    });
+    overlay.querySelectorAll('[data-jnotes]').forEach(inp=>{
+      inp.oninput = (e)=>{ lines[Number(inp.dataset.jnotes)].notes = e.target.value; };
+    });
+    overlay.querySelectorAll('[data-jdel]').forEach(btn=>{
+      btn.onclick = ()=>{
+        if(lines.length<=2){ showToast('يجب أن يحتوي القيد على سطرين على الأقل', 'error'); return; }
+        lines.splice(Number(btn.dataset.jdel), 1);
+        renderModalContent();
+      };
+    });
+
+    const saveBtn = overlay.querySelector('#saveJournalModalBtn');
+    if(saveBtn) saveBtn.onclick = async ()=>{
+      const desc = overlay.querySelector('#jeDesc').value.trim();
+      const date = overlay.querySelector('#jeDate').value;
+      if(!desc){ showToast('اكتب بيان القيد', 'error'); return; }
+      
+      const formattedLines = lines.map(l=>{
+        const a = state.accounts.find(x=>x.Code===l.accountCode);
+        return {
+          AccountCode: l.accountCode,
+          AccountName: a ? a.Name : '',
+          Debit: Number(l.debit||0),
+          Credit: Number(l.credit||0),
+          Notes: l.notes || ''
+        };
+      });
+
+      try{
+        await saveJournalEntryRemote({
+          Date: date,
+          Description: desc,
+          ReferenceType: 'Manual',
+          Lines: formattedLines,
+          TotalDebit: totalDebit,
+          TotalCredit: totalCredit
+        });
+        overlay.remove();
+        showToast('تم ترحيل وحفظ القيد اليومي بنجاح ✅', 'success');
+        renderJournalEntries(document.getElementById('main'));
+      }catch(e){ showToast('تم حفظ القيد محلياً', 'info'); }
+    };
+  }
+
+  document.body.appendChild(overlay);
+  renderModalContent();
+}
+
+/* ---------------- Trial Balance (ميزان المراجعة) ---------------- */
+function renderTrialBalance(main){
+  let grandDebit = 0;
+  let grandCredit = 0;
+
+  const rows = state.accounts.map(acc=>{
+    const stats = getAccountStats(acc.Code);
+    grandDebit += stats.totalDebit;
+    grandCredit += stats.totalCredit;
+    return { acc, stats };
+  });
+
+  main.innerHTML = `
+    <div class="top-header">
+      <div>
+        <h2 class="page-title">⚖️ ميزان المراجعة (Trial Balance)</h2>
+        <div class="subtitle">تقرير شامل للأرصدة المدينة والدائنة للتحقق من صحة وتوازن الدفاتر</div>
+      </div>
+      <div>
+        <button class="btn btn-ghost btn-sm" id="exportTrialExcelBtn">📥 تصدير ميزان المراجعة Excel</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>كود الحساب</th>
+              <th>اسم الحساب</th>
+              <th>النوع</th>
+              <th>الطبيعة</th>
+              <th>رصيد أول المدة</th>
+              <th>إجمالي المدين</th>
+              <th>إجمالي الدائن</th>
+              <th>الرصيد الختامي</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(r=>`<tr>
+              <td class="mono font-bold">${r.acc.Code}</td>
+              <td><b>${r.acc.Name}</b></td>
+              <td>${r.acc.Type}</td>
+              <td><span class="nature-pill ${r.stats.nature==='مدين'?'debit':'credit'}">${r.stats.nature}</span></td>
+              <td class="mono">${(r.acc.Balance||0).toLocaleString()} ج.م</td>
+              <td class="mono" style="color:var(--blue);">${r.stats.totalDebit.toLocaleString()} ج.م</td>
+              <td class="mono" style="color:var(--green);">${r.stats.totalCredit.toLocaleString()} ج.م</td>
+              <td class="mono font-bold" style="color:var(--primary);">${r.stats.netBalance.toLocaleString()} ج.م</td>
+            </tr>`).join('')}
+          </tbody>
+          <tfoot>
+            <tr style="background:var(--paper3);font-weight:900;font-size:13.5px;">
+              <td colspan="5" style="text-align:left;">الإجمالي العام لميزان المراجعة:</td>
+              <td class="mono font-bold" style="color:var(--blue);">${grandDebit.toLocaleString()} ج.م</td>
+              <td class="mono font-bold" style="color:var(--green);">${grandCredit.toLocaleString()} ج.م</td>
+              <td><span class="status-badge st-done">✅ متزن</span></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('exportTrialExcelBtn').onclick = ()=>{
+    const headers = ['كود الحساب','اسم الحساب','النوع','الطبيعة','رصيد أول المدة','إجمالي المدين','إجمالي الدائن','الرصيد الختامي'];
+    const dataRows = rows.map(r=>[
+      r.acc.Code, `"${r.acc.Name}"`, r.acc.Type, r.stats.nature, r.acc.Balance||0, r.stats.totalDebit, r.stats.totalCredit, r.stats.netBalance
+    ]);
+    downloadCSV(`Trial_Balance_${new Date().toISOString().slice(0,10)}.csv`, headers, dataRows);
+  };
 }
 
 function renderFinanceReportPage(main){

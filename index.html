@@ -612,6 +612,7 @@ textarea { min-height: 75px; resize: vertical; }
 .st-check { background: var(--blue-bg); color: var(--blue-text); border-color: #bfdbfe; }
 .st-repair { background: var(--amber-bg); color: var(--amber-text); border-color: #fde68a; }
 .st-done { background: var(--green-bg); color: var(--green-text); border-color: #a7f3d0; }
+.st-delivered { background: #ede9fe; color: #6b21a8; border-color: #ddd6fe; }
 .st-failed { background: var(--red-bg); color: var(--red-text); border-color: #fecdd3; }
 .st-rejected { background: var(--slate-200); color: var(--slate-700); border-color: var(--slate-300); }
 
@@ -1902,6 +1903,7 @@ const STATUSES = [
   {v:'قيد الفحص', cls:'st-check', icon:'🔍', desc:'جاري الفحص والتشخيص'},
   {v:'الصيانة', cls:'st-repair', icon:'🛠️', desc:'قيد الإصلاح الفعلي'},
   {v:'مكتمل', cls:'st-done', icon:'✅', desc:'تم الانتهاء وجاهز للتسليم'},
+  {v:'تم التسليم', cls:'st-delivered', icon:'🤝', desc:'تم تسليم الجهاز للعميل بنجاح'},
   {v:'تعذرت الصيانة', cls:'st-failed', icon:'🚫', desc:'تعذر الإصلاح'},
   {v:'رفض العميل', cls:'st-rejected', icon:'❌', desc:'رفض العميل التكلفة/الإصلاح'}
 ];
@@ -2012,7 +2014,8 @@ async function renderPublicTrackingPortal(receiptNum){
   }
 
   const remaining = Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0);
-  const isDone = r.status==='مكتمل';
+  const isDelivered = r.status==='تم التسليم';
+  const isDone = r.status==='مكتمل' || isDelivered;
   const isRepair = r.status==='الصيانة';
   const isCheck = r.status==='قيد الفحص';
 
@@ -2039,8 +2042,12 @@ async function renderPublicTrackingPortal(receiptNum){
             <div class="timeline-title">جاري الصيانة</div>
           </div>
           <div class="timeline-step ${isDone?'active done':''}">
-            <div class="timeline-node">${isDone?'✅':''}</div>
+            <div class="timeline-node">${r.status==='مكتمل'?'✅':(isDelivered?'✓':'')}</div>
             <div class="timeline-title">جاهز للاستلام</div>
+          </div>
+          <div class="timeline-step ${isDelivered?'active done':''}">
+            <div class="timeline-node">${isDelivered?'🤝':''}</div>
+            <div class="timeline-title">تم التسليم</div>
           </div>
         </div>
 
@@ -2319,6 +2326,7 @@ function renderDashboard(main){
   const today = new Date().toISOString().slice(0,10);
   const inProgress = r.filter(x=>x.status==='قيد الفحص'||x.status==='الصيانة').length;
   const done = r.filter(x=>x.status==='مكتمل').length;
+  const delivered = r.filter(x=>x.status==='تم التسليم').length;
   const todayIncome = state.payments.filter(p=>String(p.Date||'').slice(0,10)===today).reduce((s,p)=>s+Number(p.Amount||0),0);
   const overdueList = r.filter(x=>{
     if(x.status!=='مكتمل') return false;
@@ -2349,12 +2357,19 @@ function renderDashboard(main){
       </div>
       <div class="stat-card green">
         <div class="top-row">
-          <span class="lbl">جاهزة ومكتملة</span>
+          <span class="lbl">جاهزة للاستلام</span>
           <div class="icon-box">✅</div>
         </div>
         <div class="num mono">${done}</div>
       </div>
-      <div class="stat-card purple">
+      <div class="stat-card purple" style="border-right-color:#8b5cf6;">
+        <div class="top-row">
+          <span class="lbl">تم تسليمها للعملاء</span>
+          <div class="icon-box">🤝</div>
+        </div>
+        <div class="num mono">${delivered}</div>
+      </div>
+      <div class="stat-card amber">
         <div class="top-row">
           <span class="lbl">مقبوضات اليوم</span>
           <div class="icon-box">💵</div>
@@ -2420,7 +2435,7 @@ function renderMaintenanceAnalytics(main){
   const r = state.receipts;
   const totalCost = r.reduce((s,x)=>s+Number(x.cost||0),0);
   const totalParts = r.reduce((s,x)=>s+Number(x.partsCost||0),0);
-  const completed = r.filter(x=>x.status==='مكتمل').length;
+  const completed = r.filter(x=>x.status==='مكتمل'||x.status==='تم التسليم').length;
   const completionRate = r.length ? Math.round((completed/r.length)*100) : 0;
 
   // Category counts
@@ -2433,7 +2448,7 @@ function renderMaintenanceAnalytics(main){
     const t = x.technician||'غير محدد';
     if(!techCounts[t]) techCounts[t] = {total:0, done:0, income:0};
     techCounts[t].total++;
-    if(x.status==='مكتمل') techCounts[t].done++;
+    if(x.status==='مكتمل'||x.status==='تم التسليم') techCounts[t].done++;
     techCounts[t].income += Number(x.cost||0);
   });
 
@@ -2804,6 +2819,7 @@ const STATUS_GROUPS = {
   all: {label:'الكل', statuses:null},
   active: {label:'قيد العمل ⏳', statuses:['قيد الفحص','الصيانة']},
   done: {label:'جاهزة للاستلام ✅', statuses:['مكتمل']},
+  delivered: {label:'تم التسليم 🤝', statuses:['تم التسليم']},
   overdue: {label:'⏰ متروكة +7 أيام', statuses:null},
   rejected: {label:'تعذرت / مرفوضة ❌', statuses:['رفض العميل','تعذرت الصيانة']}
 };
@@ -3034,6 +3050,9 @@ function getStatusCustomMessage(r, status){
 
   if(status === 'مكتمل'){
     return `مرحبًا ${r.customer.name} 👋\nنود إبلاغكم بأنه تم الانتهاء من صيانة جهازكم (${device}) بنجاح وجاهز للاستلام الآن في ${shop} ✅\n\n📌 رقم الإيصال: ${r.receiptNumber}\n💵 المبلغ المتبقي المطلوب: ${remaining} ج.م\n🔗 تتبع جهازك مباشرة: ${trackUrl}\n\nشكراً لثقتكم بنا!`;
+  }
+  if(status === 'تم التسليم'){
+    return `مرحبًا ${r.customer.name} 👋\nتم تسليم جهازكم (${device}) بنجاح بموجب الإيصال رقم ${r.receiptNumber} 🤝\nيسري الضمان على قطع الغيار المبدلة والخدمة وفقاً للشروط المحددة بالإيصال.\nسعدنا بخدمتكم في ${shop}، شكراً لثقتكم بنا! ✨`;
   }
   if(status === 'الصيانة'){
     return `مرحبًا ${r.customer.name} 👋\nنحيطكم علماً بأن جهازكم (${device}) قيد الصيانة والإصلاح حالياً في ${shop} 🛠️\nرقم الإيصال: ${r.receiptNumber}\n🔗 تتبع حالة جهازك: ${trackUrl}`;

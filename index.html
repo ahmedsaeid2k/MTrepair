@@ -110,7 +110,14 @@
   --purple-text: #c4b5fd;
 }
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-variant-numeric: tabular-nums lining-nums;
+  -webkit-font-feature-settings: "numr" 0, "lnum" 1, "tnum" 1;
+  font-feature-settings: "numr" 0, "lnum" 1, "tnum" 1;
+}
 body {
   font-family: var(--font-main);
   background: var(--paper);
@@ -119,6 +126,10 @@ body {
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   transition: background-color 0.2s ease, color 0.2s ease;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.mono, input, select, textarea, td, th, .num, span, div, b, strong, p {
+  font-variant-numeric: tabular-nums lining-nums;
 }
 .mono { font-family: var(--font-mono); letter-spacing: -0.02em; }
 
@@ -1090,6 +1101,30 @@ tr:last-child td { border-bottom: none; }
 <div id="toastContainer"></div>
 
 <script>
+/* ---------------- Universal Western Digits Enforcer (0-9) ---------------- */
+function toEngDigits(str){
+  if(str == null) return '';
+  return String(str)
+    .replace(/[٠-٩]/g, d => '0123456789'['٠١٢٣٤٥٦٧٨٩'.indexOf(d)])
+    .replace(/[۰-۹]/g, d => '0123456789'['۰۱۲۳۴۵۶۷۸۹'.indexOf(d)]);
+}
+
+// Override Number.prototype.toLocaleString to guarantee English numbers everywhere
+const _origNumberToLocaleString = Number.prototype.toLocaleString;
+Number.prototype.toLocaleString = function(locales, options) {
+  return _origNumberToLocaleString.call(this, 'en-US', options);
+};
+
+// Override Date formatting
+const _origDateToLocaleTimeString = Date.prototype.toLocaleTimeString;
+Date.prototype.toLocaleTimeString = function(locales, options) {
+  return toEngDigits(_origDateToLocaleTimeString.call(this, 'en-GB', options));
+};
+const _origDateToLocaleDateString = Date.prototype.toLocaleDateString;
+Date.prototype.toLocaleDateString = function(locales, options) {
+  return toEngDigits(_origDateToLocaleDateString.call(this, 'en-CA', options));
+};
+
 /* ---------------- Google Sheets API & Offline Sync Engine ---------------- */
 const API_URL = 'https://script.google.com/macros/s/AKfycbzpi81aPJwwsvHCqUKCkUxEhT0l4NnLgcCBPab1xjvx0B3vhzamCVkwiohrOCfWkKcm/exec';
 
@@ -1408,6 +1443,61 @@ async function saveQuotationRemote(q){
   return { quotation: res.quotation || q };
 }
 
+async function saveExpenseRemote(exp){
+  if(!exp.ID) exp.ID = 'exp_' + Date.now();
+  if(!exp.Date) exp.Date = new Date().toISOString().slice(0,10);
+  exp.By = state.user ? state.user.name : 'نظام';
+  const idx = state.expenses.findIndex(x=>x.ID===exp.ID);
+  if(idx>-1) state.expenses[idx] = exp; else state.expenses.push(exp);
+  setCache('expenses', state.expenses);
+
+  // Auto Journal
+  const isIncome = exp.Type === 'in' || exp.Type === 'income';
+  const isDraw = exp.Type === 'out' || exp.Category === 'مسحوبات شخصية' || exp.Category === 'جاري الشركاء';
+  const isPetty = exp.Type === 'petty' || exp.Category === 'بوفيه ونثريات' || exp.Category === 'نثريات';
+
+  if(isIncome){
+    recordAutoJournalEntry(
+      `إيداع وارد: ${exp.Title}`,
+      'CashIn',
+      exp.ID,
+      [
+        {AccountCode:'1101', AccountName:'الخزينة الرئيسية (النقدية)', Debit:Number(exp.Amount), Credit:0, Notes:exp.Title},
+        {AccountCode:'4102', AccountName:'إيرادات أخرى متنوعة', Debit:0, Credit:Number(exp.Amount), Notes:exp.Notes||exp.Title}
+      ]
+    ).catch(e=>{});
+  } else if(isDraw){
+    recordAutoJournalEntry(
+      `منصرف مسحوبات: ${exp.Title}`,
+      'CashOut',
+      exp.ID,
+      [
+        {AccountCode:'3103', AccountName:'جاري الشركاء والمسحوبات', Debit:Number(exp.Amount), Credit:0, Notes:exp.Title},
+        {AccountCode:'1101', AccountName:'الخزينة الرئيسية (النقدية)', Debit:0, Credit:Number(exp.Amount), Notes:exp.Notes||exp.Title}
+      ]
+    ).catch(e=>{});
+  } else {
+    const expAccCode = EXPENSE_ACCOUNT_MAP[exp.Category] || (isPetty ? '5203' : '52');
+    const expAcc = state.accounts.find(a=>a.Code===expAccCode) || {Name: isPetty ? 'بوفيه ونثريات وضيافة' : 'المصروفات التشغيلية'};
+    recordAutoJournalEntry(
+      `${isPetty?'نثريات':'مصروف'}: ${exp.Title} (${exp.Category})`,
+      'Expense',
+      exp.ID,
+      [
+        {AccountCode:expAccCode, AccountName:expAcc.Name, Debit:Number(exp.Amount), Credit:0, Notes:exp.Notes||exp.Title},
+        {AccountCode:'1101', AccountName:'الخزينة الرئيسية (النقدية)', Debit:0, Credit:Number(exp.Amount), Notes:'سداد نقدي من الدرج'}
+      ]
+    ).catch(e=>{});
+  }
+
+  return apiPost('saveExpense', {data: exp, user: exp.By});
+}
+async function deleteExpenseRemote(id){
+  state.expenses = state.expenses.filter(x=>x.ID!==id);
+  setCache('expenses', state.expenses);
+  return apiPost('deleteExpense', {id, role: state.user.role});
+}
+
 async function loadServices(){
   const rows = await apiGet('getServices');
   setCache('services', rows);
@@ -1434,31 +1524,6 @@ async function loadExpenses(){
   const rows = await apiGet('getExpenses');
   setCache('expenses', rows);
   return rows;
-}
-async function saveExpenseRemote(exp){
-  if(!exp.ID) exp.ID = 'exp_' + Date.now();
-  if(!exp.Date) exp.Date = new Date().toISOString().slice(0,10);
-  exp.By = state.user ? state.user.name : 'نظام';
-  state.expenses.push(exp);
-  setCache('expenses', state.expenses);
-  // Auto Journal: Dr. Expense Account / Cr. 1101 (الخزينة)
-  const expAccCode = EXPENSE_ACCOUNT_MAP[exp.Category] || '52';
-  const expAcc = state.accounts.find(a=>a.Code===expAccCode) || {Name:'المصروفات التشغيلية'};
-  recordAutoJournalEntry(
-    `مصروف: ${exp.Title} (${exp.Category})`,
-    'Expense',
-    exp.ID,
-    [
-      {AccountCode:expAccCode, AccountName:expAcc.Name, Debit:Number(exp.Amount), Credit:0, Notes:exp.Notes||exp.Title},
-      {AccountCode:'1101', AccountName:'الخزينة الرئيسية (النقدية)', Debit:0, Credit:Number(exp.Amount), Notes:'سداد نقدي من الدرج'}
-    ]
-  ).catch(e=>{});
-  return apiPost('saveExpense', {data: exp, user: exp.By});
-}
-async function deleteExpenseRemote(id){
-  state.expenses = state.expenses.filter(x=>x.ID!==id);
-  setCache('expenses', state.expenses);
-  return apiPost('deleteExpense', {id, role: state.user.role});
 }
 
 /* ---------------- Invoices Management & Conversion Engine ---------------- */
@@ -1518,11 +1583,11 @@ const DEFAULT_ACCOUNTS = [
 
   // 4 - الإيرادات
   {Code:'4', Name:'الإيرادات', Type:'الإيرادات', ParentCode:'', Nature:'دائن', Description:'عوائد النشاط والمبيعات', Balance:0},
-  {Code:'41', Name:'إيرادات النشاط الرئيسي', Type:'الإيرادات', ParentCode:'4', Nature:'دائن', Description:'إيرادات الصيانة والمبيعات', Balance:0},
-  {Code:'4101', Name:'إيرادات خدمات الصيانة', Type:'الإيرادات', ParentCode:'41', Nature:'دائن', Description:'أجور وخدمات صيانة الأجهزة', Balance:0},
-  {Code:'4102', Name:'إيرادات مبيعات الأجهزة والإكسسوار', Type:'الإيرادات', ParentCode:'41', Nature:'دائن', Description:'مبيعات نقطة البيع POS', Balance:0},
-  {Code:'4103', Name:'إيرادات مشاريع وتركيب الكاميرات', Type:'الإيرادات', ParentCode:'41', Nature:'دائن', Description:'عقود وتركيب الكاميرات والشبكات', Balance:0},
-  {Code:'4104', Name:'إيرادات أخرى متنوعة', Type:'الإيرادات', ParentCode:'41', Nature:'دائن', Description:'أي إيرادات عارضة', Balance:0},
+  {Code:'41', Name:'إيرادات النشاط الرئيسي', Type:'الإيرادات', ParentCode:'4', Nature:'دائن', Description:'إيرادات العمليات التشغيلية', Balance:0},
+  {Code:'4101', Name:'إيرادات خدمات صيانة وتصليح', Type:'الإيرادات', ParentCode:'41', Nature:'دائن', Description:'مصنعيات وأجور صيانة الأجهزة', Balance:0},
+  {Code:'4102', Name:'إيرادات مبيعات بضائع وقطع غيار', Type:'الإيرادات', ParentCode:'41', Nature:'دائن', Description:'مبيعات المتجر ونقطة البيع', Balance:0},
+  {Code:'4103', Name:'إيرادات تركيب كاميرات وأنظمة', Type:'الإيرادات', ParentCode:'41', Nature:'دائن', Description:'عقود وخدمات تركيب الكاميرات', Balance:0},
+  {Code:'42', Name:'إيرادات أخرى متنوعة', Type:'الإيرادات', ParentCode:'4', Nature:'دائن', Description:'إيرادات غير تشغيلية وأرباح بيع أصول', Balance:0},
 
   // 5 - المصروفات
   {Code:'5', Name:'المصروفات', Type:'المصروفات', ParentCode:'', Nature:'مدين', Description:'تكاليف ونفقات النشاط', Balance:0},
@@ -1530,7 +1595,7 @@ const DEFAULT_ACCOUNTS = [
   {Code:'5101', Name:'تكلفة قطع الغيار المستخدمة بالصيانة', Type:'المصروفات', ParentCode:'51', Nature:'مدين', Description:'تكلفة القطع المسحوبة للأجهزة', Balance:0},
   {Code:'5102', Name:'تكلفة البضاعة المباعة (POS)', Type:'المصروفات', ParentCode:'51', Nature:'مدين', Description:'سعر تكلفة الأصناف المباعة', Balance:0},
   {Code:'52', Name:'المصروفات التشغيلية والعمومية', Type:'المصروفات', ParentCode:'5', Nature:'مدين', Description:'مصاريف إدارة وتشغيل الورشة', Balance:0},
-  {Code:'5201', Name:'إيجار المقر', Type:'المصروفات', ParentCode:'52', Nature:'مدين', Description:'إيجار المحل أو الورشة', Balance:0},
+  {Code:'5201', Name:'إيجار المقر والورشة', Type:'المصروفات', ParentCode:'52', Nature:'مدين', Description:'إيجار المحل أو الورشة', Balance:0},
   {Code:'5202', Name:'الكهرباء والمياه والإنترنت والمرافق', Type:'المصروفات', ParentCode:'52', Nature:'مدين', Description:'فواتير المرافق الشهرية', Balance:0},
   {Code:'5203', Name:'رواتب ومكافآت الفنيين والموظفين', Type:'المصروفات', ParentCode:'52', Nature:'مدين', Description:'الأجور والمكافآت', Balance:0},
   {Code:'5204', Name:'بوفيه ونثريات وضيافة', Type:'المصروفات', ParentCode:'52', Nature:'مدين', Description:'مشروبات ومستلزمات يومية', Balance:0},
@@ -1672,10 +1737,18 @@ async function deleteReceiptRemote(id){
   return apiPost('deleteReceipt', {id, role: state.user.role, user: state.user.name});
 }
 async function saveCustomerRemote(c){
-  const exists = state.customers.find(x=>x.phone===c.phone);
-  if(!exists) state.customers.push(c);
+  if(!c || !c.name) return;
+  const exists = state.customers.find(x => (c.phone && x.phone===c.phone) || (x.name && x.name.trim().toLowerCase()===c.name.trim().toLowerCase()));
+  if(!exists){
+    state.customers.push({ name: c.name, phone: c.phone||'', email: c.email||'', taxNumber: c.taxNumber||'', address: c.address||'' });
+  } else {
+    if(c.phone) exists.phone = c.phone;
+    if(c.email) exists.email = c.email;
+    if(c.taxNumber) exists.taxNumber = c.taxNumber;
+    if(c.address) exists.address = c.address;
+  }
   setCache('customers', state.customers);
-  return apiPost('saveCustomer', {data: {Name:c.name, Phone:c.phone, Email:c.email}});
+  return apiPost('saveCustomer', {data: {Name:c.name, Phone:c.phone||'', Email:c.email||''}});
 }
 async function saveTechnicianRemote(name){
   if(!state.technicians.includes(name)) state.technicians.push(name);
@@ -1687,15 +1760,15 @@ async function loginRemote(name, password){
   if(!navigator.onLine){
     // Offline local auth check
     const cachedUsers = getCache('users', [
-      {Name:'admin', Password:'admin', Role:'admin', Sections:'maintenance,cameras,pos,inventory,finance,invoices'}
+      {Name:'admin', Password:'admin', Role:'admin', Sections:'daily,maintenance,invoices,pos,inventory,cameras,finance'}
     ]);
     const found = cachedUsers.find(u => u.Name === name && String(u.Password) === String(password));
     if(found){
-      return { name: found.Name, role: found.Role, sections: found.Sections || 'maintenance,cameras,pos,inventory,finance,invoices' };
+      return { name: found.Name, role: found.Role, sections: found.Sections || 'daily,maintenance,invoices,pos,inventory,cameras,finance' };
     }
     // Fallback emergency offline admin
     if(name==='admin' && password==='admin'){
-      return { name:'admin', role:'admin', sections:'maintenance,cameras,pos,inventory,finance,invoices' };
+      return { name:'admin', role:'admin', sections:'daily,maintenance,invoices,pos,inventory,cameras,finance' };
     }
     throw new Error('بيانات الدخول غير صحيحة (وضع غير متصل)');
   }
@@ -1731,7 +1804,7 @@ const STATUSES = [
 ];
 const EXPENSE_CATEGORIES = ['إيجار','كهرباء ومياه','بوفيه ونثريات','أدوات وصيانة مقر','شحن وتوصيل','رواتب وسلفيات','دعاية وإعلانات','أخرى'];
 const TERMS = `1) فترة الفحص: يتم فحص الجهاز وتسعير التكلفة خلال مدة أقصاها 48 ساعة من الاستلام، ولا يتم الإصلاح النهائي إلا بعد موافقة العميل.  2) استلام الأجهزة: الشركة غير مسؤولة عن أي جهاز متروك أكثر من 30 يوماً من إشعار العميل بالانتهاء.  3) الضمان: يسري على قطع الغيار المبدلة والخدمة لمدة محددة حسب نوع الإصلاح، ولا يشمل سوء الاستخدام أو السوائل أو الكسر.  4) البيانات: الشركة غير مسؤولة عن فقدان البيانات، يرجى أخذ نسخة احتياطية مسبقاً.  5) لا يُسلم الجهاز إلا بموجب هذا الإيصال الأصلي أو إثبات الهوية.`;
-function cleanDate(x){ return x ? String(x).slice(0,10) : ''; }
+function cleanDate(x){ return x ? toEngDigits(String(x).slice(0,10)) : ''; }
 const WA_ICON = `<svg class="wa-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12c0 1.85.5 3.58 1.35 5.07L2 22l5.07-1.35C8.55 21.5 10.27 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm0 18c-1.5 0-2.9-.41-4.1-1.13l-.29-.17-3.02.8.8-3.02-.17-.29A7.94 7.94 0 0 1 4 12c0-4.41 3.59-8 8-8s8 3.59 8 8-3.59 8-8 8z"/></svg>`;
 
 /* ---------------- State ---------------- */
@@ -1938,35 +2011,51 @@ async function refreshPayments(){ state.payments = await loadPayments(); }
 async function refreshSales(){ state.sales = await loadSales(); }
 async function refreshExpenses(){ state.expenses = await loadExpenses(); }
 
+function normalizeUserSections(u){
+  if(!u) return;
+  const allSections = ['daily', 'maintenance', 'invoices', 'pos', 'inventory', 'cameras', 'finance'];
+  if(u.role === 'admin'){
+    u.sections = allSections;
+  } else {
+    let secs = Array.isArray(u.sections) ? u.sections : String(u.sections||'').split(',').map(s=>s.trim()).filter(Boolean);
+    if(!secs.length) secs = allSections;
+    if(!secs.includes('daily')) secs.unshift('daily');
+    if(!secs.includes('invoices')) secs.splice(2, 0, 'invoices');
+    u.sections = secs;
+  }
+}
+
 /* ---------------- Render Root ---------------- */
 function render(){
   const app = document.getElementById('app');
   if(!state.user){ app.innerHTML = loginScreen(); attachLogin(); return; }
-  const availableSections = state.user.sections || [];
+  normalizeUserSections(state.user);
   if(!state.currentSection){
-    if(availableSections.length===1){ state.currentSection = availableSections[0]; }
-    else { return renderSectionPicker(app); }
+    return renderSectionPicker(app);
   }
+  if(state.currentSection==='daily') return renderDailyJournalSectionApp(app);
   if(state.currentSection==='maintenance') return renderMaintenanceApp(app);
-  if(state.currentSection==='cameras') return renderCamerasApp(app);
+  if(state.currentSection==='invoices') return renderInvoicesSectionApp(app);
   if(state.currentSection==='pos') return renderPosApp(app);
   if(state.currentSection==='inventory') return renderInventoryHubApp(app);
+  if(state.currentSection==='cameras') return renderCamerasApp(app);
   if(state.currentSection==='finance') return renderFinanceSectionApp(app);
-  if(state.currentSection==='invoices') return renderInvoicesSectionApp(app);
   renderSectionPicker(app);
 }
 
 const SECTION_INFO = {
+  daily: {label:'اليومية وحركة الخزينة', icon:'📔', desc:'دفتر حركة النقدية اليومية، وارد ومنصرف ونثريات وتقفيل الدرج'},
   maintenance: {label:'الصيانة والتصليح', icon:'🛠️', desc:'استلام الأجهزة، أوامر الشغل، وتتبع الحالات'},
   invoices: {label:'الفواتير الضريبية والرسمية', icon:'📄', desc:'إصدار وإدارة الفواتير، التحويل من الصيانة، ومتابعة التحصيل'},
-  cameras: {label:'كاميرات المراقبة', icon:'📷', desc:'كتالوج الكاميرات وعروض أسعار التركيب'},
   pos: {label:'نقطة البيع (POS)', icon:'🧾', desc:'بيع سريع بالفاتورة والباركود وضمان المنتجات'},
   inventory: {label:'المخزن العام', icon:'📦', desc:'الأصناف، المشتريات، الموردين، والأرقام التسلسلية'},
-  finance: {label:'القسم المالي والمصروفات', icon:'💰', desc:'المقبوضات، المصروفات، تقفيل الخزينة، والمكافآت'}
+  cameras: {label:'كاميرات المراقبة', icon:'📷', desc:'كتالوج الكاميرات وعروض أسعار التركيب'},
+  finance: {label:'القسم المالي والمصروفات', icon:'💰', desc:'المقبوضات، المصروفات، شجرة الحسابات، والمكافآت'}
 };
 const INVENTORY_CATEGORIES = ['صيانة','كاميرات','كمبيوتر','إكسسوار'];
 
 function renderSectionPicker(app){
+  normalizeUserSections(state.user);
   const sections = state.user.sections || [];
   const logoUrl = state.settings.logoUrl;
   app.innerHTML = `
@@ -1980,13 +2069,18 @@ function renderSectionPicker(app){
         <div style="font-weight:900;font-size:26px;color:var(--ink);">${state.settings.shopName || 'ميكروERP'}</div>
         <div class="subtitle" style="font-size:13.5px;margin-top:3px;">مرحبًا <b>${state.user.name}</b> — اختر القسم الذي ترغب في العمل عليه</div>
       </div>
-      <div class="stat-grid" style="grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));">
-        ${sections.length===0 ? '<div class="empty">لا توجد أقسام مخصصة لحسابك. يرجى مراجعة المسؤول.</div>' : sections.map(s=>`
-          <div class="section-card" data-sec="${s}">
-            <div class="section-card-icon">${SECTION_INFO[s].icon}</div>
-            <div style="font-weight:800;font-size:15.5px;color:var(--ink);">${SECTION_INFO[s].label}</div>
-            <div class="subtitle" style="margin-top:5px;font-size:12px;">${SECTION_INFO[s].desc}</div>
-          </div>`).join('')}
+      <div class="stat-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));gap:14px;">
+        ${sections.length===0 ? '<div class="empty">لا توجد أقسام مخصصة لحسابك. يرجى مراجعة المسؤول.</div>' : sections.map(s=>{
+          const info = SECTION_INFO[s] || { label: s, icon: '📁', desc: '' };
+          const isDaily = s === 'daily';
+          return `
+          <div class="section-card" data-sec="${s}" style="position:relative;${isDaily?'border:2px solid var(--primary);box-shadow:0 6px 20px rgba(37,99,235,0.14);':''}">
+            ${isDaily ? `<div style="position:absolute;top:10px;left:10px;background:var(--primary);color:#fff;font-size:10px;font-weight:800;padding:2px 8px;border-radius:12px;">شامل ومباشر ⚡</div>` : ''}
+            <div class="section-card-icon">${info.icon}</div>
+            <div style="font-weight:800;font-size:15.5px;color:var(--ink);">${info.label}</div>
+            <div class="subtitle" style="margin-top:5px;font-size:12px;">${info.desc}</div>
+          </div>`;
+        }).join('')}
       </div>
       <div style="text-align:center;margin-top:28px;">
         <button class="btn btn-ghost btn-sm" id="logoutPickerBtn">🚪 تسجيل الخروج</button>
@@ -3366,86 +3460,64 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
               ${isFromReceipt ? `📄 إصدار فاتورة رسمية من إيصال صيانة (#${inv.ReferenceID})` : (isEdit ? `✏️ تعديل فاتورة: ${inv.InvoiceNumber}` : `➕ إصدار فاتورة ضريبية / رسمية جديدة`)}
             </h3>
             <div style="font-size:12px;color:var(--ink-secondary);margin-top:2px;">
-              رقم الفاتورة: <span class="mono font-bold">${inv.InvoiceNumber}</span>
+              رقم المستند: <span class="mono font-bold">${inv.InvoiceNumber}</span>
               ${inv.ReferenceType ? ` | مرجع: <span class="status-badge st-check" style="font-size:10px;">${inv.ReferenceType==='Receipt'?'إيصال صيانة':inv.ReferenceType} #${inv.ReferenceID}</span>` : ''}
             </div>
           </div>
           <button class="btn btn-ghost btn-xs" id="closeInvModal">✕ إغلاق</button>
         </div>
 
-        <!-- Section 1: Customer & Invoice Meta -->
         <div class="card" style="padding:14px 16px;background:var(--paper3);margin-bottom:14px;">
-          <h3 style="font-size:13.5px;margin-bottom:10px;">👤 بيانات العميل والفاتورة</h3>
-          <div class="grid3">
-            <div class="field">
-              <label>اسم العميل / الشركة *</label>
-              <input id="invCustName" value="${inv.CustomerName||''}" placeholder="اسم العميل أو الجهة">
-            </div>
-            <div class="field">
-              <label>رقم هاتف العميل</label>
-              <input id="invCustPhone" class="mono" value="${inv.CustomerPhone||''}" placeholder="01000000000">
-            </div>
-            <div class="field">
-              <label>الرقم الضريبي للعميل (إن وجد)</label>
-              <input id="invCustTax" class="mono" value="${inv.CustomerTaxNumber||''}" placeholder="مثال: 123-456-789">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+            <h3 style="font-size:13.5px;margin:0;display:flex;align-items:center;gap:6px;"><span>👤 بيانات العميل</span></h3>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <button class="btn btn-xs btn-ghost" id="quickWalkInCustBtn" type="button">🚶‍♂️ عميل زائر</button>
+              <button class="btn btn-xs btn-blue" id="quickNewCustBtn" type="button">➕ عميل جديد</button>
             </div>
           </div>
-
+          <div class="field" style="margin-bottom:12px;">
+            <select id="invCustomerSelect" style="width:100%;font-weight:600;">
+              <option value="">-- اضغط لاختيار عميل مسجل (${state.customers.length} عميل) --</option>
+              <option value="__WALKIN__" ${inv.CustomerName==='عميل زائر'?'selected':''}>🚶‍♂️ عميل زائر (نقدي / Walk-in)</option>
+              <option value="__NEW__">➕ عميل جديد</option>
+              ${state.customers.length ? `
+                <optgroup label="قائمة العملاء">
+                  ${state.customers.map(c=>`<option value="${c.name}" ${inv.CustomerName===c.name?'selected':''}>${c.name} - ${c.phone||'بدون هاتف'}</option>`).join('')}
+                </optgroup>
+              ` : ''}
+            </select>
+          </div>
           <div class="grid3">
-            <div class="field">
-              <label>تاريخ الفاتورة *</label>
-              <input id="invDate" type="date" value="${cleanDate(inv.Date)}">
-            </div>
-            <div class="field">
-              <label>تاريخ الاستحقاق</label>
-              <input id="invDueDate" type="date" value="${cleanDate(inv.DueDate)}">
-            </div>
-            <div class="field">
-              <label>عنوان العميل / ملاحظات</label>
-              <input id="invCustAddr" value="${inv.CustomerAddress||''}" placeholder="العنوان أو الفرع">
-            </div>
+            <div class="field"><label>اسم العميل / الشركة *</label><input id="invCustName" value="${inv.CustomerName||''}"></div>
+            <div class="field"><label>رقم هاتف العميل</label><input id="invCustPhone" class="mono" value="${inv.CustomerPhone||''}"></div>
+            <div class="field"><label>الرقم الضريبي</label><input id="invCustTax" class="mono" value="${inv.CustomerTaxNumber||''}"></div>
+          </div>
+          <div class="grid3">
+            <div class="field"><label>تاريخ المستند *</label><input id="invDate" type="date" value="${cleanDate(inv.Date)}"></div>
+            <div class="field"><label>تاريخ الاستحقاق</label><input id="invDueDate" type="date" value="${cleanDate(inv.DueDate)}"></div>
+            <div class="field"><label>العنوان</label><input id="invCustAddr" value="${inv.CustomerAddress||''}"></div>
           </div>
         </div>
 
-        <!-- Section 2: Items Table -->
         <div class="card" style="padding:14px 16px;margin-bottom:14px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <h3 style="font-size:13.5px;margin:0;">📦 بنود الفاتورة والخدمات</h3>
+            <h3 style="font-size:13.5px;margin:0;">📦 بنود الفاتورة / بيان السعر</h3>
             <div style="display:flex;gap:6px;">
               <button class="btn btn-ghost btn-xs" id="addFromInventoryBtn" type="button">➕ من المخزن</button>
               <button class="btn btn-primary btn-xs" id="addInvLineBtn" type="button">➕ سطر جديد</button>
             </div>
           </div>
-
           <div class="table-wrap">
             <table>
-              <thead>
-                <tr>
-                  <th style="width:45%;">بيان الصنف أو الخدمة</th>
-                  <th style="width:15%;">الكمية</th>
-                  <th style="width:20%;">سعر الوحدة</th>
-                  <th style="width:20%;">الإجمالي</th>
-                  <th></th>
-                </tr>
-              </thead>
+              <thead><tr><th>بيان الصنف أو الخدمة</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th><th></th></tr></thead>
               <tbody id="invoiceLinesTableBody">
                 ${inv.Items.map((it, idx)=>`
                   <tr>
-                    <td>
-                      <input value="${it.Name||''}" data-linefield="Name" data-idx="${idx}" placeholder="وصف الخدمة أو الصنف..." style="width:100%;">
-                    </td>
-                    <td>
-                      <input type="number" class="mono" min="1" value="${it.Qty||1}" data-linefield="Qty" data-idx="${idx}" style="width:100%;text-align:center;">
-                    </td>
-                    <td>
-                      <input type="number" class="mono" step="any" value="${it.Price||0}" data-linefield="Price" data-idx="${idx}" style="width:100%;text-align:center;">
-                    </td>
-                    <td class="mono font-bold" style="color:var(--primary);font-size:13px;vertical-align:middle;">
-                      ${(Number(it.Qty||1) * Number(it.Price||0)).toLocaleString()} ج.م
-                    </td>
-                    <td style="vertical-align:middle;text-align:center;">
-                      <button class="btn btn-xs btn-red" data-delline="${idx}" style="padding:2px 6px;">✕</button>
-                    </td>
+                    <td><input value="${it.Name||''}" data-linefield="Name" data-idx="${idx}" style="width:100%;"></td>
+                    <td><input type="number" class="mono" min="1" value="${it.Qty||1}" data-linefield="Qty" data-idx="${idx}" style="width:100%;text-align:center;"></td>
+                    <td><input type="number" class="mono" step="any" value="${it.Price||0}" data-linefield="Price" data-idx="${idx}" style="width:100%;text-align:center;"></td>
+                    <td class="mono font-bold" style="color:var(--primary);">${(Number(it.Qty||1) * Number(it.Price||0)).toLocaleString()} ج.م</td>
+                    <td style="text-align:center;"><button class="btn btn-xs btn-red" data-delline="${idx}">✕</button></td>
                   </tr>
                 `).join('')}
               </tbody>
@@ -3453,82 +3525,67 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
           </div>
         </div>
 
-        <!-- Section 3: Totals & Tax Breakdown -->
         <div class="grid2">
           <div class="card" style="padding:14px 16px;background:var(--paper3);">
             <h3 style="font-size:13.5px;margin-bottom:10px;">💳 السداد والحالة</h3>
             <div class="grid2">
-              <div class="field">
-                <label>طريقة السداد</label>
-                <select id="invPaymentMethod">
-                  ${['نقدي','فيزا / كارت','تحويل بنكي','فودافون كاش / إنستاباي','آجل (على الحساب)'].map(m=>`<option ${m===inv.PaymentMethod?'selected':''}>${m}</option>`).join('')}
-                </select>
-              </div>
-              <div class="field">
-                <label>المبلغ المدفوع (ج.م)</label>
-                <input id="invPaidInput" type="number" class="mono font-bold" value="${inv.AmountPaid||0}">
-              </div>
+              <div class="field"><label>طريقة السداد</label><select id="invPaymentMethod">${['نقدي','فيزا / كارت','تحويل بنكي','فودافون كاش','آجل'].map(m=>`<option ${m===inv.PaymentMethod?'selected':''}>${m}</option>`).join('')}</select></div>
+              <div class="field"><label>المبلغ المدفوع (ج.م)</label><input id="invPaidInput" type="number" class="mono" value="${inv.AmountPaid||0}"></div>
             </div>
-            <div class="field" style="margin-bottom:0;">
-              <label>شروط الضمان وملاحظات الفاتورة</label>
-              <textarea id="invNotesText" placeholder="شروط الاسترجاع، فترة الضمان، أو أي ملاحظات للعميل...">${inv.Notes||''}</textarea>
-            </div>
+            <div class="field"><label>ملاحظات وشروط</label><textarea id="invNotesText">${inv.Notes||''}</textarea></div>
           </div>
-
           <div class="card" style="padding:14px 16px;">
-            <h3 style="font-size:13.5px;margin-bottom:10px;">💰 الملخص المالي والضريبي</h3>
+            <h3 style="font-size:13.5px;margin-bottom:10px;">💰 الملخص المالي</h3>
             <div style="display:flex;flex-direction:column;gap:8px;">
-              <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--line);">
-                <span style="color:var(--ink-secondary);">المجموع الفرعي:</span>
-                <span class="mono font-bold">${inv.Subtotal.toLocaleString()} ج.م</span>
-              </div>
-              <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px dashed var(--line);">
-                <div style="display:flex;align-items:center;gap:6px;">
-                  <span style="color:var(--ink-secondary);">ضريبة القيمة المضافة (VAT):</span>
-                  <select id="invTaxPercentSelect" style="width:75px;padding:2px 4px;font-size:11px;">
-                    <option value="0" ${Number(inv.TaxPercent)===0?'selected':''}>0%</option>
-                    <option value="14" ${Number(inv.TaxPercent)===14?'selected':''}>14%</option>
-                    <option value="5" ${Number(inv.TaxPercent)===5?'selected':''}>5%</option>
-                  </select>
-                </div>
+              <div style="display:flex;justify-content:space-between;"><span>المجموع الفرعي:</span><span class="mono font-bold">${inv.Subtotal.toLocaleString()} ج.م</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="display:flex;align-items:center;gap:6px;"><span>ضريبة (VAT):</span><select id="invTaxPercentSelect" style="width:70px;"><option value="0" ${Number(inv.TaxPercent)===0?'selected':''}>0%</option><option value="14" ${Number(inv.TaxPercent)===14?'selected':''}>14%</option></select></div>
                 <span class="mono font-bold" style="color:var(--blue);">${inv.TaxAmount.toLocaleString()} ج.م</span>
               </div>
-              <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px dashed var(--line);">
-                <span style="color:var(--ink-secondary);">الخصم (إن وجد):</span>
-                <input id="invDiscountInput" type="number" value="${inv.Discount||0}" style="width:90px;text-align:center;padding:2px 4px;height:28px;" class="mono">
-              </div>
-              <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:2px solid var(--line-strong);font-size:14.5px;">
-                <span style="font-weight:900;">الإجمالي المستحق:</span>
-                <span class="mono font-bold" style="color:var(--primary);">${inv.Total.toLocaleString()} ج.م</span>
-              </div>
-              <div style="display:flex;justify-content:space-between;padding:4px 0;color:var(--green-text);">
-                <span>المدفوع:</span>
-                <span class="mono font-bold">${(inv.AmountPaid||0).toLocaleString()} ج.م</span>
-              </div>
-              <div style="display:flex;justify-content:space-between;padding:4px 0;color:${inv.Remaining>0?'var(--red)':'var(--green-text)'};font-size:14px;font-weight:900;">
-                <span>المتبقي المطلوب:</span>
-                <span class="mono">${inv.Remaining.toLocaleString()} ج.م</span>
-              </div>
+              <div style="display:flex;justify-content:space-between;"><span>الخصم:</span><input id="invDiscountInput" type="number" value="${inv.Discount||0}" style="width:90px;text-align:center;" class="mono"></div>
+              <div style="display:flex;justify-content:space-between;font-size:14.5px;font-weight:900;border-top:1px solid #ccc;padding-top:6px;"><span>الإجمالي المستحق:</span><span class="mono" style="color:var(--primary);">${inv.Total.toLocaleString()} ج.م</span></div>
+              <div style="display:flex;justify-content:space-between;color:var(--green-text);"><span>المدفوع:</span><span class="mono">${(inv.AmountPaid||0).toLocaleString()} ج.م</span></div>
+              <div style="display:flex;justify-content:space-between;color:${inv.Remaining>0?'var(--red)':'var(--green-text)'};font-weight:900;"><span>المتبقي:</span><span class="mono">${inv.Remaining.toLocaleString()} ج.م</span></div>
             </div>
           </div>
         </div>
 
-        <!-- Modal Actions -->
         <div class="actions-row" style="margin-top:16px;">
           <button class="btn btn-ghost" id="cancelInvModalBtn" type="button">إلغاء</button>
-          <div style="display:flex;gap:8px;">
-            <button class="btn btn-blue" id="saveAndPrintInvBtn" type="button">🖨️ حفظ وطباعة الفاتورة</button>
-            <button class="btn btn-primary" id="saveInvOnlyBtn" type="button">💾 حفظ الفاتورة</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-ghost" id="saveAndPrintQuoteBtn" type="button">📑 حفظ وطباعة بيان سعر</button>
+            <button class="btn btn-blue" id="saveAndPrintInvBtn" type="button">🖨️ حفظ وطباعة فاتورة رسمية</button>
+            <button class="btn btn-primary" id="saveInvOnlyBtn" type="button">💾 حفظ فقط</button>
           </div>
         </div>
       </div>
     `;
 
-    // Bind listeners
     overlay.querySelector('#closeInvModal').onclick = ()=>overlay.remove();
     overlay.querySelector('#cancelInvModalBtn').onclick = ()=>overlay.remove();
 
-    // Table line edits
+    const custSelect = overlay.querySelector('#invCustomerSelect');
+    if(custSelect){
+      custSelect.onchange = (e)=>{
+        const val = e.target.value;
+        const nameInp = overlay.querySelector('#invCustName');
+        const phoneInp = overlay.querySelector('#invCustPhone');
+        const taxInp = overlay.querySelector('#invCustTax');
+        const addrInp = overlay.querySelector('#invCustAddr');
+        if(val === '__WALKIN__'){
+          nameInp.value = 'عميل زائر'; phoneInp.value = '0000000000'; taxInp.value = ''; addrInp.value = '';
+        } else if(val === '__NEW__'){
+          nameInp.value = ''; phoneInp.value = ''; taxInp.value = ''; addrInp.value = ''; nameInp.focus();
+        } else if(val){
+          const found = state.customers.find(c => c.name === val);
+          if(found){ nameInp.value = found.name; phoneInp.value = found.phone || ''; taxInp.value = found.taxNumber || ''; addrInp.value = found.address || ''; }
+        }
+      };
+    }
+
+    overlay.querySelector('#quickWalkInCustBtn').onclick = ()=>{ custSelect.value = '__WALKIN__'; custSelect.dispatchEvent(new Event('change')); };
+    overlay.querySelector('#quickNewCustBtn').onclick = ()=>{ custSelect.value = '__NEW__'; custSelect.dispatchEvent(new Event('change')); };
+
     overlay.querySelectorAll('[data-linefield]').forEach(inp => {
       inp.oninput = (e)=>{
         const idx = Number(inp.dataset.idx);
@@ -3540,18 +3597,14 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
 
     overlay.querySelectorAll('[data-delline]').forEach(btn => {
       btn.onclick = ()=>{
-        if(inv.Items.length<=1){ showToast('يجب أن تحتوي الفاتورة على بند واحد على الأقل', 'error'); return; }
+        if(inv.Items.length<=1){ showToast('يجب وجود بند واحد على الأقل', 'error'); return; }
         inv.Items.splice(Number(btn.dataset.delline), 1);
         renderModal();
       };
     });
 
-    overlay.querySelector('#addInvLineBtn').onclick = ()=>{
-      inv.Items.push({ Name: '', Qty: 1, Price: 0, Total: 0 });
-      renderModal();
-    };
+    overlay.querySelector('#addInvLineBtn').onclick = ()=>{ inv.Items.push({ Name: '', Qty: 1, Price: 0, Total: 0 }); renderModal(); };
 
-    // Add item picker from inventory
     overlay.querySelector('#addFromInventoryBtn').onclick = ()=>{
       openInventoryPickerModal((pickedItem)=>{
         inv.Items.push({
@@ -3564,19 +3617,10 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
       });
     };
 
-    // Financial Inputs
-    overlay.querySelector('#invTaxPercentSelect').onchange = (e)=>{
-      inv.TaxPercent = Number(e.target.value);
-      renderModal();
-    };
-    overlay.querySelector('#invDiscountInput').oninput = (e)=>{
-      inv.Discount = Number(e.target.value)||0;
-    };
+    overlay.querySelector('#invTaxPercentSelect').onchange = (e)=>{ inv.TaxPercent = Number(e.target.value); renderModal(); };
+    overlay.querySelector('#invDiscountInput').oninput = (e)=>{ inv.Discount = Number(e.target.value)||0; };
     overlay.querySelector('#invDiscountInput').onblur = ()=>renderModal();
-
-    overlay.querySelector('#invPaidInput').oninput = (e)=>{
-      inv.AmountPaid = Number(e.target.value)||0;
-    };
+    overlay.querySelector('#invPaidInput').oninput = (e)=>{ inv.AmountPaid = Number(e.target.value)||0; };
     overlay.querySelector('#invPaidInput').onblur = ()=>renderModal();
 
     function collectData(){
@@ -3592,45 +3636,24 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
       inv.ItemsJSON = JSON.stringify(inv.Items);
     }
 
-    async function handleSave(andPrint){
+    async function handleSave(andPrint, docType='invoice'){
       collectData();
-      if(!inv.CustomerName){ showToast('يرجى كتابة اسم العميل', 'error'); return; }
-      if(!inv.Items.length || !inv.Items[0].Name){ showToast('يرجى إضافة بند واحد على الأقل في الفاتورة', 'error'); return; }
-
-      const saveBtn = overlay.querySelector('#saveInvOnlyBtn');
-      if(saveBtn) saveBtn.disabled = true;
-
+      if(!inv.CustomerName){ showToast('يرجى اختيار اسم العميل', 'error'); return; }
+      if(!inv.Items.length || !inv.Items[0].Name){ showToast('يرجى إضافة بنود للفاتورة', 'error'); return; }
       try{
         await saveInvoiceRemote(inv);
-
-        // Auto post to General Ledger
-        recordAutoJournalEntry(
-          `فاتورة رقم ${inv.InvoiceNumber} (${inv.CustomerName})`,
-          'Invoice',
-          inv.InvoiceNumber,
-          [
-            {AccountCode:'1101', AccountName:'الخزينة الرئيسية (النقدية)', Debit:Number(inv.AmountPaid||0), Credit:0, Notes:`تحصيل من فاتورة ${inv.InvoiceNumber}`},
-            inv.Remaining > 0 ? {AccountCode:'1103', AccountName:'العملاء والمدينون', Debit:Number(inv.Remaining||0), Credit:0, Notes:`مستحق آجل فاتورة ${inv.InvoiceNumber}`} : null,
-            {AccountCode:'4101', AccountName:'إيرادات خدمات ومبيعات', Debit:0, Credit:Number(inv.Total||0), Notes:inv.CustomerName}
-          ].filter(Boolean)
-        ).catch(e=>{});
-
-        showToast(`تم حفظ الفاتورة بنجاح رقم (${inv.InvoiceNumber}) ✅`, 'success');
+        showToast(`تم حفظ ${docType==='quote'?'عرض السعر':'الفاتورة'} بنجاح (${inv.InvoiceNumber})`, 'success');
         overlay.remove();
         renderMain();
-
-        if(andPrint){
-          openInvoicePrint(inv);
-        }
+        if(andPrint) openInvoicePrint(inv, docType);
       }catch(e){
-        showToast('تم حفظ الفاتورة محلياً', 'info');
-        overlay.remove();
-        if(andPrint) openInvoicePrint(inv);
+        showToast('خطأ في حفظ البيانات', 'error');
       }
     }
 
     overlay.querySelector('#saveInvOnlyBtn').onclick = ()=>handleSave(false);
-    overlay.querySelector('#saveAndPrintInvBtn').onclick = ()=>handleSave(true);
+    overlay.querySelector('#saveAndPrintInvBtn').onclick = ()=>handleSave(true, 'invoice');
+    overlay.querySelector('#saveAndPrintQuoteBtn').onclick = ()=>handleSave(true, 'quote');
   }
 
   document.body.appendChild(overlay);
@@ -3646,22 +3669,30 @@ function openInventoryPickerModal(onSelect){
         <h3 style="margin:0;font-size:16px;">📦 اختر صنف من المخزن</h3>
         <button class="btn btn-ghost btn-xs" id="closeInvPicker">✕</button>
       </div>
-      <input id="pickerSearch" placeholder="🔍 بحث في أصناف المخزن..." style="margin-bottom:12px;width:100%;">
-      <div id="pickerList" style="max-height:350px;overflow:auto;display:flex;flex-direction:column;gap:6px;"></div>
+      <div class="field" style="margin-bottom:10px;">
+        <input id="pickerSearch" placeholder="🔍 بحث باسم الصنف أو الباركود..." autofocus>
+      </div>
+      <div id="pickerListMount" style="max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;"></div>
     </div>
   `;
   document.body.appendChild(overlay);
   overlay.querySelector('#closeInvPicker').onclick = ()=>overlay.remove();
 
   function renderList(q=''){
-    const box = overlay.querySelector('#pickerList');
-    const items = state.inventory.filter(it => (it.Name||'').toLowerCase().includes(q.toLowerCase()) || (it.Barcode||'').includes(q));
-    if(!items.length){ box.innerHTML = '<div class="empty">لا توجد أصناف مطابقة.</div>'; return; }
-    box.innerHTML = items.map(it=>`
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--paper3);border-radius:4px;border:1px solid var(--line);cursor:pointer;" data-pickid="${it.ID}">
+    const box = overlay.querySelector('#pickerListMount');
+    let list = state.inventory || [];
+    if(q){
+      list = list.filter(it => it.Name.toLowerCase().includes(q.toLowerCase()) || String(it.Barcode||'').includes(q));
+    }
+    if(!list.length){
+      box.innerHTML = '<div class="empty">لا توجد أصناف مطابقة.</div>';
+      return;
+    }
+    box.innerHTML = list.map(it => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--paper3);border-radius:var(--radius-sm);border:1px solid var(--line);cursor:pointer;" data-pickid="${it.ID}">
         <div>
           <div style="font-weight:800;font-size:13px;">${it.Name}</div>
-          <div style="font-size:11px;color:var(--ink-secondary);">المتاح: <b>${it.Quantity}</b> | القسم: ${it.Category}</div>
+          <div class="mono" style="font-size:11px;color:var(--ink-secondary);">باركود: ${it.Barcode||'-'} | المتاح: <b>${it.Quantity}</b></div>
         </div>
         <div class="mono font-bold" style="color:var(--green);font-size:13.5px;">${Number(it.SellPrice||it.PurchasePrice||0).toLocaleString()} ج.م</div>
       </div>
@@ -3679,31 +3710,33 @@ function openInventoryPickerModal(onSelect){
   overlay.querySelector('#pickerSearch').oninput = (e)=>renderList(e.target.value.trim());
 }
 
-/* ---------------- Print Luxury Tax Invoice (A4 / A5) ---------------- */
-function openInvoicePrint(inv){
+/* ---------------- Print Luxury Tax Invoice / Price Quotation (A4 / A5) ---------------- */
+function openInvoicePrint(inv, docType='invoice'){
   document.body.classList.remove('printing-sticker');
   const old = document.getElementById('printMount');
   if(old) old.remove();
   const mount = document.createElement('div');
   mount.id='printMount';
 
-  const trackQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=${encodeURIComponent(`Invoice:${inv.InvoiceNumber}|Customer:${inv.CustomerName}|Total:${inv.Total}|Tax:${inv.TaxAmount}|Date:${inv.Date}`)}`;
+  const isQuote = docType === 'quote';
+  const docTitle = isQuote ? 'عرض أسعار وبيان سعر • Price Quotation' : 'فاتورة ضريبية رسمية • Tax Invoice';
+  const trackQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=${encodeURIComponent(`${isQuote?'Quote':'Invoice'}:${inv.InvoiceNumber}|Customer:${inv.CustomerName}|Total:${inv.Total}|Date:${inv.Date}`)}`;
 
   mount.innerHTML = `
   <div style="width:100%;max-width:700px;margin:0 auto;background:#fff;padding:24px 28px;color:#0f172a;font-family:var(--font-main);border-radius:8px;box-sizing:border-box;">
-    <!-- Invoice Header -->
+    <!-- Invoice/Quote Header -->
     <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #0f172a;padding-bottom:12px;margin-bottom:14px;">
       <div>
         ${state.settings.logoUrl ? `<img src="${state.settings.logoUrl}" style="max-height:38px;max-width:140px;object-fit:contain;margin-bottom:4px;">` : ''}
         <h2 style="margin:0;font-size:20px;font-weight:900;color:#0f172a;">${state.settings.shopName || 'صيانة ميكروتك'}</h2>
-        <div style="font-size:11px;color:#475569;margin-top:2px;">فاتورة ضريبية رسمية • Tax Invoice</div>
+        <div style="font-size:11px;color:#475569;margin-top:2px;">${docTitle}</div>
       </div>
       <div style="display:flex;align-items:center;gap:12px;">
         <img src="${trackQrUrl}" alt="QR" style="width:58px;height:58px;border:1px solid #cbd5e1;border-radius:4px;">
         <div style="text-align:left;">
-          <div style="background:#0f172a;color:#fff;font-size:14px;font-weight:900;padding:3px 12px;border-radius:4px;display:inline-block;" class="mono">${inv.InvoiceNumber}</div>
+          <div style="background:${isQuote?'#0284c7':'#0f172a'};color:#fff;font-size:14px;font-weight:900;padding:3px 12px;border-radius:4px;display:inline-block;" class="mono">${inv.InvoiceNumber}</div>
           <div style="font-size:11px;color:#475569;margin-top:3px;">التاريخ: <b>${cleanDate(inv.Date)}</b></div>
-          <div style="font-size:10.5px;color:#64748b;">الاستحقاق: <b>${cleanDate(inv.DueDate)}</b></div>
+          <div style="font-size:10.5px;color:#64748b;">الصلاحية / الاستحقاق: <b>${cleanDate(inv.DueDate)}</b></div>
         </div>
       </div>
     </div>
@@ -3718,9 +3751,10 @@ function openInvoicePrint(inv){
         ${inv.CustomerAddress ? `<div style="font-size:11px;color:#475569;">العنوان: ${inv.CustomerAddress}</div>` : ''}
       </div>
       <div style="text-align:left;">
-        <div style="color:#64748b;font-size:11px;margin-bottom:2px;">تفاصيل الفاتورة:</div>
+        <div style="color:#64748b;font-size:11px;margin-bottom:2px;">تفاصيل المستند:</div>
+        <div>نوع المستند: <b style="color:${isQuote?'#0284c7':'#0f172a'};">${isQuote ? 'عرض أسعار / بيان تكلفة' : 'فاتورة مبيعات وخدمات'}</b></div>
         <div>طريقة السداد: <b>${inv.PaymentMethod||'نقدي'}</b></div>
-        <div>حالة الفاتورة: <b style="color:${inv.Remaining<=0?'#16a34a':'#e11d48'};">${inv.Status}</b></div>
+        ${!isQuote ? `<div>حالة الفاتورة: <b style="color:${inv.Remaining<=0?'#16a34a':'#e11d48'};">${inv.Status}</b></div>` : ''}
         ${inv.ReferenceType ? `<div style="font-size:11px;color:#2563eb;margin-top:2px;">مرجع: ${inv.ReferenceType==='Receipt'?'إيصال صيانة #':inv.ReferenceType} ${inv.ReferenceID}</div>` : ''}
       </div>
     </div>
@@ -3729,11 +3763,11 @@ function openInvoicePrint(inv){
     <table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:11.5px;">
       <thead>
         <tr style="background:#0f172a;color:#fff;">
-          <th style="padding:7px 10px;text-align:right;border-radius:4px 0 0 0;">#</th>
+          <th style="padding:7px 10px;text-align:right;">#</th>
           <th style="padding:7px 10px;text-align:right;">بيان الصنف أو الخدمة</th>
           <th style="padding:7px 10px;text-align:center;">الكمية</th>
           <th style="padding:7px 10px;text-align:center;">سعر الوحدة</th>
-          <th style="padding:7px 10px;text-align:center;border-radius:0 4px 0 0;">الإجمالي</th>
+          <th style="padding:7px 10px;text-align:center;">الإجمالي</th>
         </tr>
       </thead>
       <tbody>
@@ -3752,8 +3786,8 @@ function openInvoicePrint(inv){
     <!-- Totals Summary Box -->
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:18px;">
       <div style="flex:1;font-size:11px;color:#475569;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:6px;padding:10px 12px;line-height:1.6;">
-        <b>ملاحظات وشروط الضمان:</b>
-        <div>${inv.Notes || 'البضاعة المباعة تخضع للضمان المحدد بالفاتورة. لا يُقبل الاسترجاع إلا بوجود أصل الفاتورة.'}</div>
+        <b>${isQuote ? 'شروط وأحكام عرض السعر:' : 'ملاحظات وشروط الضمان:'}</b>
+        <div>${inv.Notes || (isQuote ? '• هذا البيان يعتبر عرض أسعار رسمي صالح لمدة 7 أيام من تاريخ إصداره.\n• الأسعار والكميات الموضحة خاضعة للتوافر والتأكيد النهائي عند بدء التنفيذ.' : 'البضاعة المباعة تخضع للضمان المحدد بالفاتورة. لا يُقبل الاسترجاع إلا بوجود أصل الفاتورة.')}</div>
       </div>
       <div style="width:240px;background:#f1f5f9;border-radius:6px;padding:10px 14px;font-size:11.5px;">
         <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
@@ -3929,8 +3963,9 @@ function renderInvoicesPage(main){
                     </span>
                   </td>
                   <td class="row-actions">
-                    <button class="btn btn-xs btn-blue" data-invact="print" data-invid="${inv.ID}" title="طباعة الفاتورة">🖨️ طباعة</button>
-                    <button class="btn btn-xs btn-whatsapp" data-invact="wa" data-invid="${inv.ID}" title="إرسال الفاتورة عبر واتساب">${WA_ICON} واتساب</button>
+                    <button class="btn btn-xs btn-blue" data-invact="print" data-invid="${inv.ID}" title="طباعة فاتورة ضريبية رسمية">🖨️ فاتورة</button>
+                    <button class="btn btn-xs btn-ghost" data-invact="printquote" data-invid="${inv.ID}" title="طباعة بيان سعر وعرض أسعار رسمي">📑 بيان سعر</button>
+                    <button class="btn btn-xs btn-whatsapp" data-invact="wa" data-invid="${inv.ID}" title="إرسال الفاتورة عبر واتساب">${WA_ICON}</button>
                     <button class="btn btn-xs btn-ghost" data-invact="edit" data-invid="${inv.ID}" title="تعديل الفاتورة">✏️</button>
                     ${state.user.role==='admin' ? `<button class="btn btn-xs btn-red" data-invact="del" data-invid="${inv.ID}" title="حذف">🗑️</button>` : ''}
                   </td>
@@ -3961,7 +3996,10 @@ function renderInvoicesPage(main){
       if(!inv) return;
       const act = btn.dataset.invact;
       if(act==='print'){
-        openInvoicePrint(inv);
+        openInvoicePrint(inv, 'invoice');
+      }
+      if(act==='printquote'){
+        openInvoicePrint(inv, 'quote');
       }
       if(act==='edit'){
         openInvoiceModal(inv);
@@ -3969,7 +4007,7 @@ function renderInvoicesPage(main){
       if(act==='wa'){
         const phone = (inv.CustomerPhone||'').replace(/\D/g,'');
         const phoneFormatted = phone.startsWith('0') ? '2'+phone : phone;
-        const msg = `مرحبًا ${inv.CustomerName}،\nفاتورة رقم: ${inv.InvoiceNumber}\nإجمالي المستحق: ${inv.Total} ج.م\nالمدفوع: ${inv.AmountPaid} ج.م\nالمتبقي: ${inv.Remaining} ج.م\nشكرًا لتعاملكم مع ${state.settings.shopName || 'ميكروتك'}.`;
+        const msg = `مرحبًا ${inv.CustomerName}،\nفاتورة / بيان سعر رقم: ${inv.InvoiceNumber}\nإجمالي المستحق: ${inv.Total} ج.م\nالمدفوع: ${inv.AmountPaid} ج.م\nالمتبقي: ${inv.Remaining} ج.م\nشكرًا لتعاملكم مع ${state.settings.shopName || 'ميكروتك'}.`;
         window.open(`https://wa.me/${phoneFormatted}?text=${encodeURIComponent(msg)}`, '_blank');
       }
       if(act==='del'){
@@ -4003,89 +4041,715 @@ function renderInvoicesSectionApp(app){
   renderInvoicesPage(document.getElementById('main'));
 }
 
-/* ---------------- Expenses & Cash Shift Management ---------------- */
-function renderExpensesPage(main){
-  const today = new Date().toISOString().slice(0,10);
-  const totalExpAll = state.expenses.reduce((s,x)=>s+Number(x.Amount||0),0);
-  const totalExpToday = state.expenses.filter(x=>String(x.Date||'').slice(0,10)===today).reduce((s,x)=>s+Number(x.Amount||0),0);
-  
-  // Daily Cash Register Calculation
-  const maintenanceCashToday = state.payments.filter(p=>String(p.Date||'').slice(0,10)===today).reduce((s,p)=>s+Number(p.Amount||0),0);
-  const posCashToday = state.sales.filter(s=>String(s.Date||'').slice(0,10)===today && (s.PaymentMethod||'نقدي')==='نقدي').reduce((s,s1)=>s+Number(s1.AmountPaid||s1.Total||0),0);
-  const totalCashInToday = maintenanceCashToday + posCashToday;
-  const netDrawerCash = totalCashInToday - totalExpToday;
+/* ============================================================
+   Daily Cash Journal & Cash Register (منظومة اليومية وحركة الخزينة العامة)
+   ============================================================ */
+
+function getUnifiedDailyTransactions(){
+  const transactions = [];
+
+  // 1. Maintenance Payments (Inflow)
+  (state.payments || []).forEach(p => {
+    const r = state.receipts.find(x => x.id === p.ReceiptID || x.receiptNumber === p.ReceiptNumber);
+    const custName = r ? r.customer.name : '';
+    transactions.push({
+      id: 'pay_' + (p.ID || p.ReceiptID),
+      date: cleanDate(p.Date) || new Date().toISOString().slice(0,10),
+      rawTime: p.Time || '',
+      type: 'in',
+      sourceType: 'maintenance',
+      sourceIcon: '🛠️',
+      category: 'مقبوضات صيانة',
+      title: `تحصيل صيانة: ${custName ? custName + ' — ' : ''}${p.Note || 'دفعة إيصال'}`,
+      reference: p.ReceiptNumber ? `إيصال #${p.ReceiptNumber}` : `إيصال صيانة`,
+      in: Number(p.Amount || 0),
+      out: 0,
+      by: p.By || 'نظام',
+      method: 'نقدي بالدرج',
+      notes: p.Note || '',
+      canDelete: false
+    });
+  });
+
+  // 2. POS Cash Sales (Inflow)
+  (state.sales || []).forEach(s => {
+    const paidAmt = Number(s.AmountPaid != null ? s.AmountPaid : s.Total);
+    transactions.push({
+      id: 'sale_' + s.ID,
+      date: cleanDate(s.Date) || new Date().toISOString().slice(0,10),
+      rawTime: '',
+      type: 'in',
+      sourceType: 'pos',
+      sourceIcon: '🧾',
+      category: 'مبيعات نقدية (POS)',
+      title: `مبيعات كاشير: ${s.CustomerName || 'عميل زائر'} — ${(s.ItemsSummary||'مبيعات POS')}`,
+      reference: `مبيعات #${s.ID.slice(-8)}`,
+      in: paidAmt,
+      out: 0,
+      by: state.user ? state.user.name : 'كاشير',
+      method: s.PaymentMethod || 'نقدي',
+      notes: s.CustomerName || '',
+      canDelete: false
+    });
+  });
+
+  // 3. Direct Tax Invoices (Inflow for invoices that are not from POS or Receipt to avoid double counting)
+  (state.invoices || []).forEach(inv => {
+    if(!inv.ReferenceType || (inv.ReferenceType !== 'Receipt' && inv.ReferenceType !== 'POS')){
+      const paidAmt = Number(inv.AmountPaid || 0);
+      if(paidAmt > 0){
+        transactions.push({
+          id: 'inv_' + inv.ID,
+          date: cleanDate(inv.Date) || new Date().toISOString().slice(0,10),
+          rawTime: '',
+          type: 'in',
+          sourceType: 'invoice',
+          sourceIcon: '📄',
+          category: 'مقبوضات فواتير',
+          title: `تحصيل فاتورة: ${inv.InvoiceNumber} — ${inv.CustomerName}`,
+          reference: `فاتورة ${inv.InvoiceNumber}`,
+          in: paidAmt,
+          out: 0,
+          by: inv.By || 'نظام',
+          method: inv.PaymentMethod || 'نقدي',
+          notes: inv.CustomerName,
+          canDelete: false
+        });
+      }
+    }
+  });
+
+  // 4. Supplier Purchases (Outflow)
+  (state.purchases || []).forEach(pur => {
+    const paidAmt = Number(pur.AmountPaid != null ? pur.AmountPaid : pur.Total);
+    if(paidAmt > 0){
+      transactions.push({
+        id: 'pur_' + pur.ID,
+        date: cleanDate(pur.Date) || new Date().toISOString().slice(0,10),
+        rawTime: '',
+        type: 'out',
+        sourceType: 'purchase',
+        sourceIcon: '📥',
+        category: 'مشتريات موردين',
+        title: `سداد مشتريات: ${pur.Supplier} (${pur.ItemsSummary || 'بضاعة/قطع غيار'})`,
+        reference: `شراء #${pur.ID}`,
+        in: 0,
+        out: paidAmt,
+        by: pur.By || 'نظام',
+        method: 'نقدي بالدرج',
+        notes: pur.Supplier,
+        canDelete: false
+      });
+    }
+  });
+
+  // 5. Maintenance Refunds (Outflow)
+  (state.receipts || []).forEach(r => {
+    if(Number(r.refunded || 0) > 0){
+      transactions.push({
+        id: 'ref_' + r.id,
+        date: cleanDate(r.updatedAt || r.date) || new Date().toISOString().slice(0,10),
+        rawTime: '',
+        type: 'out',
+        sourceType: 'refund',
+        sourceIcon: '↩️',
+        category: 'استرداد صيانة',
+        title: `استرداد مبالغ صيانة للعميل: ${r.customer.name}`,
+        reference: `إيصال #${r.receiptNumber}`,
+        in: 0,
+        out: Number(r.refunded),
+        by: r.updatedBy || r.createdBy || 'نظام',
+        method: 'نقدي',
+        notes: 'مبالغ مستردة',
+        canDelete: false
+      });
+    }
+  });
+
+  // 6. Expenses, Petty Cash, Manual Inflows, and Manual Outflows
+  (state.expenses || []).forEach(ex => {
+    const isIncome = ex.Type === 'in' || ex.Type === 'income';
+    const isDraw = ex.Type === 'out' || ex.Category === 'مسحوبات شخصية' || ex.Category === 'جاري الشركاء';
+    const isPetty = ex.Type === 'petty' || ex.Category === 'بوفيه ونثريات' || ex.Category === 'نثريات';
+
+    let tType = 'out';
+    let sIcon = '💸';
+    let sCat = ex.Category || 'مصروفات تشغيلية';
+    let sRef = 'مصروف';
+
+    if(isIncome){
+      tType = 'in';
+      sIcon = '🟢';
+      sCat = ex.Category || 'وارد / إيداع';
+      sRef = 'وارد يدوي';
+    } else if(isPetty){
+      tType = 'petty';
+      sIcon = '☕';
+      sCat = 'نثريات وبوفيه';
+      sRef = 'نثريات';
+    } else if(isDraw){
+      tType = 'out';
+      sIcon = '📤';
+      sCat = 'مسحوبات شركاء';
+      sRef = 'مسحوبات';
+    }
+
+    transactions.push({
+      id: ex.ID,
+      rawExpId: ex.ID,
+      date: cleanDate(ex.Date) || new Date().toISOString().slice(0,10),
+      rawTime: '',
+      type: tType,
+      sourceType: isIncome ? 'manual_in' : (isPetty ? 'petty' : 'expense'),
+      sourceIcon: sIcon,
+      category: sCat,
+      title: ex.Title,
+      reference: sRef,
+      in: isIncome ? Number(ex.Amount || 0) : 0,
+      out: isIncome ? 0 : Number(ex.Amount || 0),
+      by: ex.By || 'نظام',
+      method: ex.PaymentMethod || 'نقدي بالدرج',
+      notes: ex.Notes || '',
+      canDelete: true
+    });
+  });
+
+  // Sort chronologically
+  transactions.sort((a, b) => {
+    const dateComp = a.date.localeCompare(b.date);
+    if(dateComp !== 0) return dateComp;
+    return (a.rawTime || '').localeCompare(b.rawTime || '');
+  });
+
+  // Calculate Running Balance
+  let running = 0;
+  transactions.forEach(t => {
+    running += (t.in - t.out);
+    t.runningBalance = running;
+  });
+
+  return transactions;
+}
+
+function openRecordTransactionModal(defaultType='expense'){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  let curType = defaultType; // 'in' | 'out' | 'expense' | 'petty'
+
+  const typeConfig = {
+    in: { label: '🟢 تسجيل وارد / إيداع نقدي بالخزينة', btnCls: 'btn-green', submitTxt: 'حفظ الوارد' },
+    out: { label: '📤 تسجيل منصرف / مسحوبات نقدية', btnCls: 'btn-amber', submitTxt: 'حفظ المنصرف' },
+    expense: { label: '💸 تسجيل مصروف عام / تشغيلي', btnCls: 'btn-red', submitTxt: 'حفظ المصروف' },
+    petty: { label: '☕ تسجيل نثريات وبوفيه ومشتريات يومية', btnCls: 'btn-primary', submitTxt: 'حفظ النثريات' }
+  };
+
+  function renderModal(){
+    const cfg = typeConfig[curType] || typeConfig.expense;
+    overlay.innerHTML = `
+      <div class="modal-content" style="max-width:620px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
+          <h3 style="margin:0;font-size:16.5px;font-weight:900;">${cfg.label}</h3>
+          <button class="btn btn-ghost btn-xs" id="closeTxModal">✕</button>
+        </div>
+
+        <!-- Type Switcher Tabs -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:14px;">
+          <button type="button" class="btn btn-xs ${curType==='in'?'btn-green':'btn-ghost'}" data-txtype="in">📥 وارد (إيداع)</button>
+          <button type="button" class="btn btn-xs ${curType==='out'?'btn-amber':'btn-ghost'}" data-txtype="out">📤 منصرف (مسحوبات)</button>
+          <button type="button" class="btn btn-xs ${curType==='expense'?'btn-red':'btn-ghost'}" data-txtype="expense">💸 مصاريف تشغيل</button>
+          <button type="button" class="btn btn-xs ${curType==='petty'?'btn-primary':'btn-ghost'}" data-txtype="petty">☕ نثريات وبوفيه</button>
+        </div>
+
+        <div class="field">
+          <label>البيان / الوصف *</label>
+          <input id="txTitle" placeholder="${curType==='in'?'مثال: إيداع نقدي إضافي، إيراد صيانة سابقة...':(curType==='petty'?'مثال: شاي وسكر وبوفيه، مستلزمات نظافة...':(curType==='out'?'مثال: مسحوبات شخصية، سلفة...':'مثال: فاتورة كهرباء، إيجار ورشة...'))}" autofocus>
+        </div>
+
+        <div class="grid2">
+          <div class="field">
+            <label>المبلغ (ج.م) *</label>
+            <input id="txAmount" type="number" class="mono font-bold" placeholder="0" style="font-size:16px;">
+          </div>
+          <div class="field">
+            <label>التاريخ *</label>
+            <input id="txDate" type="date" value="${new Date().toISOString().slice(0,10)}">
+          </div>
+        </div>
+
+        <div class="grid2">
+          <div class="field">
+            <label>بند المعاملة / التصنيف</label>
+            <select id="txCategory">
+              ${curType==='in' ? `
+                <option>إيداع وتمويل خزينة</option>
+                <option>إيرادات متنوعة</option>
+                <option>سداد دفعات عميل</option>
+                <option>أخرى</option>
+              ` : (curType==='petty' ? `
+                <option>بوفيه ونثريات</option>
+                <option>ضيافة ومشروبات</option>
+                <option>مستلزمات نظافة ومقر</option>
+                <option>أدوات صغيرة ومواصلات</option>
+              ` : (curType==='out' ? `
+                <option>مسحوبات شخصية</option>
+                <option>جاري الشركاء</option>
+                <option>سداد التزامات</option>
+                <option>أخرى</option>
+              ` : `
+                ${EXPENSE_CATEGORIES.map(c=>`<option>${c}</option>`).join('')}
+              `))}
+            </select>
+          </div>
+          <div class="field">
+            <label>طريقة الدفع / الصندوق</label>
+            <select id="txPaymentMethod">
+              <option>نقدي بالدرج</option>
+              <option>حساب البنك</option>
+              <option>فودافون كاش / إنستاباي</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>ملاحظات إضافية</label>
+          <input id="txNotes" placeholder="تفاصيل إضافية...">
+        </div>
+
+        <div class="actions-row" style="margin-top:16px;">
+          <button class="btn btn-ghost" id="cancelTxModal">إلغاء</button>
+          <button class="btn ${cfg.btnCls}" id="saveTxModalBtn">💾 ${cfg.submitTxt}</button>
+        </div>
+      </div>
+    `;
+
+    overlay.querySelector('#closeTxModal').onclick = ()=>overlay.remove();
+    overlay.querySelector('#cancelTxModal').onclick = ()=>overlay.remove();
+
+    overlay.querySelectorAll('[data-txtype]').forEach(btn => {
+      btn.onclick = ()=>{ curType = btn.dataset.txtype; renderModal(); };
+    });
+
+    overlay.querySelector('#saveTxModalBtn').onclick = async ()=>{
+      const title = overlay.querySelector('#txTitle').value.trim();
+      const amount = Number(overlay.querySelector('#txAmount').value);
+      const date = overlay.querySelector('#txDate').value;
+      const category = overlay.querySelector('#txCategory').value;
+      const method = overlay.querySelector('#txPaymentMethod').value;
+      const notes = overlay.querySelector('#txNotes').value.trim();
+
+      if(!title || !amount || amount<=0){
+        showToast('يرجى كتابة البيان وتحديد المبلغ بشكل صحيح', 'error');
+        return;
+      }
+
+      const saveBtn = overlay.querySelector('#saveTxModalBtn');
+      saveBtn.disabled = true; saveBtn.textContent = 'جارٍ الحفظ...';
+
+      try{
+        await saveExpenseRemote({
+          ID: 'exp_' + Date.now(),
+          Date: date,
+          Title: title,
+          Amount: amount,
+          Category: category,
+          Type: curType,
+          PaymentMethod: method,
+          Notes: notes
+        });
+        showToast('تم تسجيل الحركة بنجاح في دفتر اليومية ✅', 'success');
+        overlay.remove();
+        renderMain();
+      }catch(e){
+        showToast('تم الحفظ محلياً', 'info');
+        overlay.remove();
+        renderMain();
+      }
+    };
+  }
+
+  document.body.appendChild(overlay);
+  renderModal();
+}
+
+function exportDailyJournalToExcel(transactions, stats){
+  if(!transactions || !transactions.length){ showToast('لا توجد حركات للتصدير', 'error'); return; }
+  const headers = ['التاريخ','البيان / المعاملة','المرجع / القسم','التصنيف','وارد (مدين)','منصرف (دائن)','الرصيد اللحظي','المسؤول','طريقة الدفع','ملاحظات'];
+  const rows = transactions.map(t=>[
+    cleanDate(t.date),
+    `"${(t.title||'').replace(/"/g, '""')}"`,
+    `"${t.reference||''}"`,
+    `"${t.category||''}"`,
+    t.in||0,
+    t.out||0,
+    t.runningBalance||0,
+    `"${t.by||''}"`,
+    `"${t.method||''}"`,
+    `"${(t.notes||'').replace(/"/g, '""')}"`
+  ]);
+  downloadCSV(`Daily_Cash_Journal_${new Date().toISOString().slice(0,10)}.csv`, headers, rows);
+}
+
+function openDailyClosePrint(date, stats, list){
+  document.body.classList.remove('printing-sticker');
+  const old = document.getElementById('printMount');
+  if(old) old.remove();
+  const mount = document.createElement('div');
+  mount.id='printMount';
+
+  mount.innerHTML = `
+  <div style="width:100%;max-width:750px;margin:0 auto;background:#fff;padding:22px 26px;color:#0f172a;font-family:var(--font-main);border-radius:8px;box-sizing:border-box;">
+    <!-- Header -->
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #0f172a;padding-bottom:10px;margin-bottom:12px;">
+      <div>
+        ${state.settings.logoUrl ? `<img src="${state.settings.logoUrl}" style="max-height:34px;max-width:130px;object-fit:contain;margin-bottom:3px;">` : ''}
+        <h2 style="margin:0;font-size:18px;font-weight:900;color:#0f172a;">${state.settings.shopName || 'صيانة ميكروتك'}</h2>
+        <div style="font-size:11.5px;color:#475569;margin-top:2px;">كشف حركة اليومية وتقفيل الخزينة والوردية (Daily Shift Close)</div>
+      </div>
+      <div style="text-align:left;">
+        <div style="background:#0f172a;color:#fff;font-size:13px;font-weight:900;padding:3px 10px;border-radius:4px;display:inline-block;" class="mono">${date}</div>
+        <div style="font-size:10.5px;color:#64748b;margin-top:3px;">الوقت: <b>${new Date().toLocaleTimeString('ar-EG')}</b></div>
+        <div style="font-size:10.5px;color:#64748b;">المستخدم: <b>${state.user ? state.user.name : 'أمين الخزينة'}</b></div>
+      </div>
+    </div>
+
+    <!-- Summary Box -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1.2fr;gap:8px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:6px;padding:10px 12px;margin-bottom:14px;text-align:center;">
+      <div>
+        <div style="font-size:10.5px;color:#64748b;">إجمالي الوارد 🟢</div>
+        <div style="font-size:14px;font-weight:900;color:#16a34a;" class="mono">${stats.totalIn.toLocaleString()} ج.م</div>
+      </div>
+      <div>
+        <div style="font-size:10.5px;color:#64748b;">إجمالي المنصرف 🔴</div>
+        <div style="font-size:14px;font-weight:900;color:#dc2626;" class="mono">${stats.totalOut.toLocaleString()} ج.م</div>
+      </div>
+      <div>
+        <div style="font-size:10.5px;color:#64748b;">نثريات وبوفيه ☕</div>
+        <div style="font-size:14px;font-weight:900;color:#d97706;" class="mono">${stats.totalPetty.toLocaleString()} ج.م</div>
+      </div>
+      <div style="background:#0f172a;color:#fff;border-radius:4px;padding:4px 6px;">
+        <div style="font-size:10px;color:#cbd5e1;">الصافي الفعلي بالدرج 💰</div>
+        <div style="font-size:15px;font-weight:900;color:#38bdf8;" class="mono">${stats.netCash.toLocaleString()} ج.م</div>
+      </div>
+    </div>
+
+    <!-- Transactions Table -->
+    <table style="width:100%;border-collapse:collapse;margin-bottom:14px;font-size:10.5px;">
+      <thead>
+        <tr style="background:#0f172a;color:#fff;">
+          <th style="padding:5px 8px;text-align:right;">#</th>
+          <th style="padding:5px 8px;text-align:right;">البيان والمعاملة</th>
+          <th style="padding:5px 8px;text-align:right;">القسم / المرجع</th>
+          <th style="padding:5px 8px;text-align:center;">وارد (مدين)</th>
+          <th style="padding:5px 8px;text-align:center;">منصرف (دائن)</th>
+          <th style="padding:5px 8px;text-align:center;">الرصيد بعد الحركة</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${list.map((t, idx)=>`
+          <tr style="border-bottom:1px solid #e2e8f0;">
+            <td style="padding:5px 8px;color:#64748b;" class="mono">${idx+1}</td>
+            <td style="padding:5px 8px;font-weight:700;">${t.title}</td>
+            <td style="padding:5px 8px;color:#475569;">${t.reference}</td>
+            <td style="padding:5px 8px;text-align:center;font-weight:800;color:#16a34a;" class="mono">${t.in > 0 ? t.in.toLocaleString() : '-'}</td>
+            <td style="padding:5px 8px;text-align:center;font-weight:800;color:#dc2626;" class="mono">${t.out > 0 ? t.out.toLocaleString() : '-'}</td>
+            <td style="padding:5px 8px;text-align:center;font-weight:900;" class="mono">${(t.runningBalance||0).toLocaleString()} ج.م</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+
+    <!-- Signatures -->
+    <div style="display:flex;justify-content:space-between;margin-top:20px;font-size:11px;color:#475569;border-top:1px solid #cbd5e1;padding-top:10px;">
+      <div style="text-align:center;width:45%;">
+        <div>توقيع أمين الخزينة / الكاشير</div>
+        <div style="margin-top:25px;border-bottom:1px dashed #94a3b8;width:75%;margin-left:auto;margin-right:auto;"></div>
+      </div>
+      <div style="text-align:center;width:45%;">
+        <div>توقيع المدير المالي / المراجع</div>
+        <div style="margin-top:25px;border-bottom:1px dashed #94a3b8;width:75%;margin-left:auto;margin-right:auto;"></div>
+      </div>
+    </div>
+  </div>`;
+
+  document.body.appendChild(mount);
+  setTimeout(()=>{ window.print(); mount.remove(); }, 250);
+}
+
+/* ---------------- Daily Journal Page View (شاشة اليومية وحركة الخزينة العامة) ---------------- */
+function renderDailyJournalPage(main){
+  if(!state.dailyDateFilter) state.dailyDateFilter = 'today'; // 'today' | 'yesterday' | 'week' | 'month' | 'all' | 'custom'
+  if(!state.dailyCustomDate) state.dailyCustomDate = new Date().toISOString().slice(0,10);
+  if(!state.dailyTypeFilter) state.dailyTypeFilter = 'all'; // 'all' | 'in' | 'out' | 'petty' | 'maintenance' | 'pos' | 'invoice' | 'expense'
+  if(!state.dailySearchQ) state.dailySearchQ = '';
+
+  const allTx = getUnifiedDailyTransactions();
+  const todayStr = new Date().toISOString().slice(0,10);
+
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().slice(0,10);
+
+  const weekAgo = new Date();
+  weekAgo.setDate(weekAgo.getDate() - 7);
+  const weekAgoStr = weekAgo.toISOString().slice(0,10);
+
+  const monthStartStr = todayStr.slice(0,7) + '-01';
+
+  // Apply Date Filter
+  let filtered = allTx;
+  if(state.dailyDateFilter === 'today'){
+    filtered = filtered.filter(t => t.date === todayStr);
+  } else if(state.dailyDateFilter === 'yesterday'){
+    filtered = filtered.filter(t => t.date === yesterdayStr);
+  } else if(state.dailyDateFilter === 'week'){
+    filtered = filtered.filter(t => t.date >= weekAgoStr);
+  } else if(state.dailyDateFilter === 'month'){
+    filtered = filtered.filter(t => t.date >= monthStartStr);
+  } else if(state.dailyDateFilter === 'custom'){
+    filtered = filtered.filter(t => t.date === state.dailyCustomDate);
+  }
+
+  // Apply Type Filter
+  if(state.dailyTypeFilter === 'in'){
+    filtered = filtered.filter(t => t.in > 0);
+  } else if(state.dailyTypeFilter === 'out'){
+    filtered = filtered.filter(t => t.out > 0);
+  } else if(state.dailyTypeFilter === 'petty'){
+    filtered = filtered.filter(t => t.type === 'petty' || t.category.includes('نثريات'));
+  } else if(state.dailyTypeFilter === 'maintenance'){
+    filtered = filtered.filter(t => t.sourceType === 'maintenance' || t.sourceType === 'refund');
+  } else if(state.dailyTypeFilter === 'pos'){
+    filtered = filtered.filter(t => t.sourceType === 'pos');
+  } else if(state.dailyTypeFilter === 'invoice'){
+    filtered = filtered.filter(t => t.sourceType === 'invoice');
+  } else if(state.dailyTypeFilter === 'expense'){
+    filtered = filtered.filter(t => t.sourceType === 'expense' || t.sourceType === 'purchase');
+  }
+
+  // Apply Search
+  const q = (state.dailySearchQ||'').trim().toLowerCase();
+  if(q){
+    filtered = filtered.filter(t =>
+      (t.title||'').toLowerCase().includes(q) ||
+      (t.reference||'').toLowerCase().includes(q) ||
+      (t.category||'').toLowerCase().includes(q) ||
+      (t.by||'').toLowerCase().includes(q) ||
+      (t.notes||'').toLowerCase().includes(q)
+    );
+  }
+
+  // KPIs
+  const totalIn = filtered.reduce((s,t)=>s+Number(t.in||0), 0);
+  const totalOut = filtered.reduce((s,t)=>s+Number(t.out||0), 0);
+  const totalPetty = filtered.filter(t=>t.type==='petty'||t.category.includes('نثريات')).reduce((s,t)=>s+Number(t.out||0), 0);
+  const netCash = totalIn - totalOut;
+
+  // Overall Cash Balance in Drawer (from all time)
+  const currentTotalCashInDrawer = allTx.length ? allTx[allTx.length - 1].runningBalance : 0;
 
   main.innerHTML = `
     <div class="top-header">
       <div>
-        <h2 class="page-title">💸 المصروفات وتقفيل الخزينة اليومية</h2>
-        <div class="subtitle">تسجيل المصروفات النثرية وحساب النقدية الفعلية في الدرج</div>
+        <h2 class="page-title">📔 دفتر اليومية وحركة الخزينة العامة</h2>
+        <div class="subtitle">تصب فيه آلياً كافة مقبوضات الصيانة، مبيعات POS، الفواتير، المشتريات، والمصروفات والنثريات (${filtered.length} حركة)</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" id="exportDailyExcelBtn">📥 تصدير Excel</button>
+        <button class="btn btn-blue btn-sm" id="printDailyCloseBtn">🖨️ طباعة تقفيل الخزينة</button>
+        <button class="btn btn-green btn-sm" id="recordManualInBtn">➕ تسجيل وارد</button>
+        <button class="btn btn-amber btn-sm" id="recordManualOutBtn">➖ تسجيل منصرف</button>
+        <button class="btn btn-red btn-sm" id="recordExpenseBtn">💸 مصروف</button>
+        <button class="btn btn-primary btn-sm" id="recordPettyBtn">☕ نثريات</button>
       </div>
     </div>
 
+    <!-- KPIs Grid -->
     <div class="stat-grid">
-      <div class="stat-card red"><div class="num mono">${totalExpToday.toLocaleString()} ج.م</div><div class="lbl">مصروفات اليوم</div></div>
-      <div class="stat-card green"><div class="num mono">${totalCashInToday.toLocaleString()} ج.م</div><div class="lbl">إجمالي المقبوضات النقدية اليوم</div></div>
-      <div class="stat-card purple"><div class="num mono" style="font-weight:900;">${netDrawerCash.toLocaleString()} ج.م</div><div class="lbl">الصافي الفعلي في الخزينة اليوم</div></div>
-      <div class="stat-card amber"><div class="num mono">${totalExpAll.toLocaleString()} ج.م</div><div class="lbl">إجمالي المصروفات الكلية</div></div>
+      <div class="stat-card green">
+        <div class="top-row"><span class="lbl">إجمالي الوارد (مقبوضات)</span><div class="icon-box">📥</div></div>
+        <div class="num mono">${totalIn.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
+      </div>
+      <div class="stat-card red">
+        <div class="top-row"><span class="lbl">إجمالي المنصرف (مدفوعات)</span><div class="icon-box">📤</div></div>
+        <div class="num mono">${totalOut.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
+      </div>
+      <div class="stat-card amber">
+        <div class="top-row"><span class="lbl">النثريات والبوفيه</span><div class="icon-box">☕</div></div>
+        <div class="num mono">${totalPetty.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
+      </div>
+      <div class="stat-card purple">
+        <div class="top-row"><span class="lbl">صافي رصيد الخزينة بالدرج</span><div class="icon-box">💰</div></div>
+        <div class="num mono" style="font-weight:900;">${currentTotalCashInDrawer.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
+      </div>
     </div>
 
-    <div class="card">
-      <h3>➕ تسجيل مصروف جديد</h3>
-      <div class="grid3">
-        <div class="field"><label>بيان المصروف *</label><input id="expTitle" placeholder="مثال: فاتورة كهرباء، بوفيه، أدوات..."></div>
-        <div class="field"><label>المبلغ (ج.م) *</label><input id="expAmount" type="number" placeholder="0"></div>
-        <div class="field"><label>بند المصروف</label>
-          <select id="expCategory">${EXPENSE_CATEGORIES.map(c=>`<option>${c}</option>`).join('')}</select>
-        </div>
-      </div>
-      <div class="field"><label>ملاحظات إضافية</label><input id="expNotes" placeholder="تفاصيل المصروف..."></div>
-      <button class="btn btn-red btn-sm" id="addExpBtn">تسجيل المصروف</button>
+    <!-- Date Presets & Filter Bar -->
+    <div class="chip-group" id="dailyDateChips" style="margin-bottom:12px;">
+      <div class="chip ${state.dailyDateFilter==='today'?'sel':''}" data-dchip="today">📅 اليوم (${todayStr})</div>
+      <div class="chip ${state.dailyDateFilter==='yesterday'?'sel':''}" data-dchip="yesterday">أمس</div>
+      <div class="chip ${state.dailyDateFilter==='week'?'sel':''}" data-dchip="week">آخر 7 أيام</div>
+      <div class="chip ${state.dailyDateFilter==='month'?'sel':''}" data-dchip="month">هذا الشهر</div>
+      <div class="chip ${state.dailyDateFilter==='all'?'sel':''}" data-dchip="all">كل الأوقات</div>
+      <div class="chip ${state.dailyDateFilter==='custom'?'sel':''}" data-dchip="custom">تاريخ مخصص 📆</div>
     </div>
 
+    <div class="filters-bar" style="margin-bottom:14px;flex-wrap:wrap;">
+      ${state.dailyDateFilter==='custom' ? `
+        <input id="dailyCustomDateInp" type="date" value="${state.dailyCustomDate}" style="width:140px;">
+      ` : ''}
+      <select id="dailyTypeFilterSelect" style="min-width:180px;">
+        <option value="all" ${state.dailyTypeFilter==='all'?'selected':''}>كل أنواع العمليات (الكل)</option>
+        <option value="in" ${state.dailyTypeFilter==='in'?'selected':''}>📥 وارد ومقبوضات فقط</option>
+        <option value="out" ${state.dailyTypeFilter==='out'?'selected':''}>📤 منصرف ومسحوبات فقط</option>
+        <option value="petty" ${state.dailyTypeFilter==='petty'?'selected':''}>☕ نثريات وبوفيه فقط</option>
+        <option value="maintenance" ${state.dailyTypeFilter==='maintenance'?'selected':''}>🛠️ حركات الصيانة</option>
+        <option value="pos" ${state.dailyTypeFilter==='pos'?'selected':''}>🧾 مبيعات نقطة البيع POS</option>
+        <option value="invoice" ${state.dailyTypeFilter==='invoice'?'selected':''}>📄 مقبوضات الفواتير</option>
+        <option value="expense" ${state.dailyTypeFilter==='expense'?'selected':''}>💸 المصروفات والمشتريات</option>
+      </select>
+      <input id="dailySearchInp" placeholder="🔍 بحث في المعاملات، الإيصالات، النثريات، أو المسؤول..." value="${state.dailySearchQ}" style="flex:1;min-width:220px;">
+      ${(state.dailySearchQ || state.dailyTypeFilter!=='all' || state.dailyDateFilter!=='today') ? `<button class="btn btn-ghost btn-sm" id="clearDailyFilters">إعادة ضبط</button>` : ''}
+    </div>
+
+    <!-- Ledger Table -->
     <div class="card">
-      <div class="card-header">
-        <h3>سجل المصروفات المسجلة (${state.expenses.length})</h3>
-      </div>
-      ${state.expenses.length===0 ? '<div class="empty">لا توجد مصروفات مسجلة بعد.</div>' : `
-      <div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>البيان</th><th>البند</th><th>المبلغ</th><th>المسؤول</th><th>الإجراء</th></tr></thead><tbody>
-        ${state.expenses.slice().reverse().map(ex=>`<tr>
-          <td>${cleanDate(ex.Date)}</td>
-          <td><b>${ex.Title}</b> ${ex.Notes?`<div style="font-size:11px;color:var(--ink-secondary);">${ex.Notes}</div>`:''}</td>
-          <td><span class="status-badge st-repair">${ex.Category}</span></td>
-          <td class="mono font-bold" style="color:var(--red);font-size:13.5px;">${ex.Amount} ج.م</td>
-          <td>${ex.By||'-'}</td>
-          <td>${state.user.role==='admin' ? `<button class="btn btn-xs btn-red" data-expdel="${ex.ID}">حذف</button>`:''}</td>
-        </tr>`).join('')}
-      </tbody></table></div>`}
+      ${filtered.length===0 ? '<div class="empty">لا توجد حركات نقدية مسجلة في هذه الفترة أو مطابقة للفلتر.</div>' : `
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:40px;">#</th>
+              <th>التاريخ</th>
+              <th>البيان والمعاملة</th>
+              <th>المرجع / القسم</th>
+              <th>التصنيف</th>
+              <th style="text-align:center;">🟢 وارد (مدين)</th>
+              <th style="text-align:center;">🔴 منصرف (دائن)</th>
+              <th style="text-align:center;">💵 الرصيد اللحظي</th>
+              <th>المسؤول</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filtered.slice().reverse().map((t, idx)=>{
+              return `
+                <tr>
+                  <td class="mono font-bold" style="color:var(--ink-secondary);font-size:11px;">${filtered.length - idx}</td>
+                  <td style="font-size:11.5px;color:var(--ink-secondary);white-space:nowrap;">${cleanDate(t.date)}</td>
+                  <td>
+                    <div style="font-weight:800;font-size:13px;">${t.title}</div>
+                    ${t.notes ? `<div style="font-size:11px;color:var(--ink-secondary);">${t.notes}</div>` : ''}
+                  </td>
+                  <td>
+                    <span class="status-badge st-check" style="font-size:10.5px;">${t.sourceIcon} ${t.reference}</span>
+                  </td>
+                  <td>
+                    <span style="font-size:11.5px;color:var(--ink-secondary);">${t.category}</span>
+                  </td>
+                  <td class="mono font-bold" style="text-align:center;color:var(--green);font-size:13px;">
+                    ${t.in > 0 ? `+${Number(t.in).toLocaleString()} ج.م` : '-'}
+                  </td>
+                  <td class="mono font-bold" style="text-align:center;color:var(--red);font-size:13px;">
+                    ${t.out > 0 ? `-${Number(t.out).toLocaleString()} ج.م` : '-'}
+                  </td>
+                  <td class="mono font-bold" style="text-align:center;font-size:13px;color:var(--primary);">
+                    ${(t.runningBalance||0).toLocaleString()} ج.م
+                  </td>
+                  <td style="font-size:11.5px;">${t.by}</td>
+                  <td style="text-align:center;">
+                    ${t.canDelete && state.user.role==='admin' ? `
+                      <button class="btn btn-xs btn-red" data-txdel="${t.rawExpId}" title="حذف القيد اليدوي">🗑️</button>
+                    ` : ''}
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`}
     </div>
   `;
 
-  document.getElementById('addExpBtn').onclick = async ()=>{
-    const title = document.getElementById('expTitle').value.trim();
-    const amount = Number(document.getElementById('expAmount').value);
-    const category = document.getElementById('expCategory').value;
-    const notes = document.getElementById('expNotes').value.trim();
-    if(!title || !amount || amount<=0){ showToast('أدخل بيان المصروف والمبلغ بشكل صحيح', 'error'); return; }
-    const btn = document.getElementById('addExpBtn'); btn.disabled = true; btn.textContent = '...';
-    try{
-      await saveExpenseRemote({ID:'', Title:title, Amount:amount, Category:category, Notes:notes});
-      showToast('تم تسجيل المصروف بنجاح', 'success');
-      renderExpensesPage(main);
-    }catch(e){ showToast('تم تسجيل المصروف محلياً', 'info'); }
-    btn.disabled = false; btn.textContent = 'تسجيل المصروف';
+  // Bindings
+  document.querySelectorAll('#dailyDateChips .chip').forEach(c => {
+    c.onclick = ()=>{
+      state.dailyDateFilter = c.dataset.dchip;
+      renderDailyJournalPage(main);
+    };
+  });
+
+  const customDateInp = document.getElementById('dailyCustomDateInp');
+  if(customDateInp){
+    customDateInp.onchange = (e)=>{ state.dailyCustomDate = e.target.value; renderDailyJournalPage(main); };
+  }
+
+  const typeSel = document.getElementById('dailyTypeFilterSelect');
+  if(typeSel){
+    typeSel.onchange = (e)=>{ state.dailyTypeFilter = e.target.value; renderDailyJournalPage(main); };
+  }
+
+  const searchInp = document.getElementById('dailySearchInp');
+  if(searchInp){
+    searchInp.oninput = (e)=>{ state.dailySearchQ = e.target.value; renderDailyJournalPage(main); };
+  }
+
+  const clearBtn = document.getElementById('clearDailyFilters');
+  if(clearBtn){
+    clearBtn.onclick = ()=>{
+      state.dailyDateFilter = 'today';
+      state.dailyTypeFilter = 'all';
+      state.dailySearchQ = '';
+      renderDailyJournalPage(main);
+    };
+  }
+
+  // Action Buttons
+  document.getElementById('recordManualInBtn').onclick = ()=>openRecordTransactionModal('in');
+  document.getElementById('recordManualOutBtn').onclick = ()=>openRecordTransactionModal('out');
+  document.getElementById('recordExpenseBtn').onclick = ()=>openRecordTransactionModal('expense');
+  document.getElementById('recordPettyBtn').onclick = ()=>openRecordTransactionModal('petty');
+
+  document.getElementById('exportDailyExcelBtn').onclick = ()=>exportDailyJournalToExcel(filtered, { totalIn, totalOut, totalPetty, netCash });
+  document.getElementById('printDailyCloseBtn').onclick = ()=>{
+    const curDateStr = state.dailyDateFilter === 'custom' ? state.dailyCustomDate : (state.dailyDateFilter==='yesterday'?yesterdayStr:todayStr);
+    openDailyClosePrint(curDateStr, { totalIn, totalOut, totalPetty, netCash }, filtered);
   };
 
-  main.querySelectorAll('[data-expdel]').forEach(btn=>{
+  // Row Delete
+  main.querySelectorAll('[data-txdel]').forEach(btn => {
     btn.onclick = async ()=>{
-      if(!confirm('هل تريد حذف هذا المصروف؟')) return;
+      if(!confirm('هل تريد حذف هذا المصروف / القيد اليدوي نهائياً؟')) return;
       try{
-        await deleteExpenseRemote(btn.dataset.expdel);
-        showToast('تم الحذف', 'success');
-        renderExpensesPage(main);
+        await deleteExpenseRemote(btn.dataset.txdel);
+        showToast('تم حذف الحركة بنجاح', 'success');
+        renderDailyJournalPage(main);
       }catch(e){ showToast('تعذر الحذف: '+e.message, 'error'); }
     };
   });
+}
+
+function renderDailyJournalSectionApp(app){
+  app.innerHTML = `
+    <div class="sidebar">
+      ${brandHtml("اليومية والخزينة")}
+      ${sectionSwitcherHtml()}
+      <div class="sidebar-nav-wrap">
+        <div class="nav-section">إدارة الخزينة والوردية</div>
+        <div class="nav-item active"><span class="nav-item-icon">📔</span><span>دفتر اليومية وحركة الدرج</span></div>
+      </div>
+      ${sidebarFootHtml()}
+    </div>
+    <main id="main"></main>
+  `;
+  const sw = document.getElementById('switchSectionBtn');
+  if(sw) sw.onclick = ()=>{ state.currentSection = null; render(); };
+  attachSidebarHandlers();
+  renderDailyJournalPage(document.getElementById('main'));
+}
+
+// Alias for backward compatibility
+function renderExpensesPage(main){
+  renderDailyJournalPage(main);
 }
 
 /* ---------------- Cameras Section ---------------- */
@@ -4978,10 +5642,9 @@ function renderPosApp(app){
       ${brandHtml("نقطة البيع (POS)")}
       ${sectionSwitcherHtml()}
       <div class="sidebar-nav-wrap">
-        <div class="nav-section">العمليات</div>
-        <div class="nav-item ${state.posTab==='sell'?'active':''}" data-postab="sell"><span class="nav-item-icon">🧾</span><span>بيع جديد</span></div>
+        <div class="nav-section">العمليات والمبيعات</div>
+        <div class="nav-item ${state.posTab==='sell'?'active':''}" data-postab="sell"><span class="nav-item-icon">🧾</span><span>بيع جديد (كاشير)</span></div>
         <div class="nav-item ${state.posTab==='sales'?'active':''}" data-postab="sales"><span class="nav-item-icon">📊</span><span>سجل المبيعات</span></div>
-        <div class="nav-item ${state.posTab==='invoices'?'active':''}" data-postab="invoices"><span class="nav-item-icon">📄</span><span>الفواتير الضريبية</span></div>
       </div>
       ${sidebarFootHtml()}
     </div>
@@ -4995,7 +5658,6 @@ function renderPosApp(app){
   });
   const main = document.getElementById('main');
   if(state.posTab==='sell') renderPosSell(main);
-  else if(state.posTab==='invoices') renderInvoicesPage(main);
   else renderPosSalesLog(main);
 }
 
@@ -5005,7 +5667,7 @@ function renderPosSell(main){
   main.innerHTML = `
     <div class="top-header">
       <div>
-        <h2 class="page-title">🧾 بيع سريع وفاتورة</h2>
+        <h2 class="page-title">🧾 بيع سريع وفاتورة كاشير</h2>
         <div class="subtitle">مسح الباركود أو اختيار المنتجات لإصدار الفاتورة فورًا</div>
       </div>
     </div>
@@ -5035,7 +5697,10 @@ function renderPosSell(main){
         <div class="field"><label>اسم العميل</label><input id="posCustName" value="عميل زائر"></div>
         <div class="field"><label>رقم الهاتف</label><input id="posCustPhone"></div>
       </div>
-      <button class="btn btn-green" id="completeSaleBtn" style="width:100%;padding:12px;" ${cart.length===0?'disabled':''}>✅ إتمام عملية البيع وطباعة الفاتورة</button>
+      <div style="display:flex;gap:10px;margin-top:8px;">
+        <button class="btn btn-green" id="completeSaleBtn" style="flex:2;padding:12px;" ${cart.length===0?'disabled':''}>✅ إتمام البيع وطباعة إيصال سريع</button>
+        <button class="btn btn-blue" id="completeSaleWithTaxInvBtn" style="flex:2;padding:12px;" ${cart.length===0?'disabled':''}>📄 إتمام البيع وإصدار فاتورة ضريبية رسمية</button>
+      </div>
     </div>
   `;
   document.getElementById('posBarcodeInput').onkeydown = async (e)=>{
@@ -5061,22 +5726,37 @@ function renderPosSell(main){
     btn.onclick = ()=>{ cart.splice(Number(btn.dataset.cartidx),1); renderPosSell(main); };
   });
 
-  const completeBtn = document.getElementById('completeSaleBtn');
-  if(completeBtn) completeBtn.onclick = async ()=>{
-    const customerName = document.getElementById('posCustName').value.trim();
+  async function processSale(isTaxInvoice){
+    const customerName = document.getElementById('posCustName').value.trim() || 'عميل زائر';
     const customerPhone = document.getElementById('posCustPhone').value.trim();
-    completeBtn.disabled = true; completeBtn.textContent = 'جارٍ إتمام البيع...';
+    const btn = document.getElementById(isTaxInvoice ? 'completeSaleWithTaxInvBtn' : 'completeSaleBtn');
+    btn.disabled = true; btn.textContent = 'جارٍ إتمام البيع...';
     try{
       for(const c of cart){ await adjustInventoryQtyRemote(c.itemId, -c.qty); }
       const itemsSummary = cart.map(c=>`${c.name} × ${c.qty} (${c.qty*c.price} ج.م)`).join('، ');
       const itemsJson = JSON.stringify(cart.map(c=>({name:c.name, qty:c.qty, price:c.price})));
       const saleRes = await saveSaleRemote(itemsSummary, itemsJson, total, customerName, customerPhone, 'نقدي', total);
-      showToast('تمت عملية البيع بنجاح', 'success');
-      openSalePrint(saleRes.sale, cart);
+      showToast('تمت عملية البيع بنجاح ✅', 'success');
+      
+      const cartSnapshot = [...cart];
       state.cart = [];
       renderPosSell(main);
-    }catch(e){ showToast('تم تسجيل البيع محلياً', 'info'); completeBtn.disabled=false; }
-  };
+
+      if(isTaxInvoice){
+        convertSaleToInvoice(saleRes.sale ? saleRes.sale.ID : ('s_'+Date.now()));
+      } else {
+        openSalePrint(saleRes.sale, cartSnapshot);
+      }
+    }catch(e){
+      showToast('تم تسجيل البيع محلياً', 'info');
+      btn.disabled = false;
+    }
+  }
+
+  const completeBtn = document.getElementById('completeSaleBtn');
+  if(completeBtn) completeBtn.onclick = ()=>processSale(false);
+  const completeTaxBtn = document.getElementById('completeSaleWithTaxInvBtn');
+  if(completeTaxBtn) completeTaxBtn.onclick = ()=>processSale(true);
 }
 
 async function addItemToCart(itemId, qty, main){
@@ -5088,22 +5768,229 @@ async function addItemToCart(itemId, qty, main){
   renderPosSell(main);
 }
 
+function convertSaleToInvoice(saleId){
+  const s = state.sales.find(x => x.ID === saleId) || (saleId.startsWith('s_') ? { ID: saleId, Date: new Date().toISOString().slice(0,10), Total: 0 } : null);
+  if(!s){ showToast('تعذر العثور على عملية البيع', 'error'); return; }
+
+  // Check if this sale already has an invoice issued
+  const existing = state.invoices.find(inv => inv.ReferenceType==='POS' && (inv.ReferenceID===s.ID || inv.ReferenceID===s.ID.slice(-8)));
+  if(existing){
+    if(confirm(`تم إصدار فاتورة ضريبية سابقة لهذه العملية برقم (${existing.InvoiceNumber}). هل ترغب في فتح الفاتورة المسجلة؟`)){
+      openInvoiceModal(existing);
+      return;
+    }
+  }
+
+  // Parse items
+  let items = [];
+  if(s.ItemsJSON){
+    try {
+      const parsed = typeof s.ItemsJSON==='string' ? JSON.parse(s.ItemsJSON) : s.ItemsJSON;
+      if(Array.isArray(parsed)){
+        items = parsed.map(p=>({
+          Name: p.name || p.Name || 'صنف مباع',
+          Qty: Number(p.qty || p.Qty || 1),
+          Price: Number(p.price || p.Price || 0),
+          Total: Number(p.qty || p.Qty || 1) * Number(p.price || p.Price || 0)
+        }));
+      }
+    }catch(e){}
+  }
+  if(!items.length && s.ItemsSummary){
+    items = [{
+      Name: s.ItemsSummary,
+      Qty: 1,
+      Price: Number(s.Total||0),
+      Total: Number(s.Total||0)
+    }];
+  }
+
+  const subtotal = items.reduce((sum,it)=>sum+Number(it.Total||0),0) || Number(s.Total||0);
+  const paid = Number(s.AmountPaid!=null ? s.AmountPaid : s.Total);
+  const remaining = Math.max(0, subtotal - paid);
+
+  const prefilled = {
+    ID: 'inv_' + Date.now(),
+    InvoiceNumber: 'INV-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-4),
+    Date: cleanDate(s.Date) || new Date().toISOString().slice(0,10),
+    DueDate: cleanDate(s.Date) || new Date().toISOString().slice(0,10),
+    CustomerName: s.CustomerName || 'عميل زائر',
+    CustomerPhone: s.CustomerPhone || '',
+    CustomerTaxNumber: '',
+    CustomerAddress: '',
+    Items: items,
+    ItemsSummary: s.ItemsSummary || items.map(i=>i.Name).join(' + '),
+    Subtotal: subtotal,
+    TaxPercent: 0,
+    TaxAmount: 0,
+    Discount: 0,
+    Total: subtotal,
+    AmountPaid: paid,
+    Remaining: remaining,
+    Status: remaining <= 0 ? 'مدفوعة بالكامل' : 'مدفوعة جزئياً',
+    PaymentMethod: s.PaymentMethod || 'نقدي',
+    ReferenceType: 'POS',
+    ReferenceID: s.ID.slice(-8),
+    Notes: `فاتورة ضريبية رسمية صادرة عن عملية مبيعات نقطة البيع رقم #${s.ID.slice(-8)}`
+  };
+
+  openInvoiceModal(prefilled, true);
+}
+
+function exportSalesToExcel(sales){
+  if(!sales || !sales.length){ showToast('لا توجد مبيعات للتصدير', 'error'); return; }
+  const headers = ['رقم العملية','التاريخ','اسم العميل','الهاتف','الأصناف','الإجمالي','المدفوع','طريقة الدفع'];
+  const rows = sales.map(s=>[
+    `"${s.ID.slice(-8)}"`, cleanDate(s.Date), `"${s.CustomerName||'عميل زائر'}"`, `"${s.CustomerPhone||''}"`,
+    `"${(s.ItemsSummary||'').replace(/"/g, '""')}"`, s.Total||0, s.AmountPaid!=null?s.AmountPaid:s.Total, `"${s.PaymentMethod||'نقدي'}"`
+  ]);
+  downloadCSV(`POS_Sales_${new Date().toISOString().slice(0,10)}.csv`, headers, rows);
+}
+
 function renderPosSalesLog(main){
+  if(!state.posSalesSearchQ) state.posSalesSearchQ = '';
+  const rawList = state.sales || [];
+  let list = [...rawList];
+
+  const q = state.posSalesSearchQ.trim().toLowerCase();
+  if(q){
+    list = list.filter(s =>
+      (s.ID||'').toLowerCase().includes(q) ||
+      (s.CustomerName||'').toLowerCase().includes(q) ||
+      (s.CustomerPhone||'').includes(q) ||
+      (s.ItemsSummary||'').toLowerCase().includes(q)
+    );
+  }
+
+  const todayStr = new Date().toISOString().slice(0,10);
+  const totalSalesCount = rawList.length;
+  const totalSalesRevenue = rawList.reduce((sum,s)=>sum+Number(s.Total||0),0);
+  const todaySalesRevenue = rawList.filter(s=>cleanDate(s.Date)===todayStr).reduce((sum,s)=>sum+Number(s.Total||0),0);
+
   main.innerHTML = `
     <div class="top-header">
       <div>
-        <h2 class="page-title">📊 سجل مبيعات نقطة البيع</h2>
-        <div class="subtitle">${state.sales.length} عملية بيع مسجلة</div>
+        <h2 class="page-title">📊 سجل مبيعات نقطة البيع (POS Log)</h2>
+        <div class="subtitle">استعراض العمليات المسجلة، طباعة الإيصالات، وإصدار فواتير ضريبية رسمية (${list.length} عملية)</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost btn-sm" id="exportSalesExcelBtn">📥 تصدير المبيعات Excel</button>
+        <button class="btn btn-primary btn-sm" id="goToNewSaleBtn">➕ بيع جديد</button>
       </div>
     </div>
-    ${state.sales.length===0 ? '<div class="empty">لا توجد مبيعات مسجلة بعد.</div>' : `
-    <div class="table-wrap"><table><thead><tr><th>رقم</th><th>التاريخ</th><th>الأصناف</th><th>الإجمالي</th><th>العميل</th></tr></thead><tbody>
-      ${state.sales.slice().reverse().map(s=>`<tr>
-        <td class="mono" style="font-weight:800;color:var(--primary);">${s.ID.slice(-8)}</td>
-        <td>${cleanDate(s.Date)}</td><td>${s.ItemsSummary}</td><td class="mono font-bold">${s.Total} ج.م</td><td>${s.CustomerName||'-'}</td>
-      </tr>`).join('')}
-    </tbody></table></div>`}
+
+    <!-- KPIs -->
+    <div class="stat-grid">
+      <div class="stat-card blue">
+        <div class="top-row"><span class="lbl">إجمالي عمليات البيع</span><div class="icon-box">🧾</div></div>
+        <div class="num mono">${totalSalesCount}</div>
+      </div>
+      <div class="stat-card green">
+        <div class="top-row"><span class="lbl">إجمالي إيراد المبيعات</span><div class="icon-box">💰</div></div>
+        <div class="num mono">${totalSalesRevenue.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
+      </div>
+      <div class="stat-card purple">
+        <div class="top-row"><span class="lbl">مبيعات اليوم (${todayStr})</span><div class="icon-box">⚡</div></div>
+        <div class="num mono">${todaySalesRevenue.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
+      </div>
+    </div>
+
+    <!-- Search Bar -->
+    <div class="filters-bar" style="margin-bottom:14px;">
+      <input id="posSalesSearchInp" placeholder="🔍 بحث برقم العملية، اسم العميل، الهاتف، أو اسم الصنف المباع..." value="${state.posSalesSearchQ}" style="flex:1;">
+      ${state.posSalesSearchQ ? `<button class="btn btn-ghost btn-sm" id="clearPosSalesSearch">مسح البحث</button>` : ''}
+    </div>
+
+    <div class="card">
+      ${list.length===0 ? '<div class="empty">لا توجد مبيعات مطابقة للبحث.</div>' : `
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>رقم العملية</th>
+              <th>التاريخ</th>
+              <th>العميل</th>
+              <th>الأصناف المباعة</th>
+              <th>الإجمالي</th>
+              <th>طريقة الدفع</th>
+              <th>الإجراءات والطباعة</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${list.slice().reverse().map(s=>{
+              return `
+                <tr>
+                  <td>
+                    <span class="mono font-bold" style="color:var(--primary);font-size:13px;">#${s.ID.slice(-8)}</span>
+                  </td>
+                  <td style="font-size:11.5px;color:var(--ink-secondary);">
+                    ${cleanDate(s.Date)}
+                  </td>
+                  <td>
+                    <div style="font-weight:800;font-size:13px;">${s.CustomerName||'عميل زائر'}</div>
+                    <div class="mono" style="font-size:11px;color:var(--ink-secondary);">${s.CustomerPhone||'-'}</div>
+                  </td>
+                  <td style="font-size:12px;max-width:280px;line-height:1.4;">
+                    ${s.ItemsSummary}
+                  </td>
+                  <td class="mono font-bold" style="color:var(--green);font-size:13.5px;">
+                    ${Number(s.Total||0).toLocaleString()} ج.م
+                  </td>
+                  <td>
+                    <span class="status-badge st-check" style="font-size:10.5px;">${s.PaymentMethod||'نقدي'}</span>
+                  </td>
+                  <td class="row-actions">
+                    <button class="btn btn-xs btn-blue" data-posact="taxinvoice" data-saleid="${s.ID}" title="إصدار وتحويل لفاتورة ضريبية رسمية مع باركود QR">📄 فاتورة ضريبية</button>
+                    <button class="btn btn-xs btn-green" data-posact="receipt" data-saleid="${s.ID}" title="طباعة إيصال بيع سريع">🖨️ إيصال</button>
+                    ${s.CustomerPhone ? `<button class="btn btn-xs btn-whatsapp" data-posact="wa" data-saleid="${s.ID}" title="مشاركة الفاتورة عبر واتساب">${WA_ICON}</button>` : ''}
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`}
+    </div>
   `;
+
+  // Bindings
+  const searchInp = document.getElementById('posSalesSearchInp');
+  if(searchInp) searchInp.oninput = (e)=>{ state.posSalesSearchQ = e.target.value; renderPosSalesLog(main); };
+  const clearBtn = document.getElementById('clearPosSalesSearch');
+  if(clearBtn) clearBtn.onclick = ()=>{ state.posSalesSearchQ = ''; renderPosSalesLog(main); };
+
+  document.getElementById('goToNewSaleBtn').onclick = ()=>{ state.posTab='sell'; renderPosApp(document.getElementById('app')); };
+  document.getElementById('exportSalesExcelBtn').onclick = ()=>exportSalesToExcel(list);
+
+  main.querySelectorAll('[data-posact]').forEach(btn => {
+    btn.onclick = ()=>{
+      const s = state.sales.find(x => x.ID === btn.dataset.saleid);
+      if(!s) return;
+      const act = btn.dataset.posact;
+      if(act === 'taxinvoice'){
+        convertSaleToInvoice(s.ID);
+      }
+      if(act === 'receipt'){
+        let cartItems = [];
+        if(s.ItemsJSON){
+          try {
+            const parsed = typeof s.ItemsJSON==='string' ? JSON.parse(s.ItemsJSON) : s.ItemsJSON;
+            if(Array.isArray(parsed)) cartItems = parsed;
+          }catch(e){}
+        }
+        if(!cartItems.length){
+          cartItems = [{ name: s.ItemsSummary, qty: 1, price: s.Total }];
+        }
+        openSalePrint(s, cartItems);
+      }
+      if(act === 'wa'){
+        const phone = (s.CustomerPhone||'').replace(/\D/g,'');
+        const phoneFormatted = phone.startsWith('0') ? '2'+phone : phone;
+        const msg = `مرحبًا ${s.CustomerName||'عميلنا العزيز'}،\nإيصال مبيعات رقم: #${s.ID.slice(-8)}\nالأصناف: ${s.ItemsSummary}\nالإجمالي: ${s.Total} ج.م\nشكرًا لتعاملكم مع ${state.settings.shopName || 'ميكروتك'}.`;
+        window.open(`https://wa.me/${phoneFormatted}?text=${encodeURIComponent(msg)}`, '_blank');
+      }
+    };
+  });
 }
 
 function openSalePrint(sale, cartItems){
@@ -5130,7 +6017,7 @@ function openSalePrint(sale, cartItems){
     </div>
     <div>
       <div class="terms">يُقبل الاسترجاع والاستبدال خلال 14 يوماً بالفاتورة الأصلية.</div>
-      <div class="sign-row"><div>توقيع العميل</div><div>الموظف (${state.user.name})</div></div>
+      <div class="sign-row"><div>توقيع العميل</div><div>الموظف (${state.user ? state.user.name : 'الكاشير'})</div></div>
     </div>
   </div>`;
   document.body.appendChild(mount);
@@ -5198,11 +6085,11 @@ function renderFinanceSectionApp(app){
         <div class="nav-section">المحاسبة والتقارير</div>
         ${[
           ['overview','📊 نظرة عامة'],
+          ['daily','📔 دفتر اليومية والخزينة'],
           ['invoices','📄 الفواتير الرسمية'],
           ['accounts','🌳 شجرة الحسابات'],
           ['journal','📑 قيود اليومية'],
           ['trialbalance','⚖️ ميزان المراجعة'],
-          ['expenses','💸 المصروفات والخزينة'],
           ['income','📈 تقرير الدخل والأرباح'],
           ['bonus','🎁 مكافآت الفنيين']
         ].map(([k,label])=>`
@@ -5221,11 +6108,11 @@ function renderFinanceSectionApp(app){
   });
   const main = document.getElementById('main');
   if(state.financeTab==='overview') renderFinanceOverview(main);
+  else if(state.financeTab==='daily' || state.financeTab==='expenses') renderDailyJournalPage(main);
   else if(state.financeTab==='invoices') renderInvoicesPage(main);
   else if(state.financeTab==='accounts') renderChartOfAccounts(main);
   else if(state.financeTab==='journal') renderJournalEntries(main);
   else if(state.financeTab==='trialbalance') renderTrialBalance(main);
-  else if(state.financeTab==='expenses') renderExpensesPage(main);
   else if(state.financeTab==='income') renderFinanceReportPage(main);
   else renderBonusPage(main);
 }
@@ -5949,12 +6836,13 @@ function attachLogin(){
     try{
       const res = await loginRemote(name, pass);
       let sections;
-      if(res.role==='admin'){ sections = ['maintenance','cameras','pos','inventory','finance']; }
+      if(res.role==='admin'){ sections = ['daily','maintenance','invoices','pos','inventory','cameras','finance']; }
       else {
         sections = String(res.sections||'').split(',').map(s=>s.trim()).filter(Boolean);
-        if(sections.length===0) sections = ['maintenance'];
+        if(sections.length===0) sections = ['daily','maintenance','invoices','pos','inventory','cameras','finance'];
       }
       state.user = {name: res.name, role: res.role, sections};
+      normalizeUserSections(state.user);
       try{ localStorage.setItem('microerp_session', JSON.stringify(state.user)); }catch(e){}
       await init();
     }catch(e){
@@ -5969,7 +6857,10 @@ function attachLogin(){
 (function restoreSession(){
   try{
     const saved = localStorage.getItem('microerp_session');
-    if(saved) state.user = JSON.parse(saved);
+    if(saved) {
+      state.user = JSON.parse(saved);
+      normalizeUserSections(state.user);
+    }
   }catch(e){}
 })();
 

@@ -1756,30 +1756,133 @@ async function saveTechnicianRemote(name){
   return apiPost('saveTechnician', {name});
 }
 
-async function loginRemote(name, password){
-  if(!navigator.onLine){
-    // Offline local auth check
-    const cachedUsers = getCache('users', [
-      {Name:'admin', Password:'admin', Role:'admin', Sections:'daily,maintenance,invoices,pos,inventory,cameras,finance'}
-    ]);
-    const found = cachedUsers.find(u => u.Name === name && String(u.Password) === String(password));
-    if(found){
-      return { name: found.Name, role: found.Role, sections: found.Sections || 'daily,maintenance,invoices,pos,inventory,cameras,finance' };
+/* ---------------- User Management & Auth Engine ---------------- */
+const DEFAULT_USERS = [
+  { ID: 'usr_admin', Name: 'admin', Password: 'admin', Role: 'admin', Sections: 'daily,maintenance,invoices,pos,inventory,cameras,finance,users', Notes: 'المدير العام للنظام' },
+  { ID: 'usr_cashier', Name: 'كاشير 1', Password: '123', Role: 'cashier', Sections: 'pos,daily', Notes: 'كاشير مبيعات ونقطة بيع' },
+  { ID: 'usr_tech', Name: 'فني صيانة', Password: '123', Role: 'technician', Sections: 'maintenance', Notes: 'فني ورشة واستلام أجهزة' },
+  { ID: 'usr_accountant', Name: 'محاسب', Password: '123', Role: 'accountant', Sections: 'daily,invoices,finance,inventory', Notes: 'إدارة الحسابات واليومية والمخزون' }
+];
+
+async function loadUsers(){
+  let localUsers = getCache('users', null);
+  if(!localUsers || !localUsers.length){
+    try {
+      const perm = localStorage.getItem('microerp_users_permanent');
+      if(perm) localUsers = JSON.parse(perm);
+    } catch(e){}
+  }
+  if(!localUsers || !localUsers.length){
+    localUsers = [...DEFAULT_USERS];
+  } else {
+    // Ensure default admin exists
+    if(!localUsers.some(u => u.Name && u.Name.toLowerCase() === 'admin')){
+      localUsers.unshift(DEFAULT_USERS[0]);
     }
-    // Fallback emergency offline admin
-    if(name==='admin' && password==='admin'){
-      return { name:'admin', role:'admin', sections:'daily,maintenance,invoices,pos,inventory,cameras,finance' };
+  }
+
+  state.users = localUsers;
+  setCache('users', state.users);
+
+  if(navigator.onLine){
+    try {
+      const rows = await apiGet('getUsers');
+      if(rows && Array.isArray(rows) && rows.length > 0){
+        rows.forEach(r => {
+          if(!r || !r.Name) return;
+          const idx = state.users.findIndex(u => (u.ID && u.ID === r.ID) || (u.Name && u.Name.toLowerCase() === r.Name.toLowerCase()));
+          if(idx > -1){
+            state.users[idx] = { ...state.users[idx], ...r };
+          } else {
+            state.users.push(r);
+          }
+        });
+        setCache('users', state.users);
+        try { localStorage.setItem('microerp_users_permanent', JSON.stringify(state.users)); } catch(e){}
+      }
+    } catch(e){
+      console.warn('getUsers cloud fetch error, keeping local users:', e);
+    }
+  }
+  return state.users;
+}
+
+async function saveUserRemote(usr){
+  if(!usr.ID) usr.ID = 'usr_' + Date.now();
+  if(!state.users) state.users = [];
+  const idx = state.users.findIndex(u => (u.ID && u.ID === usr.ID) || (u.Name && u.Name.trim().toLowerCase() === usr.Name.trim().toLowerCase()));
+  if(idx > -1) {
+    state.users[idx] = { ...state.users[idx], ...usr };
+  } else {
+    state.users.push(usr);
+  }
+  setCache('users', state.users);
+  try { localStorage.setItem('microerp_users_permanent', JSON.stringify(state.users)); } catch(e){}
+  
+  if(navigator.onLine){
+    try {
+      await apiPost('saveUser', {data: usr, role: state.user ? state.user.role : 'admin'});
+    } catch(e){
+      console.warn('saveUser remote sync failed:', e);
+    }
+  }
+  return usr;
+}
+
+async function deleteUserRemote(userId){
+  state.users = state.users.filter(u => u.ID !== userId && u.Name !== userId);
+  setCache('users', state.users);
+  try { localStorage.setItem('microerp_users_permanent', JSON.stringify(state.users)); } catch(e){}
+  if(navigator.onLine){
+    try {
+      await apiPost('deleteUser', {id: userId, role: state.user ? state.user.role : 'admin'});
+    } catch(e){}
+  }
+  return true;
+}
+
+async function loginRemote(name, password){
+  const cleanName = String(name||'').trim();
+  const cleanPass = String(password||'').trim();
+
+  const cachedUsers = getCache('users', DEFAULT_USERS);
+  const found = cachedUsers.find(u => u.Name.toLowerCase() === cleanName.toLowerCase() && String(u.Password) === cleanPass);
+
+  if(!navigator.onLine){
+    if(found){
+      return { name: found.Name, role: found.Role, sections: found.Sections };
+    }
+    if(cleanName==='admin' && cleanPass==='admin'){
+      return { name:'admin', role:'admin', sections:'daily,maintenance,invoices,pos,inventory,cameras,finance,users' };
     }
     throw new Error('بيانات الدخول غير صحيحة (وضع غير متصل)');
   }
-  const res = await apiGet('login', {name, password});
-  // Cache user credentials for future offline logins
-  const users = getCache('users', []);
-  const idx = users.findIndex(u=>u.Name===name);
-  const userObj = {Name:name, Password:password, Role:res.role, Sections:res.sections};
-  if(idx>-1) users[idx]=userObj; else users.push(userObj);
-  setCache('users', users);
-  return res;
+
+  try {
+    const res = await apiGet('login', {name: cleanName, password: cleanPass});
+    if(res && !res.error && res.name){
+      const users = getCache('users', DEFAULT_USERS);
+      const idx = users.findIndex(u=>u.Name.toLowerCase() === cleanName.toLowerCase());
+      const userObj = {
+        ID: (found && found.ID) || ('usr_' + Date.now()),
+        Name: res.name,
+        Password: cleanPass,
+        Role: res.role,
+        Sections: res.sections || (found && found.Sections) || 'daily,maintenance,invoices,pos,inventory,cameras,finance,users'
+      };
+      if(idx > -1) users[idx] = userObj; else users.push(userObj);
+      setCache('users', users);
+      return res;
+    }
+  } catch(e){}
+
+  if(found){
+    return { name: found.Name, role: found.Role, sections: found.Sections };
+  }
+  if(cleanName==='admin' && cleanPass==='admin'){
+    return { name:'admin', role:'admin', sections:'daily,maintenance,invoices,pos,inventory,cameras,finance,users' };
+  }
+  throw new Error('اسم المستخدم أو كلمة المرور غير صحيحة');
 }
 
 /* ---------------- Static Config ---------------- */
@@ -1811,6 +1914,7 @@ const WA_ICON = `<svg class="wa-icon" viewBox="0 0 24 24" fill="currentColor"><p
 let state = {
   user: null,
   tab: 'dashboard',
+  users: getCache('users', DEFAULT_USERS),
   receipts: getCache('receipts', []),
   customers: getCache('customers', []),
   technicians: getCache('technicians', ['أحمد فتحي','محمود سيد','كريم عادل']),
@@ -1968,6 +2072,7 @@ async function init(){
   if(checkCustomerTrackingURL()) return;
   
   // Instant load from cache first for zero-wait UI
+  state.users = getCache('users', state.users);
   state.receipts = getCache('receipts', state.receipts);
   state.customers = getCache('customers', state.customers);
   state.technicians = getCache('technicians', state.technicians);
@@ -1990,8 +2095,8 @@ async function init(){
   // If online, fetch fresh updates in background
   if(navigator.onLine){
     try {
-      [state.receipts, state.customers, state.technicians, state.settings, state.payments, state.inventory, state.sales, state.quotations, state.services, state.purchases, state.suppliers, state.expenses, state.accounts, state.journalEntries, state.invoices] = await Promise.all([
-        loadReceipts(), loadCustomers(), loadTechnicians(), loadSettings(), loadPayments(), loadInventory(), loadSales(), loadQuotations(), loadServices(), loadPurchases(), loadSuppliers(), loadExpenses(), loadAccounts(), loadJournalEntries(), loadInvoices()
+      [state.users, state.receipts, state.customers, state.technicians, state.settings, state.payments, state.inventory, state.sales, state.quotations, state.services, state.purchases, state.suppliers, state.expenses, state.accounts, state.journalEntries, state.invoices] = await Promise.all([
+        loadUsers(), loadReceipts(), loadCustomers(), loadTechnicians(), loadSettings(), loadPayments(), loadInventory(), loadSales(), loadQuotations(), loadServices(), loadPurchases(), loadSuppliers(), loadExpenses(), loadAccounts(), loadJournalEntries(), loadInvoices()
       ]);
       render();
       syncOfflineQueue();
@@ -2013,14 +2118,12 @@ async function refreshExpenses(){ state.expenses = await loadExpenses(); }
 
 function normalizeUserSections(u){
   if(!u) return;
-  const allSections = ['daily', 'maintenance', 'invoices', 'pos', 'inventory', 'cameras', 'finance'];
-  if(u.role === 'admin'){
+  const allSections = ['daily', 'maintenance', 'invoices', 'pos', 'inventory', 'cameras', 'finance', 'users'];
+  if(u.role === 'admin' && (!u.sections || !u.sections.length)){
     u.sections = allSections;
   } else {
     let secs = Array.isArray(u.sections) ? u.sections : String(u.sections||'').split(',').map(s=>s.trim()).filter(Boolean);
     if(!secs.length) secs = allSections;
-    if(!secs.includes('daily')) secs.unshift('daily');
-    if(!secs.includes('invoices')) secs.splice(2, 0, 'invoices');
     u.sections = secs;
   }
 }
@@ -2040,6 +2143,7 @@ function render(){
   if(state.currentSection==='inventory') return renderInventoryHubApp(app);
   if(state.currentSection==='cameras') return renderCamerasApp(app);
   if(state.currentSection==='finance') return renderFinanceSectionApp(app);
+  if(state.currentSection==='users') return renderUsersSectionApp(app);
   renderSectionPicker(app);
 }
 
@@ -2050,7 +2154,8 @@ const SECTION_INFO = {
   pos: {label:'نقطة البيع (POS)', icon:'🧾', desc:'بيع سريع بالفاتورة والباركود وضمان المنتجات'},
   inventory: {label:'المخزن العام', icon:'📦', desc:'الأصناف، المشتريات، الموردين، والأرقام التسلسلية'},
   cameras: {label:'كاميرات المراقبة', icon:'📷', desc:'كتالوج الكاميرات وعروض أسعار التركيب'},
-  finance: {label:'القسم المالي والمصروفات', icon:'💰', desc:'المقبوضات، المصروفات، شجرة الحسابات، والمكافآت'}
+  finance: {label:'القسم المالي والمصروفات', icon:'💰', desc:'المقبوضات، المصروفات، شجرة الحسابات، والمكافآت'},
+  users: {label:'إدارة المستخدمين والصلاحيات', icon:'👥', desc:'تخصيص الشاشات والأقسام لكل مستخدم وإدارة كلمات المرور'}
 };
 const INVENTORY_CATEGORIES = ['صيانة','كاميرات','كمبيوتر','إكسسوار'];
 
@@ -2168,6 +2273,7 @@ function renderMaintenanceApp(app){
         ${navItem('analytics','📈','التقارير والإحصائيات')}
         ${state.user.role==='admin' ? `<div class="nav-section">الإدارة</div>` : ''}
         ${state.user.role==='admin' ? navItem('inventory','📦','قطع الغيار') : ''}
+        ${state.user.role==='admin' ? navItem('users','👥','المستخدمين والصلاحيات') : ''}
         ${state.user.role==='admin' ? navItem('settings','⚙️','الإعدادات') : ''}
       </div>
       ${sidebarFootHtml()}
@@ -2196,13 +2302,14 @@ function navItem(tab, icon, label){
 /* ---------------- Main Router ---------------- */
 function renderMain(){
   const main = document.getElementById('main');
-  if(state.tab==='settings' && state.user.role!=='admin'){ state.tab='dashboard'; }
+  if((state.tab==='settings' || state.tab==='users') && state.user.role!=='admin'){ state.tab='dashboard'; }
   if(state.tab==='dashboard') return renderDashboard(main);
   if(state.tab==='new') return renderForm(main);
   if(state.tab==='archive') return renderArchive(main);
   if(state.tab==='invoices') return renderInvoicesPage(main);
   if(state.tab==='analytics') return renderMaintenanceAnalytics(main);
   if(state.tab==='inventory') return renderInventory(main, 'صيانة', 'مخزن قطع الغيار');
+  if(state.tab==='users') return renderUsersManagementPage(main);
   if(state.tab==='settings') return renderSettings(main);
 }
 
@@ -6091,7 +6198,8 @@ function renderFinanceSectionApp(app){
           ['journal','📑 قيود اليومية'],
           ['trialbalance','⚖️ ميزان المراجعة'],
           ['income','📈 تقرير الدخل والأرباح'],
-          ['bonus','🎁 مكافآت الفنيين']
+          ['bonus','🎁 مكافآت الفنيين'],
+          ...(state.user && state.user.role==='admin' ? [['users','👥 المستخدمين والصلاحيات']] : [])
         ].map(([k,label])=>`
           <div class="nav-item ${state.financeTab===k?'active':''}" data-fintab="${k}">${label}</div>
         `).join('')}
@@ -6114,6 +6222,7 @@ function renderFinanceSectionApp(app){
   else if(state.financeTab==='journal') renderJournalEntries(main);
   else if(state.financeTab==='trialbalance') renderTrialBalance(main);
   else if(state.financeTab==='income') renderFinanceReportPage(main);
+  else if(state.financeTab==='users') renderUsersManagementPage(main);
   else renderBonusPage(main);
 }
 
@@ -6749,10 +6858,427 @@ function renderBonusPage(main){
   };
 }
 
+/* ---------------- Users Management & Screen Customization Engine ---------------- */
+function exportUsersToExcel(list){
+  const rows = (list || state.users || []).map((u, idx) => {
+    const secs = Array.isArray(u.Sections) ? u.Sections : String(u.Sections||'').split(',').map(s=>s.trim()).filter(Boolean);
+    const secsLabels = secs.map(s => (SECTION_INFO[s]||{}).label || s).join(' + ');
+    return {
+      '#': idx + 1,
+      'اسم المستخدم': u.Name,
+      'المسمى / الدور': u.Role === 'admin' ? 'مدير عام' : (u.Role === 'cashier' ? 'كاشير' : (u.Role === 'technician' ? 'فني صيانة' : (u.Role === 'accountant' ? 'محاسب' : (u.Role === 'storekeeper' ? 'أمين مخزن' : u.Role)))),
+      'الشاشات المسموحة': secsLabels,
+      'عدد الشاشات': secs.length,
+      'ملاحظات': u.Notes || ''
+    };
+  });
+  exportToExcel(rows, `Users_Permissions_${new Date().toISOString().slice(0,10)}`);
+}
+
+function openUserModal(editUser=null){
+  const isEdit = !!editUser;
+  const allSectionsList = [
+    { key: 'daily', icon: '📔', label: 'اليومية وحركة الخزينة', desc: 'دفتر النقدية، الإيرادات والمصروفات، وتقفيل الدرج' },
+    { key: 'maintenance', icon: '🛠️', label: 'الصيانة والتصليح', desc: 'استلام وتسليم الأجهزة، أوامر الشغل، والتتبع' },
+    { key: 'invoices', icon: '📄', label: 'الفواتير الضريبية والرسمية', desc: 'إصدار الفواتير، عروض الأسعار، ومتابعة التحصيل' },
+    { key: 'pos', icon: '🧾', label: 'نقطة البيع (POS)', desc: 'شاشة الكاشير السريعة، الباركود، وطباعة الإيصالات' },
+    { key: 'inventory', icon: '📦', label: 'المخزن العام والمشتريات', desc: 'الأصناف، فواتير الشراء، الموردين، والتحويلات' },
+    { key: 'cameras', icon: '📷', label: 'كاميرات المراقبة', desc: 'كتالوج الكاميرات وعروض الأسعار والتركيب' },
+    { key: 'finance', icon: '💰', label: 'القسم المالي والمحاسبي', desc: 'شجرة الحسابات، قيود اليومية، ميزان المراجعة، والأرباح' }
+  ];
+
+  let selectedSections = [];
+  if(editUser){
+    selectedSections = Array.isArray(editUser.Sections) ? [...editUser.Sections] : String(editUser.Sections||'').split(',').map(s=>s.trim()).filter(Boolean);
+  } else {
+    selectedSections = ['pos', 'daily'];
+  }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+
+  overlay.innerHTML = `
+    <div class="modal-content" style="max-width:680px;max-height:92vh;overflow-y:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:16px;">
+        <div>
+          <h3 style="margin:0;font-size:17px;font-weight:900;display:flex;align-items:center;gap:8px;">
+            <span>${isEdit ? '✏️ تعديل المستخدم وتخصيص الصلاحيات' : '➕ إضافة مستخدم جديد وتخصيص الصلاحيات'}</span>
+          </h3>
+          <div style="font-size:12px;color:var(--ink-secondary);margin-top:3px;">
+            تحديد بيانات الدخول وتعيين الشاشات والأقسام المسموح للمستخدم برؤيتها والعمل عليها
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-xs" id="closeUserModal">✕</button>
+      </div>
+
+      <div class="grid2" style="margin-bottom:14px;">
+        <div class="field">
+          <label>اسم المستخدم (لتسجيل الدخول) *</label>
+          <input id="uModalName" value="${editUser ? editUser.Name : ''}" placeholder="مثال: أحمد الكاشير" autofocus ${isEdit && editUser.Name==='admin' ? 'readonly style="background:var(--paper3);"' : ''}>
+        </div>
+        <div class="field">
+          <label>كلمة المرور *</label>
+          <input id="uModalPassword" value="${editUser ? editUser.Password : ''}" placeholder="كلمة المرور">
+        </div>
+      </div>
+
+      <div class="grid2" style="margin-bottom:14px;">
+        <div class="field">
+          <label>الدور الوظيفي / المسمى *</label>
+          <select id="uModalRole">
+            <option value="admin" ${editUser && editUser.Role==='admin'?'selected':''}>👑 مدير عام (كامل الصلاحيات)</option>
+            <option value="cashier" ${editUser && editUser.Role==='cashier'?'selected':''}>🧾 كاشير ومبيعات (نقطة بيع)</option>
+            <option value="technician" ${editUser && editUser.Role==='technician'?'selected':''}>🛠️ فني صيانة واستلام</option>
+            <option value="accountant" ${editUser && editUser.Role==='accountant'?'selected':''}>💰 محاسب مالي وإداري</option>
+            <option value="storekeeper" ${editUser && editUser.Role==='storekeeper'?'selected':''}>📦 أمين مخزن ومشتريات</option>
+            <option value="custom" ${editUser && (!['admin','cashier','technician','accountant','storekeeper'].includes(editUser.Role))?'selected':''}>⚙️ مخصص (تحديد يدوي للشاشات)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>ملاحظات إضافية</label>
+          <input id="uModalNotes" value="${editUser ? (editUser.Notes||'') : ''}" placeholder="ملاحظات حول الموظف أو الفرع">
+        </div>
+      </div>
+
+      <!-- Section Permissions Box -->
+      <div class="card" style="padding:14px 16px;background:var(--paper3);border:1px solid var(--line);margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+          <div>
+            <h4 id="uModalSecCountTitle" style="margin:0;font-size:13.5px;font-weight:900;">🖥️ الشاشات والأقسام المسموح بها (${selectedSections.length} من 7 مفعّلة)</h4>
+            <div style="font-size:11.5px;color:var(--ink-secondary);margin-top:2px;">اختر الشاشات التي ستظهر للمستخدم في شاشته الرئيسية وقوائمه</div>
+          </div>
+          <!-- Quick Preset Buttons -->
+          <div style="display:flex;gap:4px;flex-wrap:wrap;">
+            <button class="btn btn-xs btn-ghost" id="presetAllBtn" type="button" title="تحديد جميع الشاشات">👑 الكل</button>
+            <button class="btn btn-xs btn-ghost" id="presetCashierBtn" type="button">🧾 كاشير</button>
+            <button class="btn btn-xs btn-ghost" id="presetTechBtn" type="button">🛠️ فني</button>
+            <button class="btn btn-xs btn-ghost" id="presetAccountantBtn" type="button">💰 محاسب</button>
+            <button class="btn btn-xs btn-ghost" id="presetClearBtn" type="button">🧹 إلغاء الكل</button>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:10px;" id="uModalSecGrid">
+          ${allSectionsList.map(sec => {
+            const isChecked = selectedSections.includes(sec.key);
+            return `
+              <label id="secLabel_${sec.key}" style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:var(--card-bg);border:1.5px solid ${isChecked ? 'var(--primary)' : 'var(--line)'};border-radius:var(--radius-sm);cursor:pointer;transition:all 0.15s ease;" class="${isChecked?'checked-sec-box':''}">
+                <input type="checkbox" data-seckey="${sec.key}" ${isChecked ? 'checked' : ''} style="margin-top:3px;width:18px;height:18px;cursor:pointer;">
+                <div style="flex:1;">
+                  <div style="font-weight:800;font-size:13px;color:var(--ink);display:flex;align-items:center;gap:6px;">
+                    <span>${sec.icon}</span> <span>${sec.label}</span>
+                  </div>
+                  <div style="font-size:11px;color:var(--ink-secondary);margin-top:2px;line-height:1.3;">
+                    ${sec.desc}
+                  </div>
+                </div>
+              </label>
+            `;
+          }).join('')}
+        </div>
+      </div>
+
+      <div class="actions-row">
+        <button class="btn btn-ghost" id="cancelUserModalBtn" type="button">إلغاء</button>
+        <button class="btn btn-primary" id="saveUserModalBtn" type="button">💾 حفظ وتطبيق الصلاحيات</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const syncSecUI = ()=>{
+    const title = overlay.querySelector('#uModalSecCountTitle');
+    if(title) title.textContent = `🖥️ الشاشات والأقسام المسموح بها (${selectedSections.length} من 7 مفعّلة)`;
+    allSectionsList.forEach(sec => {
+      const isChecked = selectedSections.includes(sec.key);
+      const chk = overlay.querySelector(`input[data-seckey="${sec.key}"]`);
+      if(chk) chk.checked = isChecked;
+      const lbl = overlay.querySelector(`#secLabel_${sec.key}`);
+      if(lbl){
+        lbl.style.borderColor = isChecked ? 'var(--primary)' : 'var(--line)';
+        lbl.classList.toggle('checked-sec-box', isChecked);
+      }
+    });
+  };
+
+  overlay.querySelector('#closeUserModal').onclick = ()=>overlay.remove();
+  overlay.querySelector('#cancelUserModalBtn').onclick = ()=>overlay.remove();
+
+  // Checkbox toggle handlers
+  overlay.querySelectorAll('input[data-seckey]').forEach(chk => {
+    chk.onchange = ()=>{
+      const key = chk.dataset.seckey;
+      if(chk.checked){
+        if(!selectedSections.includes(key)) selectedSections.push(key);
+      } else {
+        selectedSections = selectedSections.filter(k => k !== key);
+      }
+      syncSecUI();
+    };
+  });
+
+  // Presets
+  overlay.querySelector('#presetAllBtn').onclick = ()=>{ selectedSections = allSectionsList.map(s => s.key); syncSecUI(); };
+  overlay.querySelector('#presetCashierBtn').onclick = ()=>{ selectedSections = ['pos', 'daily']; syncSecUI(); };
+  overlay.querySelector('#presetTechBtn').onclick = ()=>{ selectedSections = ['maintenance']; syncSecUI(); };
+  overlay.querySelector('#presetAccountantBtn').onclick = ()=>{ selectedSections = ['daily', 'invoices', 'finance', 'inventory']; syncSecUI(); };
+  overlay.querySelector('#presetClearBtn').onclick = ()=>{ selectedSections = []; syncSecUI(); };
+
+  // Role dropdown auto preset
+  const roleSel = overlay.querySelector('#uModalRole');
+  roleSel.onchange = ()=>{
+    const val = roleSel.value;
+    if(val === 'admin') selectedSections = allSectionsList.map(s => s.key);
+    else if(val === 'cashier') selectedSections = ['pos', 'daily'];
+    else if(val === 'technician') selectedSections = ['maintenance'];
+    else if(val === 'accountant') selectedSections = ['daily', 'invoices', 'finance', 'inventory'];
+    else if(val === 'storekeeper') selectedSections = ['inventory', 'pos'];
+    syncSecUI();
+  };
+
+  // Save handler
+  overlay.querySelector('#saveUserModalBtn').onclick = async ()=>{
+    const name = overlay.querySelector('#uModalName').value.trim();
+    const password = overlay.querySelector('#uModalPassword').value.trim();
+    const role = overlay.querySelector('#uModalRole').value;
+    const notes = overlay.querySelector('#uModalNotes').value.trim();
+
+    if(!name){ showToast('يرجى إدخال اسم المستخدم', 'error'); return; }
+    if(!password){ showToast('يرجى إدخال كلمة المرور', 'error'); return; }
+    if(!selectedSections.length){ showToast('يرجى اختيار شاشة واحدة على الأقل للمستخدم', 'error'); return; }
+
+    const userObj = {
+      ID: editUser ? editUser.ID : ('usr_' + Date.now()),
+      Name: name,
+      Password: password,
+      Role: role,
+      Sections: selectedSections.join(','),
+      Notes: notes
+    };
+
+    try{
+      await saveUserRemote(userObj);
+
+      // If current user modified own permissions, apply live
+      if(state.user && state.user.name.toLowerCase() === name.toLowerCase()){
+        state.user.role = role;
+        state.user.sections = selectedSections;
+        try{ localStorage.setItem('microerp_session', JSON.stringify(state.user)); }catch(e){}
+      }
+
+      showToast(`تم حفظ وتخصيص صلاحيات المستخدم (${name}) بنجاح ✅`, 'success');
+      overlay.remove();
+      const main = document.getElementById('main');
+      if(main) renderUsersManagementPage(main);
+    }catch(e){
+      showToast('تم حفظ المستخدم محلياً بنجاح', 'info');
+      overlay.remove();
+      const main = document.getElementById('main');
+      if(main) renderUsersManagementPage(main);
+    }
+  };
+}
+
+function renderUsersManagementPage(main){
+  const usersList = state.users || [];
+  const totalUsers = usersList.length;
+  const adminUsers = usersList.filter(u => u.Role === 'admin').length;
+  const cashierUsers = usersList.filter(u => u.Role === 'cashier' || String(u.Sections||'').includes('pos')).length;
+  const techUsers = usersList.filter(u => u.Role === 'technician' || String(u.Sections||'').includes('maintenance')).length;
+
+  main.innerHTML = `
+    <div class="top-header">
+      <div>
+        <h2 class="page-title">👥 إدارة المستخدمين وتخصيص صلاحيات الشاشات</h2>
+        <div class="subtitle">إضافة وتعديل حسابات الموظفين، تعيين كلمات المرور، وتخصيص الشاشات والأقسام المسموحة لكل مستخدم (${totalUsers} مستخدم)</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" id="importTechsAsUsersBtn">👨‍🔧 استيراد الفنيين كمستخدمين</button>
+        <button class="btn btn-ghost btn-sm" id="exportUsersExcelBtn">📥 تصدير Excel</button>
+        <button class="btn btn-primary btn-sm" id="addNewUserBtn">➕ إضافة مستخدم جديد وتخصيص الصلاحيات</button>
+      </div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="stat-grid">
+      <div class="stat-card blue">
+        <div class="top-row"><span class="lbl">إجمالي المستخدمين المسجلين</span><div class="icon-box">👥</div></div>
+        <div class="num mono">${totalUsers}</div>
+      </div>
+      <div class="stat-card purple">
+        <div class="top-row"><span class="lbl">مدراء بصلاحيات كاملة</span><div class="icon-box">👑</div></div>
+        <div class="num mono">${adminUsers}</div>
+      </div>
+      <div class="stat-card green">
+        <div class="top-row"><span class="lbl">مستخدمو نقطة البيع واليومية</span><div class="icon-box">🧾</div></div>
+        <div class="num mono">${cashierUsers}</div>
+      </div>
+      <div class="stat-card orange">
+        <div class="top-row"><span class="lbl">فنيو الصيانة والمخزن</span><div class="icon-box">🛠️</div></div>
+        <div class="num mono">${techUsers}</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>اسم المستخدم</th>
+              <th>المسمى / الدور</th>
+              <th>كلمة المرور</th>
+              <th>الشاشات والأقسام المسموح بها</th>
+              <th>ملاحظات</th>
+              <th>الإجراءات والتخصيص</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${usersList.map((u, idx)=>{
+              const secs = Array.isArray(u.Sections) ? u.Sections : String(u.Sections||'').split(',').map(s=>s.trim()).filter(Boolean);
+              const isAdmin = u.Role === 'admin';
+
+              return `
+                <tr>
+                  <td class="mono" style="color:var(--ink-secondary);">${idx+1}</td>
+                  <td>
+                    <div style="font-weight:900;font-size:13.5px;color:var(--ink);">${u.Name}</div>
+                    ${u.ID ? `<div class="mono" style="font-size:10.5px;color:var(--slate-400);">${u.ID}</div>` : ''}
+                  </td>
+                  <td>
+                    <span class="status-badge ${isAdmin ? 'st-done' : 'st-check'}" style="font-size:11px;">
+                      ${isAdmin ? '👑 مدير عام' : (u.Role === 'cashier' ? '🧾 كاشير مبيعات' : (u.Role === 'technician' ? '🛠️ فني صيانة' : (u.Role === 'accountant' ? '💰 محاسب مالي' : (u.Role === 'storekeeper' ? '📦 أمين مخزن' : u.Role))))}
+                    </span>
+                  </td>
+                  <td>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      <input type="password" value="${u.Password||''}" id="pass_${idx}" readonly style="width:90px;height:26px;padding:2px 6px;background:var(--paper3);border:1px solid var(--line);font-size:12px;" class="mono">
+                      <button class="btn btn-xs btn-ghost" data-togglepass="pass_${idx}" title="إظهار / إخفاء">👁️</button>
+                    </div>
+                  </td>
+                  <td>
+                    <div style="display:flex;gap:4px;flex-wrap:wrap;max-width:360px;">
+                      ${secs.length === 0 ? '<span style="color:var(--red);font-size:11px;">لا توجد شاشات</span>' : secs.map(s => {
+                        const info = SECTION_INFO[s] || { label: s, icon: '📁' };
+                        return `<span class="status-badge" style="background:var(--paper3);border:1px solid var(--line);font-size:10.5px;padding:2px 6px;">${info.icon} ${info.label}</span>`;
+                      }).join('')}
+                    </div>
+                  </td>
+                  <td style="font-size:11.5px;color:var(--ink-secondary);">${u.Notes || '-'}</td>
+                  <td class="row-actions">
+                    <button class="btn btn-xs btn-primary" data-useract="edit" data-uid="${u.ID||u.Name}">✏️ تخصيص الشاشات</button>
+                    ${u.Name !== 'admin' && (!state.user || state.user.name !== u.Name) ? `
+                      <button class="btn btn-xs btn-red" data-useract="del" data-uid="${u.ID||u.Name}">🗑️</button>
+                    ` : ''}
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  // Toggle password view
+  main.querySelectorAll('[data-togglepass]').forEach(btn => {
+    btn.onclick = ()=>{
+      const inp = document.getElementById(btn.dataset.togglepass);
+      if(inp) inp.type = inp.type === 'password' ? 'text' : 'password';
+    };
+  });
+
+  // Buttons
+  document.getElementById('addNewUserBtn').onclick = ()=>openUserModal();
+  document.getElementById('exportUsersExcelBtn').onclick = ()=>exportUsersToExcel(usersList);
+
+  const importTechBtn = document.getElementById('importTechsAsUsersBtn');
+  if(importTechBtn){
+    importTechBtn.onclick = async ()=>{
+      const techs = state.technicians || [];
+      let addedCount = 0;
+      for(const t of techs){
+        if(!state.users.some(u => u.Name.toLowerCase() === t.toLowerCase())){
+          await saveUserRemote({
+            ID: 'usr_' + Date.now() + '_' + Math.floor(Math.random()*1000),
+            Name: t,
+            Password: '123',
+            Role: 'technician',
+            Sections: 'maintenance',
+            Notes: 'تم استيراده تلقائياً من قائمة الفنيين'
+          });
+          addedCount++;
+        }
+      }
+      if(addedCount > 0){
+        showToast(`تم استيراد ${addedCount} فني كحسابات مستخدمين بنجاح ✅`, 'success');
+        renderUsersManagementPage(main);
+      } else {
+        showToast('جميع الفنيين مسجلون بالفعل كمستخدمين', 'info');
+      }
+    };
+  }
+
+  // Row actions
+  main.querySelectorAll('[data-useract]').forEach(btn => {
+    btn.onclick = async ()=>{
+      const uid = btn.dataset.uid;
+      const u = state.users.find(x => (x.ID && x.ID === uid) || x.Name === uid);
+      if(!u) return;
+      const act = btn.dataset.useract;
+      if(act === 'edit'){
+        openUserModal(u);
+      }
+      if(act === 'del'){
+        if(!confirm(`هل أنت متأكد من حذف المستخدم (${u.Name}) نهائياً؟`)) return;
+        try{
+          await deleteUserRemote(u.ID || u.Name);
+          showToast(`تم حذف المستخدم (${u.Name}) بنجاح`, 'success');
+          renderUsersManagementPage(main);
+        }catch(e){
+          showToast('تعذر الحذف: ' + e.message, 'error');
+        }
+      }
+    };
+  });
+}
+
+function renderUsersSectionApp(app){
+  app.innerHTML = `
+    <div class="sidebar">
+      ${brandHtml("إدارة المستخدمين")}
+      ${sectionSwitcherHtml()}
+      <div class="sidebar-nav-wrap">
+        <div class="nav-section">إدارة النظام</div>
+        <div class="nav-item active"><span class="nav-item-icon">👥</span><span>المستخدمين والصلاحيات</span></div>
+      </div>
+      ${sidebarFootHtml()}
+    </div>
+    <main id="main"></main>
+  `;
+  const sw = document.getElementById('switchSectionBtn');
+  if(sw) sw.onclick = ()=>{ state.currentSection = null; render(); };
+  attachSidebarHandlers();
+  renderUsersManagementPage(document.getElementById('main'));
+}
+
 /* ---------------- Settings ---------------- */
 function renderSettings(main){
   main.innerHTML = `
     <div class="top-header"><div><h2 class="page-title">⚙️ الإعدادات العامة للشركة</h2><div class="subtitle">تخصيص اسم المحل، اللوجو، الفنيين، والعملاء</div></div></div>
+    
+    <div class="card" style="border-right:4px solid #8b5cf6;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+        <div>
+          <h3 style="margin:0;">👥 إدارة المستخدمين وتخصيص صلاحيات الشاشات</h3>
+          <p style="font-size:12.5px;color:var(--ink-secondary);margin:4px 0 0;">
+            إضافة وتعديل حسابات الموظفين، تعيين كلمات المرور، وتحديد الشاشات والأقسام المسموح لكل مستخدم بالوصول إليها (${(state.users||[]).length} مسجلين).
+          </p>
+        </div>
+        <button class="btn btn-primary btn-sm" id="openUsersFromSettingsBtn">👥 فتح إدارة المستخدمين والصلاحيات ➔</button>
+      </div>
+    </div>
+
     <div class="card">
       <h3>🏪 اسم الشركة / الورشة</h3>
       <div style="display:flex;gap:10px;">
@@ -6786,6 +7312,11 @@ function renderSettings(main){
       <button class="btn btn-primary btn-sm" onclick="syncOfflineQueue()">🔄 مزامنة العمليات المعلقة الآن</button>
     </div>
   `;
+
+  document.getElementById('openUsersFromSettingsBtn').onclick = ()=>{
+    renderUsersManagementPage(main);
+  };
+
   document.getElementById('saveShopNameBtn').onclick = async ()=>{
     const v = document.getElementById('shopNameInput').value.trim();
     if(!v) return;
@@ -6836,10 +7367,10 @@ function attachLogin(){
     try{
       const res = await loginRemote(name, pass);
       let sections;
-      if(res.role==='admin'){ sections = ['daily','maintenance','invoices','pos','inventory','cameras','finance']; }
+      if(res.role==='admin'){ sections = ['daily','maintenance','invoices','pos','inventory','cameras','finance','users']; }
       else {
         sections = String(res.sections||'').split(',').map(s=>s.trim()).filter(Boolean);
-        if(sections.length===0) sections = ['daily','maintenance','invoices','pos','inventory','cameras','finance'];
+        if(sections.length===0) sections = ['daily','maintenance','invoices','pos','inventory','cameras','finance','users'];
       }
       state.user = {name: res.name, role: res.role, sections};
       normalizeUserSections(state.user);

@@ -2822,7 +2822,20 @@ function getPosSettings(){
   return state.settings.pos;
 }
 
-function cleanDate(x){ return x ? toEngDigits(String(x).slice(0,10)) : ''; }
+/**
+ * Sanitizes and extracts the date string in YYYY-MM-DD format with English digits.
+ * @param {string|Date} val - The input date value.
+ * @returns {string} Clean date string.
+ */
+function cleanDate(val){ 
+  return val ? toEngDigits(String(val).slice(0, 10)) : ''; 
+}
+
+/**
+ * Escapes unsafe HTML characters to prevent XSS vulnerabilities.
+ * @param {string|number|null} str - Raw input text.
+ * @returns {string} Sanitized HTML string.
+ */
 function escapeHtml(str){
   if(str == null) return '';
   return String(str)
@@ -2832,6 +2845,36 @@ function escapeHtml(str){
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
+
+/**
+ * Safely parses any value to a finite number, returning fallback if invalid.
+ * @param {any} val - Value to parse.
+ * @param {number} fallback - Default value if parsing fails.
+ * @returns {number} Validated number.
+ */
+function parseSafeNumber(val, fallback = 0){
+  const parsed = Number(val);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+/**
+ * High-performance debounce utility for rapid input and search events.
+ * @param {Function} func - Function to debounce.
+ * @param {number} wait - Delay in milliseconds.
+ * @returns {Function} Debounced function.
+ */
+function debounce(func, wait = 250){
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
 const WA_ICON = `<svg class="wa-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12c0 1.85.5 3.58 1.35 5.07L2 22l5.07-1.35C8.55 21.5 10.27 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm0 18c-1.5 0-2.9-.41-4.1-1.13l-.29-.17-3.02.8.8-3.02-.17-.29A7.94 7.94 0 0 1 4 12c0-4.41 3.59-8 8-8s8 3.59 8 8-3.59 8-8 8z"/></svg>`;
 
 /* ---------------- State ---------------- */

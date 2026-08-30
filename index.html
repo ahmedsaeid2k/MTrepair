@@ -1318,6 +1318,140 @@ tr:last-child td { border-bottom: none; }
   justify-content: space-between;
 }
 
+/* ============================================================
+   Universal Barcode Studio Styles
+   ============================================================ */
+.barcode-studio-wrap {
+  padding: 24px;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+.barcode-studio-grid {
+  display: grid;
+  grid-template-columns: 400px 1fr;
+  gap: 24px;
+  align-items: start;
+}
+@media(max-width: 1080px) {
+  .barcode-studio-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.barcode-config-card {
+  background: var(--paper2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  box-shadow: var(--card-shadow);
+}
+.barcode-preview-card {
+  background: var(--paper2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: var(--card-shadow);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 580px;
+}
+.barcode-canvas-stage {
+  background: #e2e8f0;
+  border-radius: var(--radius);
+  padding: 24px;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: auto;
+  border: 2px dashed #cbd5e1;
+  min-height: 360px;
+}
+[data-theme="dark"] .barcode-canvas-stage {
+  background: #0b1329;
+  border-color: #1e293b;
+}
+.barcode-label-mockup {
+  background: #ffffff;
+  color: #000000;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  text-align: center;
+  font-family: var(--font-main);
+  overflow: hidden;
+  position: relative;
+}
+.barcode-label-mockup .lbl-shop {
+  font-size: 8px;
+  font-weight: 800;
+  color: #333333;
+  line-height: 1.1;
+  border-bottom: 0.5px solid #cccccc;
+  padding-bottom: 1.5px;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.barcode-label-mockup .lbl-title {
+  font-size: 9.5px;
+  font-weight: 900;
+  color: #000000;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.barcode-label-mockup .lbl-sub {
+  font-size: 7.5px;
+  color: #555555;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.barcode-label-mockup .lbl-barcode-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 1px 0;
+}
+.barcode-label-mockup .lbl-barcode-wrap svg {
+  max-width: 96%;
+  height: auto;
+}
+.barcode-label-mockup .lbl-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 8px;
+  font-weight: 800;
+  border-top: 0.5px solid #cccccc;
+  padding-top: 1.5px;
+  margin-top: 1px;
+}
+.barcode-label-mockup .lbl-price {
+  font-size: 10.5px;
+  font-weight: 900;
+  color: #000000;
+}
+.barcode-a4-sheet-preview {
+  background: #ffffff;
+  color: #000000;
+  width: 210mm;
+  min-height: 297mm;
+  padding: 8mm 6mm;
+  box-shadow: 0 10px 35px rgba(0,0,0,0.25);
+  box-sizing: border-box;
+  display: grid;
+  gap: 2mm 3mm;
+  transform-origin: top center;
+}
+
 @media print {
   @page {
     size: A5 landscape;
@@ -1331,6 +1465,14 @@ tr:last-child td { border-bottom: none; }
   body.printing-sticker @page {
     size: 50mm 30mm;
     margin: 0;
+  }
+  body.printing-barcode-studio {
+    width: auto !important;
+    height: auto !important;
+    max-height: none !important;
+    position: static !important;
+    overflow: visible !important;
+    background: #ffffff !important;
   }
   *, *::before, *::after {
     box-sizing: border-box !important;
@@ -1354,6 +1496,12 @@ tr:last-child td { border-bottom: none; }
     break-inside: avoid !important;
     break-after: avoid !important;
   }
+  body.printing-barcode-studio {
+    width: 100% !important;
+    height: auto !important;
+    position: static !important;
+    overflow: visible !important;
+  }
   #app, #toastContainer, .modal-overlay, .login-screen, .tracking-container {
     display: none !important;
   }
@@ -1374,6 +1522,13 @@ tr:last-child td { border-bottom: none; }
     width: 50mm !important;
     height: 30mm !important;
     max-height: 30mm !important;
+  }
+  body.printing-barcode-studio #printMount {
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    position: static !important;
+    overflow: visible !important;
   }
   #receiptPaper {
     position: absolute !important;
@@ -2401,6 +2556,15 @@ function getWaTemplate(key){
 }
 
 function cleanDate(x){ return x ? toEngDigits(String(x).slice(0,10)) : ''; }
+function escapeHtml(str){
+  if(str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 const WA_ICON = `<svg class="wa-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12c0 1.85.5 3.58 1.35 5.07L2 22l5.07-1.35C8.55 21.5 10.27 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm0 18c-1.5 0-2.9-.41-4.1-1.13l-.29-.17-3.02.8.8-3.02-.17-.29A7.94 7.94 0 0 1 4 12c0-4.41 3.59-8 8-8s8 3.59 8 8-3.59 8-8 8z"/></svg>`;
 
 /* ---------------- State ---------------- */
@@ -2446,6 +2610,26 @@ let state = {
   currentSection: null,
   cart: [],
   quoCart: [],
+  barcodeTab: 'inventory',
+  barcodeStudio: {
+    mode: 'inventory',
+    selectedItemId: null,
+    selectedReceiptId: null,
+    customTitle: '',
+    customSubtitle: '',
+    customPrice: '',
+    customBarcode: '',
+    copies: 1,
+    preset: 'thermal_50x30',
+    customWidth: 50,
+    customHeight: 30,
+    barcodeType: 'CODE128',
+    showShopName: true,
+    showItemName: true,
+    showPrice: true,
+    showBarcodeText: true,
+    showDate: false
+  },
   theme: localStorage.getItem('microerp_theme') || 'light'
 };
 
@@ -2660,13 +2844,14 @@ async function refreshExpenses(){ state.expenses = await loadExpenses(); }
 
 function normalizeUserSections(u){
   if(!u) return;
-  const allSections = ['daily', 'maintenance', 'invoices', 'pos', 'inventory', 'cameras', 'finance', 'users', 'settings'];
+  const allSections = ['maintenance', 'pos', 'inventory', 'cameras', 'barcode', 'daily', 'invoices', 'finance', 'users', 'settings'];
   if(u.role === 'admin'){
     u.sections = allSections;
   } else {
     let secs = Array.isArray(u.sections) ? u.sections : String(u.sections||'').split(',').map(s=>s.trim()).filter(Boolean);
     if(!secs.length) secs = allSections;
     if(!secs.includes('settings')) secs.push('settings');
+    if(!secs.includes('barcode')) secs.push('barcode');
     u.sections = secs;
   }
 }
@@ -2679,12 +2864,13 @@ function render(){
   if(!state.currentSection){
     return renderSectionPicker(app);
   }
-  if(state.currentSection==='daily') return renderDailyJournalSectionApp(app);
   if(state.currentSection==='maintenance') return renderMaintenanceApp(app);
-  if(state.currentSection==='invoices') return renderInvoicesSectionApp(app);
   if(state.currentSection==='pos') return renderPosApp(app);
   if(state.currentSection==='inventory') return renderInventoryHubApp(app);
   if(state.currentSection==='cameras') return renderCamerasApp(app);
+  if(state.currentSection==='barcode') return renderBarcodeStudioApp(app);
+  if(state.currentSection==='daily') return renderDailyJournalSectionApp(app);
+  if(state.currentSection==='invoices') return renderInvoicesSectionApp(app);
   if(state.currentSection==='finance') return renderFinanceSectionApp(app);
   if(state.currentSection==='users') return renderUsersSectionApp(app);
   if(state.currentSection==='settings') return renderSettingsSectionApp(app);
@@ -2692,15 +2878,21 @@ function render(){
 }
 
 const SECTION_INFO = {
-  daily: {label:'اليومية وحركة الخزينة', icon:'📔', desc:'دفتر حركة النقدية اليومية، وارد ومنصرف ونثريات وتقفيل الدرج'},
-  maintenance: {label:'الصيانة والتصليح', icon:'🛠️', desc:'استلام الأجهزة، أوامر الشغل، وتتبع الحالات'},
-  invoices: {label:'الفواتير الضريبية والرسمية', icon:'📄', desc:'إصدار وإدارة الفواتير، التحويل من الصيانة، ومتابعة التحصيل'},
-  pos: {label:'نقطة البيع (POS)', icon:'🧾', desc:'بيع سريع بالفاتورة والباركود وضمان المنتجات'},
-  inventory: {label:'المخزن العام', icon:'📦', desc:'الأصناف، المشتريات، الموردين، والأرقام التسلسلية'},
-  cameras: {label:'كاميرات المراقبة', icon:'📷', desc:'كتالوج الكاميرات وعروض أسعار التركيب'},
-  finance: {label:'القسم المالي والمصروفات', icon:'💰', desc:'المقبوضات، المصروفات، شجرة الحسابات، والمكافآت'},
-  users: {label:'إدارة المستخدمين والصلاحيات', icon:'👥', desc:'تخصيص الشاشات والأقسام لكل مستخدم وإدارة كلمات المرور'},
-  settings: {label:'الإعدادات وتخصيص النظام', icon:'⚙️', desc:'المظهر، الثيمات، ألوان النظام، تصنيفات وماركات الأجهزة، الأعطال، رسائل واتساب، وبنود الضمان'}
+  // 1. العمليات التشغيلية (Core Operations)
+  maintenance: {label:'الصيانة والتصليح', icon:'🛠️', desc:'استلام وتسليم الأجهزة، أوامر الشغل، وتتبع الحالات', group:'ops', groupTitle:'🛠️ العمليات التشغيلية والمبيعات'},
+  pos: {label:'نقطة البيع السريعة (POS)', icon:'🧾', desc:'كاشير سريع، مبيعات بالباركود، الفاتورة الفورية وضمان المنتجات', group:'ops', groupTitle:'🛠️ العمليات التشغيلية والمبيعات'},
+  inventory: {label:'المخزن العام والمشتريات', icon:'📦', desc:'الأصناف، فواتير الشراء، الموردين، وتتبع الأرصدة والتحويلات', group:'ops', groupTitle:'🛠️ العمليات التشغيلية والمبيعات'},
+  cameras: {label:'كاميرات المراقبة', icon:'📷', desc:'كتالوج الكاميرات وعروض أسعار التركيب والمشاريع', group:'ops', groupTitle:'🛠️ العمليات التشغيلية والمبيعات'},
+  barcode: {label:'استوديو طباعة الباركود', icon:'🏷️', desc:'طباعة ملصقات الباركود للأصناف والأجهزة بكافة المقاسات والطابعات', group:'ops', groupTitle:'🛠️ العمليات التشغيلية والمبيعات'},
+
+  // 2. القطاع المالي والمحاسبي (Finance & Accounting)
+  daily: {label:'اليومية وحركة الخزينة', icon:'📔', desc:'دفتر حركة النقدية اليومية، وارد ومنصرف ونثريات وتقفيل الدرج', group:'finance', groupTitle:'💰 القطاع المالي والمحاسبي'},
+  invoices: {label:'الفواتير الضريبية وعروض الأسعار', icon:'📄', desc:'إصدار وإدارة الفواتير، التحويل من الصيانة، ومتابعة التحصيل', group:'finance', groupTitle:'💰 القطاع المالي والمحاسبي'},
+  finance: {label:'القسم المالي والمحاسبي', icon:'💰', desc:'شجرة الحسابات، قيود اليومية، ميزان المراجعة، ومكافآت الفنيين', group:'finance', groupTitle:'💰 القطاع المالي والمحاسبي'},
+
+  // 3. الإدارة والتهيئة (Administration & Tools)
+  users: {label:'إدارة المستخدمين والصلاحيات', icon:'👥', desc:'تخصيص الشاشات والأقسام لكل مستخدم وإدارة كلمات المرور', group:'admin', groupTitle:'⚙️ الإدارة والتهيئة الشاملة'},
+  settings: {label:'الإعدادات وتخصيص النظام', icon:'⚙️', desc:'المظهر، الثيمات، ألوان النظام، تصنيفات الأجهزة، وبنود الضمان', group:'admin', groupTitle:'⚙️ الإدارة والتهيئة الشاملة'}
 };
 const INVENTORY_CATEGORIES = ['صيانة','كاميرات','كمبيوتر','إكسسوار'];
 
@@ -2752,6 +2944,10 @@ function openCommandPalette(initialQuery=''){
         <div class="cmd-item" data-cmd="act_pos">
           <div class="cmd-item-left"><div class="cmd-item-icon">🧾</div><div><div class="cmd-item-title">نقطة البيع السريعة (POS)</div><div class="cmd-item-sub">شاشة الكاشير والباركود</div></div></div>
           <span class="cmd-item-badge">مبيعات</span>
+        </div>
+        <div class="cmd-item" data-cmd="act_barcode">
+          <div class="cmd-item-left"><div class="cmd-item-icon">🏷️</div><div><div class="cmd-item-title">استوديو طباعة الباركود والملصقات</div><div class="cmd-item-sub">طباعة استيكر للأصناف وأجهزة الصيانة</div></div></div>
+          <span class="cmd-item-badge">باركود</span>
         </div>
         <div class="cmd-item" data-cmd="act_new_daily">
           <div class="cmd-item-left"><div class="cmd-item-icon">💸</div><div><div class="cmd-item-title">تسجيل حركة نقدية باليومية</div><div class="cmd-item-sub">تسجيل وارد، منصرف، أو نثريات بالخزينة</div></div></div>
@@ -2895,6 +3091,9 @@ function openCommandPalette(initialQuery=''){
         } else if(cmd === 'act_pos'){
           state.currentSection = 'pos';
           render();
+        } else if(cmd === 'act_barcode'){
+          state.currentSection = 'barcode';
+          render();
         } else if(cmd === 'act_new_daily'){
           state.currentSection = 'daily';
           render();
@@ -2968,6 +3167,62 @@ function renderExecutiveCommandCenter(app){
   const lowStockCount = (state.inventory || []).filter(i => Number(i.Quantity||0) <= 2).length;
   const unpaidInvoices = (state.invoices || []).filter(i => !i.isPaid).length;
 
+  // Group sections by cluster
+  const opsSections = sections.filter(s => SECTION_INFO[s] && SECTION_INFO[s].group === 'ops');
+  const finSections = sections.filter(s => SECTION_INFO[s] && SECTION_INFO[s].group === 'finance');
+  const admSections = sections.filter(s => SECTION_INFO[s] && SECTION_INFO[s].group === 'admin');
+
+  function renderClusterCards(clusterSecs){
+    return clusterSecs.map(s => {
+      const info = SECTION_INFO[s] || { label: s, icon: '📁', desc: '' };
+      let microStat = '';
+      let accentBorder = '';
+
+      if(s === 'daily'){
+        microStat = `صافي اليومية: ${netCashToday>=0?'+':''}${netCashToday.toLocaleString()} ج.م`;
+        accentBorder = 'border:2px solid var(--green);';
+      } else if(s === 'maintenance'){
+        microStat = `${inProgressRepairs} أجهزة قيد العمل • ${readyRepairs} جاهز`;
+        accentBorder = 'border:2px solid var(--primary);';
+      } else if(s === 'invoices'){
+        microStat = `${(state.invoices||[]).length} فواتير • ${unpaidInvoices} معلقة`;
+      } else if(s === 'pos'){
+        microStat = `مبيعات اليوم: ${todaySalesTotal.toLocaleString()} ج.م`;
+      } else if(s === 'inventory'){
+        microStat = `${(state.inventory||[]).length} صنف مسجل بالمخزن`;
+      } else if(s === 'cameras'){
+        microStat = `${(state.quotations||[]).length} عرض سعر مسجل`;
+      } else if(s === 'barcode'){
+        microStat = `طباعة ملصقات حرارية وورق A4 مقسم`;
+      } else if(s === 'finance'){
+        microStat = `${(state.accounts||[]).length} حساب بالشجرة المحاسبية`;
+      } else if(s === 'users'){
+        microStat = `${(state.users||[]).length} مستخدم مسجل بالنظام`;
+      } else if(s === 'settings'){
+        microStat = `المظهر، الثيمات، واتساب، والضمان`;
+        accentBorder = 'border:2px solid var(--purple);';
+      }
+
+      return `
+        <div class="smart-sec-card" data-sec="${s}" style="${accentBorder}">
+          <div>
+            <div class="smart-sec-head">
+              <div class="smart-sec-icon-box">${info.icon}</div>
+              <div>
+                <div class="smart-sec-title">${info.label}</div>
+                <div class="smart-sec-desc">${info.desc}</div>
+              </div>
+            </div>
+          </div>
+          <div class="smart-sec-meta">
+            <span class="smart-sec-badge">${microStat}</span>
+            <span class="smart-sec-arrow">دخول للقسم ➔</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
   app.innerHTML = `
     <div class="command-center-wrap">
       
@@ -3011,12 +3266,16 @@ function renderExecutiveCommandCenter(app){
           <div class="quick-dock-icon" style="background:var(--purple-bg);color:var(--purple-text);">🧾</div>
           <div><div class="quick-dock-title">نقطة البيع (POS)</div><div class="quick-dock-desc">شاشة الكاشير والباركود</div></div>
         </div>
+        <div class="quick-dock-btn" id="quickActBarcode">
+          <div class="quick-dock-icon" style="background:var(--cyan-bg);color:var(--cyan-text);">🏷️</div>
+          <div><div class="quick-dock-title">استوديو الباركود</div><div class="quick-dock-desc">طباعة ستيكر ومقاسات</div></div>
+        </div>
         <div class="quick-dock-btn" id="quickActDaily">
           <div class="quick-dock-icon" style="background:var(--green-bg);color:var(--green-text);">💸</div>
           <div><div class="quick-dock-title">حركة نقدية باليومية</div><div class="quick-dock-desc">تسجيل وارد / منصرف</div></div>
         </div>
         <div class="quick-dock-btn" id="quickActInvoice">
-          <div class="quick-dock-icon" style="background:var(--cyan-bg);color:var(--cyan-text);">📄</div>
+          <div class="quick-dock-icon" style="background:rgba(217,119,6,0.12);color:var(--amber-text);">📄</div>
           <div><div class="quick-dock-title">فاتورة أو بيان سعر</div><div class="quick-dock-desc">إصدار وعرض أسعار</div></div>
         </div>
         <div class="quick-dock-btn" id="quickActItem">
@@ -3088,61 +3347,52 @@ function renderExecutiveCommandCenter(app){
         </div>
       </div>
 
-      <!-- Smart Section Cards Grid -->
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-        <h2 style="font-size:17px;font-weight:900;margin:0;display:flex;align-items:center;gap:8px;">
-          <span>🖥️ أقسام وشاشات النظام الرئيسية</span>
-          <span style="font-size:12px;font-weight:normal;color:var(--ink-secondary);">(${sections.length} شاشة متاحة لحسابك)</span>
-        </h2>
-      </div>
+      <!-- Functional Clusters & Sections Grid -->
+      
+      <!-- Cluster 1: Core Operations -->
+      ${opsSections.length > 0 ? `
+        <div style="margin-bottom:28px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:8px;">
+            <h2 style="font-size:16px;font-weight:900;margin:0;display:flex;align-items:center;gap:8px;color:var(--ink);">
+              <span>🛠️ العمليات التشغيلية والمبيعات (Core Operations)</span>
+              <span style="font-size:11.5px;font-weight:normal;color:var(--ink-secondary);">(${opsSections.length} شاشات)</span>
+            </h2>
+          </div>
+          <div class="smart-section-grid">
+            ${renderClusterCards(opsSections)}
+          </div>
+        </div>
+      ` : ''}
 
-      <div class="smart-section-grid">
-        ${sections.length===0 ? '<div class="empty">لا توجد شاشات مخصصة لهذا الحساب. راجع المسؤول.</div>' : sections.map(s => {
-          const info = SECTION_INFO[s] || { label: s, icon: '📁', desc: '' };
-          let microStat = '';
-          let accentBorder = '';
+      <!-- Cluster 2: Financial Sector -->
+      ${finSections.length > 0 ? `
+        <div style="margin-bottom:28px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:8px;">
+            <h2 style="font-size:16px;font-weight:900;margin:0;display:flex;align-items:center;gap:8px;color:var(--ink);">
+              <span>💰 القطاع المالي والمحاسبي الموحد (Finance & Accounting)</span>
+              <span style="font-size:11.5px;font-weight:normal;color:var(--ink-secondary);">(${finSections.length} شاشات)</span>
+            </h2>
+          </div>
+          <div class="smart-section-grid">
+            ${renderClusterCards(finSections)}
+          </div>
+        </div>
+      ` : ''}
 
-          if(s === 'daily'){
-            microStat = `صافي اليومية: ${netCashToday>=0?'+':''}${netCashToday.toLocaleString()} ج.م`;
-            accentBorder = 'border:2px solid var(--primary);';
-          } else if(s === 'maintenance'){
-            microStat = `${inProgressRepairs} أجهزة قيد العمل • ${readyRepairs} جاهز`;
-          } else if(s === 'invoices'){
-            microStat = `${(state.invoices||[]).length} فواتير • ${unpaidInvoices} معلقة`;
-          } else if(s === 'pos'){
-            microStat = `مبيعات اليوم: ${todaySalesTotal.toLocaleString()} ج.م`;
-          } else if(s === 'inventory'){
-            microStat = `${(state.inventory||[]).length} صنف مسجل بالمخزن`;
-          } else if(s === 'cameras'){
-            microStat = `${(state.quotations||[]).length} عرض سعر مسجل`;
-          } else if(s === 'finance'){
-            microStat = `${(state.accounts||[]).length} حساب بالشجرة المحاسبية`;
-          } else if(s === 'users'){
-            microStat = `${(state.users||[]).length} مستخدم مسجل بالنظام`;
-          } else if(s === 'settings'){
-            microStat = `المظهر، الثيمات، واتساب، والضمان`;
-            accentBorder = 'border:2px solid var(--purple);';
-          }
-
-          return `
-            <div class="smart-sec-card" data-sec="${s}" style="${accentBorder}">
-              <div>
-                <div class="smart-sec-head">
-                  <div class="smart-sec-icon-box">${info.icon}</div>
-                  <div>
-                    <div class="smart-sec-title">${info.label}</div>
-                    <div class="smart-sec-desc">${info.desc}</div>
-                  </div>
-                </div>
-              </div>
-              <div class="smart-sec-meta">
-                <span class="smart-sec-badge">${microStat}</span>
-                <span class="smart-sec-arrow">دخول للقسم ➔</span>
-              </div>
-            </div>
-          `;
-        }).join('')}
-      </div>
+      <!-- Cluster 3: Administration & Settings -->
+      ${admSections.length > 0 ? `
+        <div style="margin-bottom:28px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:8px;">
+            <h2 style="font-size:16px;font-weight:900;margin:0;display:flex;align-items:center;gap:8px;color:var(--ink);">
+              <span>⚙️ الإدارة والتهيئة الشاملة (Administration & Settings)</span>
+              <span style="font-size:11.5px;font-weight:normal;color:var(--ink-secondary);">(${admSections.length} شاشات)</span>
+            </h2>
+          </div>
+          <div class="smart-section-grid">
+            ${renderClusterCards(admSections)}
+          </div>
+        </div>
+      ` : ''}
 
     </div>
   `;
@@ -3179,6 +3429,11 @@ function renderExecutiveCommandCenter(app){
   };
   document.getElementById('quickActPos').onclick = ()=>{
     state.currentSection = 'pos';
+    render();
+  };
+  const qBar = document.getElementById('quickActBarcode');
+  if(qBar) qBar.onclick = ()=>{
+    state.currentSection = 'barcode';
     render();
   };
   document.getElementById('quickActDaily').onclick = ()=>{
@@ -3268,16 +3523,27 @@ function renderMaintenanceApp(app){
       ${brandHtml("نظام إدارة الصيانة")}
       ${sectionSwitcherHtml()}
       <div class="sidebar-nav-wrap">
-        <div class="nav-section">القائمة الرئيسية</div>
+        <div class="nav-section">العمليات الأساسية</div>
         ${navItem('dashboard','📊','لوحة التحكم')}
-        ${navItem('new','➕','إيصال جديد')}
+        ${navItem('new','➕','إيصال استلام جديد')}
         ${navItem('archive','📁','أرشيف الصيانة')}
-        ${navItem('invoices','📄','الفواتير الرسمية')}
+
+        <div class="nav-section">الماليات والربط</div>
+        ${navItem('invoices','📄','الفواتير وعروض الأسعار')}
+        <div class="nav-item" id="maintToDailyNav">
+          <span class="nav-item-icon">📔</span><span>اليومية وحركة الخزينة</span>
+        </div>
+
+        <div class="nav-section">الأدوات والمخزن</div>
+        ${navItem('inventory','📦','قطع غيار الصيانة')}
+        <div class="nav-item" id="maintToBarcodeNav">
+          <span class="nav-item-icon">🏷️</span><span>استوديو طباعة الباركود</span>
+        </div>
         ${navItem('analytics','📈','التقارير والإحصائيات')}
-        ${state.user.role==='admin' ? `<div class="nav-section">الإدارة</div>` : ''}
-        ${state.user.role==='admin' ? navItem('inventory','📦','قطع الغيار') : ''}
+
+        ${state.user.role==='admin' ? `<div class="nav-section">الإدارة والتهيئة</div>` : ''}
         ${state.user.role==='admin' ? navItem('users','👥','المستخدمين والصلاحيات') : ''}
-        ${state.user.role==='admin' ? navItem('settings','⚙️','الإعدادات') : ''}
+        ${state.user.role==='admin' ? navItem('settings','⚙️','مركز الإعدادات') : ''}
       </div>
       ${sidebarFootHtml()}
     </div>
@@ -3286,6 +3552,7 @@ function renderMaintenanceApp(app){
   const sw = document.getElementById('switchSectionBtn');
   if(sw) sw.onclick = ()=>{ state.currentSection = null; render(); };
   attachSidebarHandlers();
+
   document.querySelectorAll('.nav-item[data-tab]').forEach(el=>{
     el.onclick = ()=>{
       state.tab = el.dataset.tab;
@@ -3293,6 +3560,12 @@ function renderMaintenanceApp(app){
       else { renderMain(); }
     };
   });
+
+  const mDay = document.getElementById('maintToDailyNav');
+  if(mDay) mDay.onclick = ()=>{ state.currentSection = 'daily'; render(); };
+  const mBar = document.getElementById('maintToBarcodeNav');
+  if(mBar) mBar.onclick = ()=>{ state.currentSection = 'barcode'; render(); };
+
   renderMain();
 }
 
@@ -5155,11 +5428,35 @@ function renderInvoicesPage(main){
 function renderInvoicesSectionApp(app){
   app.innerHTML = `
     <div class="sidebar">
-      ${brandHtml("الفواتير الضريبية")}
+      ${brandHtml("الفواتير وعروض الأسعار")}
       ${sectionSwitcherHtml()}
       <div class="sidebar-nav-wrap">
-        <div class="nav-section">إدارة الفواتير</div>
-        <div class="nav-item active"><span class="nav-item-icon">📄</span><span>سجل الفواتير</span></div>
+        <div class="nav-section">إدارة الفواتير والتحصيل</div>
+        <div class="nav-item active">
+          <span class="nav-item-icon">📄</span><span>سجل الفواتير وبيانات الأسعار</span>
+        </div>
+
+        <div class="nav-section">القطاع المالي المرتبط</div>
+        <div class="nav-item" id="invToDailyNav">
+          <span class="nav-item-icon">📔</span><span>اليومية وحركة الخزينة</span>
+        </div>
+        <div class="nav-item" id="invToFinanceNav">
+          <span class="nav-item-icon">💰</span><span>شجرة الحسابات والقيود</span>
+        </div>
+        <div class="nav-item" id="invToIncomeNav">
+          <span class="nav-item-icon">📈</span><span>تقرير الأرباح والدخل</span>
+        </div>
+
+        <div class="nav-section">التنقل السريع</div>
+        <div class="nav-item" id="invToMaintNav">
+          <span class="nav-item-icon">🛠️</span><span>قسم الصيانة</span>
+        </div>
+        <div class="nav-item" id="invToPosNav">
+          <span class="nav-item-icon">🧾</span><span>نقطة البيع (POS)</span>
+        </div>
+        <div class="nav-item" id="invToSettingsNav">
+          <span class="nav-item-icon">⚙️</span><span>الإعدادات</span>
+        </div>
       </div>
       ${sidebarFootHtml()}
     </div>
@@ -5168,6 +5465,20 @@ function renderInvoicesSectionApp(app){
   const sw = document.getElementById('switchSectionBtn');
   if(sw) sw.onclick = ()=>{ state.currentSection = null; render(); };
   attachSidebarHandlers();
+
+  const iDay = document.getElementById('invToDailyNav');
+  if(iDay) iDay.onclick = ()=>{ state.currentSection = 'daily'; render(); };
+  const iFin = document.getElementById('invToFinanceNav');
+  if(iFin) iFin.onclick = ()=>{ state.currentSection = 'finance'; state.financeTab = 'accounts'; render(); };
+  const iInc = document.getElementById('invToIncomeNav');
+  if(iInc) iInc.onclick = ()=>{ state.currentSection = 'finance'; state.financeTab = 'income'; render(); };
+  const iMaint = document.getElementById('invToMaintNav');
+  if(iMaint) iMaint.onclick = ()=>{ state.currentSection = 'maintenance'; render(); };
+  const iPos = document.getElementById('invToPosNav');
+  if(iPos) iPos.onclick = ()=>{ state.currentSection = 'pos'; render(); };
+  const iSet = document.getElementById('invToSettingsNav');
+  if(iSet) iSet.onclick = ()=>{ state.currentSection = 'settings'; render(); };
+
   renderInvoicesPage(document.getElementById('main'));
 }
 
@@ -5865,7 +6176,28 @@ function renderDailyJournalSectionApp(app){
       ${sectionSwitcherHtml()}
       <div class="sidebar-nav-wrap">
         <div class="nav-section">إدارة الخزينة والوردية</div>
-        <div class="nav-item active"><span class="nav-item-icon">📔</span><span>دفتر اليومية وحركة الدرج</span></div>
+        <div class="nav-item active">
+          <span class="nav-item-icon">📔</span><span>دفتر اليومية وحركة الدرج</span>
+        </div>
+
+        <div class="nav-section">القطاع المالي والمحاسبي</div>
+        <div class="nav-item" id="dayToInvoicesNav">
+          <span class="nav-item-icon">📄</span><span>الفواتير وعروض الأسعار</span>
+        </div>
+        <div class="nav-item" id="dayToFinanceNav">
+          <span class="nav-item-icon">💰</span><span>شجرة الحسابات والقيود</span>
+        </div>
+        <div class="nav-item" id="dayToIncomeNav">
+          <span class="nav-item-icon">📈</span><span>تقرير الأرباح والدخل</span>
+        </div>
+
+        <div class="nav-section">التنقل السريع</div>
+        <div class="nav-item" id="dayToPosNav">
+          <span class="nav-item-icon">🧾</span><span>نقطة البيع (POS)</span>
+        </div>
+        <div class="nav-item" id="dayToSettingsNav">
+          <span class="nav-item-icon">⚙️</span><span>الإعدادات</span>
+        </div>
       </div>
       ${sidebarFootHtml()}
     </div>
@@ -5874,6 +6206,18 @@ function renderDailyJournalSectionApp(app){
   const sw = document.getElementById('switchSectionBtn');
   if(sw) sw.onclick = ()=>{ state.currentSection = null; render(); };
   attachSidebarHandlers();
+
+  const dInv = document.getElementById('dayToInvoicesNav');
+  if(dInv) dInv.onclick = ()=>{ state.currentSection = 'invoices'; render(); };
+  const dFin = document.getElementById('dayToFinanceNav');
+  if(dFin) dFin.onclick = ()=>{ state.currentSection = 'finance'; state.financeTab = 'accounts'; render(); };
+  const dInc = document.getElementById('dayToIncomeNav');
+  if(dInc) dInc.onclick = ()=>{ state.currentSection = 'finance'; state.financeTab = 'income'; render(); };
+  const dPos = document.getElementById('dayToPosNav');
+  if(dPos) dPos.onclick = ()=>{ state.currentSection = 'pos'; render(); };
+  const dSet = document.getElementById('dayToSettingsNav');
+  if(dSet) dSet.onclick = ()=>{ state.currentSection = 'settings'; render(); };
+
   renderDailyJournalPage(document.getElementById('main'));
 }
 
@@ -6070,18 +6414,44 @@ function openQuotationPrint(q, cartItems){
 
 /* ---------------- Inventory Hub ---------------- */
 function renderInventoryHubApp(app){
-  if(!state.invHubTab) state.invHubTab = 'صيانة';
+  if(!state.invHubTab) state.invHubTab = 'all';
   app.innerHTML = `
     <div class="sidebar">
-      ${brandHtml("المخزن العام")}
+      ${brandHtml("المخزن والمشتريات")}
       ${sectionSwitcherHtml()}
       <div class="sidebar-nav-wrap">
-        <div class="nav-section">الأقسام</div>
-        ${['صيانة','كاميرات','كمبيوتر','إكسسوار','all','purchases','suppliers'].map(t=>{
-          const labels = {all:'📦 كل الأصناف', purchases:'📥 فواتير الشراء', suppliers:'👥 الموردون'};
-          const label = labels[t] || `🔹 ${t}`;
-          return `<div class="nav-item ${state.invHubTab===t?'active':''}" data-invhubtab="${t}">${label}</div>`;
-        }).join('')}
+        <div class="nav-section">المخزون والأصناف</div>
+        <div class="nav-item ${state.invHubTab==='all'?'active':''}" data-invhubtab="all">
+          <span class="nav-item-icon">📦</span><span>كل الأصناف</span>
+        </div>
+        <div class="nav-item ${state.invHubTab==='صيانة'?'active':''}" data-invhubtab="صيانة">
+          <span class="nav-item-icon">🛠️</span><span>قطع غيار الصيانة</span>
+        </div>
+        <div class="nav-item ${state.invHubTab==='كاميرات'?'active':''}" data-invhubtab="كاميرات">
+          <span class="nav-item-icon">📷</span><span>مهمات الكاميرات</span>
+        </div>
+        <div class="nav-item ${state.invHubTab==='كمبيوتر'?'active':''}" data-invhubtab="كمبيوتر">
+          <span class="nav-item-icon">💻</span><span>أجهزة الكمبيوتر</span>
+        </div>
+        <div class="nav-item ${state.invHubTab==='إكسسوار'?'active':''}" data-invhubtab="إكسسوار">
+          <span class="nav-item-icon">🎧</span><span>الإكسسوارات</span>
+        </div>
+
+        <div class="nav-section">المشتريات والموردين</div>
+        <div class="nav-item ${state.invHubTab==='purchases'?'active':''}" data-invhubtab="purchases">
+          <span class="nav-item-icon">📥</span><span>فواتير الشراء</span>
+        </div>
+        <div class="nav-item ${state.invHubTab==='suppliers'?'active':''}" data-invhubtab="suppliers">
+          <span class="nav-item-icon">👥</span><span>سجل الموردين</span>
+        </div>
+
+        <div class="nav-section">أدوات الربط السريع</div>
+        <div class="nav-item" id="invToBarcodeNav">
+          <span class="nav-item-icon">🏷️</span><span>استوديو طباعة الباركود</span>
+        </div>
+        <div class="nav-item" id="invToPosNav">
+          <span class="nav-item-icon">🧾</span><span>نقطة البيع (POS)</span>
+        </div>
       </div>
       ${sidebarFootHtml()}
     </div>
@@ -6090,9 +6460,16 @@ function renderInventoryHubApp(app){
   const sw = document.getElementById('switchSectionBtn');
   if(sw) sw.onclick = ()=>{ state.currentSection = null; render(); };
   attachSidebarHandlers();
+
   document.querySelectorAll('[data-invhubtab]').forEach(el=>{
     el.onclick = ()=>{ state.invHubTab = el.dataset.invhubtab; renderInventoryHubApp(app); };
   });
+
+  const goBar = document.getElementById('invToBarcodeNav');
+  if(goBar) goBar.onclick = ()=>{ state.currentSection = 'barcode'; render(); };
+  const goPos = document.getElementById('invToPosNav');
+  if(goPos) goPos.onclick = ()=>{ state.currentSection = 'pos'; render(); };
+
   const main = document.getElementById('main');
   if(state.invHubTab==='purchases') renderPurchases(main);
   else if(state.invHubTab==='suppliers') renderSuppliers(main);
@@ -6773,8 +7150,26 @@ function renderPosApp(app){
       ${sectionSwitcherHtml()}
       <div class="sidebar-nav-wrap">
         <div class="nav-section">العمليات والمبيعات</div>
-        <div class="nav-item ${state.posTab==='sell'?'active':''}" data-postab="sell"><span class="nav-item-icon">🧾</span><span>بيع جديد (كاشير)</span></div>
-        <div class="nav-item ${state.posTab==='sales'?'active':''}" data-postab="sales"><span class="nav-item-icon">📊</span><span>سجل المبيعات</span></div>
+        <div class="nav-item ${state.posTab==='sell'?'active':''}" data-postab="sell">
+          <span class="nav-item-icon">🧾</span><span>بيع جديد (كاشير)</span>
+        </div>
+        <div class="nav-item ${state.posTab==='sales'?'active':''}" data-postab="sales">
+          <span class="nav-item-icon">📊</span><span>سجل عمليات المبيعات</span>
+        </div>
+
+        <div class="nav-section">أدوات مساعدة</div>
+        <div class="nav-item" id="posToBarcodeNav">
+          <span class="nav-item-icon">🏷️</span><span>استوديو طباعة الباركود</span>
+        </div>
+        <div class="nav-item" id="posToInvNav">
+          <span class="nav-item-icon">📦</span><span>المخزن والأصناف</span>
+        </div>
+        <div class="nav-item" id="posToDailyNav">
+          <span class="nav-item-icon">📔</span><span>حركة الخزينة واليومية</span>
+        </div>
+        <div class="nav-item" id="posToSettingsNav">
+          <span class="nav-item-icon">⚙️</span><span>الإعدادات</span>
+        </div>
       </div>
       ${sidebarFootHtml()}
     </div>
@@ -6783,9 +7178,20 @@ function renderPosApp(app){
   const sw = document.getElementById('switchSectionBtn');
   if(sw) sw.onclick = ()=>{ state.currentSection = null; render(); };
   attachSidebarHandlers();
+
   document.querySelectorAll('[data-postab]').forEach(el=>{
     el.onclick = ()=>{ state.posTab = el.dataset.postab; renderPosApp(app); };
   });
+
+  const pBar = document.getElementById('posToBarcodeNav');
+  if(pBar) pBar.onclick = ()=>{ state.currentSection = 'barcode'; render(); };
+  const pInv = document.getElementById('posToInvNav');
+  if(pInv) pInv.onclick = ()=>{ state.currentSection = 'inventory'; render(); };
+  const pDay = document.getElementById('posToDailyNav');
+  if(pDay) pDay.onclick = ()=>{ state.currentSection = 'daily'; render(); };
+  const pSet = document.getElementById('posToSettingsNav');
+  if(pSet) pSet.onclick = ()=>{ state.currentSection = 'settings'; render(); };
+
   const main = document.getElementById('main');
   if(state.posTab==='sell') renderPosSell(main);
   else renderPosSalesLog(main);
@@ -7212,20 +7618,43 @@ function renderFinanceSectionApp(app){
       ${brandHtml("القسم المالي والمحاسبي")}
       ${sectionSwitcherHtml()}
       <div class="sidebar-nav-wrap">
-        <div class="nav-section">المحاسبة والتقارير</div>
-        ${[
-          ['overview','📊 نظرة عامة'],
-          ['daily','📔 دفتر اليومية والخزينة'],
-          ['invoices','📄 الفواتير الرسمية'],
-          ['accounts','🌳 شجرة الحسابات'],
-          ['journal','📑 قيود اليومية'],
-          ['trialbalance','⚖️ ميزان المراجعة'],
-          ['income','📈 تقرير الدخل والأرباح'],
-          ['bonus','🎁 مكافآت الفنيين'],
-          ...(state.user && state.user.role==='admin' ? [['users','👥 المستخدمين والصلاحيات']] : [])
-        ].map(([k,label])=>`
-          <div class="nav-item ${state.financeTab===k?'active':''}" data-fintab="${k}">${label}</div>
-        `).join('')}
+        <div class="nav-section">التقارير والمؤشرات المالية</div>
+        <div class="nav-item ${state.financeTab==='overview'?'active':''}" data-fintab="overview">
+          <span class="nav-item-icon">📊</span><span>نظرة مالية عامة</span>
+        </div>
+        <div class="nav-item ${state.financeTab==='income'?'active':''}" data-fintab="income">
+          <span class="nav-item-icon">📈</span><span>تقرير الدخل والأرباح</span>
+        </div>
+        <div class="nav-item ${state.financeTab==='trialbalance'?'active':''}" data-fintab="trialbalance">
+          <span class="nav-item-icon">⚖️</span><span>ميزان المراجعة العام</span>
+        </div>
+
+        <div class="nav-section">دفاتر المحاسبة والخزينة</div>
+        <div class="nav-item ${state.financeTab==='daily'?'active':''}" data-fintab="daily">
+          <span class="nav-item-icon">📔</span><span>دفتر اليومية وحركة الدرج</span>
+        </div>
+        <div class="nav-item ${state.financeTab==='invoices'?'active':''}" data-fintab="invoices">
+          <span class="nav-item-icon">📄</span><span>الفواتير وعروض الأسعار</span>
+        </div>
+        <div class="nav-item ${state.financeTab==='accounts'?'active':''}" data-fintab="accounts">
+          <span class="nav-item-icon">🌳</span><span>شجرة الحسابات والدليل</span>
+        </div>
+        <div class="nav-item ${state.financeTab==='journal'?'active':''}" data-fintab="journal">
+          <span class="nav-item-icon">📑</span><span>دفتر القيود اليومية</span>
+        </div>
+
+        <div class="nav-section">المكافآت والتهيئة</div>
+        <div class="nav-item ${state.financeTab==='bonus'?'active':''}" data-fintab="bonus">
+          <span class="nav-item-icon">🎁</span><span>مكافآت ونسب الفنيين</span>
+        </div>
+        ${state.user && state.user.role==='admin' ? `
+          <div class="nav-item ${state.financeTab==='users'?'active':''}" data-fintab="users">
+            <span class="nav-item-icon">👥</span><span>المستخدمين والصلاحيات</span>
+          </div>
+        ` : ''}
+        <div class="nav-item" id="finToSettingsNav">
+          <span class="nav-item-icon">⚙️</span><span>مركز الإعدادات</span>
+        </div>
       </div>
       ${sidebarFootHtml()}
     </div>
@@ -7234,9 +7663,14 @@ function renderFinanceSectionApp(app){
   const sw = document.getElementById('switchSectionBtn');
   if(sw) sw.onclick = ()=>{ state.currentSection = null; render(); };
   attachSidebarHandlers();
+
   document.querySelectorAll('[data-fintab]').forEach(el=>{
     el.onclick = ()=>{ state.financeTab = el.dataset.fintab; renderFinanceSectionApp(app); };
   });
+
+  const fSet = document.getElementById('finToSettingsNav');
+  if(fSet) fSet.onclick = ()=>{ state.currentSection = 'settings'; render(); };
+
   const main = document.getElementById('main');
   if(state.financeTab==='overview') renderFinanceOverview(main);
   else if(state.financeTab==='daily' || state.financeTab==='expenses') renderDailyJournalPage(main);
@@ -9087,6 +9521,772 @@ function renderSyncSettings(main){
       setTimeout(()=>window.location.reload(), 600);
     }
   };
+}
+
+/* ============================================================
+   Universal Barcode Label Studio (استوديو طباعة الباركود الشامل)
+   ============================================================ */
+function renderBarcodeStudioApp(app){
+  if(!state.barcodeTab) state.barcodeTab = 'inventory';
+  if(!state.barcodeStudio) {
+    state.barcodeStudio = {
+      mode: 'inventory',
+      selectedItemId: null,
+      selectedReceiptId: null,
+      customTitle: '',
+      customSubtitle: '',
+      customPrice: '',
+      customBarcode: '',
+      copies: 1,
+      preset: 'thermal_50x30',
+      customWidth: 50,
+      customHeight: 30,
+      barcodeType: 'CODE128',
+      showShopName: true,
+      showItemName: true,
+      showPrice: true,
+      showBarcodeText: true,
+      showDate: false
+    };
+  }
+
+  app.innerHTML = `
+    <div class="sidebar">
+      ${brandHtml("استوديو طباعة الباركود")}
+      ${sectionSwitcherHtml()}
+      <div class="sidebar-nav-wrap">
+        <div class="nav-section">مصدر بيانات الملصق</div>
+        <div class="nav-item ${state.barcodeTab==='inventory'?'active':''}" data-barcodetab="inventory">
+          <span class="nav-item-icon">📦</span><span>أصناف المخزن العام</span>
+        </div>
+        <div class="nav-item ${state.barcodeTab==='maintenance'?'active':''}" data-barcodetab="maintenance">
+          <span class="nav-item-icon">🛠️</span><span>ملصقات أجهزة الصيانة</span>
+        </div>
+        <div class="nav-item ${state.barcodeTab==='custom'?'active':''}" data-barcodetab="custom">
+          <span class="nav-item-icon">✏️</span><span>توليد باركود حر ومخصص</span>
+        </div>
+        
+        <div class="nav-section">أقسام ذات صلة</div>
+        <div class="nav-item" id="navToInvFromBarcode">
+          <span class="nav-item-icon">🏬</span><span>المخزن والمشتريات</span>
+        </div>
+        <div class="nav-item" id="navToMaintFromBarcode">
+          <span class="nav-item-icon">🔧</span><span>قسم الصيانة</span>
+        </div>
+        <div class="nav-item" id="navToPosFromBarcode">
+          <span class="nav-item-icon">🧾</span><span>نقطة البيع (POS)</span>
+        </div>
+        <div class="nav-item" id="navToSettingsFromBarcode">
+          <span class="nav-item-icon">⚙️</span><span>مركز الإعدادات</span>
+        </div>
+      </div>
+      ${sidebarFootHtml()}
+    </div>
+    <main id="main"></main>
+  `;
+
+  const sw = document.getElementById('switchSectionBtn');
+  if(sw) sw.onclick = ()=>{ state.currentSection = null; render(); };
+  attachSidebarHandlers();
+
+  document.querySelectorAll('[data-barcodetab]').forEach(el => {
+    el.onclick = ()=>{
+      state.barcodeTab = el.dataset.barcodetab;
+      state.barcodeStudio.mode = el.dataset.barcodetab;
+      renderBarcodeStudioApp(app);
+    };
+  });
+
+  const nInv = document.getElementById('navToInvFromBarcode');
+  if(nInv) nInv.onclick = ()=>{ state.currentSection = 'inventory'; render(); };
+  const nMaint = document.getElementById('navToMaintFromBarcode');
+  if(nMaint) nMaint.onclick = ()=>{ state.currentSection = 'maintenance'; render(); };
+  const nPos = document.getElementById('navToPosFromBarcode');
+  if(nPos) nPos.onclick = ()=>{ state.currentSection = 'pos'; render(); };
+  const nSet = document.getElementById('navToSettingsFromBarcode');
+  if(nSet) nSet.onclick = ()=>{ state.currentSection = 'settings'; render(); };
+
+  const main = document.getElementById('main');
+  renderBarcodeStudioContent(main);
+}
+
+function renderBarcodeStudioContent(main){
+  const bs = state.barcodeStudio;
+  const mode = state.barcodeTab || 'inventory';
+  const shopName = (state.settings && state.settings.shopName) || 'صيانة ميكروتك';
+  const invList = state.inventory || [];
+  const recList = state.receipts || [];
+
+  // Default auto-fill if empty
+  if(mode === 'inventory' && !bs.customBarcode && invList.length > 0){
+    const first = invList[0];
+    bs.customTitle = first.Name || first.name || '';
+    bs.customSubtitle = first.Category || first.category || '';
+    bs.customPrice = first.SellPrice || first.Price || first.price || '';
+    bs.customBarcode = first.Barcode || first.barcode || ('ITM-' + (first.id || first.ID || '1001'));
+  } else if(mode === 'maintenance' && !bs.customBarcode && recList.length > 0){
+    const first = recList[0];
+    bs.customTitle = (first.customer ? first.customer.name : '') + ' • ' + (first.device ? first.device.brand : '');
+    bs.customSubtitle = (first.device ? (first.device.category + ' ' + (first.device.model||'')) : '') + ' • ' + ((first.faults||[]).join('، ')||'صيانة');
+    bs.customPrice = first.cost || '';
+    bs.customBarcode = first.receiptNumber || 'MT-2026-0001';
+  } else if(mode === 'custom' && !bs.customBarcode){
+    bs.customTitle = 'منتج تجريبي';
+    bs.customSubtitle = 'فئة عامة';
+    bs.customPrice = '150';
+    bs.customBarcode = '6221009876543';
+  }
+
+  main.innerHTML = `
+    <div class="top-header">
+      <div>
+        <h2 class="page-title">🏷️ استوديو طباعة الباركود والملصقات</h2>
+        <div class="subtitle">توليد وطباعة استيكرات الباركود لكافة الطابعات الحرارية والصفحات المقسمة</div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" id="bsResetBtn">🔄 إعادة التعيين</button>
+        <button class="btn btn-primary" id="bsPrintBtn" style="font-weight:900;padding:9px 18px;font-size:14px;box-shadow:0 4px 14px rgba(79,70,229,0.35);">
+          🖨️ طباعة الملصقات الآن
+        </button>
+      </div>
+    </div>
+
+    <div class="barcode-studio-wrap" style="padding:0;">
+      <div class="barcode-studio-grid">
+        
+        <!-- Left: Configuration Options -->
+        <div class="barcode-config-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;border-bottom:1px solid var(--line);padding-bottom:10px;">
+            <h3 style="margin:0;font-size:15px;font-weight:900;display:flex;align-items:center;gap:6px;">
+              <span>⚙️ خيارات ومحتوى الملصق</span>
+            </h3>
+            <span class="status-badge st-check" style="font-size:11px;">
+              ${mode==='inventory'?'أصناف المخزن':(mode==='maintenance'?'أجهزة الصيانة':'توليد حر')}
+            </span>
+          </div>
+
+          <!-- Source Specific Selectors -->
+          ${mode === 'inventory' ? `
+            <div class="field" style="margin-bottom:14px;">
+              <label>📦 اختر الصنف من المخزن</label>
+              <select id="bsInvSelect">
+                ${invList.length === 0 ? '<option value="">لا توجد أصناف بالمخزن</option>' : invList.map(item => {
+                  const itmName = item.Name || item.name || 'صنف';
+                  const itmPrice = item.SellPrice || item.Price || item.price || 0;
+                  const itmCode = item.Barcode || item.barcode || '';
+                  const itmVal = item.id || item.ID || itmCode || itmName;
+                  return `
+                    <option value="${itmVal}" ${itmName===bs.customTitle?'selected':''}>
+                      ${itmName} — ${itmPrice} ج.م ${itmCode?'(باركود: '+itmCode+')':''}
+                    </option>
+                  `;
+                }).join('')}
+              </select>
+            </div>
+          ` : ''}
+
+          ${mode === 'maintenance' ? `
+            <div class="field" style="margin-bottom:14px;">
+              <label>🛠️ اختر إيصال / جهاز الصيانة</label>
+              <select id="bsMaintSelect">
+                ${recList.length === 0 ? '<option value="">لا توجد إيصالات صيانة</option>' : recList.map(r => `
+                  <option value="${r.id}" ${r.receiptNumber===bs.customBarcode?'selected':''}>
+                    ${r.receiptNumber} — ${r.customer?r.customer.name:''} (${r.device?r.device.brand:''})
+                  </option>
+                `).join('')}
+              </select>
+            </div>
+          ` : ''}
+
+          <!-- Common Editable Fields -->
+          <div class="field" style="margin-bottom:10px;">
+            <label>عنوان الملصق (اسم الصنف / العميل)</label>
+            <input type="text" id="bsInputTitle" value="${escapeHtml(bs.customTitle||'')}" placeholder="اسم الصنف أو الجهاز">
+          </div>
+
+          <div class="grid2" style="margin-bottom:10px;">
+            <div class="field">
+              <label>الوصف الإضافي / الموديل</label>
+              <input type="text" id="bsInputSubtitle" value="${escapeHtml(bs.customSubtitle||'')}" placeholder="الفئة، الموديل، أو العطل">
+            </div>
+            <div class="field">
+              <label>السعر (ج.م)</label>
+              <input type="number" id="bsInputPrice" value="${bs.customPrice||''}" placeholder="السعر">
+            </div>
+          </div>
+
+          <div class="field" style="margin-bottom:14px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+              <label style="margin:0;">كود الباركود *</label>
+              <button class="btn btn-ghost btn-xs" id="bsRandomBarcodeBtn" style="padding:2px 8px;font-size:11px;">🎲 توليد كود عشوائي</button>
+            </div>
+            <input type="text" id="bsInputBarcode" value="${escapeHtml(bs.customBarcode||'')}" class="mono font-bold" placeholder="أدخل أرقام أو حروف الباركود" style="letter-spacing:1px;">
+          </div>
+
+          <!-- Paper & Printer Presets -->
+          <div class="field" style="margin-bottom:12px;">
+            <label>📐 مقاس الورق ونوع الطابعة</label>
+            <select id="bsPresetSelect">
+              <optgroup label="🖨️ طابعات ملصقات حرارية فردية (Thermal Rolls)">
+                <option value="thermal_50x30" ${bs.preset==='thermal_50x30'?'selected':''}>50mm × 30mm (قياسي للأجهزة والمخازن)</option>
+                <option value="thermal_40x25" ${bs.preset==='thermal_40x25'?'selected':''}>40mm × 25mm (مدمج للإكسسوارات والموبايل)</option>
+                <option value="thermal_38x25" ${bs.preset==='thermal_38x25'?'selected':''}>38mm × 25mm (مقاس تجاري شائع)</option>
+                <option value="thermal_60x40" ${bs.preset==='thermal_60x40'?'selected':''}>60mm × 40mm (كبير للمعدات والطرود)</option>
+              </optgroup>
+              <optgroup label="📄 صفحات A4 مقسمة (A4 Sheet Labels)">
+                <option value="a4_24" ${bs.preset==='a4_24'?'selected':''}>ورق A4 — 24 ملصق (3 أعمدة × 8 صفوف)</option>
+                <option value="a4_30" ${bs.preset==='a4_30'?'selected':''}>ورق A4 — 30 ملصق (3 أعمدة × 10 صفوف)</option>
+                <option value="a4_40" ${bs.preset==='a4_40'?'selected':''}>ورق A4 — 40 ملصق (4 أعمدة × 10 صفوف)</option>
+                <option value="a4_65" ${bs.preset==='a4_65'?'selected':''}>ورق A4 — 65 ملصق (5 أعمدة × 13 صفوف)</option>
+              </optgroup>
+              <optgroup label="🛠️ تخصيص يدوي">
+                <option value="custom" ${bs.preset==='custom'?'selected':''}>مقاس مخصص (Custom Dimensions in mm)</option>
+              </optgroup>
+            </select>
+          </div>
+
+          <!-- Custom Dimension inputs if selected -->
+          <div id="bsCustomDimRow" class="grid2" style="margin-bottom:12px;display:${bs.preset==='custom'?'grid':'none'};">
+            <div class="field">
+              <label>العرض (mm)</label>
+              <input type="number" id="bsCustomWidth" value="${bs.customWidth||50}">
+            </div>
+            <div class="field">
+              <label>الارتفاع (mm)</label>
+              <input type="number" id="bsCustomHeight" value="${bs.customHeight||30}">
+            </div>
+          </div>
+
+          <div class="grid2" style="margin-bottom:14px;">
+            <div class="field">
+              <label>تنسيق التشفير</label>
+              <select id="bsBarcodeType">
+                <option value="CODE128" ${bs.barcodeType==='CODE128'?'selected':''}>CODE128 (موصى به - حروف وأرقام)</option>
+                <option value="EAN13" ${bs.barcodeType==='EAN13'?'selected':''}>EAN-13 (13 رقم تجاري)</option>
+                <option value="EAN8" ${bs.barcodeType==='EAN8'?'selected':''}>EAN-8 (8 أرقام)</option>
+                <option value="CODE39" ${bs.barcodeType==='CODE39'?'selected':''}>CODE39</option>
+                <option value="QR" ${bs.barcodeType==='QR'?'selected':''}>QR Code (رمز استجابة سريعة)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>عدد الملصقات للطباعة</label>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <button class="btn btn-ghost btn-xs" id="bsDecCopiesBtn" style="padding:6px 12px;font-size:14px;font-weight:900;">-</button>
+                <input type="number" id="bsCopiesCount" value="${bs.copies||1}" min="1" max="500" class="mono font-bold" style="text-align:center;">
+                <button class="btn btn-ghost btn-xs" id="bsIncCopiesBtn" style="padding:6px 12px;font-size:14px;font-weight:900;">+</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Copies Chips -->
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;">
+            <span style="font-size:11px;color:var(--ink-secondary);align-self:center;">كميات سريعة:</span>
+            ${[1, 5, 10, 24, 30, 40, 65, 100].map(c => `
+              <button class="btn btn-ghost btn-xs bs-quick-copy-chip" data-copies="${c}" style="padding:2px 8px;font-size:11px;${bs.copies===c?'background:var(--primary);color:#fff;border-color:var(--primary);':''}">${c}</button>
+            `).join('')}
+          </div>
+
+          <!-- Content Visibility Toggles -->
+          <div style="border-top:1px solid var(--line);padding-top:12px;">
+            <label style="font-weight:800;font-size:12.5px;margin-bottom:8px;display:block;">عناصر الملصق الظاهرة:</label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <label class="checkbox-row" style="font-size:12px;">
+                <input type="checkbox" id="bsCheckShopName" ${bs.showShopName?'checked':''}>
+                <span>اسم الشركة / المحل</span>
+              </label>
+              <label class="checkbox-row" style="font-size:12px;">
+                <input type="checkbox" id="bsCheckItemName" ${bs.showItemName?'checked':''}>
+                <span>اسم الصنف / الجهاز</span>
+              </label>
+              <label class="checkbox-row" style="font-size:12px;">
+                <input type="checkbox" id="bsCheckPrice" ${bs.showPrice?'checked':''}>
+                <span>السعر (ج.م)</span>
+              </label>
+              <label class="checkbox-row" style="font-size:12px;">
+                <input type="checkbox" id="bsCheckBarcodeText" ${bs.showBarcodeText?'checked':''}>
+                <span>رقم الكود المقروء</span>
+              </label>
+              <label class="checkbox-row" style="font-size:12px;">
+                <input type="checkbox" id="bsCheckDate" ${bs.showDate?'checked':''}>
+                <span>تاريخ الطباعة</span>
+              </label>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Right: Live Real-Time Preview Stage -->
+        <div class="barcode-preview-card">
+          <div style="width:100%;display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;border-bottom:1px solid var(--line);padding-bottom:10px;">
+            <div>
+              <h3 style="margin:0;font-size:15px;font-weight:900;display:flex;align-items:center;gap:6px;">
+                <span>👁️ المعاينة الحية المباشرة (Live Preview)</span>
+              </h3>
+              <div id="bsDimBadge" style="font-size:11.5px;color:var(--ink-secondary);margin-top:2px;">
+                المقاس المختار: <b>50mm × 30mm</b> • نوع الطابعة: <b>حراري فردي</b>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-primary btn-sm" id="bsPrintBtn2" style="font-weight:800;">🖨️ طباعة الملصقات</button>
+            </div>
+          </div>
+
+          <div class="barcode-canvas-stage" id="bsCanvasStage">
+            <div id="bsLivePreviewContainer"></div>
+          </div>
+
+          <div style="width:100%;background:var(--paper3);border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px 14px;margin-top:16px;display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:var(--ink-secondary);">
+            <span>💡 <b>تلميح للطباعة المثالية:</b> في نافذة الطباعة (Ctrl+P)، اختر الهوامش <b>"بلا / None"</b> وتأكد من ضبط مقاس الورق لمطابقة إعدادات طابعتك.</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  `;
+
+  // Attach Event Handlers
+  attachBarcodeStudioEvents(main);
+  renderBarcodeLivePreview();
+}
+
+function getBarcodePaperDimensions(preset, customW=50, customH=30){
+  if(preset === 'thermal_50x30') return { w: 50, h: 30, isSheet: false, label: '50mm × 30mm (حراري قياسي)' };
+  if(preset === 'thermal_40x25') return { w: 40, h: 25, isSheet: false, label: '40mm × 25mm (حراري مدمج)' };
+  if(preset === 'thermal_38x25') return { w: 38, h: 25, isSheet: false, label: '38mm × 25mm (حراري تجاري)' };
+  if(preset === 'thermal_60x40') return { w: 60, h: 40, isSheet: false, label: '60mm × 40mm (حراري كبير)' };
+  if(preset === 'a4_24') return { w: 64, h: 33.8, isSheet: true, cols: 3, rows: 8, total: 24, label: 'ورق A4 مقسم (24 ملصق: 3×8)' };
+  if(preset === 'a4_30') return { w: 64, h: 27, isSheet: true, cols: 3, rows: 10, total: 30, label: 'ورق A4 مقسم (30 ملصق: 3×10)' };
+  if(preset === 'a4_40') return { w: 48.5, h: 25.4, isSheet: true, cols: 4, rows: 10, total: 40, label: 'ورق A4 مقسم (40 ملصق: 4×10)' };
+  if(preset === 'a4_65') return { w: 38, h: 21.2, isSheet: true, cols: 5, rows: 13, total: 65, label: 'ورق A4 مقسم (65 ملصق: 5×13)' };
+  return { w: Number(customW)||50, h: Number(customH)||30, isSheet: false, label: `مخصص (${customW}mm × ${customH}mm)` };
+}
+
+function generateSingleLabelMarkup(bs, dim, svgId='labelBarcodeSvg', scale=1){
+  const shopName = (state.settings && state.settings.shopName) || 'صيانة ميكروتك';
+  const todayStr = cleanDate(new Date());
+
+  // Pixel aspect ratio for live screen rendering (1mm ≈ 3.78px)
+  const pxW = Math.round(dim.w * 3.78 * scale);
+  const pxH = Math.round(dim.h * 3.78 * scale);
+
+  return `
+    <div class="barcode-label-mockup" style="width:${pxW}px;height:${pxH}px;padding:${Math.max(2, Math.round(2*scale))}px ${Math.max(3, Math.round(4*scale))}px;border-radius:${Math.max(2, Math.round(4*scale))}px;">
+      ${bs.showShopName ? `<div class="lbl-shop" style="font-size:${Math.max(7, Math.round(8.5*scale))}px;">${escapeHtml(shopName)}</div>` : ''}
+      
+      <div>
+        ${bs.showItemName ? `<div class="lbl-title" style="font-size:${Math.max(8, Math.round(10*scale))}px;">${escapeHtml(bs.customTitle||'صنف بدون اسم')}</div>` : ''}
+        ${bs.customSubtitle ? `<div class="lbl-sub" style="font-size:${Math.max(6.5, Math.round(7.5*scale))}px;">${escapeHtml(bs.customSubtitle)}</div>` : ''}
+      </div>
+
+      <div class="lbl-barcode-wrap">
+        ${bs.barcodeType === 'QR' ? `
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(bs.customBarcode||'1001')}" style="width:${Math.round(pxH*0.48)}px;height:${Math.round(pxH*0.48)}px;object-fit:contain;">
+        ` : `
+          <svg id="${svgId}" style="max-height:${Math.max(16, Math.round(pxH*0.36))}px;"></svg>
+        `}
+        ${bs.showBarcodeText && bs.barcodeType !== 'QR' ? `
+          <div class="mono" style="font-size:${Math.max(7, Math.round(8*scale))}px;font-weight:700;color:#000;letter-spacing:0.5px;margin-top:1px;">
+            ${escapeHtml(bs.customBarcode||'')}
+          </div>
+        ` : ''}
+      </div>
+
+      <div class="lbl-foot">
+        ${bs.showPrice && bs.customPrice ? `
+          <div class="lbl-price mono" style="font-size:${Math.max(8.5, Math.round(10.5*scale))}px;">${Number(bs.customPrice).toLocaleString()} <span style="font-size:7.5px;">ج.م</span></div>
+        ` : '<div></div>'}
+        ${bs.showDate ? `
+          <div style="font-size:${Math.max(6.5, Math.round(7.5*scale))}px;color:#555;">${todayStr}</div>
+        ` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderBarcodeLivePreview(){
+  const container = document.getElementById('bsLivePreviewContainer');
+  const badge = document.getElementById('bsDimBadge');
+  if(!container) return;
+
+  const bs = state.barcodeStudio;
+  const dim = getBarcodePaperDimensions(bs.preset, bs.customWidth, bs.customHeight);
+  
+  if(badge){
+    badge.innerHTML = `المقاس المختار: <b>${dim.label}</b> • ${dim.isSheet ? 'صفحة A4 متعددة الملصقات' : 'طابعة حرارية فردية'}`;
+  }
+
+  if(dim.isSheet){
+    // Render full A4 sheet scaled down
+    const count = Math.min(dim.total, Number(bs.copies)||dim.total);
+    let stickersHtml = '';
+    for(let i=0; i<dim.total; i++){
+      if(i < count){
+        stickersHtml += generateSingleLabelMarkup(bs, dim, `sheetSvg_${i}`, 0.72);
+      } else {
+        stickersHtml += `<div style="border:1px dashed #cbd5e1;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:10px;background:#f8fafc;">فارغ</div>`;
+      }
+    }
+
+    container.innerHTML = `
+      <div style="text-align:center;margin-bottom:8px;font-size:12px;font-weight:700;color:var(--ink);">
+        معاينة ورقة A4 كاملة (${count} ملصق مطلوب من أصل ${dim.total})
+      </div>
+      <div class="barcode-a4-sheet-preview" style="grid-template-columns:repeat(${dim.cols}, 1fr);transform:scale(0.85);margin:0 auto;">
+        ${stickersHtml}
+      </div>
+    `;
+
+    // Render barcodes for all sheet items
+    if(bs.barcodeType !== 'QR' && typeof JsBarcode !== 'undefined'){
+      for(let i=0; i<count; i++){
+        try {
+          JsBarcode(`#sheetSvg_${i}`, String(bs.customBarcode||'1001'), {
+            format: bs.barcodeType,
+            width: 1.1,
+            height: Math.round(dim.h * 1.1),
+            displayValue: false,
+            margin: 0
+          });
+        } catch(e){}
+      }
+    }
+  } else {
+    // Single Thermal Sticker Preview (render at 1.4x scale for crisp readability)
+    container.innerHTML = generateSingleLabelMarkup(bs, dim, 'previewSingleSvg', 1.4);
+
+    if(bs.barcodeType !== 'QR' && typeof JsBarcode !== 'undefined'){
+      try {
+        JsBarcode('#previewSingleSvg', String(bs.customBarcode||'1001'), {
+          format: bs.barcodeType,
+          width: 1.4,
+          height: Math.round(dim.h * 1.4),
+          displayValue: false,
+          margin: 0
+        });
+      } catch(e){
+        console.warn('JsBarcode preview error:', e);
+      }
+    }
+  }
+}
+
+function attachBarcodeStudioEvents(main){
+  const bs = state.barcodeStudio;
+
+  // Inventory Select
+  const invSel = document.getElementById('bsInvSelect');
+  if(invSel){
+    invSel.onchange = ()=>{
+      const item = (state.inventory||[]).find(x => String(x.id||x.ID||x.Barcode||x.barcode||x.Name||x.name) === invSel.value);
+      if(item){
+        bs.customTitle = item.Name || item.name || '';
+        bs.customSubtitle = item.Category || item.category || '';
+        bs.customPrice = item.SellPrice || item.Price || item.price || '';
+        bs.customBarcode = item.Barcode || item.barcode || ('ITM-' + (item.id || item.ID || '1001'));
+        renderBarcodeStudioContent(main);
+      }
+    };
+  }
+
+  // Maintenance Select
+  const maintSel = document.getElementById('bsMaintSelect');
+  if(maintSel){
+    maintSel.onchange = ()=>{
+      const r = (state.receipts||[]).find(x => String(x.id||x.receiptNumber) === maintSel.value);
+      if(r){
+        bs.customTitle = (r.customer ? r.customer.name : '') + ' • ' + (r.device ? r.device.brand : '');
+        bs.customSubtitle = (r.device ? (r.device.category + ' ' + (r.device.model||'')) : '') + ' • ' + ((r.faults||[]).join('، ')||'صيانة');
+        bs.customPrice = r.cost || '';
+        bs.customBarcode = r.receiptNumber || 'MT-2026-0001';
+        renderBarcodeStudioContent(main);
+      }
+    };
+  }
+
+  // Input bindings
+  const titleInput = document.getElementById('bsInputTitle');
+  if(titleInput) titleInput.oninput = (e)=>{ bs.customTitle = e.target.value; renderBarcodeLivePreview(); };
+
+  const subInput = document.getElementById('bsInputSubtitle');
+  if(subInput) subInput.oninput = (e)=>{ bs.customSubtitle = e.target.value; renderBarcodeLivePreview(); };
+
+  const priceInput = document.getElementById('bsInputPrice');
+  if(priceInput) priceInput.oninput = (e)=>{ bs.customPrice = e.target.value; renderBarcodeLivePreview(); };
+
+  const barcodeInput = document.getElementById('bsInputBarcode');
+  if(barcodeInput) barcodeInput.oninput = (e)=>{ bs.customBarcode = e.target.value; renderBarcodeLivePreview(); };
+
+  // Random Barcode button
+  const randBtn = document.getElementById('bsRandomBarcodeBtn');
+  if(randBtn){
+    randBtn.onclick = ()=>{
+      const code = '622' + String(Math.floor(1000000000 + Math.random() * 9000000000));
+      bs.customBarcode = code;
+      if(barcodeInput) barcodeInput.value = code;
+      renderBarcodeLivePreview();
+      showToast('تم توليد باركود جديد 🎲', 'info');
+    };
+  }
+
+  // Preset Select
+  const presetSel = document.getElementById('bsPresetSelect');
+  if(presetSel){
+    presetSel.onchange = ()=>{
+      bs.preset = presetSel.value;
+      const dimRow = document.getElementById('bsCustomDimRow');
+      if(dimRow) dimRow.style.display = bs.preset === 'custom' ? 'grid' : 'none';
+      renderBarcodeLivePreview();
+    };
+  }
+
+  // Custom Dim inputs
+  const cW = document.getElementById('bsCustomWidth');
+  const cH = document.getElementById('bsCustomHeight');
+  if(cW) cW.oninput = (e)=>{ bs.customWidth = Number(e.target.value)||50; renderBarcodeLivePreview(); };
+  if(cH) cH.oninput = (e)=>{ bs.customHeight = Number(e.target.value)||30; renderBarcodeLivePreview(); };
+
+  // Barcode Type
+  const bTypeSel = document.getElementById('bsBarcodeType');
+  if(bTypeSel){
+    bTypeSel.onchange = ()=>{ bs.barcodeType = bTypeSel.value; renderBarcodeLivePreview(); };
+  }
+
+  // Copies Count
+  const copiesInput = document.getElementById('bsCopiesCount');
+  const incBtn = document.getElementById('bsIncCopiesBtn');
+  const decBtn = document.getElementById('bsDecCopiesBtn');
+  if(copiesInput) copiesInput.oninput = (e)=>{ bs.copies = Math.max(1, Number(e.target.value)||1); renderBarcodeLivePreview(); };
+  if(incBtn) incBtn.onclick = ()=>{ bs.copies = (Number(bs.copies)||1) + 1; if(copiesInput) copiesInput.value = bs.copies; renderBarcodeLivePreview(); };
+  if(decBtn) decBtn.onclick = ()=>{ bs.copies = Math.max(1, (Number(bs.copies)||1) - 1); if(copiesInput) copiesInput.value = bs.copies; renderBarcodeLivePreview(); };
+
+  main.querySelectorAll('.bs-quick-copy-chip').forEach(chip => {
+    chip.onclick = ()=>{
+      bs.copies = Number(chip.dataset.copies);
+      if(copiesInput) copiesInput.value = bs.copies;
+      main.querySelectorAll('.bs-quick-copy-chip').forEach(c => {
+        c.style.background = c === chip ? 'var(--primary)' : '';
+        c.style.color = c === chip ? '#fff' : '';
+        c.style.borderColor = c === chip ? 'var(--primary)' : '';
+      });
+      renderBarcodeLivePreview();
+    };
+  });
+
+  // Toggles
+  const chkShop = document.getElementById('bsCheckShopName');
+  if(chkShop) chkShop.onchange = (e)=>{ bs.showShopName = e.target.checked; renderBarcodeLivePreview(); };
+  const chkItem = document.getElementById('bsCheckItemName');
+  if(chkItem) chkItem.onchange = (e)=>{ bs.showItemName = e.target.checked; renderBarcodeLivePreview(); };
+  const chkPrice = document.getElementById('bsCheckPrice');
+  if(chkPrice) chkPrice.onchange = (e)=>{ bs.showPrice = e.target.checked; renderBarcodeLivePreview(); };
+  const chkCode = document.getElementById('bsCheckBarcodeText');
+  if(chkCode) chkCode.onchange = (e)=>{ bs.showBarcodeText = e.target.checked; renderBarcodeLivePreview(); };
+  const chkDate = document.getElementById('bsCheckDate');
+  if(chkDate) chkDate.onchange = (e)=>{ bs.showDate = e.target.checked; renderBarcodeLivePreview(); };
+
+  // Reset Button
+  const resetBtn = document.getElementById('bsResetBtn');
+  if(resetBtn){
+    resetBtn.onclick = ()=>{
+      state.barcodeStudio = null;
+      renderBarcodeStudioApp(document.getElementById('app'));
+      showToast('تمت إعادة تعيين استوديو الباركود', 'info');
+    };
+  }
+
+  // Print Buttons
+  const print1 = document.getElementById('bsPrintBtn');
+  const print2 = document.getElementById('bsPrintBtn2');
+  if(print1) print1.onclick = executeBarcodePrint;
+  if(print2) print2.onclick = executeBarcodePrint;
+}
+
+/* ---------------- Barcode Print Execution Engine ---------------- */
+function executeBarcodePrint(){
+  const bs = state.barcodeStudio;
+  const dim = getBarcodePaperDimensions(bs.preset, bs.customWidth, bs.customHeight);
+  const copies = Math.max(1, Number(bs.copies)||1);
+  const shopName = (state.settings && state.settings.shopName) || 'صيانة ميكروتك';
+  const todayStr = cleanDate(new Date());
+
+  const mount = document.getElementById('printMount');
+  if(!mount) return;
+
+  // Injected dynamic print style tag
+  let styleTag = document.getElementById('dynamicBarcodePrintStyle');
+  if(!styleTag){
+    styleTag = document.createElement('style');
+    styleTag.id = 'dynamicBarcodePrintStyle';
+    document.head.appendChild(styleTag);
+  }
+
+  if(dim.isSheet){
+    // Sheet Mode (@page A4)
+    styleTag.innerHTML = `
+      @media print {
+        @page {
+          size: A4 portrait !important;
+          margin: 6mm 6mm !important;
+        }
+        body.printing-barcode-studio {
+          background: #fff !important;
+          width: 100% !important;
+          height: auto !important;
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+        .barcode-print-sheet-grid {
+          display: grid !important;
+          grid-template-columns: repeat(${dim.cols}, 1fr) !important;
+          gap: 2.5mm 3.5mm !important;
+          width: 198mm !important;
+          box-sizing: border-box !important;
+        }
+        .barcode-print-cell {
+          width: 100% !important;
+          height: ${dim.h}mm !important;
+          box-sizing: border-box !important;
+          border: 0.2px dashed #e2e8f0 !important;
+          padding: 1.5mm 2.5mm !important;
+          display: flex !important;
+          flex-direction: column !important;
+          justify-content: space-between !important;
+          text-align: center !important;
+          overflow: hidden !important;
+          font-family: var(--font-main) !important;
+          color: #000 !important;
+          background: #fff !important;
+        }
+      }
+    `;
+
+    let cellsHtml = '';
+    for(let i=0; i<copies; i++){
+      cellsHtml += `
+        <div class="barcode-print-cell">
+          ${bs.showShopName ? `<div style="font-size:7.5px;font-weight:800;border-bottom:0.5px solid #ccc;padding-bottom:1px;white-space:nowrap;overflow:hidden;">${escapeHtml(shopName)}</div>` : ''}
+          <div>
+            ${bs.showItemName ? `<div style="font-size:9px;font-weight:900;line-height:1.1;white-space:nowrap;overflow:hidden;">${escapeHtml(bs.customTitle||'')}</div>` : ''}
+            ${bs.customSubtitle ? `<div style="font-size:7px;color:#444;white-space:nowrap;overflow:hidden;">${escapeHtml(bs.customSubtitle)}</div>` : ''}
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;">
+            ${bs.barcodeType==='QR' ? `
+              <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(bs.customBarcode||'1001')}" style="width:18mm;height:18mm;">
+            ` : `
+              <svg id="printSheetSvg_${i}" style="max-width:96%;height:auto;max-height:${Math.round(dim.h*0.38)}mm;"></svg>
+            `}
+            ${bs.showBarcodeText && bs.barcodeType!=='QR' ? `<div class="mono" style="font-size:7.5px;font-weight:700;color:#000;">${escapeHtml(bs.customBarcode||'')}</div>` : ''}
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:7.5px;font-weight:800;border-top:0.5px solid #ccc;padding-top:1px;">
+            ${bs.showPrice && bs.customPrice ? `<div class="mono" style="font-size:9.5px;font-weight:900;">${Number(bs.customPrice).toLocaleString()} ج.م</div>` : '<div></div>'}
+            ${bs.showDate ? `<div>${todayStr}</div>` : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    mount.innerHTML = `<div class="barcode-print-sheet-grid">${cellsHtml}</div>`;
+
+    if(bs.barcodeType !== 'QR' && typeof JsBarcode !== 'undefined'){
+      for(let i=0; i<copies; i++){
+        try {
+          JsBarcode(`#printSheetSvg_${i}`, String(bs.customBarcode||'1001'), {
+            format: bs.barcodeType,
+            width: 1.1,
+            height: Math.round(dim.h * 1.1),
+            displayValue: false,
+            margin: 0
+          });
+        } catch(e){}
+      }
+    }
+  } else {
+    // Thermal Single Label Mode
+    styleTag.innerHTML = `
+      @media print {
+        @page {
+          size: ${dim.w}mm ${dim.h}mm !important;
+          margin: 0 !important;
+        }
+        body.printing-barcode-studio {
+          background: #fff !important;
+          width: ${dim.w}mm !important;
+          height: auto !important;
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+        .barcode-print-thermal-sticker {
+          width: ${dim.w}mm !important;
+          height: ${dim.h}mm !important;
+          max-height: ${dim.h}mm !important;
+          box-sizing: border-box !important;
+          padding: 1.5mm 2.5mm !important;
+          display: flex !important;
+          flex-direction: column !important;
+          justify-content: space-between !important;
+          text-align: center !important;
+          overflow: hidden !important;
+          font-family: var(--font-main) !important;
+          color: #000 !important;
+          background: #fff !important;
+          page-break-inside: avoid !important;
+          page-break-after: always !important;
+          break-inside: avoid !important;
+          break-after: page !important;
+        }
+      }
+    `;
+
+    let stickersHtml = '';
+    for(let i=0; i<copies; i++){
+      stickersHtml += `
+        <div class="barcode-print-thermal-sticker">
+          ${bs.showShopName ? `<div style="font-size:7.5px;font-weight:800;border-bottom:0.5px solid #ccc;padding-bottom:1px;white-space:nowrap;overflow:hidden;">${escapeHtml(shopName)}</div>` : ''}
+          <div>
+            ${bs.showItemName ? `<div style="font-size:9.5px;font-weight:900;line-height:1.15;white-space:nowrap;overflow:hidden;">${escapeHtml(bs.customTitle||'')}</div>` : ''}
+            ${bs.customSubtitle ? `<div style="font-size:7.5px;color:#444;white-space:nowrap;overflow:hidden;">${escapeHtml(bs.customSubtitle)}</div>` : ''}
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;">
+            ${bs.barcodeType==='QR' ? `
+              <img src="https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(bs.customBarcode||'1001')}" style="width:16mm;height:16mm;">
+            ` : `
+              <svg id="printThermalSvg_${i}" style="max-width:96%;height:auto;max-height:${Math.round(dim.h*0.38)}mm;"></svg>
+            `}
+            ${bs.showBarcodeText && bs.barcodeType!=='QR' ? `<div class="mono" style="font-size:8px;font-weight:700;color:#000;">${escapeHtml(bs.customBarcode||'')}</div>` : ''}
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:8px;font-weight:800;border-top:0.5px solid #ccc;padding-top:1px;">
+            ${bs.showPrice && bs.customPrice ? `<div class="mono" style="font-size:10px;font-weight:900;">${Number(bs.customPrice).toLocaleString()} ج.م</div>` : '<div></div>'}
+            ${bs.showDate ? `<div>${todayStr}</div>` : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    mount.innerHTML = stickersHtml;
+
+    if(bs.barcodeType !== 'QR' && typeof JsBarcode !== 'undefined'){
+      for(let i=0; i<copies; i++){
+        try {
+          JsBarcode(`#printThermalSvg_${i}`, String(bs.customBarcode||'1001'), {
+            format: bs.barcodeType,
+            width: 1.3,
+            height: Math.round(dim.h * 1.3),
+            displayValue: false,
+            margin: 0
+          });
+        } catch(e){}
+      }
+    }
+  }
+
+  // Trigger Native Print Dialog
+  document.body.classList.add('printing-barcode-studio');
+  setTimeout(()=>{
+    window.print();
+    setTimeout(()=>{
+      document.body.classList.remove('printing-barcode-studio');
+    }, 500);
+  }, 120);
 }
 
 /* ---------------- Login Screen ---------------- */

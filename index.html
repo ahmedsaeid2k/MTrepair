@@ -13,10 +13,10 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.12.3/JsBarcode.all.min.js"></script>
 <style>
 :root {
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
-  --primary-light: #eff6ff;
-  --primary-focus: rgba(37, 99, 235, 0.15);
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+  --primary-light: #eef2ff;
+  --primary-focus: rgba(79, 70, 229, 0.18);
   
   --slate-900: #0f172a;
   --slate-800: #1e293b;
@@ -30,13 +30,16 @@
   --slate-50: #f8fafc;
   
   --ink: #0f172a;
-  --ink-secondary: #475569;
-  --paper: #f1f5f9;
+  --ink-secondary: #64748b;
+  --paper: #f8fafc;
   --paper2: #ffffff;
-  --paper3: #f8fafc;
+  --paper3: #f1f5f9;
   --line: #e2e8f0;
   --line-strong: #cbd5e1;
-  --card-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --glass-border: rgba(226, 232, 240, 0.8);
+  --card-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.03);
+  --card-hover-shadow: 0 12px 28px -4px rgba(15, 23, 42, 0.09), 0 4px 10px -2px rgba(15, 23, 42, 0.04);
   
   --blue: #2563eb;
   --blue-bg: #dbeafe;
@@ -57,57 +60,67 @@
   --purple: #8b5cf6;
   --purple-bg: #ede9fe;
   --purple-text: #5b21b6;
+
+  --cyan: #06b6d4;
+  --cyan-bg: #cffafe;
+  --cyan-text: #155e75;
   
-  --radius-sm: 6px;
-  --radius: 12px;
-  --radius-lg: 16px;
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius: 14px;
+  --radius-lg: 20px;
   --radius-full: 9999px;
   
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
-  --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+  --shadow: 0 4px 14px -1px rgba(0, 0, 0, 0.06), 0 2px 6px -2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 10px 25px -3px rgba(0, 0, 0, 0.08), 0 4px 10px -4px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 20px 35px -5px rgba(0, 0, 0, 0.12), 0 10px 15px -6px rgba(0, 0, 0, 0.06);
   
   --font-main: 'Tajawal', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-mono: 'IBM Plex Mono', monospace, Consolas, Courier;
 }
 
 [data-theme="dark"] {
-  --primary: #3b82f6;
-  --primary-hover: #60a5fa;
-  --primary-light: rgba(59, 130, 246, 0.18);
-  --primary-focus: rgba(59, 130, 246, 0.25);
+  --primary: #6366f1;
+  --primary-hover: #818cf8;
+  --primary-light: rgba(99, 102, 241, 0.18);
+  --primary-focus: rgba(99, 102, 241, 0.28);
   
   --slate-900: #030712;
-  --slate-800: #0b0f19;
-  --slate-700: #1e293b;
-  --slate-600: #334155;
-  --slate-500: #94a3b8;
-  --slate-400: #cbd5e1;
-  --slate-300: #475569;
-  --slate-200: #334155;
-  --slate-100: #1e293b;
-  --slate-50: #0f172a;
+  --slate-800: #090d16;
+  --slate-700: #131b2e;
+  --slate-600: #1e293b;
+  --slate-500: #64748b;
+  --slate-400: #94a3b8;
+  --slate-300: #cbd5e1;
+  --slate-200: #1e293b;
+  --slate-100: #0f172a;
+  --slate-50: #090d16;
   
   --ink: #f8fafc;
   --ink-secondary: #94a3b8;
-  --paper: #0b0f19;
-  --paper2: #111827;
-  --paper3: #1f2937;
-  --line: #1f2937;
-  --line-strong: #374151;
-  --card-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  --paper: #070b12;
+  --paper2: #0e1524;
+  --paper3: #162035;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.14);
+  --glass-bg: rgba(14, 21, 36, 0.82);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --card-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  --card-hover-shadow: 0 16px 40px rgba(0, 0, 0, 0.65);
   
-  --blue-bg: rgba(37, 99, 235, 0.2);
+  --blue-bg: rgba(37, 99, 235, 0.22);
   --blue-text: #93c5fd;
-  --amber-bg: rgba(217, 119, 6, 0.2);
+  --amber-bg: rgba(217, 119, 6, 0.22);
   --amber-text: #fcd34d;
-  --red-bg: rgba(225, 29, 72, 0.2);
+  --red-bg: rgba(225, 29, 72, 0.22);
   --red-text: #fda4af;
-  --green-bg: rgba(16, 185, 129, 0.2);
+  --green-bg: rgba(16, 185, 129, 0.22);
   --green-text: #6ee7b7;
-  --purple-bg: rgba(139, 92, 246, 0.2);
+  --purple-bg: rgba(139, 92, 246, 0.22);
   --purple-text: #c4b5fd;
+  --cyan-bg: rgba(6, 182, 212, 0.22);
+  --cyan-text: #67e8f9;
 }
 
 * {
@@ -125,7 +138,7 @@ body {
   line-height: 1.5;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
-  transition: background-color 0.2s ease, color 0.2s ease;
+  transition: background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1), color 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   font-variant-numeric: tabular-nums lining-nums;
 }
 .mono, input, select, textarea, td, th, .num, span, div, b, strong, p {
@@ -133,49 +146,109 @@ body {
 }
 .mono { font-family: var(--font-mono); letter-spacing: -0.02em; }
 
-#app { display: flex; min-height: 100vh; }
+#app { display: flex; min-height: 100vh; flex-direction: row; }
 
 /* Scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar { width: 7px; height: 7px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--slate-300); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: var(--slate-400); }
+::-webkit-scrollbar-thumb { background: var(--slate-400); border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: var(--primary); }
+
+/* Unified Global Header */
+.global-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 24px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--line);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.03);
+  margin-bottom: 20px;
+  border-radius: var(--radius);
+}
+.global-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.global-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.universal-search-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: var(--paper2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-full);
+  color: var(--ink-secondary);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 240px;
+}
+.universal-search-btn:hover {
+  border-color: var(--primary);
+  color: var(--ink);
+  background: var(--paper3);
+  box-shadow: 0 0 0 3px var(--primary-focus);
+}
+.kbd-shortcut {
+  background: var(--paper3);
+  border: 1px solid var(--line-strong);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+  color: var(--ink-secondary);
+  margin-right: auto;
+}
 
 /* Sidebar */
 .sidebar {
-  width: 250px;
+  width: 256px;
   background: var(--slate-900);
   color: #f8fafc;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  box-shadow: 4px 0 24px rgba(0,0,0,0.1);
+  box-shadow: 4px 0 28px rgba(0,0,0,0.14);
   z-index: 20;
-  transition: all 0.2s ease;
+  transition: all 0.25s ease;
+  border-left: 1px solid rgba(255,255,255,0.06);
 }
 .brand {
-  padding: 20px 18px 15px;
+  padding: 20px 18px 16px;
   border-bottom: 1px solid rgba(255,255,255,0.08);
   display: flex;
   align-items: center;
   gap: 12px;
 }
 .brand-logo-wrap {
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   background: linear-gradient(135deg, var(--primary), #38bdf8);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
-  font-size: 20px;
-  box-shadow: 0 4px 12px rgba(37,99,235,0.35);
+  font-size: 22px;
+  box-shadow: 0 4px 14px rgba(79,70,229,0.38);
   flex-shrink: 0;
 }
 .brand-text h1 {
   font-size: 16.5px;
-  font-weight: 800;
+  font-weight: 900;
   margin: 0;
   color: #ffffff;
   letter-spacing: -0.01em;
@@ -185,41 +258,41 @@ body {
   color: #38bdf8;
   display: block;
   margin-top: 1px;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .nav-section {
-  padding: 12px 12px 4px;
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--slate-400);
+  padding: 14px 14px 6px;
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #64748b;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
 }
 
 .nav-item {
-  margin: 3px 8px;
-  padding: 9px 12px;
+  margin: 3px 10px;
+  padding: 10px 12px;
   cursor: pointer;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   color: #94a3b8;
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   gap: 10px;
-  transition: all 0.15s ease;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
   user-select: none;
 }
 .nav-item:hover {
-  background: rgba(255,255,255,0.06);
+  background: rgba(255,255,255,0.08);
   color: #ffffff;
-  transform: translateX(-2px);
+  transform: translateX(-3px);
 }
 .nav-item.active {
   background: linear-gradient(135deg, var(--primary), var(--primary-hover));
   color: #ffffff;
-  box-shadow: 0 4px 12px rgba(37,99,235,0.3);
+  box-shadow: 0 4px 14px rgba(79,70,229,0.35);
 }
 .nav-item-icon {
   font-size: 16px;
@@ -231,9 +304,9 @@ body {
 
 .sidebar-foot {
   margin-top: auto;
-  padding: 14px;
-  background: rgba(0,0,0,0.25);
-  border-top: 1px solid rgba(255,255,255,0.06);
+  padding: 14px 16px;
+  background: rgba(0,0,0,0.35);
+  border-top: 1px solid rgba(255,255,255,0.08);
 }
 .user-card {
   display: flex;
@@ -241,8 +314,8 @@ body {
   gap: 10px;
 }
 .user-avatar {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border-radius: var(--radius-full);
   background: linear-gradient(135deg, #10b981, #059669);
   color: white;
@@ -530,6 +603,14 @@ input:focus, select:focus, textarea:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-focus);
 }
+input[type="tel"], input.phone-input, input[id*="Phone"], input[id*="phone"], input[type="number"], input.mono {
+  font-family: var(--font-mono);
+  direction: ltr;
+  text-align: right;
+  font-variant-numeric: tabular-nums lining-nums;
+  -webkit-font-feature-settings: "numr" 0, "lnum" 1, "tnum" 1;
+  font-feature-settings: "numr" 0, "lnum" 1, "tnum" 1;
+}
 .field { margin-bottom: 12px; }
 textarea { min-height: 75px; resize: vertical; }
 
@@ -772,43 +853,374 @@ tr:last-child td { border-bottom: none; }
 .toast.info { background: #1e3a8a; border-right: 4px solid #3b82f6; }
 @keyframes slideInLeft { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
 
-/* Section Picker */
-.section-picker-wrap {
-  max-width: 820px;
-  margin: 36px auto;
+/* Executive Command Center & Smart Hub */
+.command-center-wrap {
+  max-width: 1280px;
+  margin: 20px auto 40px;
   padding: 0 20px;
+  width: 100%;
 }
-.section-card {
-  background: var(--paper2);
-  border: 1px solid var(--line);
+.hub-hero {
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.08), rgba(56, 189, 248, 0.06));
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius-lg);
-  padding: 24px 18px;
-  text-align: center;
-  cursor: pointer;
+  padding: 24px 28px;
+  margin-bottom: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
   box-shadow: var(--card-shadow);
-  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
 }
-.section-card:hover {
-  transform: translateY(-3px);
-  box-shadow: var(--shadow-md);
-  border-color: var(--primary);
+.hub-hero::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -20%;
+  width: 300px;
+  height: 300px;
+  background: radial-gradient(circle, var(--primary-light) 0%, transparent 70%);
+  opacity: 0.5;
+  pointer-events: none;
 }
-.section-card-icon {
-  width: 58px;
-  height: 58px;
-  border-radius: 16px;
-  margin: 0 auto 14px;
+.hub-hero-brand {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.hub-hero-logo {
+  width: 54px;
+  height: 54px;
+  background: linear-gradient(135deg, var(--primary), #38bdf8);
+  border-radius: var(--radius);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 28px;
+  color: #fff;
+  box-shadow: 0 6px 20px rgba(79,70,229,0.35);
+  flex-shrink: 0;
+}
+.hub-hero-title {
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.hub-hero-subtitle {
+  font-size: 13px;
+  color: var(--ink-secondary);
+  margin-top: 3px;
+  font-weight: 600;
+}
+
+/* Quick Action Power Dock */
+.quick-dock {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+.quick-dock-btn {
+  flex: 1;
+  min-width: 170px;
+  background: var(--paper2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  box-shadow: var(--card-shadow);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  color: var(--ink);
+  user-select: none;
+}
+.quick-dock-btn:hover {
+  transform: translateY(-3px);
+  border-color: var(--primary);
+  box-shadow: var(--card-hover-shadow);
   background: var(--paper3);
+}
+.quick-dock-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.quick-dock-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink);
+}
+.quick-dock-desc {
+  font-size: 11px;
+  color: var(--ink-secondary);
+  margin-top: 1px;
+}
+
+/* Live Telemetry Bar */
+.telemetry-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+}
+.telemetry-card {
+  background: var(--paper2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  box-shadow: var(--card-shadow);
+  position: relative;
+  overflow: hidden;
   transition: all 0.2s ease;
 }
-.section-card:hover .section-card-icon {
-  transform: scale(1.06);
+.telemetry-card:hover {
+  border-color: var(--line-strong);
+  box-shadow: var(--card-hover-shadow);
+}
+.telemetry-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.telemetry-card-lbl {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-secondary);
+}
+.telemetry-card-icon {
+  font-size: 18px;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.telemetry-card-val {
+  font-size: 24px;
+  font-weight: 900;
+  color: var(--ink);
+  margin-top: 8px;
+  line-height: 1.2;
+}
+.telemetry-card-sub {
+  font-size: 11px;
+  color: var(--ink-secondary);
+  margin-top: 4px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* Smart Section Cards */
+.smart-section-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+  gap: 16px;
+  margin-bottom: 28px;
+}
+.smart-sec-card {
+  background: var(--paper2);
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 22px 20px;
+  cursor: pointer;
+  box-shadow: var(--card-shadow);
+  transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  overflow: hidden;
+}
+.smart-sec-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--primary);
+  box-shadow: var(--card-hover-shadow);
+}
+.smart-sec-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.smart-sec-icon-box {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  background: var(--paper3);
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+.smart-sec-card:hover .smart-sec-icon-box {
+  transform: scale(1.08);
+  background: var(--primary-light);
+}
+.smart-sec-title {
+  font-size: 16px;
+  font-weight: 900;
+  color: var(--ink);
+  line-height: 1.3;
+}
+.smart-sec-desc {
+  font-size: 11.5px;
+  color: var(--ink-secondary);
+  margin-top: 3px;
+  line-height: 1.4;
+}
+.smart-sec-meta {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  margin-top: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.smart-sec-badge {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  background: var(--paper3);
+  color: var(--ink-secondary);
+}
+.smart-sec-arrow {
+  font-size: 13px;
+  color: var(--primary);
+  font-weight: 800;
+  transition: transform 0.2s ease;
+}
+.smart-sec-card:hover .smart-sec-arrow {
+  transform: translateX(-4px);
+}
+
+/* Command Palette Universal Search Modal */
+.cmd-palette-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 15, 25, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 9999;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 60px 16px 20px;
+  animation: fadeIn 0.15s ease-out;
+}
+.cmd-palette-box {
+  background: var(--paper2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 660px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  animation: slideUp 0.18s ease-out;
+  display: flex;
+  flex-direction: column;
+  max-height: 80vh;
+}
+.cmd-palette-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper3);
+}
+.cmd-palette-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  outline: none;
+  padding: 0;
+  box-shadow: none !important;
+}
+.cmd-palette-results {
+  overflow-y: auto;
+  padding: 10px;
+  max-height: 480px;
+}
+.cmd-group-title {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--slate-400);
+  text-transform: uppercase;
+  padding: 8px 12px 4px;
+}
+.cmd-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.12s ease;
+  user-select: none;
+}
+.cmd-item:hover, .cmd-item.selected {
   background: var(--primary-light);
   color: var(--primary);
+}
+.cmd-item-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.cmd-item-icon {
+  font-size: 16px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--paper3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.cmd-item:hover .cmd-item-icon {
+  background: #fff;
+}
+.cmd-item-title {
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cmd-item-sub {
+  font-size: 11.5px;
+  color: var(--ink-secondary);
+  margin-top: 1px;
+}
+.cmd-item-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--paper3);
 }
 
 /* ============================================================
@@ -1109,6 +1521,45 @@ function toEngDigits(str){
     .replace(/[٠-٩]/g, d => '0123456789'['٠١٢٣٤٥٦٧٨٩'.indexOf(d)])
     .replace(/[۰-۹]/g, d => '0123456789'['۰۱۲۳۴۵۶۷۸۹'.indexOf(d)]);
 }
+
+// Global Real-time Auto-converter for Phone and Numeric Inputs
+document.addEventListener('input', function(e) {
+  const target = e.target;
+  if (!target || (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA')) return;
+
+  const isPhone = target.type === 'tel' || 
+                  (target.id && /phone|tel|mobile|هاتف|جوال/i.test(target.id)) ||
+                  (target.name && /phone|tel|mobile|هاتف|جوال/i.test(target.name)) ||
+                  (target.placeholder && /هاتف|تليفون|موبايل|phone|01/i.test(target.placeholder));
+
+  const isNumeric = target.type === 'number' || 
+                    target.inputMode === 'numeric' || 
+                    target.inputMode === 'decimal' ||
+                    isPhone ||
+                    (target.id && /cost|price|deposit|amt|amount|qty|quantity|rem|bonus|total|barcode|rate|tax|credit|debit|discount/i.test(target.id)) ||
+                    (target.className && /mono/i.test(target.className));
+
+  if (isPhone) {
+    target.dir = 'ltr';
+    target.style.textAlign = 'right';
+    target.style.fontFamily = 'var(--font-mono)';
+    const originalVal = target.value;
+    const converted = toEngDigits(originalVal).replace(/[^0-9+\-\s()]/g, '');
+    if (originalVal !== converted) {
+      const cursor = target.selectionStart;
+      target.value = converted;
+      try { target.setSelectionRange(cursor, cursor); } catch(err){}
+    }
+  } else if (isNumeric) {
+    const originalVal = target.value;
+    const converted = toEngDigits(originalVal);
+    if (originalVal !== converted) {
+      const cursor = target.selectionStart;
+      target.value = converted;
+      try { target.setSelectionRange(cursor, cursor); } catch(err){}
+    }
+  }
+}, true);
 
 // Override Number.prototype.toLocaleString to guarantee English numbers everywhere
 const _origNumberToLocaleString = Number.prototype.toLocaleString;
@@ -2166,49 +2617,484 @@ const SECTION_INFO = {
 };
 const INVENTORY_CATEGORIES = ['صيانة','كاميرات','كمبيوتر','إكسسوار'];
 
-function renderSectionPicker(app){
-  normalizeUserSections(state.user);
-  const sections = state.user.sections || [];
-  const logoUrl = state.settings.logoUrl;
-  app.innerHTML = `
-    <div class="section-picker-wrap">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-        <div id="networkSyncPill" class="sync-pill online" onclick="syncOfflineQueue()">🟢 متصل</div>
-        <button class="theme-toggle-btn" id="themeTogglePicker">${state.theme==='dark'?'☀️ المظهر الفاتح':'🌙 المظهر الليلي'}</button>
+/* ---------------- Universal Command Palette (Cmd + K) ---------------- */
+function openCommandPalette(initialQuery=''){
+  const existing = document.getElementById('cmdPaletteModal');
+  if(existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'cmd-palette-overlay';
+  overlay.id = 'cmdPaletteModal';
+
+  overlay.innerHTML = `
+    <div class="cmd-palette-box">
+      <div class="cmd-palette-header">
+        <span style="font-size:18px;color:var(--primary);">🔍</span>
+        <input type="text" class="cmd-palette-input" id="cmdSearchInput" placeholder="ابحث في الإيصالات، العملاء، الفواتير، الأصناف، أو الشاشات..." value="${initialQuery}" autofocus>
+        <span class="kbd-shortcut">ESC للخروج</span>
       </div>
-      <div style="text-align:center;margin-bottom:28px;">
-        ${logoUrl ? `<img src="${logoUrl}" alt="logo" style="max-height:55px;max-width:180px;object-fit:contain;margin-bottom:10px;">` : ''}
-        <div style="font-weight:900;font-size:26px;color:var(--ink);">${state.settings.shopName || 'ميكروERP'}</div>
-        <div class="subtitle" style="font-size:13.5px;margin-top:3px;">مرحبًا <b>${state.user.name}</b> — اختر القسم الذي ترغب في العمل عليه</div>
-      </div>
-      <div class="stat-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));gap:14px;">
-        ${sections.length===0 ? '<div class="empty">لا توجد أقسام مخصصة لحسابك. يرجى مراجعة المسؤول.</div>' : sections.map(s=>{
-          const info = SECTION_INFO[s] || { label: s, icon: '📁', desc: '' };
-          const isDaily = s === 'daily';
-          return `
-          <div class="section-card" data-sec="${s}" style="position:relative;${isDaily?'border:2px solid var(--primary);box-shadow:0 6px 20px rgba(37,99,235,0.14);':''}">
-            ${isDaily ? `<div style="position:absolute;top:10px;left:10px;background:var(--primary);color:#fff;font-size:10px;font-weight:800;padding:2px 8px;border-radius:12px;">شامل ومباشر ⚡</div>` : ''}
-            <div class="section-card-icon">${info.icon}</div>
-            <div style="font-weight:800;font-size:15.5px;color:var(--ink);">${info.label}</div>
-            <div class="subtitle" style="margin-top:5px;font-size:12px;">${info.desc}</div>
-          </div>`;
-        }).join('')}
-      </div>
-      <div style="text-align:center;margin-top:28px;">
-        <button class="btn btn-ghost btn-sm" id="logoutPickerBtn">🚪 تسجيل الخروج</button>
+      <div class="cmd-palette-results" id="cmdResultsBox">
+        <div style="text-align:center;padding:24px;color:var(--ink-secondary);font-size:12.5px;">
+          اكتب كلمة البحث للوصول الفوري لأي إيصال، عميل، صنف، فاتورة أو شاشة في النظام ⚡
+        </div>
       </div>
     </div>
   `;
-  updateSyncStatusPill();
-  document.querySelectorAll('[data-sec]').forEach(el=>{
-    el.onclick = ()=>{ state.currentSection = el.dataset.sec; render(); };
+
+  document.body.appendChild(overlay);
+  const input = overlay.querySelector('#cmdSearchInput');
+  const resultsBox = overlay.querySelector('#cmdResultsBox');
+
+  overlay.onclick = (e)=>{ if(e.target === overlay) overlay.remove(); };
+  document.addEventListener('keydown', function escHandler(e){
+    if(e.key === 'Escape' && document.getElementById('cmdPaletteModal')){
+      overlay.remove();
+      document.removeEventListener('keydown', escHandler);
+    }
   });
-  const logoutBtn = document.getElementById('logoutPickerBtn');
-  if(logoutBtn) logoutBtn.onclick = logout;
-  document.getElementById('themeTogglePicker').onclick = ()=>{
+
+  function performSearch(q){
+    const clean = String(q||'').trim().toLowerCase();
+    if(!clean){
+      resultsBox.innerHTML = `
+        <div class="cmd-group-title">⚡ إجراءات سريعة واختصارات التنقل</div>
+        <div class="cmd-item" data-cmd="act_new_receipt">
+          <div class="cmd-item-left"><div class="cmd-item-icon">➕</div><div><div class="cmd-item-title">استلام جهاز صيانة جديد</div><div class="cmd-item-sub">فتح إيصال استلام وفحص جديد</div></div></div>
+          <span class="cmd-item-badge">صيانة</span>
+        </div>
+        <div class="cmd-item" data-cmd="act_pos">
+          <div class="cmd-item-left"><div class="cmd-item-icon">🧾</div><div><div class="cmd-item-title">نقطة البيع السريعة (POS)</div><div class="cmd-item-sub">شاشة الكاشير والباركود</div></div></div>
+          <span class="cmd-item-badge">مبيعات</span>
+        </div>
+        <div class="cmd-item" data-cmd="act_new_daily">
+          <div class="cmd-item-left"><div class="cmd-item-icon">💸</div><div><div class="cmd-item-title">تسجيل حركة نقدية باليومية</div><div class="cmd-item-sub">تسجيل وارد، منصرف، أو نثريات بالخزينة</div></div></div>
+          <span class="cmd-item-badge">يومية</span>
+        </div>
+        <div class="cmd-item" data-cmd="act_new_invoice">
+          <div class="cmd-item-left"><div class="cmd-item-icon">📄</div><div><div class="cmd-item-title">إصدار فاتورة ضريبية أو بيان سعر</div><div class="cmd-item-sub">إنشاء فاتورة رسمية أو عرض أسعار للعميل</div></div></div>
+          <span class="cmd-item-badge">فواتير</span>
+        </div>
+        <div class="cmd-item" data-cmd="act_new_item">
+          <div class="cmd-item-left"><div class="cmd-item-icon">📦</div><div><div class="cmd-item-title">إضافة صنف جديد بالمخزن</div><div class="cmd-item-sub">تسجيل منتج أو قطعة غيار بالباركود</div></div></div>
+          <span class="cmd-item-badge">مخزن</span>
+        </div>
+      `;
+      attachCmdClicks();
+      return;
+    }
+
+    // Receipts Match
+    const receipts = (state.receipts || []).filter(r => 
+      String(r.receiptNumber||'').toLowerCase().includes(clean) ||
+      String((r.customer||{}).name||'').toLowerCase().includes(clean) ||
+      String((r.customer||{}).phone||'').toLowerCase().includes(clean) ||
+      String((r.device||{}).category||'').toLowerCase().includes(clean) ||
+      String((r.device||{}).brand||'').toLowerCase().includes(clean) ||
+      String((r.device||{}).model||'').toLowerCase().includes(clean) ||
+      (r.faults||[]).some(f=>String(f).toLowerCase().includes(clean))
+    ).slice(0, 6);
+
+    // Invoices Match
+    const invoices = (state.invoices || []).filter(i => 
+      String(i.invoiceNumber||'').toLowerCase().includes(clean) ||
+      String(i.customerName||'').toLowerCase().includes(clean) ||
+      String(i.customerPhone||'').toLowerCase().includes(clean)
+    ).slice(0, 4);
+
+    // Inventory Match
+    const items = (state.inventory || []).filter(i => 
+      String(i.Name||'').toLowerCase().includes(clean) ||
+      String(i.Barcode||'').toLowerCase().includes(clean) ||
+      String(i.Category||'').toLowerCase().includes(clean)
+    ).slice(0, 5);
+
+    // Sections Match
+    const matchedSections = Object.entries(SECTION_INFO).filter(([k, info]) => 
+      info.label.toLowerCase().includes(clean) || info.desc.toLowerCase().includes(clean)
+    );
+
+    let html = '';
+
+    if(receipts.length > 0){
+      html += `<div class="cmd-group-title">🛠️ إيصالات الصيانة والأجهزة (${receipts.length})</div>`;
+      html += receipts.map(r => {
+        const st = STATUSES.find(s=>s.v===r.status) || STATUSES[0];
+        const rem = Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0);
+        return `
+          <div class="cmd-item" data-cmd="open_receipt" data-id="${r.id}">
+            <div class="cmd-item-left">
+              <div class="cmd-item-icon">${st.icon}</div>
+              <div>
+                <div class="cmd-item-title">${r.receiptNumber} — ${r.customer.name} <span style="font-weight:normal;color:var(--ink-secondary);">(${r.device.category} ${r.device.brand})</span></div>
+                <div class="cmd-item-sub">العطل: ${(r.faults||[]).join('، ')||'-'} • المتبقي: ${rem} ج.م</div>
+              </div>
+            </div>
+            <span class="status-badge ${st.cls}">${st.icon} ${r.status}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    if(invoices.length > 0){
+      html += `<div class="cmd-group-title">📄 الفواتير وعروض الأسعار (${invoices.length})</div>`;
+      html += invoices.map(i => `
+        <div class="cmd-item" data-cmd="open_invoice" data-id="${i.id}">
+          <div class="cmd-item-left">
+            <div class="cmd-item-icon">📄</div>
+            <div>
+              <div class="cmd-item-title">${i.invoiceNumber} — ${i.customerName}</div>
+              <div class="cmd-item-sub">الإجمالي: ${i.netTotal||i.total} ج.م • ${cleanDate(i.date)}</div>
+            </div>
+          </div>
+          <span class="cmd-item-badge">${i.isPaid ? '✅ مسددة' : '⏳ معلقة'}</span>
+        </div>
+      `).join('');
+    }
+
+    if(items.length > 0){
+      html += `<div class="cmd-group-title">📦 المخزن والأصناف (${items.length})</div>`;
+      html += items.map(item => `
+        <div class="cmd-item" data-cmd="open_item" data-name="${item.Name}">
+          <div class="cmd-item-left">
+            <div class="cmd-item-icon">📦</div>
+            <div>
+              <div class="cmd-item-title">${item.Name}</div>
+              <div class="cmd-item-sub">الكمية: ${item.Quantity||0} • السعر: ${item.SellPrice||item.Price||0} ج.م ${item.Barcode?'• باركود: '+item.Barcode:''}</div>
+            </div>
+          </div>
+          <span class="cmd-item-badge">${item.Category||'عام'}</span>
+        </div>
+      `).join('');
+    }
+
+    if(matchedSections.length > 0){
+      html += `<div class="cmd-group-title">🧭 شاشات وأقسام النظام (${matchedSections.length})</div>`;
+      html += matchedSections.map(([k, info]) => `
+        <div class="cmd-item" data-cmd="goto_sec" data-sec="${k}">
+          <div class="cmd-item-left">
+            <div class="cmd-item-icon">${info.icon}</div>
+            <div>
+              <div class="cmd-item-title">${info.label}</div>
+              <div class="cmd-item-sub">${info.desc}</div>
+            </div>
+          </div>
+          <span class="cmd-item-badge">انتقال ➔</span>
+        </div>
+      `).join('');
+    }
+
+    if(!html){
+      html = `<div style="text-align:center;padding:30px;color:var(--ink-secondary);">لم يتم العثور على نتائج مطابقة لـ "<b>${escapeHtml(q)}</b>"</div>`;
+    }
+
+    resultsBox.innerHTML = html;
+    attachCmdClicks();
+  }
+
+  function attachCmdClicks(){
+    resultsBox.querySelectorAll('[data-cmd]').forEach(item => {
+      item.onclick = ()=>{
+        const cmd = item.dataset.cmd;
+        overlay.remove();
+        if(cmd === 'act_new_receipt'){
+          state.currentSection = 'maintenance';
+          state.tab = 'new';
+          render();
+          startNewDraft();
+        } else if(cmd === 'act_pos'){
+          state.currentSection = 'pos';
+          render();
+        } else if(cmd === 'act_new_daily'){
+          state.currentSection = 'daily';
+          render();
+          openDailyEntryModal();
+        } else if(cmd === 'act_new_invoice'){
+          state.currentSection = 'invoices';
+          render();
+          openInvoiceModal();
+        } else if(cmd === 'act_new_item'){
+          state.currentSection = 'inventory';
+          render();
+          openItemModal();
+        } else if(cmd === 'goto_sec'){
+          state.currentSection = item.dataset.sec;
+          render();
+        } else if(cmd === 'open_receipt'){
+          const r = state.receipts.find(x => x.id === item.dataset.id);
+          if(r){
+            state.currentSection = 'maintenance';
+            render();
+            openViewModal(r);
+          }
+        } else if(cmd === 'open_invoice'){
+          const inv = state.invoices.find(x => x.id === item.dataset.id);
+          if(inv){
+            openInvoicePrint(inv, 'invoice');
+          }
+        } else if(cmd === 'open_item'){
+          state.currentSection = 'inventory';
+          render();
+        }
+      };
+    });
+  }
+
+  input.oninput = (e)=>performSearch(e.target.value);
+  performSearch(initialQuery);
+}
+
+// Global Keyboard Shortcut listener (Cmd+K / Ctrl+K)
+window.addEventListener('keydown', (e)=>{
+  if((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K' || e.key === 'ك')){
+    e.preventDefault();
+    openCommandPalette();
+  }
+});
+
+/* ---------------- Executive Command Center (Main Hub) ---------------- */
+function renderExecutiveCommandCenter(app){
+  normalizeUserSections(state.user);
+  const sections = state.user.sections || [];
+  const logoUrl = state.settings.logoUrl;
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Compute live operational telemetry
+  const todayIncome = (state.payments || []).filter(p => String(p.Date||'').slice(0,10) === today).reduce((s,p) => s + Number(p.Amount||0), 0);
+  const todayExpenses = (state.expenses || []).filter(e => String(e.Date||'').slice(0,10) === today).reduce((s,e) => s + Number(e.Amount||0), 0);
+  const netCashToday = todayIncome - todayExpenses;
+
+  const inProgressRepairs = (state.receipts || []).filter(r => r.status === 'قيد الفحص' || r.status === 'الصيانة').length;
+  const readyRepairs = (state.receipts || []).filter(r => r.status === 'مكتمل').length;
+  const deliveredToday = (state.receipts || []).filter(r => r.status === 'تم التسليم' && String(r.updatedAt||r.date||'').slice(0,10) === today).length;
+  const overdueRepairs = (state.receipts || []).filter(r => r.status === 'مكتمل' && (Date.now()-new Date(r.updatedAt||r.date).getTime())/86400000 > 7).length;
+
+  const todaySales = (state.sales || []).filter(s => String(s.Date||'').slice(0,10) === today);
+  const todaySalesTotal = todaySales.reduce((s,x) => s + Number(x.Total||0), 0);
+
+  const lowStockCount = (state.inventory || []).filter(i => Number(i.Quantity||0) <= 2).length;
+  const unpaidInvoices = (state.invoices || []).filter(i => !i.isPaid).length;
+
+  app.innerHTML = `
+    <div class="command-center-wrap">
+      
+      <!-- Top Hero Welcome Bar -->
+      <div class="hub-hero">
+        <div class="hub-hero-brand">
+          <div class="hub-hero-logo">
+            ${logoUrl ? `<img src="${logoUrl}" style="width:100%;height:100%;object-fit:contain;border-radius:12px;">` : '⚡'}
+          </div>
+          <div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <h1 class="hub-hero-title">${state.settings.shopName || 'ميكروERP'}</h1>
+              <span class="status-badge st-check" style="font-size:10.5px;">NextGen Pro 2026</span>
+            </div>
+            <div class="hub-hero-subtitle">
+              مرحبًا بك، <b>${state.user.name}</b> (${state.user.role==='admin'?'👑 المدير العام':'👤 موظف'}) • ${new Date().toLocaleDateString('ar-EG', {weekday:'long', year:'numeric', month:'long', day:'numeric'})}
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <button class="universal-search-btn" id="openCmdSearchBtn">
+            <span>🔍</span>
+            <span>البحث السريع في النظام...</span>
+            <span class="kbd-shortcut">⌘K</span>
+          </button>
+          <div id="networkSyncPill" class="sync-pill online" onclick="syncOfflineQueue()">🟢 متصل</div>
+          <button class="theme-toggle-btn" id="themeToggleHub">${state.theme==='dark'?'☀️ فاتح':'🌙 ليلي'}</button>
+          <button class="btn btn-ghost btn-sm" id="logoutHubBtn" style="color:var(--red);">🚪 خروج</button>
+        </div>
+      </div>
+
+      <!-- Quick Action Power Dock -->
+      <div class="quick-dock">
+        <div class="quick-dock-btn" id="quickActNewReceipt">
+          <div class="quick-dock-icon" style="background:var(--blue-bg);color:var(--blue-text);">🛠️</div>
+          <div><div class="quick-dock-title">استلام صيانة سريع</div><div class="quick-dock-desc">فتح إيصال وفحص جهاز</div></div>
+        </div>
+        <div class="quick-dock-btn" id="quickActPos">
+          <div class="quick-dock-icon" style="background:var(--purple-bg);color:var(--purple-text);">🧾</div>
+          <div><div class="quick-dock-title">نقطة البيع (POS)</div><div class="quick-dock-desc">شاشة الكاشير والباركود</div></div>
+        </div>
+        <div class="quick-dock-btn" id="quickActDaily">
+          <div class="quick-dock-icon" style="background:var(--green-bg);color:var(--green-text);">💸</div>
+          <div><div class="quick-dock-title">حركة نقدية باليومية</div><div class="quick-dock-desc">تسجيل وارد / منصرف</div></div>
+        </div>
+        <div class="quick-dock-btn" id="quickActInvoice">
+          <div class="quick-dock-icon" style="background:var(--cyan-bg);color:var(--cyan-text);">📄</div>
+          <div><div class="quick-dock-title">فاتورة أو بيان سعر</div><div class="quick-dock-desc">إصدار وعرض أسعار</div></div>
+        </div>
+        <div class="quick-dock-btn" id="quickActItem">
+          <div class="quick-dock-icon" style="background:var(--amber-bg);color:var(--amber-text);">📦</div>
+          <div><div class="quick-dock-title">إضافة صنف بالمخزن</div><div class="quick-dock-desc">تسجيل منتج جديد</div></div>
+        </div>
+      </div>
+
+      <!-- Live Operational Telemetry Bar -->
+      <div class="telemetry-grid">
+        <div class="telemetry-card" style="border-right: 4px solid var(--green);">
+          <div class="telemetry-card-top">
+            <span class="telemetry-card-lbl">سيولة الخزينة اليوم</span>
+            <div class="telemetry-card-icon" style="background:var(--green-bg);color:var(--green-text);">💵</div>
+          </div>
+          <div class="telemetry-card-val mono" style="color:${netCashToday>=0?'var(--green-text)':'var(--red-text)'};">
+            ${netCashToday>=0?'+':''}${netCashToday.toLocaleString()} <span style="font-size:13px;font-weight:700;">ج.م</span>
+          </div>
+          <div class="telemetry-card-sub">
+            <span>وارد: <b class="mono" style="color:var(--green-text);">${todayIncome.toLocaleString()}</b></span> • 
+            <span>منصرف: <b class="mono" style="color:var(--red-text);">${todayExpenses.toLocaleString()}</b></span>
+          </div>
+        </div>
+
+        <div class="telemetry-card" style="border-right: 4px solid var(--blue);">
+          <div class="telemetry-card-top">
+            <span class="telemetry-card-lbl">خط أنابيب الصيانة</span>
+            <div class="telemetry-card-icon" style="background:var(--blue-bg);color:var(--blue-text);">🛠️</div>
+          </div>
+          <div class="telemetry-card-val mono" style="color:var(--blue-text);">
+            ${inProgressRepairs} <span style="font-size:13px;font-weight:700;">جهاز بالورشة</span>
+          </div>
+          <div class="telemetry-card-sub">
+            <span style="color:var(--green-text);">جاهز: <b class="mono">${readyRepairs}</b></span> • 
+            <span style="color:var(--purple-text);">تم تسليمه اليوم: <b class="mono">${deliveredToday}</b></span>
+            ${overdueRepairs>0 ? `• <span style="color:var(--red-text);">متروك: <b class="mono">${overdueRepairs}</b></span>`:''}
+          </div>
+        </div>
+
+        <div class="telemetry-card" style="border-right: 4px solid var(--purple);">
+          <div class="telemetry-card-top">
+            <span class="telemetry-card-lbl">مبيعات نقطة البيع اليوم</span>
+            <div class="telemetry-card-icon" style="background:var(--purple-bg);color:var(--purple-text);">🧾</div>
+          </div>
+          <div class="telemetry-card-val mono" style="color:var(--purple-text);">
+            ${todaySalesTotal.toLocaleString()} <span style="font-size:13px;font-weight:700;">ج.م</span>
+          </div>
+          <div class="telemetry-card-sub">
+            <span>عدد العمليات: <b class="mono">${todaySales.length}</b> عملية بيع</span>
+          </div>
+        </div>
+
+        <div class="telemetry-card" style="border-right: 4px solid ${lowStockCount>0?'var(--red)':'var(--cyan)'};">
+          <div class="telemetry-card-top">
+            <span class="telemetry-card-lbl">المخزن والتنبيهات</span>
+            <div class="telemetry-card-icon" style="background:${lowStockCount>0?'var(--red-bg)':'var(--cyan-bg)'};color:${lowStockCount>0?'var(--red-text)':'var(--cyan-text)'};">📦</div>
+          </div>
+          <div class="telemetry-card-val mono" style="color:${lowStockCount>0?'var(--red-text)':'var(--ink)'};">
+            ${lowStockCount>0 ? `${lowStockCount} أصناف قاربت النفاذ` : `${(state.inventory||[]).length} صنف متوفر`}
+          </div>
+          <div class="telemetry-card-sub">
+            <span>فواتير معلقة: <b class="mono">${unpaidInvoices}</b></span> • 
+            <span>إجمالي الأصناف: <b class="mono">${(state.inventory||[]).length}</b></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Smart Section Cards Grid -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h2 style="font-size:17px;font-weight:900;margin:0;display:flex;align-items:center;gap:8px;">
+          <span>🖥️ أقسام وشاشات النظام الرئيسية</span>
+          <span style="font-size:12px;font-weight:normal;color:var(--ink-secondary);">(${sections.length} شاشة متاحة لحسابك)</span>
+        </h2>
+      </div>
+
+      <div class="smart-section-grid">
+        ${sections.length===0 ? '<div class="empty">لا توجد شاشات مخصصة لهذا الحساب. راجع المسؤول.</div>' : sections.map(s => {
+          const info = SECTION_INFO[s] || { label: s, icon: '📁', desc: '' };
+          let microStat = '';
+          let accentBorder = '';
+
+          if(s === 'daily'){
+            microStat = `صافي اليومية: ${netCashToday>=0?'+':''}${netCashToday.toLocaleString()} ج.م`;
+            accentBorder = 'border:2px solid var(--primary);';
+          } else if(s === 'maintenance'){
+            microStat = `${inProgressRepairs} أجهزة قيد العمل • ${readyRepairs} جاهز`;
+          } else if(s === 'invoices'){
+            microStat = `${(state.invoices||[]).length} فواتير • ${unpaidInvoices} معلقة`;
+          } else if(s === 'pos'){
+            microStat = `مبيعات اليوم: ${todaySalesTotal.toLocaleString()} ج.م`;
+          } else if(s === 'inventory'){
+            microStat = `${(state.inventory||[]).length} صنف مسجل بالمخزن`;
+          } else if(s === 'cameras'){
+            microStat = `${(state.quotations||[]).length} عرض سعر مسجل`;
+          } else if(s === 'finance'){
+            microStat = `${(state.accounts||[]).length} حساب بالشجرة المحاسبية`;
+          } else if(s === 'users'){
+            microStat = `${(state.users||[]).length} مستخدم مسجل بالنظام`;
+          }
+
+          return `
+            <div class="smart-sec-card" data-sec="${s}" style="${accentBorder}">
+              <div>
+                <div class="smart-sec-head">
+                  <div class="smart-sec-icon-box">${info.icon}</div>
+                  <div>
+                    <div class="smart-sec-title">${info.label}</div>
+                    <div class="smart-sec-desc">${info.desc}</div>
+                  </div>
+                </div>
+              </div>
+              <div class="smart-sec-meta">
+                <span class="smart-sec-badge">${microStat}</span>
+                <span class="smart-sec-arrow">دخول للقسم ➔</span>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+
+    </div>
+  `;
+
+  // Attach Handlers
+  updateSyncStatusPill();
+  
+  document.getElementById('openCmdSearchBtn').onclick = ()=>openCommandPalette();
+  
+  document.getElementById('themeToggleHub').onclick = ()=>{
     applyTheme(state.theme==='dark'?'light':'dark');
-    renderSectionPicker(app);
+    renderExecutiveCommandCenter(app);
   };
+
+  document.getElementById('logoutHubBtn').onclick = logout;
+
+  // Smart Section Card Clicks
+  app.querySelectorAll('[data-sec]').forEach(card => {
+    card.onclick = ()=>{
+      state.currentSection = card.dataset.sec;
+      render();
+    };
+  });
+
+  // Quick Action Dock Clicks
+  document.getElementById('quickActNewReceipt').onclick = ()=>{
+    state.currentSection = 'maintenance';
+    state.tab = 'new';
+    render();
+    startNewDraft();
+  };
+  document.getElementById('quickActPos').onclick = ()=>{
+    state.currentSection = 'pos';
+    render();
+  };
+  document.getElementById('quickActDaily').onclick = ()=>{
+    state.currentSection = 'daily';
+    render();
+    openDailyEntryModal();
+  };
+  document.getElementById('quickActInvoice').onclick = ()=>{
+    state.currentSection = 'invoices';
+    render();
+    openInvoiceModal();
+  };
+  document.getElementById('quickActItem').onclick = ()=>{
+    state.currentSection = 'inventory';
+    render();
+    openItemModal();
+  };
+}
+
+function renderSectionPicker(app){
+  renderExecutiveCommandCenter(app);
 }
 
 function brandHtml(subtitle){
@@ -2218,7 +3104,7 @@ function brandHtml(subtitle){
       ${logoUrl ? `<img src="${logoUrl}" style="width:100%;height:100%;object-fit:contain;border-radius:8px;">` : `⚡`}
     </div>
     <div class="brand-text">
-      <h1>${state.settings.shopName}</h1>
+      <h1>${state.settings.shopName || 'ميكروERP'}</h1>
       <span>${subtitle}</span>
     </div>
   </div>`;
@@ -2227,8 +3113,8 @@ function brandHtml(subtitle){
 function sectionSwitcherHtml(){
   const sections = state.user.sections || [];
   if(sections.length<=1) return '';
-  return `<div class="nav-item" id="switchSectionBtn" style="color:#38bdf8;border:1px dashed rgba(56,189,248,0.3);margin:8px 8px 3px;">
-    <span class="nav-item-icon">↩</span><span>الرجوع للأقسام</span>
+  return `<div class="nav-item" id="switchSectionBtn" style="color:#38bdf8;border:1px dashed rgba(56,189,248,0.35);margin:8px 10px 4px;background:rgba(56,189,248,0.06);">
+    <span class="nav-item-icon">↩</span><span>الرجوع للمركز الرئيسي</span>
   </div>`;
 }
 
@@ -2238,12 +3124,12 @@ function sidebarFootHtml(){
       <div class="user-avatar">${(state.user.name||'U')[0]}</div>
       <div class="user-info">
         <div class="user-name">${state.user.name}</div>
-        <div class="role-badge">${state.user.role === 'admin' ? 'مدير عام' : 'مستخدم'}</div>
+        <div class="role-badge">${state.user.role === 'admin' ? '👑 مدير عام' : '👤 مستخدم'}</div>
       </div>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
-      <button class="theme-toggle-btn" id="sidebarThemeToggle" style="font-size:10.5px;padding:4px 8px;background:rgba(255,255,255,0.08);color:#fff;border:none;">${state.theme==='dark'?'☀️ فاتح':'🌙 ليلي'}</button>
-      <span id="logoutBtn" style="cursor:pointer;color:#f87171;font-size:11.5px;font-weight:600;">🚪 خروج</span>
+      <button class="theme-toggle-btn" id="sidebarThemeToggle" style="font-size:10.5px;padding:4px 9px;background:rgba(255,255,255,0.08);color:#fff;border:none;">${state.theme==='dark'?'☀️ فاتح':'🌙 ليلي'}</button>
+      <span id="logoutBtn" style="cursor:pointer;color:#f87171;font-size:11.5px;font-weight:700;">🚪 خروج</span>
     </div>
   </div>`;
 }

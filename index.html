@@ -2337,8 +2337,8 @@ async function loginRemote(name, password){
   throw new Error('اسم المستخدم أو كلمة المرور غير صحيحة');
 }
 
-/* ---------------- Static Config ---------------- */
-const BRANDS = {
+/* ---------------- Static Config & Defaults ---------------- */
+const DEFAULT_BRANDS = {
   'لابتوب': ['Apple','HP','Dell','Lenovo','Toshiba','Asus','Acer','Huawei','MSI','أخرى'],
   'موبايل': ['iPhone','Samsung','Oppo','Xiaomi','Redmi','Realme','Infinix','Huawei','أخرى'],
   'تابلت': ['Apple','Samsung','Lenovo','Huawei','أخرى'],
@@ -2349,7 +2349,11 @@ const BRANDS = {
   'اكسسوار': ['أخرى'],
   'أخرى': ['أخرى']
 };
-const COMMON_FAULTS = ['باور / لا يعمل','شاشة / كسر','شحن / سوكت','ماء / سوائل','سوفتوير / ويندوز','كاميرا / عدسة','بطارية','سماعة / مايك','لوحة مفاتيح','فيروسات','بطء في الأداء','تسخين / مروحة','داتا / هارد ديسك','أخرى'];
+const BRANDS = DEFAULT_BRANDS;
+
+const DEFAULT_COMMON_FAULTS = ['باور / لا يعمل','شاشة / كسر','شحن / سوكت','ماء / سوائل','سوفتوير / ويندوز','كاميرا / عدسة','بطارية','سماعة / مايك','لوحة مفاتيح','فيروسات','بطء في الأداء','تسخين / مروحة','داتا / هارد ديسك','أخرى'];
+const COMMON_FAULTS = DEFAULT_COMMON_FAULTS;
+
 const STATUSES = [
   {v:'قيد الفحص', cls:'st-check', icon:'🔍', desc:'جاري الفحص والتشخيص'},
   {v:'الصيانة', cls:'st-repair', icon:'🛠️', desc:'قيد الإصلاح الفعلي'},
@@ -2359,7 +2363,43 @@ const STATUSES = [
   {v:'رفض العميل', cls:'st-rejected', icon:'❌', desc:'رفض العميل التكلفة/الإصلاح'}
 ];
 const EXPENSE_CATEGORIES = ['إيجار','كهرباء ومياه','بوفيه ونثريات','أدوات وصيانة مقر','شحن وتوصيل','رواتب وسلفيات','دعاية وإعلانات','أخرى'];
-const TERMS = `1) فترة الفحص: يتم فحص الجهاز وتسعير التكلفة خلال مدة أقصاها 48 ساعة من الاستلام، ولا يتم الإصلاح النهائي إلا بعد موافقة العميل.  2) استلام الأجهزة: الشركة غير مسؤولة عن أي جهاز متروك أكثر من 30 يوماً من إشعار العميل بالانتهاء.  3) الضمان: يسري على قطع الغيار المبدلة والخدمة لمدة محددة حسب نوع الإصلاح، ولا يشمل سوء الاستخدام أو السوائل أو الكسر.  4) البيانات: الشركة غير مسؤولة عن فقدان البيانات، يرجى أخذ نسخة احتياطية مسبقاً.  5) لا يُسلم الجهاز إلا بموجب هذا الإيصال الأصلي أو إثبات الهوية.`;
+
+const DEFAULT_TERMS = `1) فترة الفحص: يتم فحص الجهاز وتسعير التكلفة خلال مدة أقصاها 48 ساعة من الاستلام، ولا يتم الإصلاح النهائي إلا بعد موافقة العميل.
+2) استلام الأجهزة: الشركة غير مسؤولة عن أي جهاز متروك أكثر من 30 يوماً من إشعار العميل بالانتهاء.
+3) الضمان: يسري على قطع الغيار المبدلة والخدمة لمدة محددة حسب نوع الإصلاح، ولا يشمل سوء الاستخدام أو السوائل أو الكسر.
+4) البيانات: الشركة غير مسؤولة عن فقدان البيانات، يرجى أخذ نسخة احتياطية مسبقاً.
+5) لا يُسلم الجهاز إلا بموجب هذا الإيصال الأصلي أو إثبات الهوية.`;
+const TERMS = DEFAULT_TERMS;
+
+const DEFAULT_INVOICE_TERMS = `• البضاعة المباعة تخضع للضمان المحدد بالفاتورة والشركة غير مسؤولة عن سوء الاستخدام أو التلف الناتج عن تذبذب التيار الكهربائي.
+• لا يُقبل الاسترجاع أو الاستبدال إلا بوجود أصل الفاتورة وخلال المدة القانونية المقررة.`;
+
+const DEFAULT_QUOTE_TERMS = `• هذا البيان يعتبر عرض أسعار رسمي صالح لمدة 7 أيام من تاريخ إصداره.
+• الأسعار والكميات الموضحة خاضعة للتوافر والتأكيد النهائي عند بدء التوريد والتنفيذ.`;
+
+const DEFAULT_WA_TEMPLATES = {
+  check: `مرحبًا {customer_name} 👋\nتم استلام جهازكم ({device}) وهو قيد الفحص والتشخيص الفني حالياً 🔍\nرقم الإيصال: {receipt_no}\n🔗 تتبع حالة جهازك: {track_url}\n{shop_name}`,
+  repair: `مرحبًا {customer_name} 👋\nنحيطكم علماً بأن جهازكم ({device}) قيد الصيانة والإصلاح حالياً في {shop_name} 🛠️\nرقم الإيصال: {receipt_no}\n🔗 تتبع حالة جهازك: {track_url}`,
+  done: `مرحبًا {customer_name} 👋\nنود إبلاغكم بأنه تم الانتهاء من صيانة جهازكم ({device}) بنجاح وجاهز للاستلام الآن في {shop_name} ✅\n\n📌 رقم الإيصال: {receipt_no}\n💵 المبلغ المتبقي المطلوب: {remaining} ج.م\n🔗 تتبع جهازك مباشرة: {track_url}\n\nشكراً لثقتكم بنا!`,
+  delivered: `مرحبًا {customer_name} 👋\nتم تسليم جهازكم ({device}) بنجاح بموجب الإيصال رقم {receipt_no} 🤝\nيسري الضمان على قطع الغيار المبدلة والخدمة وفقاً للشروط المحددة بالإيصال.\nسعدنا بخدمتكم في {shop_name}، شكراً لثقتكم بنا! ✨`,
+  overdue: `مرحبًا {customer_name} 👋\nنود تذكيركم بوجود جهازكم ({device}) جاهزاً للاستلام لدينا في {shop_name} بموجب الإيصال رقم {receipt_no}.\nالمتبقي المطلوب: {remaining} ج.م.\nيرجى التفضل بالاستلام خلال أوقات العمل الرسمية.`,
+  unrepairable: `مرحبًا {customer_name} 👋\nبخصوص جهازكم ({device}) بموجب الإيصال رقم {receipt_no}، نعتذر منك حيث تعذر الإصلاح لعدم توفر قطع الغيار أو طبيعة العطل. يمكنك التفضل لاستلام الجهاز في أي وقت من {shop_name}.`,
+  rejected: `مرحبًا {customer_name} 👋\nبناءً على طلبكم، تم إلغاء الصيانة لجهازكم ({device}) بموجب الإيصال رقم {receipt_no} والجهاز جاهز للاستلام في {shop_name}.`
+};
+
+/* Settings Getter Helpers */
+function getBrands(){ return (state.settings && state.settings.brands) || DEFAULT_BRANDS; }
+function getCommonFaults(){ return (state.settings && state.settings.commonFaults) || DEFAULT_COMMON_FAULTS; }
+function getTerms(){ return (state.settings && state.settings.terms) || DEFAULT_TERMS; }
+function getInvoiceTerms(){ return (state.settings && state.settings.invoiceTerms) || DEFAULT_INVOICE_TERMS; }
+function getQuoteTerms(){ return (state.settings && state.settings.quoteTerms) || DEFAULT_QUOTE_TERMS; }
+function getWaTemplate(key){
+  if(state.settings && state.settings.waTemplates && state.settings.waTemplates[key]){
+    return state.settings.waTemplates[key];
+  }
+  return DEFAULT_WA_TEMPLATES[key] || '';
+}
+
 function cleanDate(x){ return x ? toEngDigits(String(x).slice(0,10)) : ''; }
 const WA_ICON = `<svg class="wa-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12c0 1.85.5 3.58 1.35 5.07L2 22l5.07-1.35C8.55 21.5 10.27 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm0 18c-1.5 0-2.9-.41-4.1-1.13l-.29-.17-3.02.8.8-3.02-.17-.29A7.94 7.94 0 0 1 4 12c0-4.41 3.59-8 8-8s8 3.59 8 8-3.59 8-8 8z"/></svg>`;
 
@@ -2367,6 +2407,7 @@ const WA_ICON = `<svg class="wa-icon" viewBox="0 0 24 24" fill="currentColor"><p
 let state = {
   user: null,
   tab: 'dashboard',
+  settingsTab: 'appearance',
   users: getCache('users', DEFAULT_USERS),
   receipts: getCache('receipts', []),
   customers: getCache('customers', []),
@@ -2378,7 +2419,23 @@ let state = {
   formStep: 0,
   draft: null,
   archiveFilter: {q:'', status:'', tech:'', group:'all'},
-  settings: getCache('settings', {shopName: 'صيانة ميكروتك', logoUrl: ''}),
+  settings: getCache('settings', {
+    shopName: 'صيانة ميكروتك',
+    logoUrl: '',
+    shopPhone: '',
+    shopWhatsapp: '',
+    shopAddress: '',
+    shopTaxNumber: '',
+    printFooterText: 'شكراً لتعاملكم معنا • نسعد دائماً بخدمتكم',
+    primaryColor: '#4f46e5',
+    fontSize: 'normal',
+    brands: DEFAULT_BRANDS,
+    commonFaults: DEFAULT_COMMON_FAULTS,
+    terms: DEFAULT_TERMS,
+    invoiceTerms: DEFAULT_INVOICE_TERMS,
+    quoteTerms: DEFAULT_QUOTE_TERMS,
+    waTemplates: DEFAULT_WA_TEMPLATES
+  }),
   payments: getCache('payments', []),
   inventory: getCache('inventory', []),
   sales: getCache('sales', []),
@@ -2392,12 +2449,39 @@ let state = {
   theme: localStorage.getItem('microerp_theme') || 'light'
 };
 
-function applyTheme(t){
-  state.theme = t;
+function applyThemeAndAppearance(){
+  const t = state.theme || 'light';
   document.documentElement.setAttribute('data-theme', t);
   localStorage.setItem('microerp_theme', t);
+
+  const primary = (state.settings && state.settings.primaryColor) || '#4f46e5';
+  document.documentElement.style.setProperty('--primary', primary);
+  document.documentElement.style.setProperty('--primary-hover', adjustColorBrightness(primary, -15));
+
+  const fSize = (state.settings && state.settings.fontSize) || 'normal';
+  if(fSize === 'compact'){
+    document.documentElement.style.fontSize = '13px';
+  } else if(fSize === 'large'){
+    document.documentElement.style.fontSize = '15.5px';
+  } else {
+    document.documentElement.style.fontSize = '14px';
+  }
 }
-applyTheme(state.theme);
+
+function adjustColorBrightness(hex, percent) {
+  let num = parseInt(hex.replace('#',''), 16),
+      amt = Math.round(2.55 * percent),
+      R = (num >> 16) + amt,
+      G = (num >> 8 & 0x00FF) + amt,
+      B = (num & 0x0000FF) + amt;
+  return '#' + (0x1000000 + (R<255?R<1?0:R:255)*0x10000 + (G<255?G<1?0:G:255)*0x100 + (B<255?B<1?0:B:255)).toString(16).slice(1);
+}
+
+function applyTheme(t){
+  state.theme = t;
+  applyThemeAndAppearance();
+}
+applyThemeAndAppearance();
 
 function newDraft(){
   const today = new Date();
@@ -2576,12 +2660,13 @@ async function refreshExpenses(){ state.expenses = await loadExpenses(); }
 
 function normalizeUserSections(u){
   if(!u) return;
-  const allSections = ['daily', 'maintenance', 'invoices', 'pos', 'inventory', 'cameras', 'finance', 'users'];
-  if(u.role === 'admin' && (!u.sections || !u.sections.length)){
+  const allSections = ['daily', 'maintenance', 'invoices', 'pos', 'inventory', 'cameras', 'finance', 'users', 'settings'];
+  if(u.role === 'admin'){
     u.sections = allSections;
   } else {
     let secs = Array.isArray(u.sections) ? u.sections : String(u.sections||'').split(',').map(s=>s.trim()).filter(Boolean);
     if(!secs.length) secs = allSections;
+    if(!secs.includes('settings')) secs.push('settings');
     u.sections = secs;
   }
 }
@@ -2602,6 +2687,7 @@ function render(){
   if(state.currentSection==='cameras') return renderCamerasApp(app);
   if(state.currentSection==='finance') return renderFinanceSectionApp(app);
   if(state.currentSection==='users') return renderUsersSectionApp(app);
+  if(state.currentSection==='settings') return renderSettingsSectionApp(app);
   renderSectionPicker(app);
 }
 
@@ -2613,7 +2699,8 @@ const SECTION_INFO = {
   inventory: {label:'المخزن العام', icon:'📦', desc:'الأصناف، المشتريات، الموردين، والأرقام التسلسلية'},
   cameras: {label:'كاميرات المراقبة', icon:'📷', desc:'كتالوج الكاميرات وعروض أسعار التركيب'},
   finance: {label:'القسم المالي والمصروفات', icon:'💰', desc:'المقبوضات، المصروفات، شجرة الحسابات، والمكافآت'},
-  users: {label:'إدارة المستخدمين والصلاحيات', icon:'👥', desc:'تخصيص الشاشات والأقسام لكل مستخدم وإدارة كلمات المرور'}
+  users: {label:'إدارة المستخدمين والصلاحيات', icon:'👥', desc:'تخصيص الشاشات والأقسام لكل مستخدم وإدارة كلمات المرور'},
+  settings: {label:'الإعدادات وتخصيص النظام', icon:'⚙️', desc:'المظهر، الثيمات، ألوان النظام، تصنيفات وماركات الأجهزة، الأعطال، رسائل واتساب، وبنود الضمان'}
 };
 const INVENTORY_CATEGORIES = ['صيانة','كاميرات','كمبيوتر','إكسسوار'];
 
@@ -2677,6 +2764,10 @@ function openCommandPalette(initialQuery=''){
         <div class="cmd-item" data-cmd="act_new_item">
           <div class="cmd-item-left"><div class="cmd-item-icon">📦</div><div><div class="cmd-item-title">إضافة صنف جديد بالمخزن</div><div class="cmd-item-sub">تسجيل منتج أو قطعة غيار بالباركود</div></div></div>
           <span class="cmd-item-badge">مخزن</span>
+        </div>
+        <div class="cmd-item" data-cmd="act_settings">
+          <div class="cmd-item-left"><div class="cmd-item-icon">⚙️</div><div><div class="cmd-item-title">الإعدادات وتخصيص النظام</div><div class="cmd-item-sub">المظهر، الثيمات، تصنيفات الأجهزة، رسائل واتساب، وبنود الضمان</div></div></div>
+          <span class="cmd-item-badge">إعدادات</span>
         </div>
       `;
       attachCmdClicks();
@@ -2834,6 +2925,9 @@ function openCommandPalette(initialQuery=''){
         } else if(cmd === 'open_item'){
           state.currentSection = 'inventory';
           render();
+        } else if(cmd === 'act_settings'){
+          state.currentSection = 'settings';
+          render();
         }
       };
     });
@@ -2900,6 +2994,7 @@ function renderExecutiveCommandCenter(app){
             <span>البحث السريع في النظام...</span>
             <span class="kbd-shortcut">⌘K</span>
           </button>
+          <button class="btn btn-ghost btn-sm" id="topHeroSettingsBtn" style="font-weight:800;border-color:var(--primary);color:var(--primary);">⚙️ الإعدادات</button>
           <div id="networkSyncPill" class="sync-pill online" onclick="syncOfflineQueue()">🟢 متصل</div>
           <button class="theme-toggle-btn" id="themeToggleHub">${state.theme==='dark'?'☀️ فاتح':'🌙 ليلي'}</button>
           <button class="btn btn-ghost btn-sm" id="logoutHubBtn" style="color:var(--red);">🚪 خروج</button>
@@ -2927,6 +3022,10 @@ function renderExecutiveCommandCenter(app){
         <div class="quick-dock-btn" id="quickActItem">
           <div class="quick-dock-icon" style="background:var(--amber-bg);color:var(--amber-text);">📦</div>
           <div><div class="quick-dock-title">إضافة صنف بالمخزن</div><div class="quick-dock-desc">تسجيل منتج جديد</div></div>
+        </div>
+        <div class="quick-dock-btn" id="quickActSettings">
+          <div class="quick-dock-icon" style="background:var(--paper3);color:var(--primary);">⚙️</div>
+          <div><div class="quick-dock-title">مركز الإعدادات</div><div class="quick-dock-desc">المظهر، الشروط، واتساب</div></div>
         </div>
       </div>
 
@@ -3020,6 +3119,9 @@ function renderExecutiveCommandCenter(app){
             microStat = `${(state.accounts||[]).length} حساب بالشجرة المحاسبية`;
           } else if(s === 'users'){
             microStat = `${(state.users||[]).length} مستخدم مسجل بالنظام`;
+          } else if(s === 'settings'){
+            microStat = `المظهر، الثيمات، واتساب، والضمان`;
+            accentBorder = 'border:2px solid var(--purple);';
           }
 
           return `
@@ -3050,6 +3152,9 @@ function renderExecutiveCommandCenter(app){
   
   document.getElementById('openCmdSearchBtn').onclick = ()=>openCommandPalette();
   
+  const topHeroSet = document.getElementById('topHeroSettingsBtn');
+  if(topHeroSet) topHeroSet.onclick = ()=>{ state.currentSection = 'settings'; render(); };
+
   document.getElementById('themeToggleHub').onclick = ()=>{
     applyTheme(state.theme==='dark'?'light':'dark');
     renderExecutiveCommandCenter(app);
@@ -3090,6 +3195,11 @@ function renderExecutiveCommandCenter(app){
     state.currentSection = 'inventory';
     render();
     openItemModal();
+  };
+  const qSet = document.getElementById('quickActSettings');
+  if(qSet) qSet.onclick = ()=>{
+    state.currentSection = 'settings';
+    render();
   };
 }
 
@@ -3486,7 +3596,8 @@ function stepCustomer(body,d){
 }
 
 function stepDevice(body,d){
-  const cats = Object.keys(BRANDS);
+  const brandsObj = getBrands();
+  const cats = Object.keys(brandsObj);
   body.innerHTML = `
     <div class="card">
       <h3>💻 بيانات الجهاز المستلم</h3>
@@ -3502,9 +3613,10 @@ function stepDevice(body,d){
     </div>
   `;
   function fillBrands(){
+    const currentBrandsObj = getBrands();
     const cat = document.getElementById('devCat').value;
     const sel = document.getElementById('devBrand');
-    sel.innerHTML = (BRANDS[cat]||['أخرى']).map(b=>`<option ${b===d.device.brand?'selected':''}>${b}</option>`).join('');
+    sel.innerHTML = (currentBrandsObj[cat]||['أخرى']).map(b=>`<option ${b===d.device.brand?'selected':''}>${b}</option>`).join('');
     document.getElementById('brandOtherWrap').style.display = sel.value==='أخرى' ? '' : 'none';
   }
   fillBrands();
@@ -3525,12 +3637,13 @@ function stepDevice(body,d){
 }
 
 function stepFaults(body,d){
+  const faultsList = getCommonFaults();
   body.innerHTML = `
     <div class="card">
       <h3>⚠️ الأعطال والتشخيص الأولي</h3>
       <label>الأعطال الشائعة (اضغط لتحديد العطل)</label>
       <div class="chip-group" id="faultChips" style="margin-bottom:16px;">
-        ${COMMON_FAULTS.map(f=>`<div class="chip ${d.faults.includes(f)?'sel':''}" data-f="${f}">${f}</div>`).join('')}
+        ${faultsList.map(f=>`<div class="chip ${d.faults.includes(f)?'sel':''}" data-f="${f}">${f}</div>`).join('')}
       </div>
       <div class="field"><label>تفاصيل العطل وملاحظات الفحص</label>
         <textarea id="faultNotes" placeholder="اكتب شكوى العميل بالتفصيل أو أي ملاحظات ظاهرية على الجهاز...">${d.faultNotes}</textarea>
@@ -3930,32 +4043,37 @@ function normalizePhoneForWa(phone){
 
 function getStatusCustomMessage(r, status){
   const remaining = Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0);
-  const shop = state.settings.shopName || 'مركز الصيانة';
-  const device = `${r.device.category} ${r.device.brand==='أخرى'?r.device.brandOther:r.device.brand} ${r.device.model||''}`.trim();
+  const shop = (state.settings && state.settings.shopName) || 'مركز الصيانة';
+  const device = `${r.device.category} - ${r.device.brand==='أخرى'?r.device.brandOther:r.device.brand} ${r.device.model||''}`.trim();
   const trackUrl = `${window.location.origin}${window.location.pathname}?track=${r.receiptNumber}`;
 
-  if(status === 'مكتمل'){
-    return `مرحبًا ${r.customer.name} 👋\nنود إبلاغكم بأنه تم الانتهاء من صيانة جهازكم (${device}) بنجاح وجاهز للاستلام الآن في ${shop} ✅\n\n📌 رقم الإيصال: ${r.receiptNumber}\n💵 المبلغ المتبقي المطلوب: ${remaining} ج.م\n🔗 تتبع جهازك مباشرة: ${trackUrl}\n\nشكراً لثقتكم بنا!`;
-  }
-  if(status === 'تم التسليم'){
-    return `مرحبًا ${r.customer.name} 👋\nتم تسليم جهازكم (${device}) بنجاح بموجب الإيصال رقم ${r.receiptNumber} 🤝\nيسري الضمان على قطع الغيار المبدلة والخدمة وفقاً للشروط المحددة بالإيصال.\nسعدنا بخدمتكم في ${shop}، شكراً لثقتكم بنا! ✨`;
-  }
-  if(status === 'الصيانة'){
-    return `مرحبًا ${r.customer.name} 👋\nنحيطكم علماً بأن جهازكم (${device}) قيد الصيانة والإصلاح حالياً في ${shop} 🛠️\nرقم الإيصال: ${r.receiptNumber}\n🔗 تتبع حالة جهازك: ${trackUrl}`;
-  }
-  if(status === 'قيد الفحص'){
-    return `مرحبًا ${r.customer.name} 👋\nتم استلام جهازكم (${device}) وهو قيد الفحص والتشخيص الفني حالياً 🔍\nرقم الإيصال: ${r.receiptNumber}\n🔗 تتبع حالة جهازك: ${trackUrl}`;
-  }
-  if(status === 'overdue_reminder'){
-    return `مرحبًا ${r.customer.name} 👋\nنود تذكيركم بوجود جهازكم (${device}) جاهزاً للاستلام لدينا في ${shop} بموجب الإيصال رقم ${r.receiptNumber}.\nالمتبقي: ${remaining} ج.م.\nيرجى التفضل بالاستلام خلال أوقات العمل الرسمية.`;
-  }
-  if(status === 'تعذرت الصيانة'){
-    return `مرحبًا ${r.customer.name} 👋\nبخصوص جهازكم (${device}) بموجب الإيصال رقم ${r.receiptNumber}، نعتذر منك حيث تعذر الإصلاح لعدم توفر قطع الغيار أو طبيعة العطل. يمكنك التفضل لاستلام الجهاز في أي وقت من ${shop}.`;
-  }
-  if(status === 'رفض العميل'){
-    return `مرحبًا ${r.customer.name} 👋\nبناءً على طلبكم، تم إلغاء الصيانة لجهازكم (${device}) بموجب الإيصال رقم ${r.receiptNumber} والجهاز جاهز للاستلام في ${shop}.`;
-  }
-  return `مرحبًا ${r.customer.name}، بخصوص جهازكم بموجب الإيصال رقم ${r.receiptNumber}\nالحالة الحالية: ${r.status}\nالمتبقي: ${remaining} ج.م\n${shop}`;
+  let key = 'check';
+  if(status === 'مكتمل') key = 'done';
+  else if(status === 'تم التسليم') key = 'delivered';
+  else if(status === 'الصيانة') key = 'repair';
+  else if(status === 'قيد الفحص') key = 'check';
+  else if(status === 'overdue_reminder') key = 'overdue';
+  else if(status === 'تعذرت الصيانة') key = 'unrepairable';
+  else if(status === 'رفض العميل') key = 'rejected';
+
+  let tmpl = getWaTemplate(key);
+  if(!tmpl) tmpl = DEFAULT_WA_TEMPLATES[key] || '';
+
+  // Replace placeholders
+  return tmpl
+    .replace(/{customer_name}/g, (r.customer && r.customer.name) || 'عميلنا العزيز')
+    .replace(/{receipt_no}/g, r.receiptNumber || '')
+    .replace(/{date}/g, cleanDate(r.date))
+    .replace(/{device}/g, device)
+    .replace(/{faults}/g, (r.faults||[]).join('، ')||'-')
+    .replace(/{status}/g, r.status || '')
+    .replace(/{cost}/g, (Number(r.cost||0)+Number(r.partsCost||0)).toLocaleString())
+    .replace(/{deposit}/g, Number(r.deposit||0).toLocaleString())
+    .replace(/{remaining}/g, remaining.toLocaleString())
+    .replace(/{track_url}/g, trackUrl)
+    .replace(/{shop_name}/g, shop)
+    .replace(/{shop_phone}/g, (state.settings && state.settings.shopPhone) || '')
+    .replace(/{shop_address}/g, (state.settings && state.settings.shopAddress) || '');
 }
 
 function sendWhatsappByStatus(r, status){
@@ -4020,7 +4138,7 @@ async function openReceiptDetail(r){
     </div>
     <div class="field"><label>الأعطال</label>
       <div class="chip-group" id="editFaultChips">
-        ${COMMON_FAULTS.map(f=>`<div class="chip ${r.faults.includes(f)?'sel':''}" data-f="${f}">${f}</div>`).join('')}
+        ${getCommonFaults().map(f=>`<div class="chip ${r.faults.includes(f)?'sel':''}" data-f="${f}">${f}</div>`).join('')}
       </div>
     </div>
     <div class="field"><label>ملاحظات التشخيص والفحص</label><textarea id="eFaultNotes">${r.faultNotes||''}</textarea></div>
@@ -7789,7 +7907,8 @@ function openUserModal(editUser=null){
     { key: 'pos', icon: '🧾', label: 'نقطة البيع (POS)', desc: 'شاشة الكاشير السريعة، الباركود، وطباعة الإيصالات' },
     { key: 'inventory', icon: '📦', label: 'المخزن العام والمشتريات', desc: 'الأصناف، فواتير الشراء، الموردين، والتحويلات' },
     { key: 'cameras', icon: '📷', label: 'كاميرات المراقبة', desc: 'كتالوج الكاميرات وعروض الأسعار والتركيب' },
-    { key: 'finance', icon: '💰', label: 'القسم المالي والمحاسبي', desc: 'شجرة الحسابات، قيود اليومية، ميزان المراجعة، والأرباح' }
+    { key: 'finance', icon: '💰', label: 'القسم المالي والمحاسبي', desc: 'شجرة الحسابات، قيود اليومية، ميزان المراجعة، والأرباح' },
+    { key: 'settings', icon: '⚙️', label: 'الإعدادات وتخصيص النظام', desc: 'المظهر، الثيمات، تصنيفات الأجهزة، رسائل واتساب، وبنود الضمان' }
   ];
 
   let selectedSections = [];
@@ -8167,80 +8286,806 @@ function renderUsersSectionApp(app){
   renderUsersManagementPage(document.getElementById('main'));
 }
 
-/* ---------------- Settings ---------------- */
-function renderSettings(main){
-  main.innerHTML = `
-    <div class="top-header"><div><h2 class="page-title">⚙️ الإعدادات العامة للشركة</h2><div class="subtitle">تخصيص اسم المحل، اللوجو، الفنيين، والعملاء</div></div></div>
-    
-    <div class="card" style="border-right:4px solid #8b5cf6;">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-        <div>
-          <h3 style="margin:0;">👥 إدارة المستخدمين وتخصيص صلاحيات الشاشات</h3>
-          <p style="font-size:12.5px;color:var(--ink-secondary);margin:4px 0 0;">
-            إضافة وتعديل حسابات الموظفين، تعيين كلمات المرور، وتحديد الشاشات والأقسام المسموح لكل مستخدم بالوصول إليها (${(state.users||[]).length} مسجلين).
-          </p>
+/* ---------------- Enterprise Settings & Customization Center ---------------- */
+function renderSettingsSectionApp(app){
+  const activeTab = state.settingsTab || 'appearance';
+  app.innerHTML = `
+    <div class="sidebar">
+      ${brandHtml("مركز الإعدادات")}
+      ${sectionSwitcherHtml()}
+      <div class="sidebar-nav-wrap">
+        <div class="nav-section">إعدادات وتخصيص النظام</div>
+        <div class="nav-item ${activeTab==='appearance'?'active':''}" data-stab="appearance">
+          <span class="nav-item-icon">🎨</span><span>المظهر والثيمات والخط</span>
         </div>
-        <button class="btn btn-primary btn-sm" id="openUsersFromSettingsBtn">👥 فتح إدارة المستخدمين والصلاحيات ➔</button>
+        <div class="nav-item ${activeTab==='company'?'active':''}" data-stab="company">
+          <span class="nav-item-icon">🏪</span><span>بيانات الشركة والمطبوعات</span>
+        </div>
+        <div class="nav-item ${activeTab==='whatsapp'?'active':''}" data-stab="whatsapp">
+          <span class="nav-item-icon">📱</span><span>رسائل واتساب الذكية</span>
+        </div>
+        <div class="nav-item ${activeTab==='warranty'?'active':''}" data-stab="warranty">
+          <span class="nav-item-icon">📜</span><span>بنود الضمان والشروط</span>
+        </div>
+        <div class="nav-item ${activeTab==='devices'?'active':''}" data-stab="devices">
+          <span class="nav-item-icon">🛠️</span><span>تصنيفات وماركات الأجهزة</span>
+        </div>
+        <div class="nav-item ${activeTab==='faults'?'active':''}" data-stab="faults">
+          <span class="nav-item-icon">⚠️</span><span>الأعطال والفنيين</span>
+        </div>
+        <div class="nav-item ${activeTab==='sync'?'active':''}" data-stab="sync">
+          <span class="nav-item-icon">🔄</span><span>المزامنة السحابية والكاش</span>
+        </div>
+      </div>
+      ${sidebarFootHtml()}
+    </div>
+    <main id="main"></main>
+  `;
+  const sw = document.getElementById('switchSectionBtn');
+  if(sw) sw.onclick = ()=>{ state.currentSection = null; render(); };
+  attachSidebarHandlers();
+
+  app.querySelectorAll('[data-stab]').forEach(item => {
+    item.onclick = ()=>{
+      state.settingsTab = item.dataset.stab;
+      renderSettingsSectionApp(app);
+    };
+  });
+
+  renderSettingsContent(document.getElementById('main'));
+}
+
+function renderSettings(main){
+  renderSettingsContent(main);
+}
+
+function renderSettingsNavHeader(activeTabTitle, activeTabSubtitle){
+  const activeTab = state.settingsTab || 'appearance';
+  const tabs = [
+    {k:'appearance', label:'🎨 المظهر والثيمات'},
+    {k:'company', label:'🏪 بيانات الشركة'},
+    {k:'whatsapp', label:'📱 رسائل واتساب'},
+    {k:'warranty', label:'📜 بنود الضمان'},
+    {k:'devices', label:'🛠️ تصنيفات الأجهزة'},
+    {k:'faults', label:'⚠️ الأعطال والفنيين'},
+    {k:'sync', label:'🔄 المزامنة السحابية'}
+  ];
+
+  return `
+    <div class="top-header">
+      <div>
+        <h2 class="page-title">${activeTabTitle}</h2>
+        <div class="subtitle">${activeTabSubtitle}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" onclick="openCommandPalette()">🔍 بحث ⌘K</button>
+        <div id="networkSyncPill" class="sync-pill online" onclick="syncOfflineQueue()">🟢 متصل</div>
+      </div>
+    </div>
+    <div class="chip-group" style="margin-bottom:18px;background:var(--paper2);padding:10px 14px;border-radius:var(--radius);border:1px solid var(--line);">
+      ${tabs.map(t=>`
+        <div class="chip ${t.k===activeTab?'sel':''}" data-settings-quick-tab="${t.k}">
+          ${t.label}
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function attachSettingsQuickTabEvents(main){
+  main.querySelectorAll('[data-settings-quick-tab]').forEach(chip => {
+    chip.onclick = ()=>{
+      state.settingsTab = chip.dataset.settingsQuickTab;
+      const app = document.getElementById('app');
+      if(state.currentSection === 'settings') renderSettingsSectionApp(app);
+      else renderSettingsContent(main);
+    };
+  });
+}
+
+function renderSettingsContent(main){
+  const activeTab = state.settingsTab || 'appearance';
+  if(activeTab === 'appearance') return renderAppearanceSettings(main);
+  if(activeTab === 'company') return renderCompanySettings(main);
+  if(activeTab === 'whatsapp') return renderWhatsappSettings(main);
+  if(activeTab === 'warranty') return renderWarrantySettings(main);
+  if(activeTab === 'devices') return renderDevicesSettings(main);
+  if(activeTab === 'faults') return renderFaultsSettings(main);
+  if(activeTab === 'sync') return renderSyncSettings(main);
+  renderAppearanceSettings(main);
+}
+
+/* 1. Appearance, Themes, Font Sizes, Colors */
+function renderAppearanceSettings(main){
+  const currentTheme = state.theme || 'light';
+  const currentPrimary = (state.settings && state.settings.primaryColor) || '#4f46e5';
+  const currentFontSize = (state.settings && state.settings.fontSize) || 'normal';
+
+  const colorPalettes = [
+    {name: 'نيلي ملكي (Indigo)', hex: '#4f46e5'},
+    {name: 'زمردي احترافي (Emerald)', hex: '#10b981'},
+    {name: 'أزرق سماوي (Ocean)', hex: '#2563eb'},
+    {name: 'كهرماني ذهبي (Amber)', hex: '#d97706'},
+    {name: 'ياقوتي أحمر (Crimson)', hex: '#e11d48'},
+    {name: 'بنفسجي فاخر (Purple)', hex: '#8b5cf6'},
+    {name: 'سيان تقني (Cyan)', hex: '#06b6d4'}
+  ];
+
+  main.innerHTML = `
+    ${renderSettingsNavHeader('🎨 تخصيص المظهر والثيمات والخطوط', 'تعديل لون الواجهة المميز، وضع الإضاءة، وحجم الخطوط لكافة الشاشات')}
+
+    <!-- Theme Selection -->
+    <div class="card">
+      <h3 style="margin-top:0;font-size:15.5px;">🌓 نمط إضاءة الواجهة (Themes)</h3>
+      <p style="font-size:12.5px;color:var(--ink-secondary);margin-bottom:14px;">اختر النمط المفضل لبيئة عملك:</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:14px;">
+        <div id="themeCardLight" style="cursor:pointer;border:2px solid ${currentTheme==='light'?'var(--primary)':'var(--line)'};background:#ffffff;color:#0f172a;padding:16px;border-radius:var(--radius);box-shadow:var(--card-shadow);transition:all 0.2s ease;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <b style="font-size:14px;">☀️ المظهر الفاتح (Light Mode)</b>
+            ${currentTheme==='light'?'<span class="status-badge st-done">مفعل الآن ✓</span>':''}
+          </div>
+          <div style="font-size:11.5px;color:#64748b;">واجهة ناصعة عالية التباين مثالية لأوقات النهار والطباعة.</div>
+        </div>
+
+        <div id="themeCardDark" style="cursor:pointer;border:2px solid ${currentTheme==='dark'?'var(--primary)':'var(--line)'};background:#0e1524;color:#f8fafc;padding:16px;border-radius:var(--radius);box-shadow:var(--card-shadow);transition:all 0.2s ease;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <b style="font-size:14px;">🌙 المظهر الليلي (Dark Obsidian)</b>
+            ${currentTheme==='dark'?'<span class="status-badge st-done">مفعل الآن ✓</span>':''}
+          </div>
+          <div style="font-size:11.5px;color:#94a3b8;">خلفيات سبجية داكنة وتأثيرات زجاجية مريحة جداً للعين.</div>
+        </div>
       </div>
     </div>
 
+    <!-- Primary Accent Color Picker -->
     <div class="card">
-      <h3>🏪 اسم الشركة / الورشة</h3>
-      <div style="display:flex;gap:10px;">
-        <input id="shopNameInput" value="${state.settings.shopName}" style="flex:1;">
-        <button class="btn btn-primary" id="saveShopNameBtn">حفظ الاسم</button>
+      <h3 style="margin-top:0;font-size:15.5px;">🎨 لون النظام المميز (Primary Accent Color)</h3>
+      <p style="font-size:12.5px;color:var(--ink-secondary);margin-bottom:14px;">انقر على أي لون لتطبيقه فورياً على الأزرار والشارات والعناصر النشطة:</p>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;">
+        ${colorPalettes.map(c => `
+          <div class="accent-color-btn" data-color="${c.hex}" style="display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:var(--radius-sm);border:2px solid ${currentPrimary===c.hex?c.hex:'var(--line-strong)'};background:var(--paper2);cursor:pointer;box-shadow:var(--shadow-sm);transition:all 0.15s ease;">
+            <span style="width:20px;height:20px;border-radius:50%;background:${c.hex};display:inline-block;box-shadow:0 2px 6px rgba(0,0,0,0.2);"></span>
+            <span style="font-size:12px;font-weight:700;color:var(--ink);">${c.name}</span>
+            ${currentPrimary===c.hex?'<span style="color:'+c.hex+';font-weight:900;">✓</span>':''}
+          </div>
+        `).join('')}
       </div>
     </div>
+
+    <!-- Font Size Options -->
     <div class="card">
-      <h3>🖼️ شعار الشركة (لوجو)</h3>
-      <div style="display:flex;gap:10px;align-items:center;">
-        <input id="logoUrlInput" value="${state.settings.logoUrl||''}" placeholder="رابط صورة اللوجو (https://...)" style="flex:1;">
-        <button class="btn btn-primary" id="saveLogoBtn">حفظ اللوجو</button>
+      <h3 style="margin-top:0;font-size:15.5px;">🔤 حجم الخط العام للواجهة (Typography Scale)</h3>
+      <p style="font-size:12.5px;color:var(--ink-secondary);margin-bottom:14px;">حدد مقاس الخط المريح لك على الشاشة:</p>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">
+        <label style="flex:1;min-width:180px;display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--paper2);border:1px solid var(--line-strong);border-radius:var(--radius-sm);cursor:pointer;">
+          <input type="radio" name="appFontSize" value="compact" ${currentFontSize==='compact'?'checked':''} style="width:auto;">
+          <div><b>مدمج (Compact - 13px)</b><div style="font-size:11px;color:var(--ink-secondary);">لعرض أقصى قدر من البيانات</div></div>
+        </label>
+        <label style="flex:1;min-width:180px;display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--paper2);border:1px solid var(--line-strong);border-radius:var(--radius-sm);cursor:pointer;">
+          <input type="radio" name="appFontSize" value="normal" ${currentFontSize==='normal'?'checked':''} style="width:auto;">
+          <div><b>قياسي (Normal - 14px)</b><div style="font-size:11px;color:var(--ink-secondary);">المقاس الافتراضي المتوازن</div></div>
+        </label>
+        <label style="flex:1;min-width:180px;display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--paper2);border:1px solid var(--line-strong);border-radius:var(--radius-sm);cursor:pointer;">
+          <input type="radio" name="appFontSize" value="large" ${currentFontSize==='large'?'checked':''} style="width:auto;">
+          <div><b>كبير ومريح (Large - 15.5px)</b><div style="font-size:11px;color:var(--ink-secondary);">قراءة فائقة الوضوح والراحة</div></div>
+        </label>
       </div>
-      ${state.settings.logoUrl ? `<div style="margin-top:12px;"><img src="${state.settings.logoUrl}" style="max-height:50px;"></div>` : ''}
     </div>
-    <div class="card">
-      <h3>👨‍🔧 إدارة الفنيين</h3>
-      <div class="chip-group" style="margin-bottom:12px;">
-        ${state.technicians.map(t=>`<div class="chip sel">${t}</div>`).join('')}
+
+    <!-- Live Interactive Preview Box -->
+    <div class="card" style="border:1px dashed var(--line-strong);background:var(--paper3);">
+      <h3 style="margin-top:0;font-size:14px;">👁️ معاينة حية للمظهر والعناصر:</h3>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px;">
+        <button class="btn btn-primary">زر رئيسي Primary</button>
+        <button class="btn btn-ghost">زر افتراضي Ghost</button>
+        <span class="status-badge st-check">قيد الفحص</span>
+        <span class="status-badge st-done">مكتمل ✅</span>
+        <span class="status-badge st-delivered">تم التسليم 🤝</span>
+        <span class="chip sel">شريحة مفعلة</span>
       </div>
-      <div style="display:flex;gap:10px;">
-        <input id="newTechName" placeholder="اسم فني جديد" style="flex:1;">
-        <button class="btn btn-primary btn-sm" id="addNewTechBtn">إضافة فني</button>
-      </div>
-    </div>
-    <div class="card" style="border-right:4px solid var(--primary);">
-      <h3>🔄 مزامنة البيانات وحالة التخزين المحلي</h3>
-      <p style="font-size:13px;color:var(--ink-secondary);margin-bottom:12px;">
-        يعمل النظام بنظام التخزين المزدوج (Cloud + Local Offline Cache) لتتمكن من العمل حتى بدون إنترنت وتحديث الشيت فور الاتصال.
-      </p>
-      <button class="btn btn-primary btn-sm" onclick="syncOfflineQueue()">🔄 مزامنة العمليات المعلقة الآن</button>
     </div>
   `;
 
-  document.getElementById('openUsersFromSettingsBtn').onclick = ()=>{
-    renderUsersManagementPage(main);
+  attachSettingsQuickTabEvents(main);
+
+  document.getElementById('themeCardLight').onclick = ()=>{
+    applyTheme('light');
+    saveSettingRemote('theme', 'light');
+    renderAppearanceSettings(main);
+  };
+  document.getElementById('themeCardDark').onclick = ()=>{
+    applyTheme('dark');
+    saveSettingRemote('theme', 'dark');
+    renderAppearanceSettings(main);
   };
 
-  document.getElementById('saveShopNameBtn').onclick = async ()=>{
-    const v = document.getElementById('shopNameInput').value.trim();
+  main.querySelectorAll('.accent-color-btn').forEach(btn => {
+    btn.onclick = async ()=>{
+      const c = btn.dataset.color;
+      state.settings.primaryColor = c;
+      setCache('settings', state.settings);
+      applyThemeAndAppearance();
+      await saveSettingRemote('primaryColor', c);
+      showToast('تم تحديث لون النظام بنجاح', 'success');
+      renderAppearanceSettings(main);
+    };
+  });
+
+  main.querySelectorAll('input[name="appFontSize"]').forEach(radio => {
+    radio.onchange = async (e)=>{
+      const f = e.target.value;
+      state.settings.fontSize = f;
+      setCache('settings', state.settings);
+      applyThemeAndAppearance();
+      await saveSettingRemote('fontSize', f);
+      showToast('تم تغيير حجم الخط بنجاح', 'success');
+    };
+  });
+}
+
+/* 2. Company Profile & Print Information */
+function renderCompanySettings(main){
+  const s = state.settings || {};
+  main.innerHTML = `
+    ${renderSettingsNavHeader('🏪 بيانات الشركة والمطبوعات', 'تخصيص الاسم والشعار وأرقام الهواتف والعناوين الظاهرة على الفواتير والإيصالات')}
+
+    <div class="card">
+      <div class="grid2">
+        <div class="field">
+          <label>اسم المحل / الشركة *</label>
+          <input id="setShopName" value="${s.shopName||''}" placeholder="مثال: صيانة ميكروتك">
+        </div>
+        <div class="field">
+          <label>رابط الشعار / اللوجو (Logo URL)</label>
+          <input id="setLogoUrl" value="${s.logoUrl||''}" placeholder="https://domain.com/logo.png">
+        </div>
+      </div>
+
+      ${s.logoUrl ? `
+        <div style="margin:8px 0 16px;padding:10px;background:var(--paper3);border-radius:var(--radius-sm);display:inline-flex;align-items:center;gap:12px;">
+          <span style="font-size:11px;font-weight:700;color:var(--ink-secondary);">معاينة الشعار:</span>
+          <img src="${s.logoUrl}" style="max-height:45px;max-width:140px;object-fit:contain;">
+        </div>
+      ` : ''}
+
+      <div class="grid2">
+        <div class="field">
+          <label>أرقام الهواتف الرسمية للاتصال</label>
+          <input id="setShopPhone" class="mono" value="${s.shopPhone||''}" placeholder="010xxxxxxxx - 011xxxxxxxx">
+        </div>
+        <div class="field">
+          <label>رقم الواتساب الرسمي لخدمة العملاء</label>
+          <input id="setShopWhatsapp" class="mono" value="${s.shopWhatsapp||''}" placeholder="010xxxxxxxx">
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="field">
+          <label>عنوان المقر والفرع</label>
+          <input id="setShopAddress" value="${s.shopAddress||''}" placeholder="مثال: 15 شارع التحرير، الدقي، الجيزة">
+        </div>
+        <div class="field">
+          <label>الرقم الضريبي / السجل التجاري (إن وجد)</label>
+          <input id="setShopTaxNumber" class="mono" value="${s.shopTaxNumber||''}" placeholder="مثال: 123-456-789">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>العبارة الختامية أسفل المطبوعات والفواتير</label>
+        <input id="setPrintFooterText" value="${s.printFooterText||'شكراً لتعاملكم معنا • نسعد دائماً بخدمتكم'}" placeholder="عبارة شكر أو رسالة ختامية">
+      </div>
+
+      <div style="text-align:left;margin-top:16px;">
+        <button class="btn btn-primary" id="saveCompanySettingsBtn">💾 حفظ بيانات الشركة</button>
+      </div>
+    </div>
+  `;
+
+  attachSettingsQuickTabEvents(main);
+
+  document.getElementById('saveCompanySettingsBtn').onclick = async ()=>{
+    s.shopName = document.getElementById('setShopName').value.trim();
+    s.logoUrl = document.getElementById('setLogoUrl').value.trim();
+    s.shopPhone = document.getElementById('setShopPhone').value.trim();
+    s.shopWhatsapp = document.getElementById('setShopWhatsapp').value.trim();
+    s.shopAddress = document.getElementById('setShopAddress').value.trim();
+    s.shopTaxNumber = document.getElementById('setShopTaxNumber').value.trim();
+    s.printFooterText = document.getElementById('setPrintFooterText').value.trim();
+
+    state.settings = s;
+    setCache('settings', s);
+    try {
+      await saveSettingRemote('shopName', s.shopName);
+      await saveSettingRemote('logoUrl', s.logoUrl);
+      await saveSettingRemote('shopPhone', s.shopPhone);
+      await saveSettingRemote('shopWhatsapp', s.shopWhatsapp);
+      await saveSettingRemote('shopAddress', s.shopAddress);
+      await saveSettingRemote('shopTaxNumber', s.shopTaxNumber);
+      await saveSettingRemote('printFooterText', s.printFooterText);
+      showToast('تم حفظ بيانات الشركة والمطبوعات بنجاح ✅', 'success');
+      renderCompanySettings(main);
+    } catch(e) {
+      showToast('تم حفظ بيانات الشركة محلياً (وضع غير متصل)', 'info');
+    }
+  };
+}
+
+/* 3. Smart WhatsApp Templates */
+function renderWhatsappSettings(main){
+  const activeWaKey = state.activeWaKey || 'check';
+  const templates = (state.settings && state.settings.waTemplates) || DEFAULT_WA_TEMPLATES;
+  const currentContent = templates[activeWaKey] || DEFAULT_WA_TEMPLATES[activeWaKey] || '';
+
+  const waKeys = [
+    {k:'check', icon:'🔍', label:'1. استلام وفحص الجهاز (قيد الفحص)'},
+    {k:'repair', icon:'🛠️', label:'2. بدء الإصلاح الفعلي (الصيانة)'},
+    {k:'done', icon:'✅', label:'3. جاهز للاستلام (مكتمل)'},
+    {k:'delivered', icon:'🤝', label:'4. تسليم الجهاز وتفعيل الضمان'},
+    {k:'overdue', icon:'⏳', label:'5. تذكير بالأجهزة المتروكة (+7 أيام)'},
+    {k:'unrepairable', icon:'🚫', label:'6. تعذر الصيانة'},
+    {k:'rejected', icon:'❌', label:'7. رفض العميل'}
+  ];
+
+  const placeholders = [
+    {p:'{customer_name}', label:'👤 اسم العميل'},
+    {p:'{receipt_no}', label:'🔢 رقم الإيصال'},
+    {p:'{device}', label:'💻 الجهاز والماركة'},
+    {p:'{faults}', label:'⚠️ الأعطال'},
+    {p:'{status}', label:'📌 الحالة'},
+    {p:'{cost}', label:'💰 إجمالي التكلفة'},
+    {p:'{deposit}', label:'💵 المدفوع مقدماً'},
+    {p:'{remaining}', label:'🔴 المتبقي المطلوب'},
+    {p:'{track_url}', label:'🔗 رابط التتبع المباشر'},
+    {p:'{shop_name}', label:'🏪 اسم المحل'},
+    {p:'{shop_phone}', label:'📞 هاتف المحل'}
+  ];
+
+  main.innerHTML = `
+    ${renderSettingsNavHeader('📱 قوالب رسائل واتساب الذكية', 'تخصيص صيغ الرسائل التلقائية المرسلة للعملاء حسب حالة الصيانة مع دعم المتغيرات الفورية')}
+
+    <div class="card">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+        ${waKeys.map(w => `
+          <button class="btn btn-sm ${w.k===activeWaKey?'btn-primary':'btn-ghost'}" data-wa-key="${w.k}">
+            ${w.icon} ${w.label}
+          </button>
+        `).join('')}
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <label>إدراج متغيرات تلقائية بنقرة واحدة (Placeholders):</label>
+        <div class="chip-group" style="margin-top:6px;">
+          ${placeholders.map(pl => `
+            <div class="chip" data-insert-placeholder="${pl.p}" title="انقر لإدراج ${pl.p} في الرسالة">
+              ${pl.label} <span class="mono" style="font-size:10px;opacity:0.7;">${pl.p}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <div class="field">
+        <label>نص قالب الرسالة لحالة: <b>${(waKeys.find(w=>w.k===activeWaKey)||{}).label}</b></label>
+        <textarea id="waTemplateTextarea" style="min-height:160px;font-size:13.5px;line-height:1.6;font-family:inherit;">${currentContent}</textarea>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;flex-wrap:wrap;gap:10px;">
+        <button class="btn btn-ghost btn-sm" id="resetCurrentWaBtn">↩ استعادة القالب الافتراضي لهذه الحالة</button>
+        <button class="btn btn-primary" id="saveWaTemplateBtn">💾 حفظ تعديل قالب الرسالة</button>
+      </div>
+    </div>
+  `;
+
+  attachSettingsQuickTabEvents(main);
+
+  main.querySelectorAll('[data-wa-key]').forEach(btn => {
+    btn.onclick = ()=>{
+      state.activeWaKey = btn.dataset.waKey;
+      renderWhatsappSettings(main);
+    };
+  });
+
+  const textarea = document.getElementById('waTemplateTextarea');
+
+  main.querySelectorAll('[data-insert-placeholder]').forEach(chip => {
+    chip.onclick = ()=>{
+      const p = chip.dataset.insertPlaceholder;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const val = textarea.value;
+      textarea.value = val.substring(0, start) + p + val.substring(end);
+      textarea.focus();
+      textarea.setSelectionRange(start + p.length, start + p.length);
+    };
+  });
+
+  document.getElementById('saveWaTemplateBtn').onclick = async ()=>{
+    if(!state.settings.waTemplates) state.settings.waTemplates = {...DEFAULT_WA_TEMPLATES};
+    state.settings.waTemplates[activeWaKey] = textarea.value;
+    setCache('settings', state.settings);
+    try {
+      await saveSettingRemote('waTemplates', JSON.stringify(state.settings.waTemplates));
+      showToast('تم حفظ قالب رسالة واتساب بنجاح ✅', 'success');
+    } catch(e){
+      showToast('تم حفظ القالب محلياً', 'info');
+    }
+  };
+
+  document.getElementById('resetCurrentWaBtn').onclick = ()=>{
+    if(confirm('هل تريد بالتأكيد استعادة القالب الافتراضي لهذه الحالة؟')){
+      if(!state.settings.waTemplates) state.settings.waTemplates = {...DEFAULT_WA_TEMPLATES};
+      state.settings.waTemplates[activeWaKey] = DEFAULT_WA_TEMPLATES[activeWaKey];
+      textarea.value = DEFAULT_WA_TEMPLATES[activeWaKey];
+      setCache('settings', state.settings);
+      showToast('تم استعادة القالب الافتراضي', 'info');
+    }
+  };
+}
+
+/* 4. Warranty Terms & Conditions */
+function renderWarrantySettings(main){
+  const currentTerms = getTerms();
+  const currentInvTerms = getInvoiceTerms();
+  const currentQuoteTerms = getQuoteTerms();
+
+  main.innerHTML = `
+    ${renderSettingsNavHeader('📜 بنود الضمان وحقوق الاستلام', 'تخصيص وكتابة بنود وشروط إيصال الصيانة (A5) والفواتير الرسمية وعروض الأسعار')}
+
+    <!-- Maintenance A5 Receipt Terms -->
+    <div class="card" style="border-right:4px solid var(--blue);">
+      <h3 style="margin-top:0;font-size:15px;color:var(--blue-text);">🛠️ بنود وشروط إيصال استلام الصيانة (ورقة A5)</h3>
+      <p style="font-size:12px;color:var(--ink-secondary);margin-bottom:10px;">هذه البنود تطبع أسفل إيصال استلام الصيانة الأصلي:</p>
+      <textarea id="setTermsText" style="min-height:120px;font-size:12.5px;line-height:1.6;">${currentTerms}</textarea>
+      <div style="display:flex;justify-content:space-between;margin-top:10px;">
+        <button class="btn btn-ghost btn-xs" id="resetTermsBtn">↩ استعادة البنود الافتراضية</button>
+        <button class="btn btn-primary btn-sm" id="saveTermsBtn">💾 حفظ بنود إيصال الصيانة</button>
+      </div>
+    </div>
+
+    <!-- Tax Invoice Terms -->
+    <div class="card" style="border-right:4px solid var(--purple);">
+      <h3 style="margin-top:0;font-size:15px;color:var(--purple-text);">📄 شروط وملاحظات الفاتورة الضريبية الرسمية</h3>
+      <p style="font-size:12px;color:var(--ink-secondary);margin-bottom:10px;">تظهر أسفل الفواتير الضريبية ومبيعات الكاشير:</p>
+      <textarea id="setInvTermsText" style="min-height:90px;font-size:12.5px;line-height:1.6;">${currentInvTerms}</textarea>
+      <div style="display:flex;justify-content:space-between;margin-top:10px;">
+        <button class="btn btn-ghost btn-xs" id="resetInvTermsBtn">↩ استعادة الافتراضي</button>
+        <button class="btn btn-primary btn-sm" id="saveInvTermsBtn">💾 حفظ شروط الفاتورة</button>
+      </div>
+    </div>
+
+    <!-- Quotation Terms -->
+    <div class="card" style="border-right:4px solid var(--cyan);">
+      <h3 style="margin-top:0;font-size:15px;color:var(--cyan-text);">📋 شروط وأحكام عرض الأسعار وبيان السعر</h3>
+      <p style="font-size:12px;color:var(--ink-secondary);margin-bottom:10px;">تظهر أسفل عروض الأسعار وبيان التكلفة الصادر للعميل:</p>
+      <textarea id="setQuoteTermsText" style="min-height:90px;font-size:12.5px;line-height:1.6;">${currentQuoteTerms}</textarea>
+      <div style="display:flex;justify-content:space-between;margin-top:10px;">
+        <button class="btn btn-ghost btn-xs" id="resetQuoteTermsBtn">↩ استعادة الافتراضي</button>
+        <button class="btn btn-primary btn-sm" id="saveQuoteTermsBtn">💾 حفظ شروط عرض السعر</button>
+      </div>
+    </div>
+  `;
+
+  attachSettingsQuickTabEvents(main);
+
+  document.getElementById('saveTermsBtn').onclick = async ()=>{
+    const v = document.getElementById('setTermsText').value.trim();
+    state.settings.terms = v;
+    setCache('settings', state.settings);
+    await saveSettingRemote('terms', v);
+    showToast('تم حفظ بنود إيصال الصيانة بنجاح ✅', 'success');
+  };
+  document.getElementById('resetTermsBtn').onclick = ()=>{
+    document.getElementById('setTermsText').value = DEFAULT_TERMS;
+    state.settings.terms = DEFAULT_TERMS;
+    setCache('settings', state.settings);
+    showToast('تمت استعادة بنود الصيانة الافتراضية', 'info');
+  };
+
+  document.getElementById('saveInvTermsBtn').onclick = async ()=>{
+    const v = document.getElementById('setInvTermsText').value.trim();
+    state.settings.invoiceTerms = v;
+    setCache('settings', state.settings);
+    await saveSettingRemote('invoiceTerms', v);
+    showToast('تم حفظ شروط الفاتورة بنجاح ✅', 'success');
+  };
+  document.getElementById('resetInvTermsBtn').onclick = ()=>{
+    document.getElementById('setInvTermsText').value = DEFAULT_INVOICE_TERMS;
+    state.settings.invoiceTerms = DEFAULT_INVOICE_TERMS;
+    setCache('settings', state.settings);
+    showToast('تمت استعادة شروط الفاتورة الافتراضية', 'info');
+  };
+
+  document.getElementById('saveQuoteTermsBtn').onclick = async ()=>{
+    const v = document.getElementById('setQuoteTermsText').value.trim();
+    state.settings.quoteTerms = v;
+    setCache('settings', state.settings);
+    await saveSettingRemote('quoteTerms', v);
+    showToast('تم حفظ شروط عرض السعر بنجاح ✅', 'success');
+  };
+  document.getElementById('resetQuoteTermsBtn').onclick = ()=>{
+    document.getElementById('setQuoteTermsText').value = DEFAULT_QUOTE_TERMS;
+    state.settings.quoteTerms = DEFAULT_QUOTE_TERMS;
+    setCache('settings', state.settings);
+    showToast('تمت استعادة شروط عرض السعر الافتراضية', 'info');
+  };
+}
+
+/* 5. Device Categories & Brands Master */
+function renderDevicesSettings(main){
+  const brandsObj = getBrands();
+  const categories = Object.keys(brandsObj);
+  const selectedCat = state.selectedDeviceCat || categories[0] || 'لابتوب';
+  const brandsList = brandsObj[selectedCat] || [];
+
+  main.innerHTML = `
+    ${renderSettingsNavHeader('🛠️ تصنيفات وماركات الأجهزة', 'إدارة فئات الأجهزة (لابتوب، موبايل، شاشات، كاميرات...) وتخصيص الماركات التابعة لكل فئة')}
+
+    <div class="card">
+      <h3 style="margin-top:0;font-size:15px;">1. تصنيفات وفئات الأجهزة</h3>
+      <p style="font-size:12px;color:var(--ink-secondary);margin-bottom:12px;">اختر فئة لتعديل ماركاتها، أو أضف فئة جديدة:</p>
+      
+      <div class="chip-group" style="margin-bottom:16px;">
+        ${categories.map(cat => `
+          <div class="chip ${cat===selectedCat?'sel':''}" data-select-cat="${cat}">
+            ${cat}
+          </div>
+        `).join('')}
+      </div>
+
+      <div style="display:flex;gap:10px;margin-bottom:20px;">
+        <input id="newCatInput" placeholder="اسم فئة جديدة (مثال: أجهزة منزلية / بلايستيشن)" style="flex:1;">
+        <button class="btn btn-primary btn-sm" id="addNewCatBtn">➕ إضافة فئة جديدة</button>
+      </div>
+
+      <hr style="border:none;border-top:1px solid var(--line);margin:18px 0;">
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3 style="margin:0;font-size:15px;">2. الماركات والأنواع التابعة لـ: <span style="color:var(--primary);">${selectedCat}</span></h3>
+        ${categories.length > 1 ? `<button class="btn btn-ghost btn-xs" id="deleteCurrentCatBtn" style="color:var(--red);">🗑️ حذف فئة "${selectedCat}"</button>` : ''}
+      </div>
+
+      <div class="chip-group" style="margin-bottom:16px;">
+        ${brandsList.map(b => `
+          <div class="chip sel" style="display:inline-flex;align-items:center;gap:6px;">
+            <span>${b}</span>
+            <span class="remove-brand-btn" data-brand="${b}" style="cursor:pointer;color:#fca5a5;font-weight:900;" title="حذف الماركة">✕</span>
+          </div>
+        `).join('')}
+      </div>
+
+      <div style="display:flex;gap:10px;">
+        <input id="newBrandInput" placeholder="إضافة ماركة جديدة لـ ${selectedCat} (مثال: Sony / Xiaomi)" style="flex:1;">
+        <button class="btn btn-primary btn-sm" id="addNewBrandBtn">➕ إضافة ماركة</button>
+      </div>
+    </div>
+  `;
+
+  attachSettingsQuickTabEvents(main);
+
+  main.querySelectorAll('[data-select-cat]').forEach(chip => {
+    chip.onclick = ()=>{
+      state.selectedDeviceCat = chip.dataset.selectCat;
+      renderDevicesSettings(main);
+    };
+  });
+
+  document.getElementById('addNewCatBtn').onclick = async ()=>{
+    const v = document.getElementById('newCatInput').value.trim();
     if(!v) return;
-    try{ await saveSettingRemote('shopName', v); showToast('تم حفظ اسم المحل بنجاح', 'success'); render(); }
-    catch(e){ showToast('تم الحفظ محلياً', 'info'); }
+    if(brandsObj[v]){ showToast('هذه الفئة موجودة بالفعل', 'error'); return; }
+    brandsObj[v] = ['أخرى'];
+    state.settings.brands = brandsObj;
+    state.selectedDeviceCat = v;
+    setCache('settings', state.settings);
+    await saveSettingRemote('brands', JSON.stringify(brandsObj));
+    showToast(`تمت إضافة فئة (${v}) بنجاح`, 'success');
+    renderDevicesSettings(main);
   };
-  document.getElementById('saveLogoBtn').onclick = async ()=>{
-    const v = document.getElementById('logoUrlInput').value.trim();
-    try{ await saveSettingRemote('logoUrl', v); showToast('تم حفظ اللوجو بنجاح', 'success'); render(); }
-    catch(e){ showToast('تم الحفظ محلياً', 'info'); }
+
+  document.getElementById('addNewBrandBtn').onclick = async ()=>{
+    const v = document.getElementById('newBrandInput').value.trim();
+    if(!v) return;
+    if(!brandsObj[selectedCat]) brandsObj[selectedCat] = [];
+    if(brandsObj[selectedCat].includes(v)){ showToast('هذه الماركة مضافة مسبقاً', 'error'); return; }
+    brandsObj[selectedCat].push(v);
+    state.settings.brands = brandsObj;
+    setCache('settings', state.settings);
+    await saveSettingRemote('brands', JSON.stringify(brandsObj));
+    showToast(`تمت إضافة الماركة (${v}) بنجاح`, 'success');
+    renderDevicesSettings(main);
   };
+
+  main.querySelectorAll('.remove-brand-btn').forEach(btn => {
+    btn.onclick = async (e)=>{
+      e.stopPropagation();
+      const b = btn.dataset.brand;
+      brandsObj[selectedCat] = brandsObj[selectedCat].filter(x => x !== b);
+      state.settings.brands = brandsObj;
+      setCache('settings', state.settings);
+      await saveSettingRemote('brands', JSON.stringify(brandsObj));
+      showToast(`تم حذف الماركة (${b})`, 'info');
+      renderDevicesSettings(main);
+    };
+  });
+
+  const delCatBtn = document.getElementById('deleteCurrentCatBtn');
+  if(delCatBtn){
+    delCatBtn.onclick = async ()=>{
+      if(confirm(`هل تريد بالتأكيد حذف فئة الأجهزة "${selectedCat}" بكافة ماركاتها؟`)){
+        delete brandsObj[selectedCat];
+        state.settings.brands = brandsObj;
+        state.selectedDeviceCat = Object.keys(brandsObj)[0] || 'لابتوب';
+        setCache('settings', state.settings);
+        await saveSettingRemote('brands', JSON.stringify(brandsObj));
+        showToast(`تم حذف الفئة بنجاح`, 'info');
+        renderDevicesSettings(main);
+      }
+    };
+  }
+}
+
+/* 6. Common Faults & Technicians */
+function renderFaultsSettings(main){
+  const faultsList = getCommonFaults();
+  const techsList = state.technicians || [];
+
+  main.innerHTML = `
+    ${renderSettingsNavHeader('⚠️ الأعطال الشائعة والفنيين', 'تخصيص شرائح الأعطال السريعة في إيصال الاستلام وإدارة قائمة الفنيين')}
+
+    <!-- Common Faults Chips Management -->
+    <div class="card">
+      <h3 style="margin-top:0;font-size:15px;">⚠️ شرائح الأعطال الشائعة السريعة (${faultsList.length} عطل)</h3>
+      <p style="font-size:12px;color:var(--ink-secondary);margin-bottom:12px;">هذه الأعطال تظهر كشرائح سريعة عند استلام وتعديل أجهزة الصيانة:</p>
+      
+      <div class="chip-group" style="margin-bottom:16px;">
+        ${faultsList.map(f => `
+          <div class="chip sel" style="display:inline-flex;align-items:center;gap:6px;">
+            <span>${f}</span>
+            <span class="remove-fault-btn" data-fault="${f}" style="cursor:pointer;color:#fca5a5;font-weight:900;" title="حذف العطل">✕</span>
+          </div>
+        `).join('')}
+      </div>
+
+      <div style="display:flex;gap:10px;">
+        <input id="newFaultInput" placeholder="إضافة عطل شائع جديد (مثال: تغيير باغة / صيانة كيبورد)" style="flex:1;">
+        <button class="btn btn-primary btn-sm" id="addNewFaultBtn">➕ إضافة عطل</button>
+      </div>
+    </div>
+
+    <!-- Technicians Management -->
+    <div class="card">
+      <h3 style="margin-top:0;font-size:15px;">👨‍🔧 قائمة الفنيين المعتمدين (${techsList.length} فني)</h3>
+      <p style="font-size:12px;color:var(--ink-secondary);margin-bottom:12px;">الفنيين المتاح إسناد أوامر الشغل وحساب المكافآت لهم:</p>
+      
+      <div class="chip-group" style="margin-bottom:16px;">
+        ${techsList.map(t => `
+          <div class="chip sel" style="display:inline-flex;align-items:center;gap:6px;">
+            <span>👨‍🔧 ${t}</span>
+            <span class="remove-tech-btn" data-tech="${t}" style="cursor:pointer;color:#fca5a5;font-weight:900;" title="حذف الفني">✕</span>
+          </div>
+        `).join('')}
+      </div>
+
+      <div style="display:flex;gap:10px;">
+        <input id="newTechNameInput" placeholder="اسم فني جديد" style="flex:1;">
+        <button class="btn btn-primary btn-sm" id="addNewTechBtn">➕ إضافة فني</button>
+      </div>
+    </div>
+  `;
+
+  attachSettingsQuickTabEvents(main);
+
+  document.getElementById('addNewFaultBtn').onclick = async ()=>{
+    const v = document.getElementById('newFaultInput').value.trim();
+    if(!v) return;
+    const current = getCommonFaults();
+    if(current.includes(v)){ showToast('هذا العطل مضاف مسبقاً', 'error'); return; }
+    current.push(v);
+    state.settings.commonFaults = current;
+    setCache('settings', state.settings);
+    await saveSettingRemote('commonFaults', JSON.stringify(current));
+    showToast(`تمت إضافة العطل (${v}) بنجاح`, 'success');
+    renderFaultsSettings(main);
+  };
+
+  main.querySelectorAll('.remove-fault-btn').forEach(btn => {
+    btn.onclick = async ()=>{
+      const f = btn.dataset.fault;
+      let current = getCommonFaults().filter(x => x !== f);
+      state.settings.commonFaults = current;
+      setCache('settings', state.settings);
+      await saveSettingRemote('commonFaults', JSON.stringify(current));
+      showToast(`تم حذف العطل (${f})`, 'info');
+      renderFaultsSettings(main);
+    };
+  });
+
   document.getElementById('addNewTechBtn').onclick = async ()=>{
-    const v = document.getElementById('newTechName').value.trim();
+    const v = document.getElementById('newTechNameInput').value.trim();
     if(!v) return;
-    try{
+    try {
       await saveTechnicianRemote(v);
-      showToast('تمت إضافة الفني بنجاح', 'success');
-      renderSettings(main);
-    }catch(e){ showToast('تمت الإضافة محلياً', 'info'); }
+      showToast(`تمت إضافة الفني (${v}) بنجاح`, 'success');
+      renderFaultsSettings(main);
+    } catch(e){ showToast('تمت الإضافة محلياً', 'info'); }
+  };
+
+  main.querySelectorAll('.remove-tech-btn').forEach(btn => {
+    btn.onclick = async ()=>{
+      const t = btn.dataset.tech;
+      state.technicians = state.technicians.filter(x => x !== t);
+      setCache('technicians', state.technicians);
+      showToast(`تم حذف الفني (${t})`, 'info');
+      renderFaultsSettings(main);
+    };
+  });
+}
+
+/* 7. Cloud Sync & Offline Diagnostics */
+function renderSyncSettings(main){
+  const queue = getSyncQueue();
+  const isOnline = navigator.onLine;
+
+  main.innerHTML = `
+    ${renderSettingsNavHeader('🔄 المزامنة السحابية والصيانة', 'فحص حالة الاتصال بـ Google Sheets، مزامنة العمليات المعلقة، وإدارة الكاش المحلي')}
+
+    <div class="card" style="border-right:4px solid ${isOnline?'var(--green)':'var(--amber)'};">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3 style="margin:0;font-size:16px;">حالة الاتصال والبيئة السحابية</h3>
+        <span class="status-badge ${isOnline?'st-done':'st-repair'}">${isOnline?'🟢 متصل بالإنترنت':'🟡 وضع غير متصل (Offline)'}</span>
+      </div>
+      <p style="font-size:13px;color:var(--ink-secondary);line-height:1.6;">
+        يعمل نظام <b>ميكروERP</b> بتقنية <b>Dual-Sync Hybrid Engine</b> التي تسمح لك بالعمل وتسجيل الإيصالات والمبيعات واليومية حتى في حالة انقطاع الإنترنت، ويتم رفع وتزامن كافة العمليات فور عودة الاتصال دون أي فقدان للبيانات.
+      </p>
+
+      <div style="background:var(--paper3);border-radius:var(--radius-sm);padding:14px;margin:16px 0;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-weight:800;font-size:13.5px;">العمليات المعلقة في طابور المزامنة (Offline Queue):</div>
+          <div style="font-size:12px;color:var(--ink-secondary);margin-top:2px;">${queue.length === 0 ? 'لا توجد عمليات معلقة - كافة البيانات متزامنة تماماً مع السحابة ✨' : `${queue.length} عملية بانتظار الرفع للسحابة`}</div>
+        </div>
+        <div class="num mono" style="font-size:22px;color:${queue.length>0?'var(--amber-text)':'var(--green-text)'};">${queue.length}</div>
+      </div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn btn-primary" id="forceSyncBtn">🔄 مزامنة كافة العمليات المعلقة الآن</button>
+        <button class="btn btn-ghost" id="reloadCloudDataBtn">☁️ إعادة تحميل البيانات من السحابة</button>
+      </div>
+    </div>
+
+    <div class="card" style="border-right:4px solid var(--red);">
+      <h3 style="margin-top:0;font-size:15px;color:var(--red-text);">🗑️ تفريغ الكاش وإعادة التهيئة المحلية</h3>
+      <p style="font-size:12px;color:var(--ink-secondary);margin-bottom:12px;">
+        في حال واجهت أي تعليق في المتصفح، يمكنك تفريغ الذاكرة المؤقتة المحلية وإعادة تحميل أحدث نسخة من السحابة بأمان:
+      </p>
+      <button class="btn btn-ghost btn-sm" id="clearLocalCacheBtn" style="color:var(--red);">🗑️ تفريغ الكاش وإعادة التحميل</button>
+    </div>
+  `;
+
+  attachSettingsQuickTabEvents(main);
+
+  document.getElementById('forceSyncBtn').onclick = async ()=>{
+    await syncOfflineQueue();
+    renderSyncSettings(main);
+  };
+
+  document.getElementById('reloadCloudDataBtn').onclick = async ()=>{
+    showToast('جاري جلب أحدث البيانات من السحابة...', 'info');
+    try {
+      [state.users, state.receipts, state.customers, state.technicians, state.settings, state.payments, state.inventory, state.sales, state.quotations, state.services, state.purchases, state.suppliers, state.expenses, state.accounts, state.journalEntries, state.invoices] = await Promise.all([
+        loadUsers(), loadReceipts(), loadCustomers(), loadTechnicians(), loadSettings(), loadPayments(), loadInventory(), loadSales(), loadQuotations(), loadServices(), loadPurchases(), loadSuppliers(), loadExpenses(), loadAccounts(), loadJournalEntries(), loadInvoices()
+      ]);
+      showToast('تم تحديث البيانات من السحابة بنجاح ✅', 'success');
+      renderSyncSettings(main);
+    } catch(e) {
+      showToast('تعذر التحديث من السحابة: ' + e.message, 'error');
+    }
+  };
+
+  document.getElementById('clearLocalCacheBtn').onclick = ()=>{
+    if(confirm('هل تريد بالتأكيد تفريغ الكاش المحلي؟')){
+      localStorage.clear();
+      showToast('تم تفريغ الكاش بنجاح، جاري إعادة التحميل...', 'info');
+      setTimeout(()=>window.location.reload(), 600);
+    }
   };
 }
 

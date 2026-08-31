@@ -2310,10 +2310,69 @@ async function loadQuotations(){
 }
 async function saveQuotationRemote(q){
   if(!q.ID) q.ID = 'quo_' + Date.now();
-  state.quotations.push(q);
+  if(!q.Payments) q.Payments = [];
+  if(q.PaidAmount == null) q.PaidAmount = q.Payments.reduce((s,p)=>s+Number(p.Amount||0),0);
+  
+  const idx = state.quotations.findIndex(x => String(x.ID) === String(q.ID));
+  if(idx > -1) state.quotations[idx] = q;
+  else state.quotations.push(q);
   setCache('quotations', state.quotations);
-  const res = await apiPost('saveQuotation', {data:q});
-  return { quotation: res.quotation || q };
+
+  try {
+    const res = await apiPost('saveQuotation', {data:q});
+    return { quotation: res.quotation || q };
+  } catch(e) {
+    enqueueOfflineTask({ type:'saveQuotation', data:q });
+    return { quotation: q };
+  }
+}
+
+async function saveQuotationPaymentRemote(quotationId, amount, note){
+  const q = state.quotations.find(x => String(x.ID) === String(quotationId));
+  if(!q) throw new Error('تعذر العثور على عرض السعر المحدد');
+  if(!q.Payments) q.Payments = [];
+  const numAmt = Number(amount) || 0;
+  if(numAmt <= 0) throw new Error('يرجى إدخال مبلغ صحيح للدفعة');
+
+  const p = {
+    ID: 'qp_' + Date.now() + '_' + Math.floor(Math.random()*1000),
+    QuotationID: quotationId,
+    Date: new Date().toISOString().slice(0, 10),
+    Amount: numAmt,
+    Note: note || 'دفعة / عربون من حساب عرض السعر',
+    By: state.user ? state.user.name : 'نظام'
+  };
+
+  q.Payments.push(p);
+  q.PaidAmount = (Number(q.PaidAmount) || 0) + numAmt;
+  if(q.Status === 'معلق') q.Status = 'مقبول / جاري التنفيذ';
+  if(q.PaidAmount >= Number(q.Total || 0)) q.Status = 'تم التنفيذ والتسليم';
+
+  // Save to general payments
+  if(!state.payments) state.payments = [];
+  state.payments.push({
+    ID: p.ID,
+    ReceiptID: 'QUOTE_' + String(quotationId).slice(-8),
+    Date: p.Date,
+    Amount: p.Amount,
+    Note: `تحصيل دفعة عرض سعر (${q.ClientName}) - ${p.Note}`,
+    By: p.By
+  });
+  setCache('payments', state.payments);
+
+  // Auto Journal Entry
+  recordAutoJournalEntry(
+    `تحصيل دفعة مشروع/عرض سعر (#${String(quotationId).slice(-8)} - ${q.ClientName})`,
+    'Quotation',
+    quotationId,
+    [
+      { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: numAmt, Credit: 0, Notes: p.Note },
+      { AccountCode: '4101', AccountName: 'إيرادات مشاريع وتوريدات وتركيبات', Debit: 0, Credit: numAmt, Notes: `عرض سعر #${String(quotationId).slice(-8)}` }
+    ]
+  ).catch(e=>{});
+
+  await saveQuotationRemote(q);
+  return q;
 }
 
 async function saveExpenseRemote(exp){
@@ -2795,8 +2854,16 @@ const TERMS = DEFAULT_TERMS;
 const DEFAULT_INVOICE_TERMS = `• البضاعة المباعة تخضع للضمان المحدد بالفاتورة والشركة غير مسؤولة عن سوء الاستخدام أو التلف الناتج عن تذبذب التيار الكهربائي.
 • لا يُقبل الاسترجاع أو الاستبدال إلا بوجود أصل الفاتورة وخلال المدة القانونية المقررة.`;
 
-const DEFAULT_QUOTE_TERMS = `• هذا البيان يعتبر عرض أسعار رسمي صالح لمدة 7 أيام من تاريخ إصداره.
-• الأسعار والكميات الموضحة خاضعة للتوافر والتأكيد النهائي عند بدء التوريد والتنفيذ.`;
+const DEFAULT_QUOTE_TERMS = `• هذا البيان يعتبر عرض أسعار رسمي صالح لمدة 14 يوماً من تاريخ إصداره.
+• الأسعار والكميات الموضحة تشمل التوريد والتركيب والبرمجة وفق المواصفات المحددة.
+• الضمان يسري لمدة عام كامل ضد عيوب الصناعة على الأجهزة والمعدات مع توفير الدعم الفني.
+• يشترط لبدء التنفيذ سداد الدفعة المقدمة المتفق عليها واعتماد موقع ومسارات التمديدات.`;
+
+const DEFAULT_QUOTE_AGREEMENT_TERMS = `بند (1): موضوع العقد: يلتزم الطرف الأول (المنفذ) بتوريد وتركيب وتشغيل وبرمجة المنظومة الموضحة بجدول البنود بعاليه طبقاً لأعلى معايير الجودة والأصول الفنية المعمول بها.
+بند (2): شروط وسداد الدفعات: يلتزم الطرف الثاني (العميل) بسداد القيمة الإجمالية على النحو التالي: (50% دفعة مقدمة عند توقيع العقد وبدء الأعمال، 30% عند توريد المهمات والأجهزة بالموقع، و20% دفعة ختامية عند التشغيل النهائي والتسليم).
+بند (3): التزامات العميل: يلتزم الطرف الثاني بتوفير مصادر التغذية الكهربائية والإنترنت اللازمة ومسارات التمديدات وتأمين فريق العمل وتسهيل الدخول للموقع.
+بند (4): فترة الضمان والدعم الفني: يضمن الطرف الأول جودة المهمات والأجهزة لمدة (12 شهراً) من تاريخ الاستلام، مع تقديم خدمات الدعم الفني والصيانة المجانية للأعطال الفنية غير الناتجة عن سوء الاستخدام أو الكوارث الطبيعية وتذبذب التيار.
+بند (5): الملكية ومحضر التسليم: تظل كافة المهمات والأجهزة ملكاً للطرف الأول حتى سداد كامل المستحقات المالية، ويحرر محضر تسليم وتشغيل رسمي موقع من الطرفين فور إتمام المشروع.`;
 
 const DEFAULT_WA_TEMPLATES = {
   check: `مرحبًا {customer_name} 👋\nتم استلام جهازكم ({device}) وهو قيد الفحص والتشخيص الفني حالياً 🔍\nرقم الإيصال: {receipt_no}\n🔗 تتبع حالة جهازك: {track_url}\n{shop_name}`,
@@ -2814,6 +2881,7 @@ function getCommonFaults(){ return (state.settings && state.settings.commonFault
 function getTerms(){ return (state.settings && state.settings.terms) || DEFAULT_TERMS; }
 function getInvoiceTerms(){ return (state.settings && state.settings.invoiceTerms) || DEFAULT_INVOICE_TERMS; }
 function getQuoteTerms(){ return (state.settings && state.settings.quoteTerms) || DEFAULT_QUOTE_TERMS; }
+function getQuoteAgreementTerms(){ return (state.settings && state.settings.quoteAgreementTerms) || DEFAULT_QUOTE_AGREEMENT_TERMS; }
 function getWaTemplate(key){
   if(state.settings && state.settings.waTemplates && state.settings.waTemplates[key]){
     return state.settings.waTemplates[key];
@@ -3018,6 +3086,7 @@ let state = {
     terms: DEFAULT_TERMS,
     invoiceTerms: DEFAULT_INVOICE_TERMS,
     quoteTerms: DEFAULT_QUOTE_TERMS,
+    quoteAgreementTerms: DEFAULT_QUOTE_AGREEMENT_TERMS,
     waTemplates: DEFAULT_WA_TEMPLATES,
     pos: DEFAULT_POS_SETTINGS,
     printers: DEFAULT_PRINTERS_SETTINGS
@@ -6687,6 +6756,9 @@ function renderQuotationBuilder(main){
         <h2 class="page-title">➕ عرض سعر جديد — كاميرات مراقبة وشبكات</h2>
         <div class="subtitle">إنشاء عرض سعر احترافي وطباعته للعميل في ثوانٍ</div>
       </div>
+      <div>
+        <button class="btn btn-ghost btn-sm" id="quoBackToListBtn">📑 عروض الأسعار السابقة</button>
+      </div>
     </div>
     <div class="card">
       <h3>👤 بيانات العميل / الشركة</h3>
@@ -6734,6 +6806,11 @@ function renderQuotationBuilder(main){
     </div>
   `;
 
+  document.getElementById('quoBackToListBtn').onclick = ()=>{
+    state.camTab = 'quotes';
+    renderCamerasApp(document.getElementById('app'));
+  };
+
   document.getElementById('quoAddItemBtn').onclick = ()=>{
     const itemId = document.getElementById('quoPickItem').value;
     const qty = Number(document.getElementById('quoPickQty').value);
@@ -6767,71 +6844,918 @@ function renderQuotationBuilder(main){
     saveBtn.disabled = true; saveBtn.textContent = 'جارٍ الحفظ...';
     const itemsSummary = cart.map(c=>`${c.name} × ${c.qty} (${c.qty*c.price} ج.م)`).join('، ');
     const q = {
-      ID:'', Date: new Date().toISOString().slice(0,10), ClientName: clientName, ClientPhone: clientPhone,
-      ItemsSummary: itemsSummary, LaborCost: cart.filter(c=>c.type==='service').reduce((s,c)=>s+c.qty*c.price,0),
-      Total: itemsTotal, Status:'معلق', By: state.user.name
+      ID: 'quo_' + Date.now(),
+      Date: new Date().toISOString().slice(0,10),
+      ClientName: clientName,
+      ClientPhone: clientPhone,
+      Items: JSON.parse(JSON.stringify(cart)),
+      ItemsSummary: itemsSummary,
+      LaborCost: cart.filter(c=>c.type==='service').reduce((s,c)=>s+c.qty*c.price,0),
+      Total: itemsTotal,
+      PaidAmount: 0,
+      Payments: [],
+      Status: 'معلق',
+      By: state.user ? state.user.name : 'المسؤول'
     };
     try{
       const res = await saveQuotationRemote(q);
       showToast('تم حفظ عرض السعر بنجاح', 'success');
       openQuotationPrint(res.quotation, cart);
       state.quoCart = [];
-      renderQuotationBuilder(main);
+      state.camTab = 'quotes';
+      renderCamerasApp(document.getElementById('app'));
     }catch(e){ showToast('تم الحفظ محلياً: '+e.message, 'info'); }
     saveBtn.disabled = false; saveBtn.textContent = 'حفظ وطباعة عرض السعر';
   };
 }
 
+/* Helper to safely extract items array from a quotation object */
+function getQuotationItems(q){
+  if(Array.isArray(q.Items) && q.Items.length > 0) return q.Items;
+  if(typeof q.Items === 'string' && q.Items.startsWith('[')){
+    try { return JSON.parse(q.Items); } catch(e){}
+  }
+  if(q.ItemsSummary){
+    const parts = q.ItemsSummary.split('،').map(p=>p.trim()).filter(Boolean);
+    if(parts.length > 0){
+      return parts.map(p => {
+        const m = p.match(/(.*?)\s*×\s*(\d+)\s*\(([\d,.]+)\s*ج\.م\)/);
+        if(m){
+          const qty = Number(m[2]) || 1;
+          const lineTotal = Number(m[3].replace(/,/g,'')) || 0;
+          return { name: m[1].trim(), qty, price: qty > 0 ? (lineTotal / qty) : lineTotal, type: 'product' };
+        }
+        return { name: p, qty: 1, price: 0, type: 'product' };
+      });
+    }
+  }
+  return [{ name: 'مهمات وتوريدات وتركيبات كاميرات وشبكات', qty: 1, price: Number(q.Total||0), type: 'product' }];
+}
+
+/* ---------------- Enhanced Quotations Archive & Management ---------------- */
 function renderQuotationsList(main){
+  if(!state.quoFilter) state.quoFilter = { q: '', status: 'all' };
+
+  // Calculate KPIs
+  const allQ = state.quotations || [];
+  const totalCount = allQ.length;
+  const totalVal = allQ.reduce((s,x)=>s+Number(x.Total||0), 0);
+  const pendingList = allQ.filter(x=>x.Status==='معلق' || !x.Status);
+  const inProgressList = allQ.filter(x=>x.Status==='مقبول / جاري التنفيذ' || x.Status==='مقبول');
+  const doneList = allQ.filter(x=>x.Status==='تم التنفيذ والتسليم' || x.Status==='تم التنفيذ');
+  const totalCollected = allQ.reduce((s,x)=>s+Number(x.PaidAmount||0), 0);
+
+  // Filter
+  const qText = (state.quoFilter.q || '').trim().toLowerCase();
+  const qStat = state.quoFilter.status || 'all';
+
+  const filtered = allQ.slice().reverse().filter(q => {
+    if(qStat !== 'all'){
+      if(qStat === 'pending' && !(q.Status==='معلق' || !q.Status)) return false;
+      if(qStat === 'in_progress' && !(q.Status==='مقبول / جاري التنفيذ' || q.Status==='مقبول')) return false;
+      if(qStat === 'done' && !(q.Status==='تم التنفيذ والتسليم' || q.Status==='تم التنفيذ')) return false;
+      if(qStat === 'cancelled' && !(q.Status==='ملغي / مرفوض' || q.Status==='ملغي')) return false;
+    }
+    if(qText){
+      const matchName = (q.ClientName||'').toLowerCase().includes(qText);
+      const matchPhone = (q.ClientPhone||'').includes(qText);
+      const matchId = String(q.ID||'').toLowerCase().includes(qText);
+      const matchSummary = (q.ItemsSummary||'').toLowerCase().includes(qText);
+      if(!matchName && !matchPhone && !matchId && !matchSummary) return false;
+    }
+    return true;
+  });
+
   main.innerHTML = `
     <div class="top-header">
       <div>
-        <h2 class="page-title">📑 عروض الأسعار السابقة</h2>
-        <div class="subtitle">${state.quotations.length} عرض سعر مسجل</div>
+        <h2 class="page-title">📑 عروض الأسعار والمشاريع</h2>
+        <div class="subtitle">متابعة حالة العروض، تسجيل الدفعات والعربونات، التحويل لفواتير، وطباعة عروض الأسعار وعقود الاتفاق</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" id="quoGotoSettingsBtn">⚙️ تخصيص شروط العروض والعقود</button>
+        <button class="btn btn-primary btn-sm" id="quoNewBtn">➕ عرض سعر جديد</button>
       </div>
     </div>
-    ${state.quotations.length===0 ? '<div class="empty">لا توجد عروض أسعار سابقة.</div>' : `
-    <div class="table-wrap"><table><thead><tr><th>رقم</th><th>التاريخ</th><th>العميل</th><th>البنود</th><th>الإجمالي</th><th>الحالة</th></tr></thead><tbody>
-      ${state.quotations.slice().reverse().map(q=>`<tr>
-        <td class="mono" style="font-weight:800;color:var(--primary);">${String(q.ID).slice(-8)}</td>
-        <td>${cleanDate(q.Date)}</td><td><b>${q.ClientName}</b></td><td>${q.ItemsSummary}</td>
-        <td class="mono" style="font-weight:800;">${q.Total} ج.م</td><td><span class="status-badge st-check">${q.Status}</span></td>
-      </tr>`).join('')}
-    </tbody></table></div>`}
+
+    <!-- Metric KPI Cards -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:10px;margin-bottom:14px;">
+      <div class="card" style="padding:12px;margin:0;border-right:3.5px solid var(--primary);">
+        <div style="font-size:11px;color:var(--ink-secondary);font-weight:700;">إجمالي عروض الأسعار</div>
+        <div class="num mono font-bold" style="font-size:18px;margin-top:2px;">${totalCount} <span style="font-size:11px;color:var(--ink-secondary);font-weight:normal;">(${totalVal.toLocaleString()} ج.م)</span></div>
+      </div>
+      <div class="card" style="padding:12px;margin:0;border-right:3.5px solid var(--amber);">
+        <div style="font-size:11px;color:var(--ink-secondary);font-weight:700;">عروض معلقة بانتظار الرد</div>
+        <div class="num mono font-bold" style="font-size:18px;margin-top:2px;color:var(--amber-text);">${pendingList.length}</div>
+      </div>
+      <div class="card" style="padding:12px;margin:0;border-right:3.5px solid var(--blue);">
+        <div style="font-size:11px;color:var(--ink-secondary);font-weight:700;">مقبولة / جاري التنفيذ</div>
+        <div class="num mono font-bold" style="font-size:18px;margin-top:2px;color:var(--blue-text);">${inProgressList.length}</div>
+      </div>
+      <div class="card" style="padding:12px;margin:0;border-right:3.5px solid var(--green);">
+        <div style="font-size:11px;color:var(--ink-secondary);font-weight:700;">تم التنفيذ والتسليم</div>
+        <div class="num mono font-bold" style="font-size:18px;margin-top:2px;color:var(--green-text);">${doneList.length}</div>
+      </div>
+      <div class="card" style="padding:12px;margin:0;border-right:3.5px solid var(--purple);">
+        <div style="font-size:11px;color:var(--ink-secondary);font-weight:700;">المحصل (عربونات ودفعات)</div>
+        <div class="num mono font-bold" style="font-size:18px;margin-top:2px;color:var(--purple);">${totalCollected.toLocaleString()} ج.م</div>
+      </div>
+    </div>
+
+    <!-- Filter & Search Controls -->
+    <div class="card" style="padding:12px;margin-bottom:14px;background:var(--paper2);">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <input id="quoSearchInput" value="${escapeHtml(state.quoFilter.q||'')}" placeholder="🔍 بحث باسم العميل، الهاتف، رقم العرض، أو الصنف..." style="flex:2;min-width:240px;">
+        <select id="quoStatusFilter" style="flex:1;min-width:160px;font-weight:700;">
+          <option value="all" ${qStat==='all'?'selected':''}>📌 كافة الحالات (${allQ.length})</option>
+          <option value="pending" ${qStat==='pending'?'selected':''}>⏳ معلق (${pendingList.length})</option>
+          <option value="in_progress" ${qStat==='in_progress'?'selected':''}>🛠️ مقبول / جاري التنفيذ (${inProgressList.length})</option>
+          <option value="done" ${qStat==='done'?'selected':''}>✅ تم التنفيذ والتسليم (${doneList.length})</option>
+          <option value="cancelled" ${qStat==='cancelled'?'selected':''}>❌ ملغي / مرفوض</option>
+        </select>
+        ${(state.quoFilter.q || state.quoFilter.status !== 'all') ? `<button class="btn btn-ghost btn-sm" id="resetQuoFilterBtn">✕ إلغاء الفلتر</button>` : ''}
+      </div>
+    </div>
+
+    <!-- Quotations Table -->
+    ${filtered.length === 0 ? '<div class="card empty" style="padding:30px;text-align:center;">لا توجد عروض أسعار مطابقة لمعايير البحث.</div>' : `
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="text-align:right;">رقم العرض</th>
+              <th style="text-align:right;">التاريخ</th>
+              <th style="text-align:right;">العميل / الشركة</th>
+              <th style="text-align:right;min-width:200px;">ملخص البنود والأعمال</th>
+              <th style="text-align:right;">الماليات والتحصيل</th>
+              <th style="text-align:center;">الحالة</th>
+              <th style="text-align:center;min-width:280px;">الإجراءات والطباعة</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filtered.map(q => {
+              const qId = String(q.ID||'').slice(-8);
+              const paid = Number(q.PaidAmount||0);
+              const total = Number(q.Total||0);
+              const rem = Math.max(0, total - paid);
+
+              return `
+                <tr>
+                  <td class="mono font-bold" style="color:var(--primary);cursor:pointer;" onclick="openQuotationDetailModalById('${q.ID}')">
+                    #${qId}
+                  </td>
+                  <td class="mono" style="font-size:11.5px;">${cleanDate(q.Date)}</td>
+                  <td>
+                    <div style="font-weight:800;color:var(--ink);">${escapeHtml(q.ClientName)}</div>
+                    ${q.ClientPhone ? `<div style="font-size:11px;color:var(--ink-secondary);" class="mono">${escapeHtml(q.ClientPhone)}</div>` : ''}
+                  </td>
+                  <td style="font-size:11.5px;line-height:1.4;color:var(--ink-secondary);">
+                    ${escapeHtml(q.ItemsSummary||'')}
+                  </td>
+                  <td>
+                    <div style="font-weight:900;font-size:13px;" class="mono">${total.toLocaleString()} ج.م</div>
+                    ${paid > 0 ? `
+                      <div style="font-size:10.5px;color:var(--green-text);font-weight:700;">مدفوع: ${paid.toLocaleString()} ج.م</div>
+                      ${rem > 0 ? `<div style="font-size:10.5px;color:var(--red-text);font-weight:700;">متبقي: ${rem.toLocaleString()} ج.م</div>` : '<div style="font-size:10px;color:var(--green-text);font-weight:800;">✓ مسدد بالكامل</div>'}
+                    ` : '<div style="font-size:10.5px;color:var(--ink-secondary);">لم يسدد دفعات بعد</div>'}
+                  </td>
+                  <td style="text-align:center;">
+                    <select class="quo-quick-status-sel" data-quoid="${q.ID}" style="font-size:11px;padding:3px 6px;border-radius:12px;font-weight:800;">
+                      <option value="معلق" ${(q.Status==='معلق'||!q.Status)?'selected':''}>⏳ معلق</option>
+                      <option value="مقبول / جاري التنفيذ" ${(q.Status==='مقبول / جاري التنفيذ'||q.Status==='مقبول')?'selected':''}>🛠️ جاري التنفيذ</option>
+                      <option value="تم التنفيذ والتسليم" ${(q.Status==='تم التنفيذ والتسليم'||q.Status==='تم التنفيذ')?'selected':''}>✅ تم التنفيذ</option>
+                      <option value="ملغي / مرفوض" ${(q.Status==='ملغي / مرفوض'||q.Status==='ملغي')?'selected':''}>❌ ملغي</option>
+                    </select>
+                  </td>
+                  <td style="text-align:center;">
+                    <div style="display:inline-flex;gap:4px;flex-wrap:wrap;justify-content:center;">
+                      <button class="btn btn-ghost btn-xs quo-detail-btn" data-quoid="${q.ID}" style="font-weight:800;color:var(--primary);border-color:var(--primary);" title="عرض التفاصيل وتسجيل دفعات">
+                        👁️ دفعات
+                      </button>
+                      <button class="btn btn-ghost btn-xs quo-print-btn" data-quoid="${q.ID}" title="طباعة عرض السعر الرسمي">
+                        📑 العرض
+                      </button>
+                      <button class="btn btn-ghost btn-xs quo-contract-btn" data-quoid="${q.ID}" style="color:var(--green-text);border-color:var(--green);" title="طباعة عقد واتفاق الشروط">
+                        📜 العقد
+                      </button>
+                      <button class="btn btn-ghost btn-xs quo-invoice-btn" data-quoid="${q.ID}" style="color:var(--purple);border-color:var(--purple);" title="تحويل وإصدار فاتورة ضريبية">
+                        🧾 فاتورة
+                      </button>
+                      ${q.ClientPhone ? `
+                        <button class="btn btn-ghost btn-xs quo-wa-btn" data-quoid="${q.ID}" style="color:#22c55e;" title="مشاركة عبر واتساب">
+                          💬
+                        </button>
+                      ` : ''}
+                    </div>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `}
   `;
+
+  // Attach search & filter events
+  const sInput = document.getElementById('quoSearchInput');
+  if(sInput){
+    sInput.oninput = (e)=>{
+      state.quoFilter.q = e.target.value;
+      renderQuotationsList(main);
+    };
+  }
+  const sFilter = document.getElementById('quoStatusFilter');
+  if(sFilter){
+    sFilter.onchange = (e)=>{
+      state.quoFilter.status = e.target.value;
+      renderQuotationsList(main);
+    };
+  }
+  const resetBtn = document.getElementById('resetQuoFilterBtn');
+  if(resetBtn){
+    resetBtn.onclick = ()=>{
+      state.quoFilter = { q: '', status: 'all' };
+      renderQuotationsList(main);
+    };
+  }
+
+  // Top buttons
+  const newBtn = document.getElementById('quoNewBtn');
+  if(newBtn) newBtn.onclick = ()=>{ state.camTab = 'quote'; renderCamerasApp(document.getElementById('app')); };
+
+  const setBtn = document.getElementById('quoGotoSettingsBtn');
+  if(setBtn) setBtn.onclick = ()=>{ state.currentSection = 'settings'; state.settingsTab = 'warranty'; render(); };
+
+  // Status Quick Change
+  main.querySelectorAll('.quo-quick-status-sel').forEach(sel => {
+    sel.onchange = async (e)=>{
+      const qId = sel.dataset.quoid;
+      const q = state.quotations.find(x => String(x.ID) === String(qId));
+      if(q){
+        q.Status = e.target.value;
+        await saveQuotationRemote(q);
+        showToast(`تم تحديث حالة عرض السعر (#${String(q.ID).slice(-8)}) إلى: ${q.Status}`, 'success');
+        renderQuotationsList(main);
+      }
+    };
+  });
+
+  // Action button clicks
+  main.querySelectorAll('.quo-detail-btn').forEach(btn => {
+    btn.onclick = ()=>openQuotationDetailModalById(btn.dataset.quoid);
+  });
+  main.querySelectorAll('.quo-print-btn').forEach(btn => {
+    btn.onclick = ()=>{
+      const q = state.quotations.find(x => String(x.ID) === String(btn.dataset.quoid));
+      if(q) openQuotationPrint(q, getQuotationItems(q));
+    };
+  });
+  main.querySelectorAll('.quo-contract-btn').forEach(btn => {
+    btn.onclick = ()=>{
+      const q = state.quotations.find(x => String(x.ID) === String(btn.dataset.quoid));
+      if(q) openQuotationAgreementPrint(q, getQuotationItems(q));
+    };
+  });
+  main.querySelectorAll('.quo-invoice-btn').forEach(btn => {
+    btn.onclick = ()=>{
+      const q = state.quotations.find(x => String(x.ID) === String(btn.dataset.quoid));
+      if(q) convertQuotationToInvoice(q);
+    };
+  });
+  main.querySelectorAll('.quo-wa-btn').forEach(btn => {
+    btn.onclick = ()=>{
+      const q = state.quotations.find(x => String(x.ID) === String(btn.dataset.quoid));
+      if(q) shareQuotationWhatsapp(q);
+    };
+  });
 }
 
+function openQuotationDetailModalById(qId){
+  const q = state.quotations.find(x => String(x.ID) === String(qId));
+  if(!q){ showToast('تعذر العثور على عرض السعر', 'error'); return; }
+  openQuotationDetailModal(q);
+}
+
+/* ---------------- Quotation Execution & Payment Modal ---------------- */
+function openQuotationDetailModal(q){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+
+  function renderModalContent(){
+    if(!q.Payments) q.Payments = [];
+    const total = Number(q.Total || 0);
+    const paid = Number(q.PaidAmount || 0);
+    const remaining = Math.max(0, total - paid);
+    const items = getQuotationItems(q);
+
+    overlay.innerHTML = `
+      <div class="modal-content" style="max-width:820px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
+          <div>
+            <h3 style="margin:0;font-size:18px;font-weight:900;color:var(--primary);">
+              📑 تفاصيل وإدارة عرض السعر (#${String(q.ID).slice(-8)})
+            </h3>
+            <div style="font-size:12px;color:var(--ink-secondary);margin-top:2px;">
+              التاريخ: <span class="mono">${cleanDate(q.Date)}</span> | العميل: <b>${escapeHtml(q.ClientName)}</b> ${q.ClientPhone ? `(${escapeHtml(q.ClientPhone)})` : ''}
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-xs" id="closeQuoModalBtn">✕ إغلاق</button>
+        </div>
+
+        <!-- Status & Progress Ribbon -->
+        <div class="card" style="padding:12px 16px;background:var(--paper2);margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <b style="font-size:13px;">حالة المشروع / العرض:</b>
+            <select id="modalQuoStatus" style="font-weight:800;padding:5px 10px;border-radius:var(--radius-sm);">
+              <option value="معلق" ${(q.Status==='معلق'||!q.Status)?'selected':''}>⏳ معلق (قيد الانتظار)</option>
+              <option value="مقبول / جاري التنفيذ" ${(q.Status==='مقبول / جاري التنفيذ'||q.Status==='مقبول')?'selected':''}>🛠️ مقبول / جاري التنفيذ</option>
+              <option value="تم التنفيذ والتسليم" ${(q.Status==='تم التنفيذ والتسليم'||q.Status==='تم التنفيذ')?'selected':''}>✅ تم التنفيذ والتسليم</option>
+              <option value="ملغي / مرفوض" ${(q.Status==='ملغي / مرفوض'||q.Status==='ملغي')?'selected':''}>❌ ملغي / مرفوض</option>
+            </select>
+          </div>
+          <div style="display:flex;gap:12px;">
+            <div style="text-align:center;">
+              <span style="font-size:10.5px;color:var(--ink-secondary);display:block;">إجمالي العرض</span>
+              <b class="mono" style="font-size:15px;">${total.toLocaleString()} ج.م</b>
+            </div>
+            <div style="text-align:center;">
+              <span style="font-size:10.5px;color:var(--green-text);display:block;">المحصل / العربون</span>
+              <b class="mono" style="font-size:15px;color:var(--green-text);">${paid.toLocaleString()} ج.م</b>
+            </div>
+            <div style="text-align:center;">
+              <span style="font-size:10.5px;color:var(--red-text);display:block;">المتبقي المستحق</span>
+              <b class="mono" style="font-size:15px;color:${remaining>0?'var(--red-text)':'var(--green-text)'};">${remaining.toLocaleString()} ج.م</b>
+            </div>
+          </div>
+        </div>
+
+        <!-- Items Table -->
+        <div class="card" style="padding:14px;margin-bottom:14px;">
+          <h4 style="margin-top:0;margin-bottom:8px;font-size:13.5px;">📦 بنود ومهمات المشروع (${items.length} بند)</h4>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style="text-align:right;">البند / الخدمة</th>
+                  <th style="text-align:center;">الكمية</th>
+                  <th style="text-align:center;">السعر الفردي</th>
+                  <th style="text-align:left;">الإجمالي</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${items.map(it => `
+                  <tr>
+                    <td style="font-weight:700;">${escapeHtml(it.name || it.Name)}${it.type==='service'?' <span style="font-size:10px;color:var(--ink-secondary);">(خدمة)</span>':''}</td>
+                    <td style="text-align:center;" class="mono font-bold">${it.qty || it.Qty || 1}</td>
+                    <td style="text-align:center;" class="mono">${Number(it.price || it.Price || 0).toLocaleString()}</td>
+                    <td style="text-align:left;font-weight:800;" class="mono">${(Number(it.qty||1)*Number(it.price||0)).toLocaleString()} ج.م</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Payments & Deposit Management Box -->
+        <div class="card" style="padding:14px;margin-bottom:14px;border-right:3.5px solid var(--purple);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <h4 style="margin:0;font-size:13.5px;color:var(--purple);">💵 سجل الدفعات المالية والعربونات المحصلة</h4>
+            <span class="mono font-bold" style="font-size:12px;color:var(--ink-secondary);">${q.Payments.length} دفعة مسجلة</span>
+          </div>
+
+          ${q.Payments.length === 0 ? `
+            <div style="font-size:12px;color:var(--ink-secondary);padding:6px 0;">لم يتم تسجيل أي دفعات أو عربونات لهذا العرض حتى الآن.</div>
+          ` : `
+            <div class="table-wrap" style="margin-bottom:10px;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>تاريخ الدفعة</th>
+                    <th>المبلغ</th>
+                    <th>البيان / الملاحظة</th>
+                    <th>المستلم</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${q.Payments.map(p => `
+                    <tr>
+                      <td class="mono font-bold">${cleanDate(p.Date)}</td>
+                      <td class="mono font-bold" style="color:var(--green-text);">${Number(p.Amount).toLocaleString()} ج.م</td>
+                      <td>${escapeHtml(p.Note||'دفعة نقدية')}</td>
+                      <td style="font-size:11px;color:var(--ink-secondary);">${escapeHtml(p.By||'')}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          `}
+
+          <!-- Quick Add Payment Form -->
+          <div style="display:flex;gap:8px;align-items:center;background:var(--paper3);padding:10px;border-radius:var(--radius-sm);flex-wrap:wrap;">
+            <input id="newQuoPayAmt" type="number" placeholder="المبلغ (ج.م)" style="width:130px;" class="mono font-bold">
+            <input id="newQuoPayNote" placeholder="بيان الدفعة (مثال: عربون مقدم 50% / دفعة توريد)" style="flex:2;min-width:180px;">
+            <button class="btn btn-primary btn-sm" id="addNewQuoPayBtn" style="font-weight:900;">➕ تسجيل دفعة بالخزينة</button>
+          </div>
+        </div>
+
+        <!-- Action Footer -->
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-top:1px solid var(--line);padding-top:12px;">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" id="modalPrintQuoBtn">📑 طباعة عرض السعر (A4)</button>
+            <button class="btn btn-ghost btn-sm" id="modalPrintContractBtn" style="color:var(--green-text);border-color:var(--green);font-weight:800;">📜 طباعة عقد واتفاق الشروط (A4)</button>
+            <button class="btn btn-ghost btn-sm" id="modalInvoiceQuoBtn" style="color:var(--purple);border-color:var(--purple);font-weight:800;">🧾 تحويل لفاتورة رسمية</button>
+            ${q.ClientPhone ? `<button class="btn btn-ghost btn-sm" id="modalWaQuoBtn" style="color:#22c55e;">💬 إرسال واتساب</button>` : ''}
+          </div>
+          <button class="btn btn-ghost btn-sm" id="modalCloseBottomBtn">إغلاق</button>
+        </div>
+      </div>
+    `;
+
+    // Events
+    document.getElementById('closeQuoModalBtn').onclick = ()=>overlay.remove();
+    document.getElementById('modalCloseBottomBtn').onclick = ()=>overlay.remove();
+
+    // Status change
+    document.getElementById('modalQuoStatus').onchange = async (e)=>{
+      q.Status = e.target.value;
+      await saveQuotationRemote(q);
+      showToast('تم تحديث حالة عرض السعر', 'success');
+      const main = document.getElementById('main');
+      if(state.camTab === 'quotes') renderQuotationsList(main);
+    };
+
+    // Add payment
+    document.getElementById('addNewQuoPayBtn').onclick = async ()=>{
+      const amtInput = document.getElementById('newQuoPayAmt');
+      const noteInput = document.getElementById('newQuoPayNote');
+      const amt = Number(amtInput.value);
+      const note = noteInput.value.trim();
+
+      if(!amt || amt <= 0){
+        showToast('يرجى كتابة مبلغ صحيح للدفعة', 'error');
+        return;
+      }
+
+      try {
+        await saveQuotationPaymentRemote(q.ID, amt, note);
+        showToast(`تم تسجيل دفعة مالية بقيمة ${amt.toLocaleString()} ج.م وتوريدها للخزينة بنجاح ✅`, 'success');
+        renderModalContent();
+        const main = document.getElementById('main');
+        if(state.camTab === 'quotes') renderQuotationsList(main);
+      } catch(e) {
+        showToast('خطأ أثناء حفظ الدفعة: ' + e.message, 'error');
+      }
+    };
+
+    // Print Quotation
+    document.getElementById('modalPrintQuoBtn').onclick = ()=>{
+      openQuotationPrint(q, items);
+    };
+
+    // Print Contract / Agreement
+    document.getElementById('modalPrintContractBtn').onclick = ()=>{
+      openQuotationAgreementPrint(q, items);
+    };
+
+    // Convert to Invoice
+    document.getElementById('modalInvoiceQuoBtn').onclick = ()=>{
+      overlay.remove();
+      convertQuotationToInvoice(q);
+    };
+
+    // WhatsApp
+    const waBtn = document.getElementById('modalWaQuoBtn');
+    if(waBtn){
+      waBtn.onclick = ()=>shareQuotationWhatsapp(q);
+    }
+  }
+
+  renderModalContent();
+  document.body.appendChild(overlay);
+}
+
+function shareQuotationWhatsapp(q){
+  const phone = (q.ClientPhone||'').replace(/\D/g,'');
+  if(!phone){ showToast('رقم هاتف العميل غير مسجل', 'error'); return; }
+  const phoneFormatted = phone.startsWith('0') ? '2'+phone : phone;
+  const shopName = (state.settings && state.settings.shopName) || 'صيانة ميكروتك';
+  const total = Number(q.Total||0).toLocaleString();
+  const paid = Number(q.PaidAmount||0).toLocaleString();
+  const remaining = Math.max(0, Number(q.Total||0) - Number(q.PaidAmount||0)).toLocaleString();
+
+  const msg = `مرحبًا ${q.ClientName || 'عميلنا العزيز'} 👋\nيسعدنا تقديم عرض سعر مشروع الكاميرات والشبكات من *${shopName}* 📄\n\n📌 رقم العرض: *#${String(q.ID).slice(-8)}*\n📋 ملخص البنود: ${q.ItemsSummary || ''}\n💵 الإجمالي المطلوب: *${total} ج.م*\n${Number(q.PaidAmount||0)>0 ? `✅ المسدد: ${paid} ج.م | المتبقي: ${remaining} ج.م\n` : ''}\nنسعد دائماً بخدمتكم والتواصل معكم عبر واتساب أو بالاتصال بنا.`;
+
+  window.open(`https://wa.me/${phoneFormatted}?text=${encodeURIComponent(msg)}`, '_blank');
+}
+
+function convertQuotationToInvoice(q){
+  const items = getQuotationItems(q).map(it => ({
+    Name: it.name || it.Name,
+    Qty: Number(it.qty || it.Qty || 1),
+    Price: Number(it.price || it.Price || 0),
+    Total: Number(it.qty || it.Qty || 1) * Number(it.price || it.Price || 0)
+  }));
+
+  const newInv = {
+    ID: 'inv_' + Date.now(),
+    InvoiceNumber: 'INV-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-4),
+    Date: new Date().toISOString().slice(0,10),
+    DueDate: new Date().toISOString().slice(0,10),
+    CustomerName: q.ClientName || 'عميل',
+    CustomerPhone: q.ClientPhone || '',
+    CustomerTaxNumber: '',
+    CustomerAddress: '',
+    Items: items.length ? items : [{ Name: 'توريدات ومهمات شبكات وكاميرات', Qty: 1, Price: Number(q.Total||0), Total: Number(q.Total||0) }],
+    Subtotal: Number(q.Total || 0),
+    TaxPercent: 0,
+    TaxAmount: 0,
+    Discount: 0,
+    Total: Number(q.Total || 0),
+    AmountPaid: Number(q.PaidAmount || 0),
+    Remaining: Math.max(0, Number(q.Total || 0) - Number(q.PaidAmount || 0)),
+    Status: (Number(q.PaidAmount||0) >= Number(q.Total||0)) ? 'مدفوعة بالكامل' : (Number(q.PaidAmount||0) > 0 ? 'مدفوعة جزئياً' : 'غير مدفوعة (آجلة)'),
+    PaymentMethod: 'نقدي',
+    ReferenceType: 'عرض سعر',
+    ReferenceID: String(q.ID).slice(-8),
+    Notes: `فاتورة صادرة عن عرض سعر رقم (${String(q.ID).slice(-8)})`
+  };
+
+  openInvoiceModal(newInv, false);
+}
+
+/* ---------------- Professional A4 Quotation Print Engine ---------------- */
 function openQuotationPrint(q, cartItems){
   const old = document.getElementById('printMount');
   if(old) old.remove();
+
+  const items = cartItems || getQuotationItems(q);
+  const shopName = (state.settings && state.settings.shopName) || 'صيانة ميكروتك';
+  const logoUrl = state.settings && state.settings.logoUrl;
+  const shopPhone = (state.settings && state.settings.shopPhone) || '';
+  const shopAddress = (state.settings && state.settings.shopAddress) || '';
+  const shopTaxNumber = (state.settings && state.settings.shopTaxNumber) || '';
+  const quoteTerms = getQuoteTerms();
+  const quoteId = String(q.ID||'').slice(-8);
+
+  const total = Number(q.Total || 0);
+  const paid = Number(q.PaidAmount || 0);
+  const remaining = Math.max(0, total - paid);
+
   const mount = document.createElement('div');
-  mount.id='printMount';
+  mount.id = 'printMount';
+
+  // Inject print styles for A4 quotation
+  let styleEl = document.getElementById('dynamicQuotationPrintStyle');
+  if(!styleEl){
+    styleEl = document.createElement('style');
+    styleEl.id = 'dynamicQuotationPrintStyle';
+    document.head.appendChild(styleEl);
+  }
+
+  styleEl.innerHTML = `
+    @media print {
+      @page {
+        size: A4 portrait !important;
+        margin: 10mm 12mm !important;
+      }
+      html, body {
+        background: #ffffff !important;
+        color: #000000 !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      body.printing-quotation-doc #app,
+      body.printing-quotation-doc .sidebar,
+      body.printing-quotation-doc .top-header,
+      body.printing-quotation-doc #toastContainer,
+      body.printing-quotation-doc .modal-overlay,
+      body.printing-quotation-doc .cmd-palette-overlay {
+        display: none !important;
+      }
+      body.printing-quotation-doc #printMount {
+        display: block !important;
+        width: 100% !important;
+        background: #ffffff !important;
+      }
+      .quo-print-page {
+        font-family: 'Segoe UI', Tahoma, Arial, sans-serif !important;
+        color: #000000 !important;
+        direction: rtl !important;
+        text-align: right !important;
+        padding: 4mm 2mm !important;
+        box-sizing: border-box !important;
+      }
+      .quo-print-page table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+      }
+      .quo-print-page th, .quo-print-page td {
+        border: 1px solid #000000 !important;
+        padding: 5px 8px !important;
+      }
+    }
+  `;
+
   mount.innerHTML = `
-  <div id="receiptPaper">
-    <div>
-      <div class="r-head">
-        <div>${state.settings.logoUrl ? `<img src="${state.settings.logoUrl}" style="max-height:26px;max-width:110px;object-fit:contain;margin-bottom:2px;">` : ''}<h4>${state.settings.shopName}</h4><div class="r-sub">عرض سعر مشروع تركيب كاميرات وشبكات</div></div>
+    <div class="quo-print-page" style="background:#fff;color:#000;font-family:'Segoe UI',Tahoma,Arial,sans-serif;direction:rtl;text-align:right;max-width:210mm;margin:0 auto;">
+      
+      <!-- Store Header -->
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2.5px solid #000;padding-bottom:8px;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          ${logoUrl ? `<img src="${logoUrl}" style="max-height:48px;max-width:140px;object-fit:contain;">` : ''}
+          <div>
+            <h2 style="margin:0;font-size:20px;font-weight:900;">${escapeHtml(shopName)}</h2>
+            <div style="font-size:11.5px;font-weight:700;margin-top:2px;">
+              ${shopPhone ? `الهاتف: <span class="mono">${escapeHtml(shopPhone)}</span> ` : ''}
+              ${shopAddress ? `| ${escapeHtml(shopAddress)} ` : ''}
+              ${shopTaxNumber ? `| س.ت / ضريبي: <span class="mono">${escapeHtml(shopTaxNumber)}</span>` : ''}
+            </div>
+          </div>
+        </div>
         <div style="text-align:left;">
-          <div class="r-badge mono">${String(q.ID).slice(-8)}</div>
-          <div class="r-meta">التاريخ: ${cleanDate(q.Date)}</div>
+          <div style="display:inline-block;border:2px solid #000;padding:4px 12px;border-radius:6px;font-weight:900;font-size:14px;background:#f5f5f5;">
+            📄 عرض أسعار رسمي (Quotation)
+          </div>
+          <div style="font-size:12px;font-weight:800;margin-top:4px;">
+            رقم العرض: <span class="mono font-bold" style="font-size:14px;">#${quoteId}</span>
+          </div>
+          <div style="font-size:11px;font-weight:700;color:#333;" class="mono">${cleanDate(q.Date)}</div>
         </div>
       </div>
-      <div class="section-title">بيانات العميل</div>
-      <table><tr><td class="k">الاسم</td><td><b>${q.ClientName}</b></td><td class="k">الهاتف</td><td class="mono"><b>${q.ClientPhone||'-'}</b></td></tr></table>
-      <div class="section-title">الأصناف والخدمات</div>
-      <table>
-        <thead><tr><td class="k">البند</td><td class="k">الكمية</td><td class="k">السعر</td><td class="k">الإجمالي</td></tr></thead>
-        ${cartItems.map(c=>`<tr><td>${c.name}</td><td>${c.qty}</td><td>${c.price}</td><td>${c.qty*c.price}</td></tr>`).join('')}
+
+      <!-- Client Details Box -->
+      <div style="border:1.5px solid #000;border-radius:6px;padding:8px 12px;margin-bottom:12px;background:#fafafa;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <div>
+          <span style="font-size:11.5px;font-weight:700;color:#555;">السادة / العميل:</span>
+          <b style="font-size:14px;display:inline-block;margin-right:6px;">${escapeHtml(q.ClientName)}</b>
+        </div>
+        ${q.ClientPhone ? `
+          <div>
+            <span style="font-size:11.5px;font-weight:700;color:#555;">رقم الهاتف:</span>
+            <b style="font-size:13.5px;display:inline-block;margin-right:6px;" class="mono">${escapeHtml(q.ClientPhone)}</b>
+          </div>
+        ` : ''}
+        <div>
+          <span style="font-size:11.5px;font-weight:700;color:#555;">صلاحية العرض:</span>
+          <b style="font-size:12px;display:inline-block;margin-right:6px;">14 يوماً من تاريخه</b>
+        </div>
+      </div>
+
+      <!-- Items Table -->
+      <table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:12px;">
+        <thead>
+          <tr style="background:#000;color:#fff;">
+            <th style="padding:6px;border:1px solid #000;text-align:center;width:30px;">#</th>
+            <th style="padding:6px;border:1px solid #000;text-align:right;">البند والمواصفات الفنية</th>
+            <th style="padding:6px;border:1px solid #000;text-align:center;width:60px;">النوع</th>
+            <th style="padding:6px;border:1px solid #000;text-align:center;width:45px;">الكمية</th>
+            <th style="padding:6px;border:1px solid #000;text-align:center;width:80px;">السعر الفردي</th>
+            <th style="padding:6px;border:1px solid #000;text-align:left;width:95px;">الإجمالي</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.map((it, idx) => `
+            <tr>
+              <td style="padding:5px;border:1px solid #000;text-align:center;" class="mono">${idx+1}</td>
+              <td style="padding:5px;border:1px solid #000;font-weight:700;">${escapeHtml(it.name || it.Name)}</td>
+              <td style="padding:5px;border:1px solid #000;text-align:center;font-size:11px;">${it.type==='service'?'خدمة / تركيب':'توريد مهمات'}</td>
+              <td style="padding:5px;border:1px solid #000;text-align:center;font-weight:900;" class="mono">${it.qty || it.Qty || 1}</td>
+              <td style="padding:5px;border:1px solid #000;text-align:center;" class="mono">${Number(it.price || it.Price || 0).toLocaleString()}</td>
+              <td style="padding:5px;border:1px solid #000;text-align:left;font-weight:900;" class="mono">${(Number(it.qty||1)*Number(it.price||0)).toLocaleString()} ج.م</td>
+            </tr>
+          `).join('')}
+        </tbody>
       </table>
-      <div class="fin-box"><div class="fin-cell hi"><div class="l">الإجمالي المطلوب</div><div class="v">${q.Total} ج.م</div></div></div>
+
+      <!-- Financial Totals Box -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:12px;">
+        <div style="flex:1;border:1.5px solid #000;border-radius:6px;padding:8px 10px;font-size:11.5px;line-height:1.6;background:#fcfcfc;">
+          <b style="display:block;margin-bottom:2px;font-size:12px;">📋 شروط وأحكام العرض:</b>
+          <div style="white-space:pre-line;color:#222;">${escapeHtml(quoteTerms)}</div>
+        </div>
+
+        <div style="width:240px;border:1.5px solid #000;border-radius:6px;padding:8px 10px;font-size:12.5px;font-weight:800;background:#fafafa;">
+          <div style="display:flex;justify-content:space-between;border-bottom:1.5px solid #000;padding-bottom:4px;margin-bottom:4px;">
+            <span style="font-size:13.5px;font-weight:900;">الإجمالي المطلوب:</span>
+            <span class="mono font-bold" style="font-size:15px;">${total.toLocaleString()} ج.م</span>
+          </div>
+          ${paid > 0 ? `
+            <div style="display:flex;justify-content:space-between;color:green;margin-bottom:2px;">
+              <span>المسدد (عربون / دفعات):</span>
+              <span class="mono">${paid.toLocaleString()} ج.م</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;color:red;border-top:1px dashed #000;padding-top:2px;">
+              <span>المتبقي عند التنفيذ:</span>
+              <span class="mono">${remaining.toLocaleString()} ج.م</span>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+
+      <!-- Signatures -->
+      <div style="border-top:1.5px dashed #000;padding-top:8px;margin-top:10px;display:flex;justify-content:space-between;font-size:12px;font-weight:800;">
+        <div style="text-align:center;width:200px;">
+          <div>موافقة واعتماد العميل</div>
+          <div style="height:35px;"></div>
+          <div style="border-top:1px solid #000;padding-top:2px;">الاسم والتوقيع: .....................</div>
+        </div>
+        <div style="text-align:center;width:200px;">
+          <div>المسؤول المعتمد / خاتم الشركة</div>
+          <div style="height:35px;"></div>
+          <div style="border-top:1px solid #000;padding-top:2px;">${escapeHtml(state.user ? state.user.name : shopName)}</div>
+        </div>
+      </div>
     </div>
-    <div>
-      <div class="terms">عرض السعر هذا صالح لمدة 14 يوماً وقابل للتعديل بعد المعاينة الميدانية.</div>
-      <div class="sign-row"><div>توقيع العميل بالموافقة</div><div>المسؤول (${state.user.name})</div></div>
-    </div>
-  </div>`;
+  `;
+
   document.body.appendChild(mount);
-  setTimeout(()=>{ window.print(); mount.remove(); }, 200);
+  document.body.classList.add('printing-quotation-doc');
+
+  setTimeout(()=>{
+    window.print();
+    setTimeout(()=>{
+      mount.remove();
+      document.body.classList.remove('printing-quotation-doc');
+    }, 500);
+  }, 200);
+}
+
+/* ---------------- Legal Contract & Agreement Print Engine ---------------- */
+function openQuotationAgreementPrint(q, cartItems){
+  const old = document.getElementById('printMount');
+  if(old) old.remove();
+
+  const items = cartItems || getQuotationItems(q);
+  const shopName = (state.settings && state.settings.shopName) || 'صيانة ميكروتك';
+  const logoUrl = state.settings && state.settings.logoUrl;
+  const shopPhone = (state.settings && state.settings.shopPhone) || '';
+  const shopAddress = (state.settings && state.settings.shopAddress) || '';
+  const shopTaxNumber = (state.settings && state.settings.shopTaxNumber) || '';
+  const agreementTerms = getQuoteAgreementTerms();
+  const quoteId = String(q.ID||'').slice(-8);
+
+  const total = Number(q.Total || 0);
+  const paid = Number(q.PaidAmount || 0);
+  const remaining = Math.max(0, total - paid);
+
+  const mount = document.createElement('div');
+  mount.id = 'printMount';
+
+  // Inject print styles for contract
+  let styleEl = document.getElementById('dynamicQuotationPrintStyle');
+  if(!styleEl){
+    styleEl = document.createElement('style');
+    styleEl.id = 'dynamicQuotationPrintStyle';
+    document.head.appendChild(styleEl);
+  }
+
+  styleEl.innerHTML = `
+    @media print {
+      @page {
+        size: A4 portrait !important;
+        margin: 8mm 10mm !important;
+      }
+      html, body {
+        background: #ffffff !important;
+        color: #000000 !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      body.printing-quotation-doc #app,
+      body.printing-quotation-doc .sidebar,
+      body.printing-quotation-doc .top-header,
+      body.printing-quotation-doc #toastContainer,
+      body.printing-quotation-doc .modal-overlay,
+      body.printing-quotation-doc .cmd-palette-overlay {
+        display: none !important;
+      }
+      body.printing-quotation-doc #printMount {
+        display: block !important;
+        width: 100% !important;
+        background: #ffffff !important;
+      }
+      .contract-print-page {
+        font-family: 'Segoe UI', Tahoma, Arial, sans-serif !important;
+        color: #000000 !important;
+        direction: rtl !important;
+        text-align: right !important;
+        padding: 2mm !important;
+        box-sizing: border-box !important;
+      }
+    }
+  `;
+
+  mount.innerHTML = `
+    <div class="contract-print-page" style="background:#fff;color:#000;font-family:'Segoe UI',Tahoma,Arial,sans-serif;direction:rtl;text-align:right;max-width:210mm;margin:0 auto;">
+      
+      <!-- Store Header -->
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          ${logoUrl ? `<img src="${logoUrl}" style="max-height:40px;max-width:130px;object-fit:contain;">` : ''}
+          <div>
+            <h2 style="margin:0;font-size:18px;font-weight:900;">${escapeHtml(shopName)}</h2>
+            <div style="font-size:11px;font-weight:700;">
+              ${shopPhone ? `هاتف: <span class="mono">${escapeHtml(shopPhone)}</span> ` : ''}
+              ${shopAddress ? `| ${escapeHtml(shopAddress)} ` : ''}
+            </div>
+          </div>
+        </div>
+        <div style="text-align:left;">
+          <div style="font-size:12px;font-weight:800;">رقم الاتفاق / العرض: <span class="mono">#${quoteId}</span></div>
+          <div style="font-size:11px;font-weight:700;" class="mono">${cleanDate(q.Date)}</div>
+        </div>
+      </div>
+
+      <!-- Contract Header Banner -->
+      <div style="text-align:center;border:2px solid #000;border-radius:6px;padding:6px;margin-bottom:8px;background:#f5f5f5;">
+        <h3 style="margin:0;font-size:15px;font-weight:900;">📜 عقد اتفاق وتوريد وتركيب وتشغيل منظومات شبكات ومراقبة</h3>
+      </div>
+
+      <!-- Contract Parties -->
+      <div style="border:1.5px solid #000;border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:12px;line-height:1.5;background:#fafafa;">
+        <div style="margin-bottom:3px;">
+          <b>• الطرف الأول (المنفذ والمورد):</b> ${escapeHtml(shopName)} ${shopTaxNumber ? `(س.ت / ضريبي: ${escapeHtml(shopTaxNumber)})` : ''} — هاتف: ${escapeHtml(shopPhone)}
+        </div>
+        <div>
+          <b>• الطرف الثاني (العميل / المستفيد):</b> ${escapeHtml(q.ClientName)} — هاتف: <span class="mono font-bold">${escapeHtml(q.ClientPhone||'-')}</span>
+        </div>
+      </div>
+
+      <!-- Project Items Summary Table -->
+      <div style="margin-bottom:8px;">
+        <b style="font-size:12px;display:block;margin-bottom:3px;">📋 جدول حصر الأعمال والمهمات المتفق على توريدها وتركيبها:</b>
+        <table style="width:100%;border-collapse:collapse;font-size:11.5px;">
+          <thead>
+            <tr style="background:#000;color:#fff;">
+              <th style="padding:4px;border:1px solid #000;text-align:center;width:25px;">#</th>
+              <th style="padding:4px;border:1px solid #000;text-align:right;">بيان البند والخدمة</th>
+              <th style="padding:4px;border:1px solid #000;text-align:center;width:45px;">الكمية</th>
+              <th style="padding:4px;border:1px solid #000;text-align:center;width:75px;">السعر الفردي</th>
+              <th style="padding:4px;border:1px solid #000;text-align:left;width:85px;">الإجمالي</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${items.map((it, idx) => `
+              <tr>
+                <td style="padding:4px;border:1px solid #000;text-align:center;" class="mono">${idx+1}</td>
+                <td style="padding:4px;border:1px solid #000;font-weight:700;">${escapeHtml(it.name || it.Name)}</td>
+                <td style="padding:4px;border:1px solid #000;text-align:center;font-weight:900;" class="mono">${it.qty || it.Qty || 1}</td>
+                <td style="padding:4px;border:1px solid #000;text-align:center;" class="mono">${Number(it.price || it.Price || 0).toLocaleString()}</td>
+                <td style="padding:4px;border:1px solid #000;text-align:left;font-weight:900;" class="mono">${(Number(it.qty||1)*Number(it.price||0)).toLocaleString()} ج.م</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Financial Payment Schedule Box -->
+      <div style="border:1.5px solid #000;border-radius:6px;padding:6px 10px;margin-bottom:8px;background:#fafafa;display:flex;justify-content:space-between;align-items:center;font-size:12px;">
+        <div><b>إجمالي القيمة التعاقدية:</b> <span class="mono font-bold" style="font-size:14px;">${total.toLocaleString()} ج.م</span></div>
+        <div><b>المسدد (عربون مقدم):</b> <span class="mono font-bold" style="color:green;font-size:13px;">${paid.toLocaleString()} ج.م</span></div>
+        <div><b>المتبقي المستحق:</b> <span class="mono font-bold" style="color:red;font-size:13px;">${remaining.toLocaleString()} ج.م</span></div>
+      </div>
+
+      <!-- Agreement Legal Clauses -->
+      <div style="border:1.5px solid #000;border-radius:6px;padding:8px 10px;margin-bottom:10px;font-size:11.5px;line-height:1.65;background:#fcfcfc;">
+        <b style="display:block;margin-bottom:4px;font-size:12px;">⚖️ الشروط والبنود القانونية المنظمة للاتفاق:</b>
+        <div style="white-space:pre-line;color:#111;">${escapeHtml(agreementTerms)}</div>
+      </div>
+
+      <!-- Signatures & Stamp Blocks -->
+      <div style="border-top:1.5px solid #000;padding-top:6px;display:flex;justify-content:space-between;font-size:12px;font-weight:800;">
+        <div style="text-align:center;width:220px;">
+          <div>الطرف الأول (المنفذ والمورد)</div>
+          <div style="font-size:11px;color:#555;margin-top:2px;">${escapeHtml(shopName)}</div>
+          <div style="height:35px;"></div>
+          <div style="border-top:1px solid #000;padding-top:2px;">التوقيع والختم: .....................</div>
+        </div>
+        <div style="text-align:center;width:220px;">
+          <div>الطرف الثاني (العميل المستفيد)</div>
+          <div style="font-size:11px;color:#555;margin-top:2px;">${escapeHtml(q.ClientName)}</div>
+          <div style="height:35px;"></div>
+          <div style="border-top:1px solid #000;padding-top:2px;">التوقيع ورقم الهوية: .....................</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(mount);
+  document.body.classList.add('printing-quotation-doc');
+
+  setTimeout(()=>{
+    window.print();
+    setTimeout(()=>{
+      mount.remove();
+      document.body.classList.remove('printing-quotation-doc');
+    }, 500);
+  }, 200);
 }
 
 /* ---------------- Inventory Hub ---------------- */
@@ -11101,14 +12025,15 @@ function renderWhatsappSettings(main){
   };
 }
 
-/* 4. Warranty Terms & Conditions */
+/* 4. Warranty & Legal Agreement Terms */
 function renderWarrantySettings(main){
   const currentTerms = getTerms();
   const currentInvTerms = getInvoiceTerms();
   const currentQuoteTerms = getQuoteTerms();
+  const currentAgreementTerms = getQuoteAgreementTerms();
 
   main.innerHTML = `
-    ${renderSettingsNavHeader('📜 بنود الضمان وحقوق الاستلام', 'تخصيص وكتابة بنود وشروط إيصال الصيانة (A5) والفواتير الرسمية وعروض الأسعار')}
+    ${renderSettingsNavHeader('📜 بنود الضمان وعقود الاتفاق', 'تخصيص وكتابة بنود وشروط إيصال الصيانة (A5) والفواتير وعروض الأسعار وعقود التوريد والتركيب')}
 
     <!-- Maintenance A5 Receipt Terms -->
     <div class="card" style="border-right:4px solid var(--blue);">
@@ -11134,12 +12059,27 @@ function renderWarrantySettings(main){
 
     <!-- Quotation Terms -->
     <div class="card" style="border-right:4px solid var(--cyan);">
-      <h3 style="margin-top:0;font-size:15px;color:var(--cyan-text);">📋 شروط وأحكام عرض الأسعار وبيان السعر</h3>
-      <p style="font-size:12px;color:var(--ink-secondary);margin-bottom:10px;">تظهر أسفل عروض الأسعار وبيان التكلفة الصادر للعميل:</p>
+      <h3 style="margin-top:0;font-size:15px;color:var(--cyan-text);">📋 شروط وأحكام عرض الأسعار وبيان التكلفة</h3>
+      <p style="font-size:12px;color:var(--ink-secondary);margin-bottom:10px;">تظهر أسفل صفحة عرض السعر الصادر للعميل:</p>
       <textarea id="setQuoteTermsText" style="min-height:90px;font-size:12.5px;line-height:1.6;">${currentQuoteTerms}</textarea>
       <div style="display:flex;justify-content:space-between;margin-top:10px;">
         <button class="btn btn-ghost btn-xs" id="resetQuoteTermsBtn">↩ استعادة الافتراضي</button>
         <button class="btn btn-primary btn-sm" id="saveQuoteTermsBtn">💾 حفظ شروط عرض السعر</button>
+      </div>
+    </div>
+
+    <!-- Quotation Agreement & Contract Terms -->
+    <div class="card" style="border-right:4px solid var(--green);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <h3 style="margin:0;font-size:15px;color:var(--green-text);">📜 بنود وشروط عقد واتفاق التوريد والتركيب (عقد المشروع)</h3>
+      </div>
+      <p style="font-size:12px;color:var(--ink-secondary);margin-bottom:10px;">
+        تطبع هذه البنود عند الضغط على زر <b>"طباعة اتفاق وشروط العرض"</b> لطباعة عقد رسمي ملزم للطرفين مع جدول سداد الدفعات وتوقيعات الاستلام:
+      </p>
+      <textarea id="setAgreementTermsText" style="min-height:140px;font-size:12.5px;line-height:1.7;">${currentAgreementTerms}</textarea>
+      <div style="display:flex;justify-content:space-between;margin-top:10px;">
+        <button class="btn btn-ghost btn-xs" id="resetAgreementTermsBtn">↩ استعادة بنود العقد الافتراضية</button>
+        <button class="btn btn-primary btn-sm" id="saveAgreementTermsBtn">💾 حفظ بنود العقد والاتفاق</button>
       </div>
     </div>
   `;
@@ -11186,6 +12126,20 @@ function renderWarrantySettings(main){
     state.settings.quoteTerms = DEFAULT_QUOTE_TERMS;
     setCache('settings', state.settings);
     showToast('تمت استعادة شروط عرض السعر الافتراضية', 'info');
+  };
+
+  document.getElementById('saveAgreementTermsBtn').onclick = async ()=>{
+    const v = document.getElementById('setAgreementTermsText').value.trim();
+    state.settings.quoteAgreementTerms = v;
+    setCache('settings', state.settings);
+    await saveSettingRemote('quoteAgreementTerms', v);
+    showToast('تم حفظ بنود عقد واتفاق التوريد بنجاح ✅', 'success');
+  };
+  document.getElementById('resetAgreementTermsBtn').onclick = ()=>{
+    document.getElementById('setAgreementTermsText').value = DEFAULT_QUOTE_AGREEMENT_TERMS;
+    state.settings.quoteAgreementTerms = DEFAULT_QUOTE_AGREEMENT_TERMS;
+    setCache('settings', state.settings);
+    showToast('تمت استعادة بنود عقد التوريد الافتراضية', 'info');
   };
 }
 

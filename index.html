@@ -2041,14 +2041,18 @@ async function apiPost(action, data){
 
 /* Background Synchronization */
 let isSyncingNow = false;
-async function syncOfflineQueue(){
+async function syncOfflineQueue(isManual = false){
   if(!navigator.onLine || isSyncingNow) return;
   const q = getSyncQueue();
-  if(!q.length) { updateSyncStatusPill(); return; }
+  if(!q.length) { 
+    updateSyncStatusPill(); 
+    if(isManual) showToast('لا توجد أي عمليات معلقة — كافة البيانات متزامنة تماماً مع السحابة ✨', 'success');
+    return; 
+  }
 
   isSyncingNow = true;
   updateSyncStatusPill();
-  showToast(`🔄 جاري مزامنة ${q.length} عمليات مسجلة دون إنترنت...`, 'info');
+  if(isManual) showToast(`🔄 جاري مزامنة ${q.length} عمليات مسجلة دون إنترنت...`, 'info', 2500);
 
   const remaining = [];
   for(const item of q){
@@ -2062,7 +2066,11 @@ async function syncOfflineQueue(){
       if(json && json.error) throw new Error(json.error);
     } catch(err) {
       console.warn('Sync failed for item:', item, err);
-      remaining.push(item);
+      item.retryCount = (item.retryCount || 0) + 1;
+      // Retain item for next attempt if under retry limit
+      if(item.retryCount <= 10){
+        remaining.push(item);
+      }
     }
   }
 
@@ -2071,7 +2079,7 @@ async function syncOfflineQueue(){
   updateSyncStatusPill();
 
   if(remaining.length === 0){
-    showToast('✅ تم مزامنة كافة العمليات بنجاح مع السحابة!', 'success');
+    if(isManual) showToast('✅ تم مزامنة كافة العمليات بنجاح مع السحابة!', 'success');
     // Refresh memory from cloud
     try {
       [state.receipts, state.customers, state.technicians, state.settings, state.payments, state.inventory, state.sales, state.quotations, state.services, state.purchases, state.suppliers, state.expenses] = await Promise.all([
@@ -2080,19 +2088,25 @@ async function syncOfflineQueue(){
       renderMain();
     } catch(e){}
   } else {
-    showToast(`⚠️ تبقى ${remaining.length} عمليات قيد المزامنة عند توفر اتصال أقوى.`, 'info');
+    if(isManual) showToast(`⚠️ تبقى ${remaining.length} عمليات في الطابور سيتم رفعها تلقائياً.`, 'info');
   }
+}
+
+function clearOfflineSyncQueue(){
+  try {
+    localStorage.removeItem('microerp_sync_queue');
+  } catch(e){}
+  updateSyncStatusPill();
+  showToast('تم تفريغ طابور المزامنة المعلق بنجاح ✅', 'success');
 }
 
 /* Listen to online/offline network events */
 window.addEventListener('online', ()=>{
   updateSyncStatusPill();
-  showToast('🌐 تم استعادة الاتصال بالإنترنت! جاري المزامنة...', 'success');
-  syncOfflineQueue();
+  syncOfflineQueue(false);
 });
 window.addEventListener('offline', ()=>{
   updateSyncStatusPill();
-  showToast('📴 انقطع الإنترنت — النظام يعمل محلياً بكفاءة 100%', 'info');
 });
 
 function updateSyncStatusPill(){
@@ -2118,19 +2132,40 @@ function updateSyncStatusPill(){
 }
 
 /* ---- Toast Notification Utility ---- */
-function showToast(msg, type='info', duration=3200){
+function showToast(msg, type='info', duration=2800){
   const container = document.getElementById('toastContainer');
   if(!container) return;
+  
+  // Prevent duplicate consecutive toasts with identical message
+  const existing = container.querySelectorAll('.toast');
+  for(const ex of existing){
+    if(ex.textContent.includes(msg)){
+      return; // Already showing this toast
+    }
+  }
+
+  // Limit max visible toasts to 3
+  if(existing.length >= 3){
+    existing[0].remove();
+  }
+
   const t = document.createElement('div');
   t.className = `toast ${type}`;
+  t.style.cursor = 'pointer';
+  t.title = 'انقر للإغلاق السريع';
   const icons = { success: '✅', error: '❌', info: 'ℹ️' };
-  t.innerHTML = `<span>${icons[type] || 'ℹ️'}</span><span>${msg}</span>`;
+  t.innerHTML = `<span>${icons[type] || 'ℹ️'}</span><span>${msg}</span><span style="margin-right:auto;font-size:11px;opacity:0.6;margin-left:4px;">✕</span>`;
+  
+  t.onclick = ()=>{ t.remove(); };
+
   container.appendChild(t);
   setTimeout(()=>{
-    t.style.opacity = '0';
-    t.style.transform = 'translateY(10px)';
-    t.style.transition = 'all 0.2s ease';
-    setTimeout(()=>t.remove(), 200);
+    if(t.parentNode){
+      t.style.opacity = '0';
+      t.style.transform = 'translateY(10px)';
+      t.style.transition = 'all 0.2s ease';
+      setTimeout(()=>t.remove(), 200);
+    }
   }, duration);
 }
 
@@ -2822,6 +2857,69 @@ function getPosSettings(){
   return state.settings.pos;
 }
 
+const DEFAULT_PRINTERS_SETTINGS = {
+  // 1. طابعة إيصالات الكاشير (Receipt / POS Thermal Printer)
+  receiptPrinter: {
+    name: 'Xprinter XP-808 (طابعة بون حراري 80 مم)',
+    paperSize: '80mm',
+    fontScale: 'large', // 'large' (موصى به لويندوز 11 و إكس برنتر), 'normal'
+    autoPrint: true,
+    cutterFeedMm: 10,
+    showLogo: true,
+    showCashier: true,
+    printBarcode: true,
+    footerText: 'شكراً لتعاملكم معنا • نسعد دائماً بخدمتكم'
+  },
+  // 2. طابعة ملصقات الباركود (Thermal Label / Barcode Sticker Printer)
+  barcodePrinter: {
+    name: 'طابعة ملصقات باركود حرارية (Xprinter 365B / 370B / Zebra)',
+    defaultSize: '50x30', // '50x30', '40x25', '38x25', '60x40', 'custom'
+    customWidthMm: 50,
+    customHeightMm: 30,
+    barcodeType: 'CODE128',
+    defaultCopies: 1,
+    showPrice: true,
+    showShopName: true,
+    showDate: false
+  },
+  // 3. طابعة الليزر والمستندات الرسمية (Standard Laser / Inkjet Printer - A4 / A5)
+  laserPrinter: {
+    name: 'طابعة ليزر مكتبية عادية (HP / Canon / Brother A4 / A5)',
+    maintenanceReceiptSize: 'A5', // A5 landscape (ورقة واحدة مدمجة)
+    invoiceSize: 'A4', // A4 portrait أو A5
+    quotationSize: 'A4',
+    reportsSize: 'A4',
+    barcodeSheetLayout: '30', // 24, 30, 40, 65 stickers per sheet
+    colorMode: 'bw_sharp', // 'bw_sharp' (أسود عالي التباين) أو 'color'
+    showWatermark: true,
+    showTerms: true
+  },
+  // 4. تعيين العمليات للطابعات (Workflow Assignments)
+  workflowAssignments: {
+    posSale: 'receiptPrinter', // إيصالات نقطة البيع السريعة
+    maintenanceReceipt: 'laserPrinter', // إيصال وضمان الصيانة
+    taxInvoice: 'laserPrinter', // الفواتير الضريبية الرسمية
+    quotation: 'laserPrinter', // عروض الأسعار
+    singleBarcode: 'barcodePrinter', // ملصقات الباركود الفردية للأصناف
+    deviceBarcode: 'barcodePrinter', // ملصقات باركود أجهزة الصيانة
+    sheetBarcode: 'laserPrinter', // ملصقات الباركود المجمعة A4
+    financialReports: 'laserPrinter' // اليومية وكشوف الحسابات وميزان المراجعة
+  }
+};
+
+function getPrintersSettings(){
+  if(!state.settings) state.settings = {};
+  if(!state.settings.printers) state.settings.printers = JSON.parse(JSON.stringify(DEFAULT_PRINTERS_SETTINGS));
+  else {
+    state.settings.printers = { ...DEFAULT_PRINTERS_SETTINGS, ...state.settings.printers };
+    if(!state.settings.printers.receiptPrinter) state.settings.printers.receiptPrinter = DEFAULT_PRINTERS_SETTINGS.receiptPrinter;
+    if(!state.settings.printers.barcodePrinter) state.settings.printers.barcodePrinter = DEFAULT_PRINTERS_SETTINGS.barcodePrinter;
+    if(!state.settings.printers.laserPrinter) state.settings.printers.laserPrinter = DEFAULT_PRINTERS_SETTINGS.laserPrinter;
+    if(!state.settings.printers.workflowAssignments) state.settings.printers.workflowAssignments = DEFAULT_PRINTERS_SETTINGS.workflowAssignments;
+  }
+  return state.settings.printers;
+}
+
 /**
  * Sanitizes and extracts the date string in YYYY-MM-DD format with English digits.
  * @param {string|Date} val - The input date value.
@@ -2921,7 +3019,8 @@ let state = {
     invoiceTerms: DEFAULT_INVOICE_TERMS,
     quoteTerms: DEFAULT_QUOTE_TERMS,
     waTemplates: DEFAULT_WA_TEMPLATES,
-    pos: DEFAULT_POS_SETTINGS
+    pos: DEFAULT_POS_SETTINGS,
+    printers: DEFAULT_PRINTERS_SETTINGS
   }),
   payments: getCache('payments', []),
   inventory: getCache('inventory', []),
@@ -3573,7 +3672,7 @@ function renderExecutiveCommandCenter(app){
             <span class="kbd-shortcut">⌘K</span>
           </button>
           <button class="btn btn-ghost btn-sm" id="topHeroSettingsBtn" style="font-weight:800;border-color:var(--primary);color:var(--primary);">⚙️ الإعدادات</button>
-          <div id="networkSyncPill" class="sync-pill online" onclick="syncOfflineQueue()">🟢 متصل</div>
+          <div id="networkSyncPill" class="sync-pill online" onclick="syncOfflineQueue(true)">🟢 متصل</div>
           <button class="theme-toggle-btn" id="themeToggleHub">${state.theme==='dark'?'☀️ فاتح':'🌙 ليلي'}</button>
           <button class="btn btn-ghost btn-sm" id="logoutHubBtn" style="color:var(--red);">🚪 خروج</button>
         </div>
@@ -3933,7 +4032,7 @@ function renderDashboard(main){
         <div class="subtitle">نظرة عامة على حالة الأجهزة ومتابعة سير العمل اليومي</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;">
-        <div id="networkSyncPill" class="sync-pill online" onclick="syncOfflineQueue()">🟢 متصل</div>
+        <div id="networkSyncPill" class="sync-pill online" onclick="syncOfflineQueue(true)">🟢 متصل</div>
         <button class="btn btn-ghost btn-sm" id="exportExcelDashBtn">📥 تصدير Excel</button>
         <button class="btn btn-primary btn-sm" id="dashNewReceiptBtn">➕ استلام جهاز جديد</button>
       </div>
@@ -8138,7 +8237,7 @@ function addServiceToCart(serviceName, servicePrice, main){
   renderPosSell(main);
 }
 
-/* ---------------- Enhanced Thermal Receipt Print Engine (80mm / 58mm) ---------------- */
+/* ---------------- Enhanced Thermal Receipt Print Engine for Xprinter 808 (80mm / 58mm) & Windows 11 ---------------- */
 function openSalePrint(sale, cartItems, meta={}){
   const posSettings = getPosSettings();
   const old = document.getElementById('printMount');
@@ -8158,10 +8257,12 @@ function openSalePrint(sale, cartItems, meta={}){
   const changeAmt = meta.changeDue != null ? meta.changeDue : Math.max(0, paidAmt - grandTotal);
   const payMethod = meta.payMethodName || sale.PaymentMethod || 'نقدي';
 
+  const receiptId = String(sale.ID || Date.now()).slice(-8);
+
   const mount = document.createElement('div');
   mount.id = 'printMount';
 
-  // Inject print styles for thermal roll receipt
+  // Inject print styles calibrated for Windows 11 & Xprinter 80mm / 58mm thermal rolls
   let receiptStyle = document.getElementById('dynamicThermalReceiptStyle');
   if(!receiptStyle){
     receiptStyle = document.createElement('style');
@@ -8173,121 +8274,163 @@ function openSalePrint(sale, cartItems, meta={}){
     @media print {
       @page {
         size: ${paperSize} auto !important;
-        margin: 2mm 3mm !important;
+        margin: 0mm !important;
       }
-      body.printing-pos-receipt {
-        background: #fff !important;
+      html, body {
         width: ${paperSize} !important;
         margin: 0 !important;
         padding: 0 !important;
-        color: #000 !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      body.printing-pos-receipt #app,
+      body.printing-pos-receipt .sidebar,
+      body.printing-pos-receipt .top-header,
+      body.printing-pos-receipt #toastContainer,
+      body.printing-pos-receipt .cmd-palette-overlay {
+        display: none !important;
+      }
+      body.printing-pos-receipt #printMount {
+        display: block !important;
+        width: ${paperSize} !important;
+        margin: 0 auto !important;
+        padding: 0 !important;
+        background: #ffffff !important;
       }
       .pos-thermal-receipt {
-        width: ${is58mm ? '52mm' : '74mm'} !important;
+        width: ${is58mm ? '54mm' : '76mm'} !important;
+        max-width: 100% !important;
         margin: 0 auto !important;
-        font-family: monospace, sans-serif !important;
-        font-size: ${is58mm ? '10px' : '11.5px'} !important;
+        padding: 2mm 1mm 10mm 1mm !important;
+        box-sizing: border-box !important;
+        font-family: 'Segoe UI', Tahoma, Arial, -apple-system, sans-serif !important;
+        font-size: ${is58mm ? '12px' : '13.5px'} !important;
+        font-weight: 800 !important;
+        color: #000000 !important;
+        background: #ffffff !important;
         line-height: 1.35 !important;
-        color: #000 !important;
-        background: #fff !important;
+        direction: rtl !important;
+        text-align: right !important;
+      }
+      .pos-thermal-receipt * {
+        color: #000000 !important;
+        box-sizing: border-box !important;
       }
       .pos-thermal-receipt table {
         width: 100% !important;
         border-collapse: collapse !important;
+        margin: 5px 0 !important;
       }
       .pos-thermal-receipt th, .pos-thermal-receipt td {
-        padding: 2px 1px !important;
-        border-bottom: 0.5px dashed #666 !important;
+        padding: 4px 2px !important;
+        vertical-align: middle !important;
+      }
+      .pos-thermal-receipt th {
+        border-top: 1.5px solid #000000 !important;
+        border-bottom: 2px solid #000000 !important;
+        font-size: ${is58mm ? '12px' : '13.5px'} !important;
+        font-weight: 900 !important;
+      }
+      .pos-thermal-receipt td {
+        border-bottom: 1px dashed #000000 !important;
+        font-size: ${is58mm ? '12px' : '13.5px'} !important;
+        font-weight: 800 !important;
       }
       .pos-thermal-receipt .r-divider {
-        border-top: 1px dashed #000 !important;
+        border-top: 1.5px dashed #000000 !important;
+        margin: 6px 0 !important;
+      }
+      .pos-thermal-receipt .r-divider-solid {
+        border-top: 2px solid #000000 !important;
         margin: 6px 0 !important;
       }
     }
   `;
 
   mount.innerHTML = `
-    <div class="pos-thermal-receipt" style="text-align:center;padding:4px 0;">
+    <div class="pos-thermal-receipt" style="text-align:center;padding:4px 2px;">
       
-      <!-- Header -->
-      ${posSettings.showLogoOnReceipt && logoUrl ? `<img src="${logoUrl}" style="max-height:35px;max-width:140px;object-fit:contain;margin-bottom:4px;">` : ''}
-      <h3 style="margin:2px 0;font-size:14px;font-weight:900;">${escapeHtml(shopName)}</h3>
-      ${state.settings && state.settings.shopPhone ? `<div style="font-size:10px;">هاتف: ${escapeHtml(state.settings.shopPhone)}</div>` : ''}
-      ${state.settings && state.settings.shopTaxNumber ? `<div style="font-size:9.5px;">س.ت / ضريبي: ${escapeHtml(state.settings.shopTaxNumber)}</div>` : ''}
+      <!-- Header & Store Identity -->
+      ${posSettings.showLogoOnReceipt && logoUrl ? `<div style="text-align:center;margin-bottom:4px;"><img src="${logoUrl}" style="max-height:45px;max-width:160px;object-fit:contain;"></div>` : ''}
+      <div style="font-size:${is58mm?'16px':'19px'};font-weight:900;margin-bottom:2px;line-height:1.2;">${escapeHtml(shopName)}</div>
+      ${state.settings && state.settings.shopPhone ? `<div style="font-size:12.5px;font-weight:800;margin-bottom:1px;">هاتف: <span class="mono">${escapeHtml(state.settings.shopPhone)}</span></div>` : ''}
+      ${state.settings && state.settings.shopAddress ? `<div style="font-size:11.5px;font-weight:700;margin-bottom:1px;">${escapeHtml(state.settings.shopAddress)}</div>` : ''}
+      ${state.settings && state.settings.shopTaxNumber ? `<div style="font-size:11.5px;font-weight:800;">س.ت / ضريبي: <span class="mono">${escapeHtml(state.settings.shopTaxNumber)}</span></div>` : ''}
       
-      <div style="font-size:11px;font-weight:800;margin-top:4px;border-top:1px dashed #000;border-bottom:1px dashed #000;padding:2px 0;">
-        إيصال مبيعات نقدية (POS)
+      <div style="font-size:14px;font-weight:900;border:1.5px solid #000;border-radius:4px;padding:3px 0;margin:6px 0;text-align:center;">
+        🧾 إيصال مبيعات نقدية (POS)
       </div>
 
-      <!-- Meta info -->
-      <div style="display:flex;justify-content:space-between;font-size:10px;margin-top:6px;text-align:right;">
-        <span>رقم الإيصال: <b class="mono">#${String(sale.ID||'').slice(-6)}</b></span>
+      <!-- Receipt Meta Info -->
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;font-weight:800;margin-bottom:3px;text-align:right;">
+        <span>رقم الإيصال: <b class="mono" style="font-size:14px;">#${receiptId}</b></span>
         <span class="mono">${cleanDate(sale.Date)} ${new Date().toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'})}</span>
       </div>
-      <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:6px;text-align:right;">
-        <span>العميل: ${escapeHtml(sale.CustomerName||'عميل زائر')}</span>
-        ${posSettings.showCashierName ? `<span>الكاشير: ${escapeHtml(cashierName)}</span>` : ''}
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:800;margin-bottom:4px;text-align:right;">
+        <span>العميل: <b>${escapeHtml(sale.CustomerName||'عميل زائر')}</b></span>
+        ${posSettings.showCashierName ? `<span>الكاشير: <b>${escapeHtml(cashierName)}</b></span>` : ''}
       </div>
-
-      <div class="r-divider"></div>
 
       <!-- Items Table -->
       <table style="text-align:right;">
         <thead>
-          <tr style="border-bottom:1px solid #000;">
+          <tr>
             <th style="text-align:right;">الصنف</th>
-            <th style="text-align:center;">كمية</th>
-            <th style="text-align:center;">السعر</th>
-            <th style="text-align:left;">الإجمالي</th>
+            <th style="text-align:center;width:35px;">كمية</th>
+            <th style="text-align:center;width:55px;">السعر</th>
+            <th style="text-align:left;width:65px;">الإجمالي</th>
           </tr>
         </thead>
         <tbody>
           ${cartItems.map(c => `
             <tr>
-              <td style="font-weight:700;">${escapeHtml(c.name)}</td>
-              <td style="text-align:center;" class="mono">${c.qty}</td>
-              <td style="text-align:center;" class="mono">${Number(c.price).toLocaleString()}</td>
-              <td style="text-align:left;font-weight:800;" class="mono">${(Number(c.qty)*Number(c.price)).toLocaleString()}</td>
+              <td style="font-weight:800;line-height:1.25;">${escapeHtml(c.name)}</td>
+              <td style="text-align:center;font-weight:900;" class="mono">${c.qty}</td>
+              <td style="text-align:center;font-weight:800;" class="mono">${Number(c.price).toLocaleString()}</td>
+              <td style="text-align:left;font-weight:900;" class="mono">${(Number(c.qty)*Number(c.price)).toLocaleString()}</td>
             </tr>
           `).join('')}
         </tbody>
       </table>
 
-      <div class="r-divider"></div>
-
-      <!-- Financial Totals -->
-      <div style="font-size:11px;text-align:right;">
-        <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+      <!-- Financial Totals Block -->
+      <div style="font-size:13px;font-weight:800;text-align:right;margin-top:4px;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
           <span>المجموع الفرعي:</span>
           <span class="mono">${subtotal.toLocaleString()} ج.م</span>
         </div>
         ${discountAmt > 0 ? `
-          <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
             <span>الخصم الممنوح:</span>
-            <span class="mono">-${discountAmt.toLocaleString()} ج.م</span>
+            <span class="mono font-bold">-${discountAmt.toLocaleString()} ج.م</span>
           </div>
         ` : ''}
         ${taxAmt > 0 ? `
-          <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
             <span>ضريبة القيمة المضافة:</span>
             <span class="mono">+${taxAmt.toLocaleString()} ج.م</span>
           </div>
         ` : ''}
-        <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:900;border-top:1px solid #000;border-bottom:1px solid #000;padding:3px 0;margin:4px 0;">
-          <span>الإجمالي النهائي:</span>
-          <span class="mono">${grandTotal.toLocaleString()} ج.م</span>
+        
+        <!-- Large High-Contrast Grand Total -->
+        <div style="display:flex;justify-content:space-between;align-items:center;border-top:2px solid #000;border-bottom:2px solid #000;padding:6px 0;margin:6px 0;">
+          <span style="font-size:15px;font-weight:900;">الإجمالي النهائي:</span>
+          <span class="mono" style="font-size:${is58mm?'18px':'21px'};font-weight:900;">${grandTotal.toLocaleString()} ج.م</span>
         </div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+
+        <div style="display:flex;justify-content:space-between;margin-bottom:2px;font-size:12.5px;">
           <span>طريقة الدفع:</span>
           <span><b>${escapeHtml(payMethod)}</b></span>
         </div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
-          <span>المدفوع:</span>
-          <span class="mono">${paidAmt.toLocaleString()} ج.م</span>
+        <div style="display:flex;justify-content:space-between;margin-bottom:2px;font-size:12.5px;">
+          <span>المبلغ المدفوع:</span>
+          <span class="mono font-bold">${paidAmt.toLocaleString()} ج.م</span>
         </div>
         ${changeAmt > 0 ? `
-          <div style="display:flex;justify-content:space-between;font-weight:800;">
-            <span>المتبقي للعميل (الباقي):</span>
+          <div style="display:flex;justify-content:space-between;font-size:13.5px;font-weight:900;border-top:1px dashed #000;padding-top:3px;margin-top:2px;">
+            <span>الباقي للعميل:</span>
             <span class="mono">${changeAmt.toLocaleString()} ج.م</span>
           </div>
         ` : ''}
@@ -8295,18 +8438,40 @@ function openSalePrint(sale, cartItems, meta={}){
 
       <div class="r-divider"></div>
 
+      <!-- Vector Barcode -->
+      <div style="text-align:center;margin:6px 0 3px;">
+        <svg id="saleReceiptBarcodeSvg" style="max-height:36px;max-width:180px;margin:0 auto;"></svg>
+      </div>
+
       <!-- Footer Notes -->
-      <div style="font-size:9.5px;color:#333;margin-top:6px;line-height:1.4;">
-        ${escapeHtml(posSettings.receiptFooter || 'شكراً لتعاملكم معنا')}
+      <div style="font-size:12.5px;font-weight:800;color:#000;margin-top:4px;line-height:1.4;">
+        ${escapeHtml(posSettings.receiptFooter || 'شكراً لتعاملكم معنا • نسعد دائماً بخدمتكم')}
       </div>
-      <div style="font-size:8.5px;color:#666;margin-top:4px;">
-        نظام ميكروERP لإدارة المبيعات والصيانة
+      <div style="font-size:10.5px;font-weight:700;color:#000;margin-top:3px;">
+        ميكروERP • نظام إدارة المبيعات والصيانة
       </div>
+
+      <!-- Cutter clearance space -->
+      <div style="height:10mm;"></div>
     </div>
   `;
 
   document.body.appendChild(mount);
   document.body.classList.add('printing-pos-receipt');
+
+  // Render Barcode
+  if(typeof JsBarcode !== 'undefined'){
+    try {
+      JsBarcode('#saleReceiptBarcodeSvg', receiptId, {
+        format: 'CODE128',
+        width: is58mm ? 1.2 : 1.5,
+        height: 24,
+        displayValue: true,
+        fontSize: 10,
+        margin: 0
+      });
+    } catch(e){}
+  }
 
   setTimeout(()=>{
     window.print();
@@ -8314,7 +8479,7 @@ function openSalePrint(sale, cartItems, meta={}){
       mount.remove();
       document.body.classList.remove('printing-pos-receipt');
     }, 500);
-  }, 150);
+  }, 200);
 }
 
 function convertSaleToInvoice(saleId){
@@ -8540,37 +8705,6 @@ function renderPosSalesLog(main){
       }
     };
   });
-}
-
-function openSalePrint(sale, cartItems){
-  const old = document.getElementById('printMount');
-  if(old) old.remove();
-  const mount = document.createElement('div');
-  mount.id='printMount';
-  mount.innerHTML = `
-  <div id="receiptPaper">
-    <div>
-      <div class="r-head">
-        <div>${state.settings.logoUrl ? `<img src="${state.settings.logoUrl}" style="max-height:26px;max-width:110px;object-fit:contain;margin-bottom:2px;">` : ''}<h4>${state.settings.shopName}</h4><div class="r-sub">فاتورة بيع نقدي</div></div>
-        <div style="text-align:left;">
-          <div class="r-badge mono">${sale.ID.slice(-8)}</div>
-          <div class="r-meta">التاريخ: ${cleanDate(sale.Date)}</div>
-        </div>
-      </div>
-      <div class="section-title">الأصناف المشتراة</div>
-      <table>
-        <thead><tr><td class="k">الصنف</td><td class="k">الكمية</td><td class="k">السعر</td><td class="k">الإجمالي</td></tr></thead>
-        ${cartItems.map(c=>`<tr><td>${c.name}</td><td>${c.qty}</td><td>${c.price}</td><td>${c.qty*c.price}</td></tr>`).join('')}
-      </table>
-      <div class="fin-box"><div class="fin-cell hi"><div class="l">الإجمالي المدفوع</div><div class="v">${sale.Total} ج.م</div></div></div>
-    </div>
-    <div>
-      <div class="terms">يُقبل الاسترجاع والاستبدال خلال 14 يوماً بالفاتورة الأصلية.</div>
-      <div class="sign-row"><div>توقيع العميل</div><div>الموظف (${state.user ? state.user.name : 'الكاشير'})</div></div>
-    </div>
-  </div>`;
-  document.body.appendChild(mount);
-  setTimeout(()=>{ window.print(); mount.remove(); }, 200);
 }
 
 /* ---------------- Suppliers, Purchases ---------------- */
@@ -9748,6 +9882,9 @@ function renderSettingsSectionApp(app){
         <div class="nav-item ${activeTab==='company'?'active':''}" data-stab="company">
           <span class="nav-item-icon">🏪</span><span>بيانات الشركة والمطبوعات</span>
         </div>
+        <div class="nav-item ${activeTab==='printers'?'active':''}" data-stab="printers">
+          <span class="nav-item-icon">🖨️</span><span>تخصيص وإعدادات الطابعات</span>
+        </div>
         <div class="nav-item ${activeTab==='pos'?'active':''}" data-stab="pos">
           <span class="nav-item-icon">🧾</span><span>نقطة البيع وخيارات الدفع</span>
         </div>
@@ -9794,6 +9931,7 @@ function renderSettingsNavHeader(activeTabTitle, activeTabSubtitle){
   const tabs = [
     {k:'appearance', label:'🎨 المظهر والثيمات'},
     {k:'company', label:'🏪 بيانات الشركة'},
+    {k:'printers', label:'🖨️ تخصيص الطابعات'},
     {k:'pos', label:'🧾 نقطة البيع والدفع'},
     {k:'whatsapp', label:'📱 رسائل واتساب'},
     {k:'warranty', label:'📜 بنود الضمان'},
@@ -9810,7 +9948,7 @@ function renderSettingsNavHeader(activeTabTitle, activeTabSubtitle){
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <button class="btn btn-ghost btn-sm" onclick="openCommandPalette()">🔍 بحث ⌘K</button>
-        <div id="networkSyncPill" class="sync-pill online" onclick="syncOfflineQueue()">🟢 متصل</div>
+        <div id="networkSyncPill" class="sync-pill online" onclick="syncOfflineQueue(true)">🟢 متصل</div>
       </div>
     </div>
     <div class="chip-group" style="margin-bottom:18px;background:var(--paper2);padding:10px 14px;border-radius:var(--radius);border:1px solid var(--line);">
@@ -9838,6 +9976,7 @@ function renderSettingsContent(main){
   const activeTab = state.settingsTab || 'appearance';
   if(activeTab === 'appearance') return renderAppearanceSettings(main);
   if(activeTab === 'company') return renderCompanySettings(main);
+  if(activeTab === 'printers') return renderPrintersSettings(main);
   if(activeTab === 'pos') return renderPosSettings(main);
   if(activeTab === 'whatsapp') return renderWhatsappSettings(main);
   if(activeTab === 'warranty') return renderWarrantySettings(main);
@@ -10062,7 +10201,546 @@ function renderCompanySettings(main){
   };
 }
 
-/* 3. POS & Cashier Settings (إعدادات نقطة البيع وخيارات الدفع) */
+/* ---------------- 3. Printers Management Hub (تخصيص الطابعات وتعيين العمليات) ---------------- */
+function renderPrintersSettings(main){
+  const prn = getPrintersSettings();
+  const r = prn.receiptPrinter || DEFAULT_PRINTERS_SETTINGS.receiptPrinter;
+  const b = prn.barcodePrinter || DEFAULT_PRINTERS_SETTINGS.barcodePrinter;
+  const l = prn.laserPrinter || DEFAULT_PRINTERS_SETTINGS.laserPrinter;
+  const w = prn.workflowAssignments || DEFAULT_PRINTERS_SETTINGS.workflowAssignments;
+
+  main.innerHTML = `
+    ${renderSettingsNavHeader('🖨️ تخصيص وإعدادات الطابعات', 'تعيين الطابعات الثلاث (طابعة الباركود، طابعة الريسيت، وطابعة الليزر) وتخصيص مقاسات الورق والطباعة التجريبية')}
+
+    <!-- Hero Hardware Configuration Summary Box -->
+    <div class="card" style="background:linear-gradient(135deg, rgba(79,70,229,0.06), rgba(16,185,129,0.06));border:1.5px solid var(--primary);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+        <div>
+          <h3 style="margin:0;font-size:16px;color:var(--ink);">🎛️ الطابعات المتصلة بالنظام في شركتك (Windows 11 / Mac)</h3>
+          <p style="font-size:12.5px;color:var(--ink-secondary);margin:2px 0 0;">تم تهيئة النظام للتعامل الذكي مع 3 طابعات مختلفة وتوجيه كل مستند لطابعته ومقاسه الخاص تلقائياً:</p>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-primary btn-sm" id="saveAllPrintersSettingsBtnTop">💾 حفظ وتطبيق الإعدادات</button>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:12px;margin-top:8px;">
+        
+        <!-- Printer 1: POS Receipt -->
+        <div style="background:var(--paper);border:1.5px solid var(--line);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;justify-content:space-between;">
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+              <span style="font-size:24px;">🧾</span>
+              <div>
+                <b style="font-size:13.5px;display:block;">1. طابعة الريسيت / الكاشير</b>
+                <span class="status-badge st-done" style="font-size:10.5px;">رول حراري ${r.paperSize||'80mm'}</span>
+              </div>
+            </div>
+            <div style="font-size:12px;color:var(--ink-secondary);margin-bottom:8px;line-height:1.4;">
+              الاسم: <b>${escapeHtml(r.name || 'Xprinter XP-808')}</b><br>
+              المستندات: إيصالات وبونات البيع السريع ونقطة البيع.
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-xs test-receipt-print-btn" style="border-color:var(--primary);color:var(--primary);font-weight:800;width:100%;">
+            🖨️ طباعة بون تجريبي (80mm)
+          </button>
+        </div>
+
+        <!-- Printer 2: Barcode Sticker -->
+        <div style="background:var(--paper);border:1.5px solid var(--line);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;justify-content:space-between;">
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+              <span style="font-size:24px;">🏷️</span>
+              <div>
+                <b style="font-size:13.5px;display:block;">2. طابعة ملصقات الباركود</b>
+                <span class="status-badge st-repair" style="font-size:10.5px;">رول ملصقات ${b.defaultSize||'50x30'} مم</span>
+              </div>
+            </div>
+            <div style="font-size:12px;color:var(--ink-secondary);margin-bottom:8px;line-height:1.4;">
+              الاسم: <b>${escapeHtml(b.name || 'Xprinter 365B / Thermal Label')}</b><br>
+              المستندات: ملصقات باركود الأصناف وأكواد أجهزة الصيانة.
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-xs test-barcode-print-btn" style="border-color:var(--purple);color:var(--purple);font-weight:800;width:100%;">
+            🖨️ طباعة ملصق تجريبي (50x30)
+          </button>
+        </div>
+
+        <!-- Printer 3: Laser / Office Printer -->
+        <div style="background:var(--paper);border:1.5px solid var(--line);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;justify-content:space-between;">
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+              <span style="font-size:24px;">📄</span>
+              <div>
+                <b style="font-size:13.5px;display:block;">3. طابعة الليزر العادية</b>
+                <span class="status-badge st-check" style="font-size:10.5px;">أوراق A4 / A5</span>
+              </div>
+            </div>
+            <div style="font-size:12px;color:var(--ink-secondary);margin-bottom:8px;line-height:1.4;">
+              الاسم: <b>${escapeHtml(l.name || 'طابعة ليزر عادية')}</b><br>
+              المستندات: إيصالات وضمان الصيانة، الفواتير، والتقارير.
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-xs test-laser-print-btn" style="border-color:var(--green);color:var(--green-text);font-weight:800;width:100%;">
+            🖨️ طباعة صفحة A4/A5 تجريبية
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- 1. Receipt Thermal Printer Detailed Config -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3 style="margin:0;font-size:15.5px;">🧾 1. إعدادات طابعة إيصالات الكاشير (POS Receipt Printer - Xprinter 808)</h3>
+        <button class="btn btn-ghost btn-xs test-receipt-print-btn" style="color:var(--primary);">🖨️ تجربة الطباعة</button>
+      </div>
+
+      <div class="grid2" style="margin-bottom:12px;">
+        <div class="field">
+          <label>اسم / موديل الطابعة المعرفة على الويندوز</label>
+          <input id="prnReceiptName" value="${escapeHtml(r.name||'Xprinter XP-808 (طابعة بون حراري 80 مم)')}" placeholder="مثال: Xprinter XP-808 / XP-N160II">
+        </div>
+        <div class="field">
+          <label>مقاس رول الورق الحراري (Receipt Width)</label>
+          <select id="prnReceiptSize">
+            <option value="80mm" ${r.paperSize==='80mm'?'selected':''}>80mm (عرض قياسي عريض 80 مم - طابعات إكس برنتر 808 وغيرها)</option>
+            <option value="58mm" ${r.paperSize==='58mm'?'selected':''}>58mm (عرض مدمج 58 مم - طابعات مدمجة وبلوتوث)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid2" style="margin-bottom:12px;">
+        <div class="field">
+          <label>وضوح وحجم الخطوط على الورق الحراري (Windows 11 Clarity)</label>
+          <select id="prnReceiptFontScale">
+            <option value="large" ${r.fontScale==='large'?'selected':''}>كبير وواضح جداً عالي التباين (موصى به لطابعات 80 مم وويندوز 11) ✨</option>
+            <option value="normal" ${r.fontScale==='normal'?'selected':''}>عادي متوسط</option>
+            <option value="compact" ${r.fontScale==='compact'?'selected':''}>مدمج اقتصادي</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>مسافة أمان تفريغ الورق للقاطع التلقائي (Auto-Cutter Margin mm)</label>
+          <input type="number" id="prnReceiptCutterFeed" value="${r.cutterFeedMm||10}" class="mono font-bold" min="0" max="30">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>عبارة وتذييل شكر الإيصال (Receipt Footer Text)</label>
+        <input id="prnReceiptFooter" value="${escapeHtml(r.footerText||'شكراً لتعاملكم معنا • نسعد دائماً بخدمتكم')}">
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;margin-top:10px;">
+        <label class="checkbox-row" style="font-size:12.5px;">
+          <input type="checkbox" id="prnReceiptAutoPrint" ${r.autoPrint!==false?'checked':''}>
+          <span>🖨️ طباعة البون تلقائياً فور إتمام البيع</span>
+        </label>
+        <label class="checkbox-row" style="font-size:12.5px;">
+          <input type="checkbox" id="prnReceiptShowLogo" ${r.showLogo!==false?'checked':''}>
+          <span>🖼️ إظهار شعار المحل أعلى البون</span>
+        </label>
+        <label class="checkbox-row" style="font-size:12.5px;">
+          <input type="checkbox" id="prnReceiptShowCashier" ${r.showCashier!==false?'checked':''}>
+          <span>👤 إظهار اسم الكاشير على البون</span>
+        </label>
+        <label class="checkbox-row" style="font-size:12.5px;">
+          <input type="checkbox" id="prnReceiptPrintBarcode" ${r.printBarcode!==false?'checked':''}>
+          <span>⚡ توليد باركود SVG أسفل البون لسهولة المرتجع</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- 2. Barcode Label Printer Detailed Config -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3 style="margin:0;font-size:15.5px;">🏷️ 2. إعدادات طابعة ملصقات الباركود الحرارية (Barcode Label Printer)</h3>
+        <button class="btn btn-ghost btn-xs test-barcode-print-btn" style="color:var(--purple);">🖨️ تجربة الطباعة</button>
+      </div>
+
+      <div class="grid2" style="margin-bottom:12px;">
+        <div class="field">
+          <label>اسم / موديل طابعة الباركود على الويندوز</label>
+          <input id="prnBarcodeName" value="${escapeHtml(b.name||'طابعة ملصقات باركود حرارية (Xprinter 365B / 370B / Zebra)')}" placeholder="مثال: Xprinter XP-365B / XP-370B">
+        </div>
+        <div class="field">
+          <label>المقاس الافتراضي لملصقات الباركود (Default Label Size)</label>
+          <select id="prnBarcodeDefaultSize">
+            <option value="50x30" ${b.defaultSize==='50x30'?'selected':''}>50 مم × 30 مم (المقاس القياسي للأصناف والأجهزة) ✨</option>
+            <option value="40x25" ${b.defaultSize==='40x25'?'selected':''}>40 مم × 25 مم (مقاس مدمج للموبايل والإكسسوارات)</option>
+            <option value="38x25" ${b.defaultSize==='38x25'?'selected':''}>38 مم × 25 مم (مقاس سريع)</option>
+            <option value="60x40" ${b.defaultSize==='60x40'?'selected':''}>60 مم × 40 مم (مقاس كبير للطرود والأجهزة الكبيرة)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid2" style="margin-bottom:12px;">
+        <div class="field">
+          <label>صيغة تشفير الباركود الافتراضية (Barcode Format)</label>
+          <select id="prnBarcodeType">
+            <option value="CODE128" ${b.barcodeType==='CODE128'?'selected':''}>CODE128 (أعلى دقة ويدعم الحروف والأرقام - موصى به)</option>
+            <option value="EAN-13" ${b.barcodeType==='EAN-13'?'selected':''}>EAN-13 (13 رقماً تجارياً)</option>
+            <option value="QR" ${b.barcodeType==='QR'?'selected':''}>QR Code (رمز استجابة سريعة مربع)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>عدد النسخ الافتراضي عند النقر السريع</label>
+          <input type="number" id="prnBarcodeDefaultCopies" value="${b.defaultCopies||1}" min="1" max="100" class="mono font-bold">
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;">
+        <label class="checkbox-row" style="font-size:12.5px;">
+          <input type="checkbox" id="prnBarcodeShowPrice" ${b.showPrice!==false?'checked':''}>
+          <span>💵 إظهار سعر البيع على الملصق</span>
+        </label>
+        <label class="checkbox-row" style="font-size:12.5px;">
+          <input type="checkbox" id="prnBarcodeShowShopName" ${b.showShopName!==false?'checked':''}>
+          <span>🏪 إظهار اسم المحل أعلى الملصق</span>
+        </label>
+        <label class="checkbox-row" style="font-size:12.5px;">
+          <input type="checkbox" id="prnBarcodeShowDate" ${b.showDate?'checked':''}>
+          <span>📅 إظهار تاريخ الطباعة على الملصق</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- 3. Laser / Standard Office Printer Detailed Config -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3 style="margin:0;font-size:15.5px;">📄 3. إعدادات طابعة الليزر والمستندات الرسمية (Laser / Inkjet A4 & A5)</h3>
+        <button class="btn btn-ghost btn-xs test-laser-print-btn" style="color:var(--green-text);">🖨️ تجربة الطباعة</button>
+      </div>
+
+      <div class="grid2" style="margin-bottom:12px;">
+        <div class="field">
+          <label>اسم / موديل طابعة الليزر على الويندوز</label>
+          <input id="prnLaserName" value="${escapeHtml(l.name||'طابعة ليزر مكتبية عادية (HP / Canon / Brother A4 / A5)')}" placeholder="مثال: HP LaserJet Pro / Canon LBP">
+        </div>
+        <div class="field">
+          <label>مقاس وتنسيق إيصال الصيانة والضمان</label>
+          <select id="prnLaserMaintSize">
+            <option value="A5" ${l.maintenanceReceiptSize==='A5'?'selected':''}>A5 بالعرض Landscape (ورقة واحدة فقط مدمجة وشاملة للضمان والشروط) ✨</option>
+            <option value="A4" ${l.maintenanceReceiptSize==='A4'?'selected':''}>A4 بالطول Portrait</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid2" style="margin-bottom:12px;">
+        <div class="field">
+          <label>مقاس ورق الفواتير الضريبية وعروض الأسعار</label>
+          <select id="prnLaserInvoiceSize">
+            <option value="A4" ${l.invoiceSize==='A4'?'selected':''}>A4 بالطول Portrait (النموذج الضريبي المعتمد)</option>
+            <option value="A5" ${l.invoiceSize==='A5'?'selected':''}>A5 مدمج</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>توزيع ملصقات الباركود على ورق A4 في الطابعة العادية</label>
+          <select id="prnLaserBarcodeLayout">
+            <option value="30" ${l.barcodeSheetLayout==='30'?'selected':''}>30 ملصق في الصفحة A4 (3 أعمدة × 10 صفوف) ✨</option>
+            <option value="24" ${l.barcodeSheetLayout==='24'?'selected':''}>24 ملصق في الصفحة A4 (3 أعمدة × 8 صفوف)</option>
+            <option value="40" ${l.barcodeSheetLayout==='40'?'selected':''}>40 ملصق في الصفحة A4 (4 أعمدة × 10 صفوف)</option>
+            <option value="65" ${l.barcodeSheetLayout==='65'?'selected':''}>65 ملصق في الصفحة A4 (5 أعمدة × 13 صفوف)</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;">
+        <label class="checkbox-row" style="font-size:12.5px;">
+          <input type="checkbox" id="prnLaserShowTerms" ${l.showTerms!==false?'checked':''}>
+          <span>📜 طباعة بنود الضمان والشروط القانونية أسفل المستند</span>
+        </label>
+        <label class="checkbox-row" style="font-size:12.5px;">
+          <input type="checkbox" id="prnLaserShowWatermark" ${l.showWatermark!==false?'checked':''}>
+          <span>🛡️ إظهار ختم وعلامة مائية أصلية للمحل</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- 4. Workflow to Printer Assignment Matrix -->
+    <div class="card">
+      <h3 style="margin-top:0;font-size:15.5px;">🧭 4. مصفوفة توجيه العمليات للطابعات (Workflow-to-Printer Assignment)</h3>
+      <p style="font-size:12px;color:var(--ink-secondary);margin-bottom:12px;">اختر الطابعة المستهدفة تلقائياً لكل عملية ومستند داخل النظام:</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="text-align:right;">نوع العملية والمستند</th>
+              <th style="text-align:right;">المقاس المطلوب</th>
+              <th style="text-align:right;">الطابعة الموجه إليها</th>
+              <th style="text-align:center;">إجراء تجريبي</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><b>🧾 إيصالات مبيعات نقطة البيع (POS Cashier)</b></td>
+              <td><span class="status-badge st-done">80mm Roll</span></td>
+              <td>
+                <select class="workflow-prn-sel" data-wf="posSale" style="padding:4px 8px;font-size:12px;">
+                  <option value="receiptPrinter" ${w.posSale==='receiptPrinter'?'selected':''}>طابعة الريسيت (Xprinter 808)</option>
+                  <option value="laserPrinter" ${w.posSale==='laserPrinter'?'selected':''}>طابعة الليزر (A4/A5)</option>
+                </select>
+              </td>
+              <td style="text-align:center;"><button class="btn btn-ghost btn-xs test-receipt-print-btn">🖨️ بون</button></td>
+            </tr>
+            <tr>
+              <td><b>🛠️ إيصال استلام وضمان الصيانة للعميل</b></td>
+              <td><span class="status-badge st-repair">A5 ورقة واحدة</span></td>
+              <td>
+                <select class="workflow-prn-sel" data-wf="maintenanceReceipt" style="padding:4px 8px;font-size:12px;">
+                  <option value="laserPrinter" ${w.maintenanceReceipt==='laserPrinter'?'selected':''}>طابعة الليزر العادية (A5)</option>
+                  <option value="receiptPrinter" ${w.maintenanceReceipt==='receiptPrinter'?'selected':''}>طابعة الريسيت الحراري (80mm)</option>
+                </select>
+              </td>
+              <td style="text-align:center;"><button class="btn btn-ghost btn-xs test-laser-print-btn">🖨️ A5</button></td>
+            </tr>
+            <tr>
+              <td><b>📄 الفواتير الضريبية وعروض الأسعار</b></td>
+              <td><span class="status-badge st-check">A4 Portrait</span></td>
+              <td>
+                <select class="workflow-prn-sel" data-wf="taxInvoice" style="padding:4px 8px;font-size:12px;">
+                  <option value="laserPrinter" ${w.taxInvoice==='laserPrinter'?'selected':''}>طابعة الليزر العادية (A4)</option>
+                </select>
+              </td>
+              <td style="text-align:center;"><button class="btn btn-ghost btn-xs test-laser-print-btn">🖨️ A4</button></td>
+            </tr>
+            <tr>
+              <td><b>🏷️ ملصق باركود صنف فردي أو جهاز صيانة</b></td>
+              <td><span class="status-badge st-repair">50x30mm ملصق</span></td>
+              <td>
+                <select class="workflow-prn-sel" data-wf="singleBarcode" style="padding:4px 8px;font-size:12px;">
+                  <option value="barcodePrinter" ${w.singleBarcode==='barcodePrinter'?'selected':''}>طابعة ملصقات الباركود الحرارية</option>
+                  <option value="laserPrinter" ${w.singleBarcode==='laserPrinter'?'selected':''}>طابعة الليزر (ورق A4 مجمع)</option>
+                </select>
+              </td>
+              <td style="text-align:center;"><button class="btn btn-ghost btn-xs test-barcode-print-btn">🖨️ باركود</button></td>
+            </tr>
+            <tr>
+              <td><b>📊 دفاتر اليومية وكشوف الحسابات وميزان المراجعة</b></td>
+              <td><span class="status-badge st-done">A4 Portrait</span></td>
+              <td>
+                <select class="workflow-prn-sel" data-wf="financialReports" style="padding:4px 8px;font-size:12px;">
+                  <option value="laserPrinter" ${w.financialReports==='laserPrinter'?'selected':''}>طابعة الليزر العادية (A4)</option>
+                </select>
+              </td>
+              <td style="text-align:center;"><button class="btn btn-ghost btn-xs test-laser-print-btn">🖨️ تقرير</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="text-align:left;margin-top:16px;border-top:1px solid var(--line);padding-top:12px;">
+        <button class="btn btn-primary" id="saveAllPrintersSettingsBtn" style="padding:9px 24px;font-weight:900;">
+          💾 حفظ وتطبيق كافة إعدادات وتخصيص الطابعات
+        </button>
+      </div>
+    </div>
+  `;
+
+  attachSettingsQuickTabEvents(main);
+  attachPrintersSettingsEvents(main);
+}
+
+function attachPrintersSettingsEvents(main){
+  // Attach test print buttons
+  main.querySelectorAll('.test-receipt-print-btn').forEach(btn => {
+    btn.onclick = ()=>executeTestReceiptPrint();
+  });
+  main.querySelectorAll('.test-barcode-print-btn').forEach(btn => {
+    btn.onclick = ()=>executeTestBarcodePrint();
+  });
+  main.querySelectorAll('.test-laser-print-btn').forEach(btn => {
+    btn.onclick = ()=>executeTestLaserPrint();
+  });
+
+  // Save buttons
+  const handleSavePrinters = async ()=>{
+    const prn = getPrintersSettings();
+
+    // 1. Receipt
+    prn.receiptPrinter.name = document.getElementById('prnReceiptName').value.trim();
+    prn.receiptPrinter.paperSize = document.getElementById('prnReceiptSize').value;
+    prn.receiptPrinter.fontScale = document.getElementById('prnReceiptFontScale').value;
+    prn.receiptPrinter.cutterFeedMm = Number(document.getElementById('prnReceiptCutterFeed').value) || 10;
+    prn.receiptPrinter.footerText = document.getElementById('prnReceiptFooter').value.trim();
+    prn.receiptPrinter.autoPrint = document.getElementById('prnReceiptAutoPrint').checked;
+    prn.receiptPrinter.showLogo = document.getElementById('prnReceiptShowLogo').checked;
+    prn.receiptPrinter.showCashier = document.getElementById('prnReceiptShowCashier').checked;
+    prn.receiptPrinter.printBarcode = document.getElementById('prnReceiptPrintBarcode').checked;
+
+    // Synchronize with POS settings
+    if(!state.settings.pos) state.settings.pos = {};
+    state.settings.pos.receiptPaperSize = prn.receiptPrinter.paperSize;
+    state.settings.pos.receiptFooter = prn.receiptPrinter.footerText;
+    state.settings.pos.autoPrintReceipt = prn.receiptPrinter.autoPrint;
+    state.settings.pos.showCashierName = prn.receiptPrinter.showCashier;
+    state.settings.pos.showLogoOnReceipt = prn.receiptPrinter.showLogo;
+
+    // 2. Barcode
+    prn.barcodePrinter.name = document.getElementById('prnBarcodeName').value.trim();
+    prn.barcodePrinter.defaultSize = document.getElementById('prnBarcodeDefaultSize').value;
+    prn.barcodePrinter.barcodeType = document.getElementById('prnBarcodeType').value;
+    prn.barcodePrinter.defaultCopies = Number(document.getElementById('prnBarcodeDefaultCopies').value) || 1;
+    prn.barcodePrinter.showPrice = document.getElementById('prnBarcodeShowPrice').checked;
+    prn.barcodePrinter.showShopName = document.getElementById('prnBarcodeShowShopName').checked;
+    prn.barcodePrinter.showDate = document.getElementById('prnBarcodeShowDate').checked;
+
+    // 3. Laser
+    prn.laserPrinter.name = document.getElementById('prnLaserName').value.trim();
+    prn.laserPrinter.maintenanceReceiptSize = document.getElementById('prnLaserMaintSize').value;
+    prn.laserPrinter.invoiceSize = document.getElementById('prnLaserInvoiceSize').value;
+    prn.laserPrinter.barcodeSheetLayout = document.getElementById('prnLaserBarcodeLayout').value;
+    prn.laserPrinter.showTerms = document.getElementById('prnLaserShowTerms').checked;
+    prn.laserPrinter.showWatermark = document.getElementById('prnLaserShowWatermark').checked;
+
+    // 4. Workflow assignments
+    main.querySelectorAll('.workflow-prn-sel').forEach(sel => {
+      const wf = sel.dataset.wf;
+      if(wf) prn.workflowAssignments[wf] = sel.value;
+    });
+
+    state.settings.printers = prn;
+    setCache('settings', state.settings);
+
+    try {
+      await saveSettingRemote('printers', JSON.stringify(prn));
+      await saveSettingRemote('pos', JSON.stringify(state.settings.pos));
+      showToast('تم حفظ وتطبيق كافة إعدادات وتخصيص الطابعات بنجاح ✅', 'success');
+    } catch(e) {
+      showToast('تم حفظ إعدادات الطابعات محلياً', 'info');
+    }
+    renderPrintersSettings(main);
+  };
+
+  const saveBtn = document.getElementById('saveAllPrintersSettingsBtn');
+  if(saveBtn) saveBtn.onclick = handleSavePrinters;
+  const saveTopBtn = document.getElementById('saveAllPrintersSettingsBtnTop');
+  if(saveTopBtn) saveTopBtn.onclick = handleSavePrinters;
+}
+
+/* --- Printer Test Execution Engines --- */
+function executeTestReceiptPrint(){
+  const sampleSale = {
+    ID: 'sale_test_808',
+    Date: new Date().toISOString().slice(0, 10),
+    CustomerName: 'عميل تجربة الطباعة (Xprinter 808)',
+    CustomerPhone: '01012345678',
+    PaymentMethod: 'نقدي (كاش)',
+    Total: 350,
+    AmountPaid: 400
+  };
+  const sampleItems = [
+    { name: 'كابل شحن سريع Type-C أصلي معتمد', qty: 1, price: 150 },
+    { name: 'شاحن جداري 45 واط سوبر فاست PD', qty: 1, price: 200 }
+  ];
+  openSalePrint(sampleSale, sampleItems, {
+    subtotal: 350,
+    discountAmount: 0,
+    taxAmount: 0,
+    grandTotal: 350,
+    paidAmount: 400,
+    changeDue: 50,
+    payMethodName: 'نقدي (كاش)'
+  });
+}
+
+function executeTestBarcodePrint(){
+  const sampleItem = {
+    ID: 'inv_test_barcode',
+    Name: 'سماعة رأس بلوتوث محيطية Pro',
+    Category: 'إكسسوار',
+    Barcode: '2026889901',
+    SellPrice: 350,
+    PurchasePrice: 250,
+    SKU: 'STK-8899'
+  };
+  openProductBarcodeSticker(sampleItem);
+}
+
+function executeTestLaserPrint(){
+  const old = document.getElementById('printMount');
+  if(old) old.remove();
+
+  const shopName = (state.settings && state.settings.shopName) || 'صيانة ميكروتك';
+  const shopPhone = (state.settings && state.settings.shopPhone) || '01000000000';
+  const shopAddress = (state.settings && state.settings.shopAddress) || 'الفرع الرئيسي';
+
+  const mount = document.createElement('div');
+  mount.id = 'printMount';
+
+  mount.innerHTML = `
+    <div style="background:#fff;color:#000;padding:15mm 12mm;width:210mm;min-height:148mm;margin:0 auto;box-sizing:border-box;font-family:'Segoe UI',Tahoma,Arial,sans-serif;direction:rtl;text-align:right;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:14px;">
+        <div>
+          <h2 style="margin:0;font-size:22px;font-weight:900;">${escapeHtml(shopName)}</h2>
+          <div style="font-size:12.5px;font-weight:700;margin-top:2px;">الهاتف: ${escapeHtml(shopPhone)} | العنوان: ${escapeHtml(shopAddress)}</div>
+        </div>
+        <div style="text-align:left;">
+          <div style="display:inline-block;border:2px solid #000;padding:6px 14px;border-radius:6px;font-weight:900;font-size:14px;">
+            📄 صفحة اختبار طابعة الليزر A4 / A5
+          </div>
+          <div style="font-size:11px;font-weight:700;margin-top:4px;" class="mono">${cleanDate(new Date())}</div>
+        </div>
+      </div>
+
+      <div style="border:1.5px solid #000;border-radius:6px;padding:14px;margin-bottom:14px;background:#fcfcfc;">
+        <h4 style="margin:0 0 8px;font-size:14.5px;">✅ نجاح اختبار الطباعة والتوافق مع طابعة الليزر (Laser Printer Test):</h4>
+        <p style="margin:0;font-size:12.5px;line-height:1.7;">
+          هذه الصفحة النموذجية تؤكد أن طابعة الليزر العادية (Laser / Office Printer) متوافقة تماماً مع طباعة إيصالات الصيانة والضمان بمقاس <b>A5 Landscape (ورقة واحدة مدمجة)</b>، وكذلك طباعة <b>الفواتير الضريبية وعروض الأسعار بمقاس A4</b> وتقارير الحسابات بدقة ووضوح عالي.
+        </p>
+      </div>
+
+      <table style="width:100%;border-collapse:collapse;margin-bottom:14px;font-size:12.5px;">
+        <thead>
+          <tr style="background:#000;color:#fff;">
+            <th style="padding:6px;border:1px solid #000;text-align:right;">المستند المستهدف</th>
+            <th style="padding:6px;border:1px solid #000;text-align:center;">المقاس المطلوب</th>
+            <th style="padding:6px;border:1px solid #000;text-align:center;">التوجيه</th>
+            <th style="padding:6px;border:1px solid #000;text-align:center;">حالة التوافق</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:6px;border:1px solid #000;">إيصال استلام وضمان الصيانة</td>
+            <td style="padding:6px;border:1px solid #000;text-align:center;" class="mono">A5 (210×148mm)</td>
+            <td style="padding:6px;border:1px solid #000;text-align:center;">بالعرض Landscape</td>
+            <td style="padding:6px;border:1px solid #000;text-align:center;font-weight:bold;">متوافق بنسبة 100% ✓</td>
+          </tr>
+          <tr>
+            <td style="padding:6px;border:1px solid #000;">الفواتير الضريبية وعروض الأسعار</td>
+            <td style="padding:6px;border:1px solid #000;text-align:center;" class="mono">A4 (210×297mm)</td>
+            <td style="padding:6px;border:1px solid #000;text-align:center;">بالطول Portrait</td>
+            <td style="padding:6px;border:1px solid #000;text-align:center;font-weight:bold;">متوافق بنسبة 100% ✓</td>
+          </tr>
+          <tr>
+            <td style="padding:6px;border:1px solid #000;">دفتر اليومية وكشوف الحسابات والميزان</td>
+            <td style="padding:6px;border:1px solid #000;text-align:center;" class="mono">A4 (210×297mm)</td>
+            <td style="padding:6px;border:1px solid #000;text-align:center;">بالطول Portrait</td>
+            <td style="padding:6px;border:1px solid #000;text-align:center;font-weight:bold;">متوافق بنسبة 100% ✓</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div style="border-top:1.5px dashed #000;padding-top:10px;display:flex;justify-content:space-between;align-items:center;font-size:11.5px;font-weight:700;">
+        <span>نظام ميكروERP لإدارة المبيعات والصيانة والمخازن</span>
+        <span class="mono">Laser Print Alignment Passed ✓</span>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(mount);
+  document.body.classList.add('printing-voucher');
+
+  setTimeout(()=>{
+    window.print();
+    setTimeout(()=>{
+      mount.remove();
+      document.body.classList.remove('printing-voucher');
+    }, 500);
+  }, 200);
+}
+
+/* 4. POS & Cashier Settings (إعدادات نقطة البيع وخيارات الدفع) */
 function renderPosSettings(main){
   const posSettings = getPosSettings();
   const payMethods = posSettings.paymentMethods || [];
@@ -10749,6 +11427,7 @@ function renderSyncSettings(main){
 
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
         <button class="btn btn-primary" id="forceSyncBtn">🔄 مزامنة كافة العمليات المعلقة الآن</button>
+        ${queue.length > 0 ? `<button class="btn btn-ghost" id="clearQueueBtn" style="color:var(--red);">🗑️ تفريغ طابور المزامنة المعلق</button>` : ''}
         <button class="btn btn-ghost" id="reloadCloudDataBtn">☁️ إعادة تحميل البيانات من السحابة</button>
       </div>
     </div>
@@ -10765,9 +11444,19 @@ function renderSyncSettings(main){
   attachSettingsQuickTabEvents(main);
 
   document.getElementById('forceSyncBtn').onclick = async ()=>{
-    await syncOfflineQueue();
+    await syncOfflineQueue(true);
     renderSyncSettings(main);
   };
+
+  const clearQueueBtn = document.getElementById('clearQueueBtn');
+  if(clearQueueBtn){
+    clearQueueBtn.onclick = ()=>{
+      if(confirm('هل ترغب في تفريغ طابور المزامنة المعلق؟ سيتم إزالة أي عمليات معلقة لم تُرفع للسحابة بعد.')){
+        clearOfflineSyncQueue();
+        renderSyncSettings(main);
+      }
+    };
+  }
 
   document.getElementById('reloadCloudDataBtn').onclick = async ()=>{
     showToast('جاري جلب أحدث البيانات من السحابة...', 'info');

@@ -2169,11 +2169,170 @@ function showToast(msg, type='info', duration=2800){
   }, duration);
 }
 
+/* ---- Customer Data Extraction & Phone Recovery Engine ---- */
+function extractCustomerPhone(obj){
+  if(!obj) return '';
+  if(typeof obj === 'string' && /^\+?[\d\s-]{4,}$/.test(obj.trim())) return obj.trim();
+  if(typeof obj !== 'object') return '';
+  const val = obj.CustomerPhone ?? obj.customerPhone ?? obj.Phone ?? obj.phone ?? obj.mobile ?? obj.Mobile ??
+              obj['الهاتف'] ?? obj['رقم الهاتف'] ?? obj['هاتف'] ?? obj['الموبايل'] ?? obj['موبايل'] ??
+              obj['تليفون'] ?? obj['رقم التليفون'] ?? obj.Tel ?? obj.tel ?? obj.ClientPhone ?? obj.clientPhone ??
+              (obj.customer ? (obj.customer.phone ?? obj.customer.Phone ?? obj.customer.CustomerPhone) : '') ?? '';
+  return String(val).replace(/["']/g, '').trim();
+}
+
+function extractCustomerName(obj){
+  if(!obj) return '';
+  if(typeof obj !== 'object') return String(obj).trim();
+  const val = obj.CustomerName ?? obj.customerName ?? obj.Name ?? obj.name ?? obj.clientName ?? obj.ClientName ??
+              obj['الاسم'] ?? obj['اسم العميل'] ?? obj['العميل'] ??
+              (obj.customer ? (obj.customer.name ?? obj.customer.Name ?? obj.customer.CustomerName) : '') ?? '';
+  return String(val).replace(/["']/g, '').trim();
+}
+
+function extractCustomerEmail(obj){
+  if(!obj || typeof obj !== 'object') return '';
+  const val = obj.CustomerEmail ?? obj.customerEmail ?? obj.Email ?? obj.email ?? obj['البريد'] ?? obj['الإيميل'] ??
+              (obj.customer ? (obj.customer.email ?? obj.customer.Email) : '') ?? '';
+  return String(val).replace(/["']/g, '').trim();
+}
+
+/* Master function to recover, cross-reference, and synchronize all customer phone numbers across the entire system */
+function recoverAndSyncAllCustomerPhones(verbose = false){
+  const nameToPhoneMap = new Map();
+  const phoneToCustomerMap = new Map();
+  let recoveredCount = 0;
+
+  // 1. Scan existing state.customers
+  (state.customers || []).forEach(c => {
+    const name = extractCustomerName(c);
+    const phone = extractCustomerPhone(c);
+    if(name && phone && phone !== '0000000000'){
+      nameToPhoneMap.set(name.toLowerCase(), phone);
+      phoneToCustomerMap.set(phone, { name, phone, email: extractCustomerEmail(c) });
+    }
+  });
+
+  // 2. Scan receipts_raw from cache (if any)
+  const rawReceipts = getCache('receipts_raw', []);
+  if(Array.isArray(rawReceipts)){
+    rawReceipts.forEach(r => {
+      const name = extractCustomerName(r);
+      const phone = extractCustomerPhone(r);
+      if(name && phone && phone !== '0000000000'){
+        nameToPhoneMap.set(name.toLowerCase(), phone);
+        if(!phoneToCustomerMap.has(phone)){
+          phoneToCustomerMap.set(phone, { name, phone, email: extractCustomerEmail(r) });
+        }
+      }
+    });
+  }
+
+  // 3. Scan state.receipts
+  (state.receipts || []).forEach(r => {
+    const name = extractCustomerName(r);
+    const phone = extractCustomerPhone(r);
+    if(name && phone && phone !== '0000000000'){
+      nameToPhoneMap.set(name.toLowerCase(), phone);
+      if(!phoneToCustomerMap.has(phone)){
+        phoneToCustomerMap.set(phone, { name, phone, email: extractCustomerEmail(r) });
+      }
+    }
+  });
+
+  // 4. Scan state.sales
+  (state.sales || []).forEach(s => {
+    const name = extractCustomerName(s);
+    const phone = extractCustomerPhone(s);
+    if(name && phone && phone !== '0000000000'){
+      nameToPhoneMap.set(name.toLowerCase(), phone);
+      if(!phoneToCustomerMap.has(phone)){
+        phoneToCustomerMap.set(phone, { name, phone, email: '' });
+      }
+    }
+  });
+
+  // 5. Scan state.quotations
+  (state.quotations || []).forEach(q => {
+    const name = extractCustomerName(q);
+    const phone = extractCustomerPhone(q);
+    if(name && phone && phone !== '0000000000'){
+      nameToPhoneMap.set(name.toLowerCase(), phone);
+      if(!phoneToCustomerMap.has(phone)){
+        phoneToCustomerMap.set(phone, { name, phone, email: '' });
+      }
+    }
+  });
+
+  // 6. Scan state.invoices
+  (state.invoices || []).forEach(inv => {
+    const name = extractCustomerName(inv);
+    const phone = extractCustomerPhone(inv);
+    if(name && phone && phone !== '0000000000'){
+      nameToPhoneMap.set(name.toLowerCase(), phone);
+      if(!phoneToCustomerMap.has(phone)){
+        phoneToCustomerMap.set(phone, { name, phone, email: '' });
+      }
+    }
+  });
+
+  // 7. Cross-back populate missing phone numbers into receipts
+  (state.receipts || []).forEach(r => {
+    const name = extractCustomerName(r);
+    const currentPhone = extractCustomerPhone(r);
+    if((!currentPhone || currentPhone === '0000000000') && name){
+      const knownPhone = nameToPhoneMap.get(name.toLowerCase());
+      if(knownPhone){
+        if(!r.customer) r.customer = { name, phone: knownPhone, email: '' };
+        else r.customer.phone = knownPhone;
+        recoveredCount++;
+      }
+    }
+  });
+
+  // 8. Rebuild unified state.customers
+  const unifiedCustomers = [];
+  const addedKeys = new Set();
+
+  phoneToCustomerMap.forEach(c => {
+    const key = (c.phone || c.name).toLowerCase();
+    if(!addedKeys.has(key)){
+      addedKeys.add(key);
+      unifiedCustomers.push(c);
+    }
+  });
+
+  // Add any name-only customer if not already added
+  (state.customers || []).forEach(c => {
+    const name = extractCustomerName(c);
+    const phone = extractCustomerPhone(c);
+    const key = (phone || name).toLowerCase();
+    if(name && !addedKeys.has(key)){
+      addedKeys.add(key);
+      unifiedCustomers.push({ name, phone: nameToPhoneMap.get(name.toLowerCase()) || phone || '', email: extractCustomerEmail(c) });
+    }
+  });
+
+  state.customers = unifiedCustomers;
+  setCache('customers', state.customers);
+  setCache('receipts', state.receipts);
+
+  if(verbose){
+    showToast(`تم بنجاح فحص واسترداد وتوحيد (${state.customers.length}) جهة اتصال لعملاء المنظومة ✅`, 'success');
+  }
+
+  return { recoveredCount, totalCustomers: state.customers.length };
+}
+
 /* ---- Mapping between internal shape and flat sheet rows ---- */
 function receiptToRow(d){
+  const cName = extractCustomerName(d);
+  const cPhone = extractCustomerPhone(d);
+  const cEmail = extractCustomerEmail(d);
+
   return {
     ID: d.id, ReceiptNumber: d.receiptNumber, Date: d.date,
-    CustomerName: d.customer.name, CustomerPhone: d.customer.phone, CustomerEmail: d.customer.email,
+    CustomerName: cName, CustomerPhone: cPhone, CustomerEmail: cEmail,
     Category: d.device.category, Brand: d.device.brand==='أخرى' ? d.device.brandOther : d.device.brand,
     Model: d.device.model, Accessories: d.device.accessories,
     Faults: (d.faults||[]).join('، '), FaultNotes: d.faultNotes,
@@ -2182,16 +2341,43 @@ function receiptToRow(d){
     Bonus: d.bonus || '', CreatedBy: d.createdBy, UpdatedBy: d.updatedBy, UpdatedAt: d.updatedAt
   };
 }
+
 function rowToReceipt(row){
+  const cName = extractCustomerName(row);
+  const cPhone = extractCustomerPhone(row);
+  const cEmail = extractCustomerEmail(row);
+
   return {
-    id: row.ID, receiptNumber: row.ReceiptNumber, date: row.Date,
-    customer: {name: row.CustomerName, phone: String(row.CustomerPhone||''), email: row.CustomerEmail||''},
-    device: {category: row.Category, brand: row.Brand, brandOther: '', model: row.Model, accessories: row.Accessories||''},
-    faults: row.Faults ? String(row.Faults).split('، ').filter(Boolean) : [],
-    faultNotes: row.FaultNotes||'', technician: row.Technician||'',
-    cost: row.Cost, deposit: row.Deposit, refunded: Number(row.Refunded||0), partsCost: Number(row.PartsCost||0), partsUsed: row.PartsUsed||'', deliveryDate: row.DeliveryDate,
-    status: row.Status||'قيد الفحص', paid: String(row.Paid)==='TRUE', bonus: row.Bonus,
-    createdBy: row.CreatedBy||'', updatedBy: row.UpdatedBy||'', updatedAt: row.UpdatedAt||''
+    id: row.ID || row.id || row['رقم الجهاز'] || ('rec_' + Date.now() + '_' + Math.floor(Math.random()*1000)),
+    receiptNumber: row.ReceiptNumber || row.receiptNumber || row['رقم الإيصال'] || row['رقم الايصال'] || '',
+    date: row.Date || row.date || row['التاريخ'] || '',
+    customer: {
+      name: cName || 'عميل',
+      phone: cPhone,
+      email: cEmail
+    },
+    device: {
+      category: row.Category || row.category || (row.device && row.device.category) || 'لابتوب',
+      brand: row.Brand || row.brand || (row.device && row.device.brand) || '',
+      brandOther: (row.device && row.device.brandOther) || '',
+      model: row.Model || row.model || (row.device && row.device.model) || '',
+      accessories: row.Accessories || row.accessories || (row.device && row.device.accessories) || ''
+    },
+    faults: row.Faults ? (Array.isArray(row.Faults) ? row.Faults : String(row.Faults).split('، ').filter(Boolean)) : (row.faults || []),
+    faultNotes: row.FaultNotes || row.faultNotes || '',
+    technician: row.Technician || row.technician || '',
+    cost: row.Cost != null ? row.Cost : row.cost,
+    deposit: row.Deposit != null ? row.Deposit : row.deposit,
+    refunded: Number(row.Refunded || row.refunded || 0),
+    partsCost: Number(row.PartsCost || row.partsCost || 0),
+    partsUsed: row.PartsUsed || row.partsUsed || '',
+    deliveryDate: row.DeliveryDate || row.deliveryDate || '',
+    status: row.Status || row.status || 'قيد الفحص',
+    paid: String(row.Paid).toUpperCase() === 'TRUE' || row.paid === true,
+    bonus: row.Bonus || row.bonus || '',
+    createdBy: row.CreatedBy || row.createdBy || '',
+    updatedBy: row.UpdatedBy || row.updatedBy || '',
+    updatedAt: row.UpdatedAt || row.updatedAt || ''
   };
 }
 
@@ -2636,17 +2822,59 @@ function getAccountStats(accountCode){
 }
 
 async function loadReceipts(){
-  const rows = await apiGet('getReceipts');
-  const mapped = rows.map(rowToReceipt);
-  setCache('receipts_raw', rows);
-  setCache('receipts', mapped);
-  return mapped;
+  try {
+    const rows = await apiGet('getReceipts');
+    if(Array.isArray(rows) && rows.length > 0){
+      const mapped = rows.map(rowToReceipt);
+      const existing = state.receipts || [];
+      existing.forEach(oldR => {
+        const fresh = mapped.find(m => String(m.id) === String(oldR.id) || (m.receiptNumber && String(m.receiptNumber) === String(oldR.receiptNumber)));
+        if(fresh){
+          if(!fresh.customer.phone && oldR.customer && oldR.customer.phone){
+            fresh.customer.phone = oldR.customer.phone;
+          }
+          if(!fresh.customer.name && oldR.customer && oldR.customer.name){
+            fresh.customer.name = oldR.customer.name;
+          }
+        } else {
+          mapped.push(oldR);
+        }
+      });
+      state.receipts = mapped;
+      setCache('receipts_raw', rows);
+      setCache('receipts', state.receipts);
+    }
+  } catch(e){
+    console.warn('loadReceipts fetch failed or offline:', e);
+  }
+  recoverAndSyncAllCustomerPhones(false);
+  return state.receipts;
 }
+
 async function loadCustomers(){
-  const rows = await apiGet('getCustomers');
-  const mapped = rows.map(r=>({name:r.Name, phone:String(r.Phone||''), email:r.Email||''}));
-  setCache('customers', mapped);
-  return mapped;
+  try {
+    const rows = await apiGet('getCustomers');
+    if(Array.isArray(rows) && rows.length > 0){
+      rows.forEach(r => {
+        const name = extractCustomerName(r);
+        const phone = extractCustomerPhone(r);
+        const email = extractCustomerEmail(r);
+        if(name || phone){
+          const existing = state.customers.find(c => (phone && c.phone === phone) || (name && c.name.toLowerCase() === name.toLowerCase()));
+          if(existing){
+            if(phone && !existing.phone) existing.phone = phone;
+            if(email && !existing.email) existing.email = email;
+          } else {
+            state.customers.push({ name: name || 'عميل', phone, email });
+          }
+        }
+      });
+    }
+  } catch(e){
+    console.warn('loadCustomers remote get failed:', e);
+  }
+  recoverAndSyncAllCustomerPhones(false);
+  return state.customers;
 }
 async function loadTechnicians(){
   const rows = await apiGet('getTechnicians');
@@ -3306,6 +3534,9 @@ async function init(){
   state.journalEntries = getCache('journal', state.journalEntries);
   state.invoices = getCache('invoices', state.invoices);
 
+  // Recover and reconcile customer phones from cache
+  recoverAndSyncAllCustomerPhones(false);
+
   render();
   updateSyncStatusPill();
 
@@ -3315,6 +3546,7 @@ async function init(){
       [state.users, state.receipts, state.customers, state.technicians, state.settings, state.payments, state.inventory, state.sales, state.quotations, state.services, state.purchases, state.suppliers, state.expenses, state.accounts, state.journalEntries, state.invoices] = await Promise.all([
         loadUsers(), loadReceipts(), loadCustomers(), loadTechnicians(), loadSettings(), loadPayments(), loadInventory(), loadSales(), loadQuotations(), loadServices(), loadPurchases(), loadSuppliers(), loadExpenses(), loadAccounts(), loadJournalEntries(), loadInvoices()
       ]);
+      recoverAndSyncAllCustomerPhones(false);
       render();
       syncOfflineQueue();
     } catch(e) {
@@ -4018,6 +4250,7 @@ function renderMaintenanceApp(app){
         ${navItem('dashboard','📊','لوحة التحكم')}
         ${navItem('new','➕','إيصال استلام جديد')}
         ${navItem('archive','📁','أرشيف الصيانة')}
+        ${navItem('customers','👥','دليل وسجل العملاء')}
 
         <div class="nav-section">الماليات والربط</div>
         ${navItem('invoices','📄','الفواتير وعروض الأسعار')}
@@ -4073,6 +4306,7 @@ function renderMain(){
   if(state.tab==='dashboard') return renderDashboard(main);
   if(state.tab==='new') return renderForm(main);
   if(state.tab==='archive') return renderArchive(main);
+  if(state.tab==='customers') return renderCustomersPage(main);
   if(state.tab==='invoices') return renderInvoicesPage(main);
   if(state.tab==='analytics') return renderMaintenanceAnalytics(main);
   if(state.tab==='inventory') return renderInventory(main, 'صيانة', 'مخزن قطع الغيار');
@@ -4323,24 +4557,60 @@ function stepNav(body, canBack, canNext, nextLabel){
 }
 
 function stepCustomer(body,d){
-  const custOptions = state.customers.map(c=>`<option value="${c.name}">${c.name} - ${c.phone}</option>`).join('');
+  recoverAndSyncAllCustomerPhones(false);
+  const custOptions = state.customers.map(c=>`<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)} - ${escapeHtml(c.phone||'بدون هاتف')}</option>`).join('');
   body.innerHTML = `
     <div class="card">
       <h3>👤 بيانات العميل</h3>
       <div class="field"><label>اختر عميل سابق (اختياري للسرعة)</label>
-        <select id="custSelect"><option value="">-- اختر عميل مسجل --</option>${custOptions}</select>
+        <select id="custSelect"><option value="">-- اختر عميل مسجل (${state.customers.length} عميل) --</option>${custOptions}</select>
       </div>
       <button class="btn btn-ghost btn-sm" id="walkInBtn" type="button" style="margin-bottom:14px;">عميل زائر / Walk-in</button>
       <div class="grid3">
-        <div class="field"><label>اسم العميل *</label><input id="cName" value="${d.customer.name}" placeholder="الاسم ثلاثي"></div>
-        <div class="field"><label>رقم الهاتف *</label><input id="cPhone" value="${d.customer.phone}" placeholder="01xxxxxxxxx"></div>
-        <div class="field"><label>البريد الإلكتروني (اختياري)</label><input id="cEmail" value="${d.customer.email}"></div>
+        <div class="field">
+          <label>اسم العميل *</label>
+          <input id="cName" value="${escapeHtml(d.customer.name||'')}" placeholder="الاسم ثلاثي" list="custNamesDatalist">
+          <datalist id="custNamesDatalist">
+            ${state.customers.map(c=>`<option value="${escapeHtml(c.name)}">`).join('')}
+          </datalist>
+        </div>
+        <div class="field">
+          <label>رقم الهاتف *</label>
+          <input id="cPhone" value="${escapeHtml(d.customer.phone||'')}" placeholder="01xxxxxxxxx" class="mono" list="custPhonesDatalist">
+          <datalist id="custPhonesDatalist">
+            ${state.customers.filter(c=>c.phone).map(c=>`<option value="${escapeHtml(c.phone)}">${escapeHtml(c.name)}</option>`).join('')}
+          </datalist>
+        </div>
+        <div class="field"><label>البريد الإلكتروني (اختياري)</label><input id="cEmail" value="${escapeHtml(d.customer.email||'')}"></div>
       </div>
     </div>
   `;
   document.getElementById('custSelect').onchange = (e)=>{
     const c = state.customers.find(x=>x.name===e.target.value);
-    if(c){ document.getElementById('cName').value=c.name; document.getElementById('cPhone').value=c.phone; document.getElementById('cEmail').value=c.email||''; }
+    if(c){
+      document.getElementById('cName').value=c.name;
+      document.getElementById('cPhone').value=c.phone||'';
+      document.getElementById('cEmail').value=c.email||'';
+    }
+  };
+  document.getElementById('cName').onchange = (e)=>{
+    const typed = e.target.value.trim();
+    if(typed){
+      const found = state.customers.find(x=>x.name.toLowerCase()===typed.toLowerCase());
+      if(found && found.phone && !document.getElementById('cPhone').value){
+        document.getElementById('cPhone').value = found.phone;
+        if(found.email && !document.getElementById('cEmail').value) document.getElementById('cEmail').value = found.email;
+      }
+    }
+  };
+  document.getElementById('cPhone').onchange = (e)=>{
+    const typed = e.target.value.trim();
+    if(typed && typed !== '0000000000'){
+      const found = state.customers.find(x=>x.phone===typed);
+      if(found && found.name && !document.getElementById('cName').value){
+        document.getElementById('cName').value = found.name;
+      }
+    }
   };
   document.getElementById('walkInBtn').onclick = ()=>{
     document.getElementById('cName').value = 'عميل زائر';
@@ -4595,14 +4865,24 @@ function archiveTable(list){
     const st = STATUSES.find(s=>s.v===r.status) || STATUSES[0];
     const remaining = Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0);
     const isOverdue = r.status==='مكتمل' && (Date.now()-new Date(r.updatedAt||r.date).getTime())/86400000 > 7;
+    const cName = extractCustomerName(r);
+    const cPhone = extractCustomerPhone(r);
+
     return `<tr style="${isOverdue?'background:rgba(245,158,11,0.08);':''}">
       <td>
         <span class="mono" style="font-weight:800;font-size:13px;color:var(--primary);">${r.receiptNumber}</span>
         <div style="color:var(--ink-secondary);font-size:11px;">${cleanDate(r.date)}</div>
       </td>
       <td>
-        <b>${r.customer.name}</b>
-        <div style="color:var(--ink-secondary);font-size:11.5px;" class="mono">${r.customer.phone}</div>
+        <b>${cName}</b>
+        ${cPhone && cPhone !== '0000000000' ? `
+          <div style="color:var(--ink-secondary);font-size:11.5px;display:flex;align-items:center;gap:4px;" class="mono">
+            <span>${cPhone}</span>
+            <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" style="color:#22c55e;text-decoration:none;font-size:12px;" title="محادثة واتساب">💬</a>
+          </div>
+        ` : `
+          <div style="color:var(--amber-text);font-size:10.5px;font-weight:700;cursor:pointer;" onclick="openQuickAddPhoneModal('${escapeHtml(cName)}')">⚠️ هاتف غير مسجل (اضغط للإضافة)</div>
+        `}
       </td>
       <td>${r.device.category} - ${r.device.brand==='أخرى'?r.device.brandOther:r.device.brand} <span style="color:var(--ink-secondary);">${r.device.model||''}</span></td>
       <td>${r.technician ? `<span style="font-weight:600;">${r.technician}</span>` : '<span style="color:var(--slate-400);">-</span>'}</td>
@@ -4639,7 +4919,16 @@ function renderArchive(main){
     if(groupStatuses) list = list.filter(r=>groupStatuses.includes(r.status));
   }
 
-  if(f.q) list = list.filter(r => r.receiptNumber.includes(f.q) || r.customer.name.includes(f.q) || r.customer.phone.includes(f.q) || (r.device.model&&r.device.model.includes(f.q)));
+  if(f.q) {
+    const qTerm = f.q.trim().toLowerCase();
+    list = list.filter(r => {
+      const rNum = String(r.receiptNumber||'').toLowerCase();
+      const rName = extractCustomerName(r).toLowerCase();
+      const rPhone = extractCustomerPhone(r);
+      const rModel = String(r.device && r.device.model ? r.device.model : '').toLowerCase();
+      return rNum.includes(qTerm) || rName.includes(qTerm) || rPhone.includes(qTerm) || rModel.includes(qTerm);
+    });
+  }
   if(f.status) list = list.filter(r=>r.status===f.status);
   if(f.tech) list = list.filter(r=>r.technician===f.tech);
 
@@ -4649,7 +4938,9 @@ function renderArchive(main){
         <h2 class="page-title">📁 أرشيف إيصالات الصيانة</h2>
         <div class="subtitle">البحث في الإيصالات وتحديث الحالات وتصدير البيانات (${list.length} إيصال مطابق)</div>
       </div>
-      <div style="display:flex;gap:8px;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" id="archRecoverPhonesBtn" style="color:var(--primary);font-weight:800;" title="فحص كافة السجلات واسترداد أرقام الهواتف التائهة">🔄 استرداد الهواتف</button>
+        <button class="btn btn-ghost btn-sm" id="archGotoCustBtn">👥 دليل العملاء</button>
         <button class="btn btn-ghost btn-sm" id="exportArchiveExcelBtn">📥 تصدير Excel</button>
         <button class="btn btn-primary btn-sm" id="archNewReceiptBtn">➕ إيصال جديد</button>
       </div>
@@ -4671,6 +4962,14 @@ function renderArchive(main){
 
   document.getElementById('archNewReceiptBtn').onclick = ()=>{ state.tab='new'; startNewDraft(); };
   document.getElementById('exportArchiveExcelBtn').onclick = ()=>exportReceiptsToExcel(list);
+  document.getElementById('archRecoverPhonesBtn').onclick = ()=>{
+    recoverAndSyncAllCustomerPhones(true);
+    renderArchive(main);
+  };
+  document.getElementById('archGotoCustBtn').onclick = ()=>{
+    state.tab = 'customers';
+    renderMain();
+  };
   document.querySelectorAll('#groupTabs .chip').forEach(c=>{ c.onclick = ()=>{ f.group = c.dataset.g; renderMain(); }; });
   document.getElementById('fq').oninput = e=>{ f.q=e.target.value; renderMain(); };
   document.getElementById('fstatus').onchange = e=>{ f.status=e.target.value.replace(/^[^\s]+\s/, ''); renderMain(); };
@@ -4679,6 +4978,296 @@ function renderArchive(main){
   if(clearBtn) clearBtn.onclick = ()=>{ f.q=''; f.status=''; f.tech=''; f.group='all'; renderMain(); };
 
   attachRowActions(main);
+}
+
+/* ---------------- Customer Directory & Phone Management Hub ---------------- */
+function renderCustomersPage(main){
+  if(!state.custSearch) state.custSearch = '';
+
+  // Auto reconcile
+  recoverAndSyncAllCustomerPhones(false);
+
+  const allCusts = state.customers || [];
+  const withPhones = allCusts.filter(c => c.phone && c.phone.trim() !== '' && c.phone !== '0000000000');
+  const missingPhones = allCusts.filter(c => !c.phone || c.phone.trim() === '' || c.phone === '0000000000');
+
+  const sText = state.custSearch.trim().toLowerCase();
+  const filtered = allCusts.filter(c => {
+    if(!sText) return true;
+    const mName = (c.name || '').toLowerCase().includes(sText);
+    const mPhone = (c.phone || '').includes(sText);
+    const mEmail = (c.email || '').toLowerCase().includes(sText);
+    return mName || mPhone || mEmail;
+  });
+
+  main.innerHTML = `
+    <div class="top-header">
+      <div>
+        <h2 class="page-title">👥 دليل وسجل هواتف العملاء</h2>
+        <div class="subtitle">إدارة بيانات وهواتف العملاء ومزامنتها واسترداد الأرقام المفقودة (${allCusts.length} عميل مسجل)</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" id="custRecoverBtn" style="color:var(--primary);border-color:var(--primary);font-weight:800;">
+          🔄 فحص واسترداد الأرقام المفقودة
+        </button>
+        <button class="btn btn-ghost btn-sm" id="exportCustsExcelBtn">📥 تصدير Excel</button>
+        <button class="btn btn-primary btn-sm" id="addNewCustModalBtn">➕ إضافة عميل جديد</button>
+      </div>
+    </div>
+
+    <!-- KPI Metric Cards -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:10px;margin-bottom:14px;">
+      <div class="card" style="padding:12px;margin:0;border-right:3.5px solid var(--primary);">
+        <div style="font-size:11px;color:var(--ink-secondary);font-weight:700;">إجمالي العملاء</div>
+        <div class="num mono font-bold" style="font-size:18px;margin-top:2px;">${allCusts.length}</div>
+      </div>
+      <div class="card" style="padding:12px;margin:0;border-right:3.5px solid var(--green);">
+        <div style="font-size:11px;color:var(--ink-secondary);font-weight:700;">أرقام هواتف مسجلة ومؤكدة</div>
+        <div class="num mono font-bold" style="font-size:18px;margin-top:2px;color:var(--green-text);">${withPhones.length}</div>
+      </div>
+      <div class="card" style="padding:12px;margin:0;border-right:3.5px solid ${missingPhones.length>0?'var(--amber)':'var(--line)'};">
+        <div style="font-size:11px;color:var(--ink-secondary);font-weight:700;">عملاء بدون هاتف</div>
+        <div class="num mono font-bold" style="font-size:18px;margin-top:2px;color:${missingPhones.length>0?'var(--amber-text)':'var(--ink)'};">${missingPhones.length}</div>
+      </div>
+    </div>
+
+    <!-- Search Box -->
+    <div class="card" style="padding:12px;margin-bottom:14px;background:var(--paper2);">
+      <div style="display:flex;gap:10px;align-items:center;">
+        <input id="custSearchInput" value="${escapeHtml(state.custSearch)}" placeholder="🔍 بحث باسم العميل، رقم الهاتف، أو البريد الإلكتروني..." style="flex:1;">
+        ${state.custSearch ? `<button class="btn btn-ghost btn-sm" id="resetCustSearchBtn">✕ مسح البحث</button>` : ''}
+      </div>
+    </div>
+
+    <!-- Customers Table -->
+    ${filtered.length === 0 ? '<div class="card empty" style="padding:30px;text-align:center;">لا يوجد عملاء مطابقين لمعايير البحث.</div>' : `
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="text-align:right;">اسم العميل</th>
+              <th style="text-align:right;">رقم الهاتف والاتصال</th>
+              <th style="text-align:center;">أجهزة الصيانة</th>
+              <th style="text-align:right;">البريد / الملاحظات</th>
+              <th style="text-align:center;min-width:220px;">الإجراءات السريعة</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filtered.map(c => {
+              const cName = c.name || 'عميل';
+              const cPhone = c.phone || '';
+              const clientReceipts = (state.receipts||[]).filter(r => {
+                const rName = extractCustomerName(r);
+                const rPhone = extractCustomerPhone(r);
+                return (rName && rName.toLowerCase() === cName.toLowerCase()) || (cPhone && rPhone === cPhone);
+              });
+
+              return `
+                <tr>
+                  <td>
+                    <div style="font-weight:800;font-size:13.5px;color:var(--ink);">${escapeHtml(cName)}</div>
+                  </td>
+                  <td>
+                    ${cPhone && cPhone !== '0000000000' ? `
+                      <div style="display:inline-flex;align-items:center;gap:6px;">
+                        <span class="mono font-bold" style="font-size:13px;direction:ltr;">${escapeHtml(cPhone)}</span>
+                        <a href="tel:${cPhone}" class="btn btn-ghost btn-xs" style="padding:2px 6px;" title="اتصال هاتفي">📞</a>
+                        <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" class="btn btn-ghost btn-xs" style="padding:2px 6px;color:#22c55e;" title="محادثة واتساب">💬</a>
+                      </div>
+                    ` : `
+                      <button class="btn btn-ghost btn-xs edit-cust-quick-phone-btn" data-custname="${escapeHtml(cName)}" style="color:var(--amber-text);border-color:var(--amber);font-weight:700;">
+                        ⚠️ إضافة رقم الهاتف
+                      </button>
+                    `}
+                  </td>
+                  <td style="text-align:center;">
+                    ${clientReceipts.length > 0 ? `
+                      <button class="btn btn-ghost btn-xs view-cust-receipts-btn" data-custname="${escapeHtml(cName)}" style="font-weight:800;color:var(--primary);">
+                        🛠️ ${clientReceipts.length} جهاز
+                      </button>
+                    ` : `<span style="color:var(--ink-secondary);font-size:11px;">-</span>`}
+                  </td>
+                  <td style="font-size:11.5px;color:var(--ink-secondary);">
+                    ${escapeHtml(c.email || c.address || '-')}
+                  </td>
+                  <td style="text-align:center;">
+                    <div style="display:inline-flex;gap:4px;flex-wrap:wrap;justify-content:center;">
+                      <button class="btn btn-ghost btn-xs edit-cust-btn" data-custname="${escapeHtml(cName)}" data-custphone="${escapeHtml(cPhone)}" data-custemail="${escapeHtml(c.email||'')}">
+                        ✏️ تعديل
+                      </button>
+                      <button class="btn btn-ghost btn-xs cust-new-receipt-btn" data-custname="${escapeHtml(cName)}" data-custphone="${escapeHtml(cPhone)}" style="color:var(--blue-text);">
+                        ➕ صيانة
+                      </button>
+                      <button class="btn btn-ghost btn-xs cust-new-inv-btn" data-custname="${escapeHtml(cName)}" data-custphone="${escapeHtml(cPhone)}" style="color:var(--purple);">
+                        🧾 فاتورة
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `}
+  `;
+
+  // Attach search events
+  const sInput = document.getElementById('custSearchInput');
+  if(sInput){
+    sInput.oninput = (e)=>{
+      state.custSearch = e.target.value;
+      renderCustomersPage(main);
+    };
+  }
+  const resetBtn = document.getElementById('resetCustSearchBtn');
+  if(resetBtn){
+    resetBtn.onclick = ()=>{
+      state.custSearch = '';
+      renderCustomersPage(main);
+    };
+  }
+
+  // Deep Recovery Button
+  document.getElementById('custRecoverBtn').onclick = ()=>{
+    recoverAndSyncAllCustomerPhones(true);
+    renderCustomersPage(main);
+  };
+
+  // Add New Customer Modal Button
+  document.getElementById('addNewCustModalBtn').onclick = ()=>openEditCustomerModal(null);
+
+  // Export Excel
+  document.getElementById('exportCustsExcelBtn').onclick = ()=>exportCustomersToExcel(allCusts);
+
+  // Edit Customer
+  main.querySelectorAll('.edit-cust-btn, .edit-cust-quick-phone-btn').forEach(btn => {
+    btn.onclick = ()=>{
+      const name = btn.dataset.custname;
+      const phone = btn.dataset.custphone || '';
+      const email = btn.dataset.custemail || '';
+      openEditCustomerModal({ name, phone, email });
+    };
+  });
+
+  // View Customer Receipts in Archive
+  main.querySelectorAll('.view-cust-receipts-btn').forEach(btn => {
+    btn.onclick = ()=>{
+      state.tab = 'archive';
+      state.archiveFilter.q = btn.dataset.custname;
+      renderMain();
+    };
+  });
+
+  // New Receipt for customer
+  main.querySelectorAll('.cust-new-receipt-btn').forEach(btn => {
+    btn.onclick = ()=>{
+      startNewDraft();
+      state.draft.customer.name = btn.dataset.custname;
+      state.draft.customer.phone = btn.dataset.custphone || '';
+      state.tab = 'new';
+      renderMain();
+    };
+  });
+
+  // New Invoice for customer
+  main.querySelectorAll('.cust-new-inv-btn').forEach(btn => {
+    btn.onclick = ()=>{
+      const newInv = {
+        ID: 'inv_' + Date.now(),
+        InvoiceNumber: 'INV-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-4),
+        Date: new Date().toISOString().slice(0,10),
+        DueDate: new Date().toISOString().slice(0,10),
+        CustomerName: btn.dataset.custname,
+        CustomerPhone: btn.dataset.custphone || '',
+        Items: [{ Name: 'صيانة / قطع غيار', Qty: 1, Price: 0, Total: 0 }],
+        Subtotal: 0, TaxPercent: 0, TaxAmount: 0, Discount: 0, Total: 0, AmountPaid: 0, Remaining: 0,
+        Status: 'غير مدفوعة (آجلة)', PaymentMethod: 'نقدي'
+      };
+      openInvoiceModal(newInv, true);
+    };
+  });
+}
+
+function openQuickAddPhoneModal(customerName){
+  openEditCustomerModal({ name: customerName, phone: '', email: '' });
+}
+
+function openEditCustomerModal(c){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  const isEdit = !!c;
+
+  overlay.innerHTML = `
+    <div class="modal-content" style="max-width:480px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
+        <h3 style="margin:0;font-size:16px;font-weight:900;">${isEdit ? '✏️ تعديل بيانات العميل' : '➕ إضافة عميل جديد'}</h3>
+        <button class="btn btn-ghost btn-xs" id="closeCustModalBtn">✕</button>
+      </div>
+      <div class="field"><label>اسم العميل / الشركة *</label><input id="editCustName" value="${escapeHtml(c ? c.name : '')}" placeholder="الاسم ثلاثي"></div>
+      <div class="field"><label>رقم الهاتف *</label><input id="editCustPhone" value="${escapeHtml(c ? c.phone : '')}" placeholder="01xxxxxxxxx" class="mono"></div>
+      <div class="field"><label>البريد الإلكتروني (اختياري)</label><input id="editCustEmail" value="${escapeHtml(c ? c.email : '')}" placeholder="example@mail.com"></div>
+      <div style="display:flex;justify-content:space-between;margin-top:14px;">
+        <button class="btn btn-ghost" id="cancelCustModalBtn">إلغاء</button>
+        <button class="btn btn-primary" id="saveCustModalBtn">💾 حفظ البيانات</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  document.getElementById('closeCustModalBtn').onclick = ()=>overlay.remove();
+  document.getElementById('cancelCustModalBtn').onclick = ()=>overlay.remove();
+
+  document.getElementById('saveCustModalBtn').onclick = async ()=>{
+    const name = document.getElementById('editCustName').value.trim();
+    const phone = document.getElementById('editCustPhone').value.trim();
+    const email = document.getElementById('editCustEmail').value.trim();
+
+    if(!name){ showToast('يرجى إدخال اسم العميل', 'error'); return; }
+
+    const oldName = c ? c.name : null;
+    await saveCustomerRemote({ name, phone, email });
+
+    // Update any receipts with this customer name
+    (state.receipts || []).forEach(r => {
+      const rName = extractCustomerName(r);
+      if(rName && (rName.toLowerCase() === name.toLowerCase() || (oldName && rName.toLowerCase() === oldName.toLowerCase()))){
+        if(!r.customer) r.customer = { name, phone, email };
+        else {
+          r.customer.name = name;
+          r.customer.phone = phone;
+          r.customer.email = email;
+        }
+      }
+    });
+    setCache('receipts', state.receipts);
+
+    recoverAndSyncAllCustomerPhones(false);
+    showToast('تم حفظ وتحديث بيانات العميل وأرقام هواتفه بنجاح ✅', 'success');
+    overlay.remove();
+
+    const main = document.getElementById('main');
+    if(state.tab === 'customers') renderCustomersPage(main);
+    else if(state.tab === 'archive') renderArchive(main);
+  };
+}
+
+function exportCustomersToExcel(list){
+  const rows = [
+    ['اسم العميل', 'رقم الهاتف', 'البريد الإلكتروني']
+  ];
+  list.forEach(c => {
+    rows.push([c.name, c.phone, c.email||'']);
+  });
+  let csv = '\uFEFF' + rows.map(r => r.map(f => `"${String(f||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `customers_directory_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function attachRowActions(root){

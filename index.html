@@ -1708,27 +1708,41 @@ tr:last-child td { border-bottom: none; }
     background: #ffffff !important;
   }
 
-  /* --- 1. A5 Landscape Maintenance Receipt (Single Sheet 210mm x 148mm) --- */
+  /* --- 1. A5 Landscape Maintenance Receipt (Single Sheet Exactly 210mm x 148mm) --- */
   body.printing-a5-receipt {
     width: 210mm !important;
-    min-height: 148mm !important;
+    height: 148mm !important;
     max-height: 148mm !important;
-    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
     position: static !important;
+    box-sizing: border-box !important;
   }
   body.printing-a5-receipt #printMount {
     width: 210mm !important;
-    margin: 0 auto !important;
+    height: 148mm !important;
+    max-height: 148mm !important;
+    margin: 0 !important;
     padding: 0 !important;
-    overflow: visible !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+    page-break-inside: avoid !important;
+    page-break-after: avoid !important;
+    break-inside: avoid !important;
+    break-after: avoid !important;
   }
   body.printing-a5-receipt #receiptPaper {
     position: static !important;
-    width: 198mm !important;
-    height: 138mm !important;
-    max-height: 138mm !important;
-    margin: 2mm auto !important;
-    padding: 4mm 6mm !important;
+    width: 190mm !important;
+    max-width: 190mm !important;
+    height: 124mm !important;
+    max-height: 124mm !important;
+    margin: auto !important;
+    padding: 3mm 5mm !important;
     border: 1.5px solid #0f172a !important;
     border-radius: 4px !important;
     background: #ffffff !important;
@@ -1743,8 +1757,8 @@ tr:last-child td { border-bottom: none; }
     page-break-after: avoid !important;
     break-inside: avoid !important;
     break-after: avoid !important;
-    font-size: 9.5px !important;
-    line-height: 1.25 !important;
+    font-size: 9px !important;
+    line-height: 1.2 !important;
   }
 
   /* --- 2. Thermal Sticker Label (50mm x 30mm) --- */
@@ -3151,6 +3165,240 @@ function getPosSettings(){
   }
   return state.settings.pos;
 }
+
+// ---------------- Pure Offline QR Code SVG Generator (0ms, Zero Network Dependency) ----------------
+const QRCodeGenerator = (function() {
+  const PAD0 = 0xEC, PAD1 = 0x11;
+  const EXP_TABLE = new Uint8Array(256);
+  const LOG_TABLE = new Uint8Array(256);
+  for (let i = 0, x = 1; i < 256; i++) {
+    EXP_TABLE[i] = x;
+    LOG_TABLE[x] = i;
+    x = (x << 1) ^ ((x & 0x80) ? 0x11d : 0);
+  }
+  function glog(n) { if (n < 1) return 0; return LOG_TABLE[n]; }
+  function gexp(n) { while (n < 0) n += 255; while (n >= 255) n -= 255; return EXP_TABLE[n]; }
+
+  function getRSGeneratorPoly(numEC) {
+    let poly = [1];
+    for (let i = 0; i < numEC; i++) {
+      let next = new Array(poly.length + 1).fill(0);
+      for (let j = 0; j < poly.length; j++) {
+        next[j] ^= poly[j];
+        next[j + 1] ^= gexp(glog(poly[j]) + i);
+      }
+      poly = next;
+    }
+    return poly;
+  }
+
+  function calculateEC(data, numEC) {
+    const gen = getRSGeneratorPoly(numEC);
+    const msg = new Array(data.length + numEC).fill(0);
+    for (let i = 0; i < data.length; i++) msg[i] = data[i];
+    for (let i = 0; i < data.length; i++) {
+      const coef = msg[i];
+      if (coef !== 0) {
+        const logCoef = glog(coef);
+        for (let j = 0; j < gen.length; j++) {
+          msg[i + j] ^= gexp(logCoef + glog(gen[j]));
+        }
+      }
+    }
+    return msg.slice(data.length);
+  }
+
+  const VERSIONS = [
+    null,
+    { ver: 1, size: 21, dataCap: 14, totalData: 16, ecPerBlock: 10, blocks: [[1, 16]] },
+    { ver: 2, size: 25, dataCap: 26, totalData: 28, ecPerBlock: 16, blocks: [[1, 28]], align: [6, 18] },
+    { ver: 3, size: 29, dataCap: 42, totalData: 44, ecPerBlock: 26, blocks: [[1, 44]], align: [6, 22] },
+    { ver: 4, size: 33, dataCap: 62, totalData: 64, ecPerBlock: 18, blocks: [[2, 32]], align: [6, 26] },
+    { ver: 5, size: 37, dataCap: 84, totalData: 86, ecPerBlock: 24, blocks: [[2, 43]], align: [6, 30] },
+    { ver: 6, size: 41, dataCap: 106, totalData: 108, ecPerBlock: 16, blocks: [[4, 27]], align: [6, 34] },
+    { ver: 7, size: 45, dataCap: 122, totalData: 124, ecPerBlock: 18, blocks: [[2, 31], [2, 32]], align: [6, 22, 38] },
+    { ver: 8, size: 49, dataCap: 152, totalData: 154, ecPerBlock: 22, blocks: [[2, 38], [2, 39]], align: [6, 24, 42] }
+  ];
+
+  function encodeData(text) {
+    const bytes = new TextEncoder().encode(text);
+    let verInfo = null;
+    for (let v = 1; v < VERSIONS.length; v++) {
+      if (bytes.length <= VERSIONS[v].dataCap) { verInfo = VERSIONS[v]; break; }
+    }
+    if (!verInfo) verInfo = VERSIONS[VERSIONS.length - 1];
+
+    const bits = [];
+    function putBits(val, len) {
+      for (let i = len - 1; i >= 0; i--) bits.push((val >> i) & 1);
+    }
+    putBits(0b0100, 4);
+    putBits(Math.min(bytes.length, verInfo.dataCap), 8);
+    for (let i = 0; i < Math.min(bytes.length, verInfo.dataCap); i++) putBits(bytes[i], 8);
+    while (bits.length < verInfo.totalData * 8 && bits.length % 8 !== 0) bits.push(0);
+    while (bits.length % 8 !== 0) bits.push(0);
+    let padToggle = false;
+    while (bits.length < verInfo.totalData * 8) {
+      putBits(padToggle ? PAD1 : PAD0, 8);
+      padToggle = !padToggle;
+    }
+
+    const dataCodewords = [];
+    for (let i = 0; i < bits.length; i += 8) {
+      let byte = 0;
+      for (let j = 0; j < 8; j++) byte = (byte << 1) | bits[i + j];
+      dataCodewords.push(byte);
+    }
+
+    const dataBlocks = [];
+    const ecBlocks = [];
+    let offset = 0;
+    for (let [numBlocks, blockSize] of verInfo.blocks) {
+      for (let b = 0; b < numBlocks; b++) {
+        const blockData = dataCodewords.slice(offset, offset + blockSize);
+        dataBlocks.push(blockData);
+        ecBlocks.push(calculateEC(blockData, verInfo.ecPerBlock));
+        offset += blockSize;
+      }
+    }
+
+    const finalCodewords = [];
+    let maxBlockLen = Math.max(...dataBlocks.map(b => b.length));
+    for (let i = 0; i < maxBlockLen; i++) {
+      for (let b = 0; b < dataBlocks.length; b++) {
+        if (i < dataBlocks[b].length) finalCodewords.push(dataBlocks[b][i]);
+      }
+    }
+    for (let i = 0; i < verInfo.ecPerBlock; i++) {
+      for (let b = 0; b < ecBlocks.length; b++) {
+        if (i < ecBlocks[b].length) finalCodewords.push(ecBlocks[b][i]);
+      }
+    }
+    return { verInfo, codewords: finalCodewords };
+  }
+
+  function createMatrix(verInfo, codewords) {
+    const size = verInfo.size;
+    const matrix = Array.from({ length: size }, () => new Array(size).fill(null));
+    const reserved = Array.from({ length: size }, () => new Array(size).fill(false));
+
+    function setModule(r, c, val) {
+      matrix[r][c] = val ? 1 : 0;
+      reserved[r][c] = true;
+    }
+
+    function addFinder(top, left) {
+      for (let r = 0; r < 7; r++) {
+        for (let c = 0; c < 7; c++) {
+          if (r === 0 || r === 6 || c === 0 || c === 6 || (r >= 2 && r <= 4 && c >= 2 && c <= 4)) {
+            setModule(top + r, left + c, true);
+          } else {
+            setModule(top + r, left + c, false);
+          }
+        }
+      }
+      for (let r = -1; r <= 7; r++) {
+        for (let c = -1; c <= 7; c++) {
+          if (r === -1 || r === 7 || c === -1 || c === 7) {
+            const row = top + r, col = left + c;
+            if (row >= 0 && row < size && col >= 0 && col < size) setModule(row, col, false);
+          }
+        }
+      }
+    }
+    addFinder(0, 0);
+    addFinder(0, size - 7);
+    addFinder(size - 7, 0);
+
+    if (verInfo.align) {
+      const coords = verInfo.align;
+      for (let r of coords) {
+        for (let c of coords) {
+          if (matrix[r][c] !== null) continue;
+          for (let dr = -2; dr <= 2; dr++) {
+            for (let dc = -2; dc <= 2; dc++) {
+              setModule(r + dr, c + dc, Math.max(Math.abs(dr), Math.abs(dc)) !== 1);
+            }
+          }
+        }
+      }
+    }
+
+    for (let i = 8; i < size - 8; i++) {
+      if (matrix[6][i] === null) setModule(6, i, i % 2 === 0);
+      if (matrix[i][6] === null) setModule(i, 6, i % 2 === 0);
+    }
+
+    setModule(4 * verInfo.ver + 9, 8, true);
+
+    for (let i = 0; i < 9; i++) {
+      reserved[8][i] = true;
+      reserved[i][8] = true;
+      if (size - 1 - i < size) {
+        reserved[8][size - 1 - i] = true;
+        reserved[size - 1 - i][8] = true;
+      }
+    }
+
+    const bits = [];
+    for (let cw of codewords) {
+      for (let i = 7; i >= 0; i--) bits.push((cw >> i) & 1);
+    }
+    let bitIdx = 0;
+    let up = true;
+    for (let right = size - 1; right > 0; right -= 2) {
+      if (right === 6) right--;
+      const cols = [right, right - 1];
+      const rows = up ? Array.from({ length: size }, (_, i) => size - 1 - i) : Array.from({ length: size }, (_, i) => i);
+      for (let r of rows) {
+        for (let c of cols) {
+          if (!reserved[r][c]) {
+            const dataBit = bitIdx < bits.length ? bits[bitIdx++] : 0;
+            const mask = (r + c) % 2 === 0;
+            matrix[r][c] = dataBit ^ (mask ? 1 : 0);
+          }
+        }
+      }
+      up = !up;
+    }
+
+    const formatBits = 0x5412;
+    for (let i = 0; i < 15; i++) {
+      const bit = (formatBits >> i) & 1;
+      if (i < 6) matrix[8][i] = bit;
+      else if (i < 8) matrix[8][i + 1] = bit;
+      else if (i === 8) matrix[7][8] = bit;
+      else matrix[14 - i][8] = bit;
+
+      if (i < 8) matrix[size - 1 - i][8] = bit;
+      else matrix[8][size - 15 + i] = bit;
+    }
+
+    return matrix;
+  }
+
+  function toSvg(text, pixelSize) {
+    try {
+      pixelSize = pixelSize || 70;
+      const { verInfo, codewords } = encodeData(String(text || ""));
+      const matrix = createMatrix(verInfo, codewords);
+      const size = matrix.length;
+      const border = 1;
+      const totalSize = size + border * 2;
+      let paths = "";
+      for (let r = 0; r < size; r++) {
+        for (let c = 0; c < size; c++) {
+          if (matrix[r][c] === 1) paths += `M${c + border},${r + border}h1v1h-1z `;
+        }
+      }
+      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalSize} ${totalSize}" width="${pixelSize}" height="${pixelSize}" shape-rendering="crispEdges" style="display:block;background:#fff;"><rect width="${totalSize}" height="${totalSize}" fill="#ffffff"/><path d="${paths.trim()}" fill="#000000"/></svg>`;
+    } catch(e) {
+      return `<div style="width:${pixelSize}px;height:${pixelSize}px;border:1px solid #000;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:bold;">QR</div>`;
+    }
+  }
+
+  return { toSvg };
+})();
 
 const DEFAULT_KNOWN_WINDOWS_PRINTERS = [
   // طابعات البون والإيصالات الحرارية
@@ -5745,36 +5993,58 @@ function openReceiptPrint(r, kind){
     @media print {
       @page {
         size: A5 landscape !important;
-        margin: 4mm 5mm !important;
+        margin: 0mm !important;
       }
-      body.printing-a5-receipt {
+      @page :left { margin: 0mm !important; }
+      @page :right { margin: 0mm !important; }
+      @page :first { margin: 0mm !important; }
+      html, body.printing-a5-receipt {
         width: 210mm !important;
-        min-height: 148mm !important;
+        height: 148mm !important;
         max-height: 148mm !important;
         margin: 0 !important;
         padding: 0 !important;
         background: #ffffff !important;
         color: #000000 !important;
         position: static !important;
-        overflow: visible !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
       }
+      body.printing-a5-receipt #app,
+      body.printing-a5-receipt .sidebar,
+      body.printing-a5-receipt .top-header,
+      body.printing-a5-receipt #toastContainer,
+      body.printing-a5-receipt .modal-overlay,
+      body.printing-a5-receipt .cmd-palette-overlay {
+        display: none !important;
+      }
       body.printing-a5-receipt #printMount {
-        display: block !important;
-        width: 200mm !important;
-        margin: 0 auto !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: 210mm !important;
+        height: 148mm !important;
+        max-height: 148mm !important;
+        margin: 0 !important;
         padding: 0 !important;
         position: static !important;
-        overflow: visible !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
+        page-break-inside: avoid !important;
+        page-break-after: avoid !important;
+        break-inside: avoid !important;
+        break-after: avoid !important;
       }
       body.printing-a5-receipt #receiptPaper {
         position: static !important;
-        width: 198mm !important;
-        height: 138mm !important;
-        max-height: 138mm !important;
-        margin: 1mm auto !important;
-        padding: 4mm 6mm !important;
+        width: 190mm !important;
+        max-width: 190mm !important;
+        height: 124mm !important;
+        max-height: 124mm !important;
+        margin: auto !important;
+        padding: 3mm 5mm !important;
         border: 1.5px solid #0f172a !important;
         border-radius: 4px !important;
         background: #ffffff !important;
@@ -5789,8 +6059,8 @@ function openReceiptPrint(r, kind){
         page-break-after: avoid !important;
         break-inside: avoid !important;
         break-after: avoid !important;
-        font-size: 9.5px !important;
-        line-height: 1.25 !important;
+        font-size: 9px !important;
+        line-height: 1.2 !important;
       }
     }
   `;
@@ -5801,8 +6071,8 @@ function openReceiptPrint(r, kind){
   mount.id = 'printMount';
 
   const titles = {receipt:'إيصال استلام جهاز للصيانة', invoice:'فاتورة صيانة نهائية', workorder:'أمر شغل داخلي للفني'};
-  const trackUrl = `${window.location.origin}${window.location.pathname}?track=${r.receiptNumber}`;
-  const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=70x70&data=${encodeURIComponent(trackUrl)}`;
+  const trackUrl = `${window.location.origin}${window.location.pathname}?track=${encodeURIComponent(r.receiptNumber)}`;
+  const qrSvgHtml = QRCodeGenerator.toSvg(trackUrl, 38);
 
   const financeSection = `
     <div class="section-title">البيان المالي</div>
@@ -5822,12 +6092,14 @@ function openReceiptPrint(r, kind){
     <div>
       <div class="r-head">
         <div>
-          ${state.settings.logoUrl ? `<img src="${state.settings.logoUrl}" style="max-height:26px;max-width:110px;object-fit:contain;margin-bottom:2px;">` : ''}
-          <h4>${state.settings.shopName}</h4>
+          ${state.settings.logoUrl ? `<img src="${state.settings.logoUrl}" style="max-height:24px;max-width:100px;object-fit:contain;margin-bottom:2px;">` : ''}
+          <h4>${escapeHtml(state.settings.shopName || 'صيانة ميكروتك')}</h4>
           <div class="r-sub">${titles[kind]}</div>
         </div>
-        <div style="display:flex;align-items:center;gap:10px;">
-          <img src="${qrApiUrl}" alt="QR" style="width:42px;height:42px;border:1px solid #cbd5e1;border-radius:4px;" title="امسح لتتبع حالة الجهاز">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="width:40px;height:40px;border:1px solid #cbd5e1;border-radius:4px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fff;" title="امسح لتتبع حالة الجهاز">
+            ${qrSvgHtml}
+          </div>
           <div style="text-align:left;">
             <div class="r-badge mono">${r.receiptNumber}</div>
             <div class="r-meta">التاريخ: ${cleanDate(r.date)}</div>
@@ -5838,16 +6110,16 @@ function openReceiptPrint(r, kind){
 
       <div class="section-title">بيانات العميل</div>
       <table>
-        <tr><td class="k">الاسم</td><td><b>${r.customer.name}</b></td><td class="k">الهاتف</td><td class="mono"><b>${r.customer.phone}</b></td></tr>
+        <tr><td class="k">الاسم</td><td><b>${escapeHtml(r.customer.name)}</b></td><td class="k">الهاتف</td><td class="mono"><b>${escapeHtml(r.customer.phone)}</b></td></tr>
       </table>
 
       <div class="section-title">بيانات الجهاز والأعطال</div>
       <table>
-        <tr><td class="k">الجهاز</td><td>${r.device.category} — ${r.device.brand==='أخرى'?r.device.brandOther:r.device.brand} ${r.device.model||''}</td>
-            <td class="k">الملحقات</td><td>${r.device.accessories||'بدون'}</td></tr>
-        <tr><td class="k">الأعطال</td><td colspan="3">${r.faults.join('، ')||'-'}${r.faultNotes?' — '+r.faultNotes:''}</td></tr>
-        <tr><td class="k">الفني</td><td>${r.technician||'-'}</td><td class="k">الحالة</td><td><b>${r.status}</b></td></tr>
-        <tr><td class="k">موعد التسليم</td><td colspan="3"><b>${r.deliveryDate||'غير محدد'}</b></td></tr>
+        <tr><td class="k">الجهاز</td><td>${escapeHtml(r.device.category)} — ${r.device.brand==='أخرى'?escapeHtml(r.device.brandOther):escapeHtml(r.device.brand)} ${escapeHtml(r.device.model||'')}</td>
+            <td class="k">الملحقات</td><td>${escapeHtml(r.device.accessories||'بدون')}</td></tr>
+        <tr><td class="k">الأعطال</td><td colspan="3">${escapeHtml(r.faults.join('، ')||'-')}${r.faultNotes?' — '+escapeHtml(r.faultNotes):''}</td></tr>
+        <tr><td class="k">الفني</td><td>${escapeHtml(r.technician||'-')}</td><td class="k">الحالة</td><td><b>${escapeHtml(r.status)}</b></td></tr>
+        <tr><td class="k">موعد التسليم</td><td colspan="3"><b>${cleanDate(r.deliveryDate)||'غير محدد'}</b></td></tr>
       </table>
 
       ${financeSection}
@@ -5861,7 +6133,7 @@ function openReceiptPrint(r, kind){
   document.body.appendChild(mount);
 
   if(typeof JsBarcode !== 'undefined'){
-    try{ JsBarcode('#printBarcode', r.receiptNumber, {format:'CODE128', width:1.2, height:22, displayValue:false, margin:0}); }catch(e){}
+    try{ JsBarcode('#printBarcode', r.receiptNumber, {format:'CODE128', width:1.1, height:18, displayValue:false, margin:0}); }catch(e){}
   }
 
   const cleanupA5 = ()=>{
@@ -6368,7 +6640,8 @@ function openInvoicePrint(inv, docType='invoice'){
 
   const isQuote = docType === 'quote';
   const docTitle = isQuote ? 'عرض أسعار وبيان سعر • Price Quotation' : 'فاتورة ضريبية رسمية • Tax Invoice';
-  const trackQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=${encodeURIComponent(`${isQuote?'Quote':'Invoice'}:${inv.InvoiceNumber}|Customer:${inv.CustomerName}|Total:${inv.Total}|Date:${inv.Date}`)}`;
+  const trackQrData = `${isQuote?'Quote':'Invoice'}:${inv.InvoiceNumber}|Customer:${inv.CustomerName}|Total:${inv.Total}|Date:${cleanDate(inv.Date)}`;
+  const qrSvgHtml = QRCodeGenerator.toSvg(trackQrData, 56);
 
   mount.innerHTML = `
   <div style="width:100%;max-width:700px;margin:0 auto;background:#fff;padding:24px 28px;color:#0f172a;font-family:var(--font-main);border-radius:8px;box-sizing:border-box;">
@@ -6376,11 +6649,13 @@ function openInvoicePrint(inv, docType='invoice'){
     <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #0f172a;padding-bottom:12px;margin-bottom:14px;">
       <div>
         ${state.settings.logoUrl ? `<img src="${state.settings.logoUrl}" style="max-height:38px;max-width:140px;object-fit:contain;margin-bottom:4px;">` : ''}
-        <h2 style="margin:0;font-size:20px;font-weight:900;color:#0f172a;">${state.settings.shopName || 'صيانة ميكروتك'}</h2>
+        <h2 style="margin:0;font-size:20px;font-weight:900;color:#0f172a;">${escapeHtml(state.settings.shopName || 'صيانة ميكروتك')}</h2>
         <div style="font-size:11px;color:#475569;margin-top:2px;">${docTitle}</div>
       </div>
       <div style="display:flex;align-items:center;gap:12px;">
-        <img src="${trackQrUrl}" alt="QR" style="width:58px;height:58px;border:1px solid #cbd5e1;border-radius:4px;">
+        <div style="width:58px;height:58px;border:1px solid #cbd5e1;border-radius:4px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fff;">
+          ${qrSvgHtml}
+        </div>
         <div style="text-align:left;">
           <div style="background:${isQuote?'#0284c7':'#0f172a'};color:#fff;font-size:14px;font-weight:900;padding:3px 12px;border-radius:4px;display:inline-block;" class="mono">${inv.InvoiceNumber}</div>
           <div style="font-size:11px;color:#475569;margin-top:3px;">التاريخ: <b>${cleanDate(inv.Date)}</b></div>
@@ -13741,7 +14016,7 @@ function generateSingleLabelMarkup(bs, dim, svgId='labelBarcodeSvg', scale=1){
 
       <div class="lbl-barcode-wrap">
         ${bs.barcodeType === 'QR' ? `
-          <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(bs.customBarcode||'1001')}" style="width:${Math.round(pxH*0.48)}px;height:${Math.round(pxH*0.48)}px;object-fit:contain;">
+          <div style="display:flex;align-items:center;justify-content:center;">${QRCodeGenerator.toSvg(bs.customBarcode||'1001', Math.round(pxH*0.48))}</div>
         ` : `
           <svg id="${svgId}" style="max-height:${Math.max(16, Math.round(pxH*0.36))}px;"></svg>
         `}
@@ -14032,7 +14307,7 @@ function executeBarcodePrint(){
           </div>
           <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;">
             ${bs.barcodeType==='QR' ? `
-              <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(bs.customBarcode||'1001')}" style="width:18mm;height:18mm;">
+              <div style="display:flex;align-items:center;justify-content:center;padding:1px;">${QRCodeGenerator.toSvg(bs.customBarcode||'1001', 65)}</div>
             ` : `
               <svg id="printSheetSvg_${i}" style="max-width:96%;height:auto;max-height:${Math.round(dim.h*0.38)}mm;"></svg>
             `}
@@ -14109,7 +14384,7 @@ function executeBarcodePrint(){
           </div>
           <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;">
             ${bs.barcodeType==='QR' ? `
-              <img src="https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(bs.customBarcode||'1001')}" style="width:16mm;height:16mm;">
+              <div style="display:flex;align-items:center;justify-content:center;padding:1px;">${QRCodeGenerator.toSvg(bs.customBarcode||'1001', 60)}</div>
             ` : `
               <svg id="printThermalSvg_${i}" style="max-width:96%;height:auto;max-height:${Math.round(dim.h*0.38)}mm;"></svg>
             `}

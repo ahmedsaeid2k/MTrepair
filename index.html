@@ -2396,14 +2396,54 @@ function rowToReceipt(row){
 
 /* Entity Loaders */
 async function loadSettings(){
-  const s = await apiGet('getSettings');
-  const obj = {shopName: s.shopName || 'صيانة ميكروتك', logoUrl: s.logoUrl || ''};
-  setCache('settings', obj);
-  return obj;
+  let s = {};
+  try {
+    s = (await apiGet('getSettings')) || {};
+  } catch(e){}
+  if(!state.settings) state.settings = {};
+
+  // Parse JSON fields if they come as string from Google Sheets / remote
+  ['printers', 'pos', 'knownWindowsPrinters', 'waTemplates', 'brands', 'commonFaults'].forEach(k => {
+    if(s[k] && typeof s[k] === 'string'){
+      try { s[k] = JSON.parse(s[k]); } catch(e){}
+    }
+  });
+
+  // Restore persistent local printer configuration if remote has none or is offline
+  try {
+    const localPrn = localStorage.getItem('microerp_printers_settings');
+    if(localPrn){
+      const parsedPrn = JSON.parse(localPrn);
+      s.printers = { ...(s.printers || {}), ...parsedPrn };
+    }
+    const localKnown = localStorage.getItem('microerp_known_printers');
+    if(localKnown){
+      const parsedKnown = JSON.parse(localKnown);
+      if(!Array.isArray(s.knownWindowsPrinters) || s.knownWindowsPrinters.length === 0){
+        s.knownWindowsPrinters = parsedKnown;
+      }
+    }
+  } catch(e){}
+
+  state.settings = { ...state.settings, ...s };
+  if(!state.settings.shopName) state.settings.shopName = 'صيانة ميكروتك';
+  setCache('settings', state.settings);
+  return state.settings;
 }
+
 async function saveSettingRemote(key, value){
+  if(!state.settings) state.settings = {};
   state.settings[key] = value;
   setCache('settings', state.settings);
+
+  // Dedicated permanent local storage backups
+  if(key === 'printers'){
+    try { localStorage.setItem('microerp_printers_settings', typeof value === 'string' ? value : JSON.stringify(value)); } catch(e){}
+  }
+  if(key === 'knownWindowsPrinters'){
+    try { localStorage.setItem('microerp_known_printers', typeof value === 'string' ? value : JSON.stringify(value)); } catch(e){}
+  }
+
   return apiPost('saveSetting', {key, value});
 }
 
@@ -3429,6 +3469,12 @@ const DEFAULT_KNOWN_WINDOWS_PRINTERS = [
 function getKnownWindowsPrinters(){
   if(!state.settings) state.settings = {};
   if(!Array.isArray(state.settings.knownWindowsPrinters) || state.settings.knownWindowsPrinters.length === 0){
+    try {
+      const saved = localStorage.getItem('microerp_known_printers');
+      if(saved) state.settings.knownWindowsPrinters = JSON.parse(saved);
+    } catch(e){}
+  }
+  if(!Array.isArray(state.settings.knownWindowsPrinters) || state.settings.knownWindowsPrinters.length === 0){
     state.settings.knownWindowsPrinters = JSON.parse(JSON.stringify(DEFAULT_KNOWN_WINDOWS_PRINTERS));
   }
   return state.settings.knownWindowsPrinters;
@@ -3486,9 +3532,9 @@ const DEFAULT_PRINTERS_SETTINGS = {
   receiptPrinter: {
     name: 'Xprinter XP-808 (Thermal 80mm Receipt)',
     paperSize: '80mm',
-    fontScale: 'max', // 'max' (عريض جداً وواضح عالي التباين 79mm), 'large', 'normal'
+    fontScale: 'compact', // 'compact' (مدمج نصف الحجم موفر للورق - موصى به), 'normal', 'large'
     autoPrint: true,
-    cutterFeedMm: 10,
+    cutterFeedMm: 4,
     showLogo: true,
     showCashier: true,
     printBarcode: true,
@@ -3533,13 +3579,19 @@ const DEFAULT_PRINTERS_SETTINGS = {
 
 function getPrintersSettings(){
   if(!state.settings) state.settings = {};
+  if(!state.settings.printers){
+    try {
+      const saved = localStorage.getItem('microerp_printers_settings');
+      if(saved) state.settings.printers = JSON.parse(saved);
+    } catch(e){}
+  }
   if(!state.settings.printers) state.settings.printers = JSON.parse(JSON.stringify(DEFAULT_PRINTERS_SETTINGS));
   else {
     state.settings.printers = { ...DEFAULT_PRINTERS_SETTINGS, ...state.settings.printers };
-    if(!state.settings.printers.receiptPrinter) state.settings.printers.receiptPrinter = DEFAULT_PRINTERS_SETTINGS.receiptPrinter;
-    if(!state.settings.printers.barcodePrinter) state.settings.printers.barcodePrinter = DEFAULT_PRINTERS_SETTINGS.barcodePrinter;
-    if(!state.settings.printers.laserPrinter) state.settings.printers.laserPrinter = DEFAULT_PRINTERS_SETTINGS.laserPrinter;
-    if(!state.settings.printers.workflowAssignments) state.settings.printers.workflowAssignments = DEFAULT_PRINTERS_SETTINGS.workflowAssignments;
+    if(!state.settings.printers.receiptPrinter) state.settings.printers.receiptPrinter = JSON.parse(JSON.stringify(DEFAULT_PRINTERS_SETTINGS.receiptPrinter));
+    if(!state.settings.printers.barcodePrinter) state.settings.printers.barcodePrinter = JSON.parse(JSON.stringify(DEFAULT_PRINTERS_SETTINGS.barcodePrinter));
+    if(!state.settings.printers.laserPrinter) state.settings.printers.laserPrinter = JSON.parse(JSON.stringify(DEFAULT_PRINTERS_SETTINGS.laserPrinter));
+    if(!state.settings.printers.workflowAssignments) state.settings.printers.workflowAssignments = JSON.parse(JSON.stringify(DEFAULT_PRINTERS_SETTINGS.workflowAssignments));
   }
   return state.settings.printers;
 }
@@ -10203,8 +10255,24 @@ function openSalePrint(sale, cartItems, meta={}){
   const cashierName = state.user ? state.user.name : 'الكاشير';
   const paperSize = rPrn.paperSize || posSettings.receiptPaperSize || '80mm';
   const is58mm = paperSize === '58mm';
-  const fontScale = rPrn.fontScale || 'max'; // 'max', 'large', 'normal'
-  const isMaxFont = fontScale === 'max' || fontScale === 'large';
+  const fontScale = rPrn.fontScale || 'compact'; // 'compact' (نصف الحجم موفر للورق), 'normal', 'large'
+  const isCompact = fontScale === 'compact';
+  const isLarge = fontScale === 'large' || fontScale === 'max';
+
+  // Responsive typography & spacing (نصف الحجم للنصف مع وضوح عالي للبيانات)
+  const szShop = isCompact ? (is58mm ? '12.5px' : '14px') : (isLarge ? (is58mm ? '17px' : '21px') : (is58mm ? '14px' : '17px'));
+  const szSub = isCompact ? '8.5px' : (isLarge ? '12px' : '10.5px');
+  const szBadge = isCompact ? '9px' : (isLarge ? '14px' : '11.5px');
+  const szMeta = isCompact ? '9px' : (isLarge ? '12.5px' : '11px');
+  const szTableH = isCompact ? '9px' : (isLarge ? '13.5px' : '11px');
+  const szItemName = isCompact ? '9.5px' : (isLarge ? '14px' : '12px');
+  const szItemNum = isCompact ? '10px' : (isLarge ? '14.5px' : '12.5px');
+  const szTotalLbl = isCompact ? '10.5px' : (isLarge ? '16px' : '13.5px');
+  const szTotalAmt = isCompact ? (is58mm ? '14px' : '16px') : (isLarge ? (is58mm ? '19px' : '24px') : (is58mm ? '16px' : '19px'));
+  const szFooter = isCompact ? '8.5px' : (isLarge ? '12px' : '10px');
+  const padTable = isCompact ? '1px 0.5mm' : (isLarge ? '3px 0.5mm' : '2px 0.5mm');
+  const logoH = isCompact ? 28 : (isLarge ? 48 : 36);
+  const barcodeH = isCompact ? 18 : (isLarge ? 26 : 22);
 
   const subtotal = meta.subtotal != null ? meta.subtotal : cartItems.reduce((s,c)=>s+c.qty*c.price,0);
   const grandTotal = meta.grandTotal != null ? meta.grandTotal : sale.Total;
@@ -10213,7 +10281,7 @@ function openSalePrint(sale, cartItems, meta={}){
   const paidAmt = meta.paidAmount != null ? meta.paidAmount : (sale.AmountPaid != null ? sale.AmountPaid : grandTotal);
   const changeAmt = meta.changeDue != null ? meta.changeDue : Math.max(0, paidAmt - grandTotal);
   const payMethod = meta.payMethodName || sale.PaymentMethod || 'نقدي';
-  const cutterFeed = rPrn.cutterFeedMm || 10;
+  const cutterFeed = rPrn.cutterFeedMm != null ? rPrn.cutterFeedMm : (isCompact ? 4 : 8);
 
   const receiptId = String(sale.ID || Date.now()).slice(-8);
 
@@ -10280,11 +10348,11 @@ function openSalePrint(sale, cartItems, meta={}){
         padding: 0 0.5mm ${cutterFeed}mm 0.5mm !important;
         box-sizing: border-box !important;
         font-family: 'Segoe UI', Tahoma, Arial, sans-serif !important;
-        font-size: ${is58mm ? '13px' : (isMaxFont ? '15px' : '13.5px')} !important;
+        font-size: ${szItemNum} !important;
         font-weight: 900 !important;
         color: #000000 !important;
         background: #ffffff !important;
-        line-height: 1.35 !important;
+        line-height: 1.25 !important;
         direction: rtl !important;
         text-align: right !important;
       }
@@ -10295,30 +10363,30 @@ function openSalePrint(sale, cartItems, meta={}){
       .pos-thermal-receipt table {
         width: 100% !important;
         border-collapse: collapse !important;
-        margin: 3px 0 !important;
+        margin: ${isCompact ? '2px 0' : '3px 0'} !important;
       }
       .pos-thermal-receipt th, .pos-thermal-receipt td {
-        padding: 3px 0.5mm !important;
+        padding: ${padTable} !important;
         vertical-align: middle !important;
       }
       .pos-thermal-receipt th {
-        border-top: 2px solid #000000 !important;
-        border-bottom: 2px solid #000000 !important;
-        font-size: ${is58mm ? '12.5px' : '14.5px'} !important;
+        border-top: 1.5px solid #000000 !important;
+        border-bottom: 1.5px solid #000000 !important;
+        font-size: ${szTableH} !important;
         font-weight: 900 !important;
       }
       .pos-thermal-receipt td {
-        border-bottom: 1.5px dashed #000000 !important;
-        font-size: ${is58mm ? '13px' : '15px'} !important;
+        border-bottom: 1px dashed #000000 !important;
+        font-size: ${szItemName} !important;
         font-weight: 900 !important;
       }
       .pos-thermal-receipt .r-divider {
-        border-top: 2px dashed #000000 !important;
-        margin: 5px 0 !important;
+        border-top: 1.5px dashed #000000 !important;
+        margin: ${isCompact ? '3px 0' : '5px 0'} !important;
       }
       .pos-thermal-receipt .r-divider-solid {
-        border-top: 2px solid #000000 !important;
-        margin: 5px 0 !important;
+        border-top: 1.5px solid #000000 !important;
+        margin: ${isCompact ? '3px 0' : '5px 0'} !important;
       }
     }
   `;
@@ -10327,22 +10395,22 @@ function openSalePrint(sale, cartItems, meta={}){
     <div class="pos-thermal-receipt" style="text-align:center;padding:0 0.5mm;">
       
       <!-- Header & Store Identity -->
-      ${rPrn.showLogo && logoUrl ? `<div style="text-align:center;margin-bottom:3px;"><img src="${logoUrl}" style="max-height:48px;max-width:180px;object-fit:contain;"></div>` : ''}
-      <div style="font-size:${is58mm?'17px':'21px'};font-weight:900;margin-bottom:2px;line-height:1.2;color:#000;">${escapeHtml(shopName)}</div>
-      ${state.settings && state.settings.shopPhone ? `<div style="font-size:13px;font-weight:900;margin-bottom:1px;">هاتف: <span class="mono">${escapeHtml(state.settings.shopPhone)}</span></div>` : ''}
-      ${state.settings && state.settings.shopAddress ? `<div style="font-size:12px;font-weight:800;margin-bottom:1px;">${escapeHtml(state.settings.shopAddress)}</div>` : ''}
-      ${state.settings && state.settings.shopTaxNumber ? `<div style="font-size:11.5px;font-weight:900;">س.ت / ضريبي: <span class="mono">${escapeHtml(state.settings.shopTaxNumber)}</span></div>` : ''}
+      ${rPrn.showLogo && logoUrl ? `<div style="text-align:center;margin-bottom:2px;"><img src="${logoUrl}" style="max-height:${logoH}px;max-width:140px;object-fit:contain;"></div>` : ''}
+      <div style="font-size:${szShop};font-weight:900;margin-bottom:1px;line-height:1.15;color:#000;">${escapeHtml(shopName)}</div>
+      ${state.settings && state.settings.shopPhone ? `<div style="font-size:${szSub};font-weight:900;margin-bottom:1px;">هاتف: <span class="mono">${escapeHtml(state.settings.shopPhone)}</span></div>` : ''}
+      ${state.settings && state.settings.shopAddress ? `<div style="font-size:${szSub};font-weight:800;margin-bottom:1px;">${escapeHtml(state.settings.shopAddress)}</div>` : ''}
+      ${state.settings && state.settings.shopTaxNumber ? `<div style="font-size:${szSub};font-weight:900;">س.ت / ضريبي: <span class="mono">${escapeHtml(state.settings.shopTaxNumber)}</span></div>` : ''}
       
-      <div style="font-size:${is58mm?'13px':'14.5px'};font-weight:900;border:2px solid #000;border-radius:4px;padding:2px 0;margin:5px 0;text-align:center;background:#f5f5f5;">
+      <div style="font-size:${szBadge};font-weight:900;border:1.5px solid #000;border-radius:3px;padding:1px 0;margin:${isCompact ? '2px 0' : '4px 0'};text-align:center;background:#f5f5f5;">
         🧾 إيصال مبيعات نقدية (POS)
       </div>
 
       <!-- Receipt Meta Info -->
-      <div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;font-weight:900;margin-bottom:2px;text-align:right;">
-        <span>رقم الإيصال: <b class="mono" style="font-size:14.5px;">#${receiptId}</b></span>
-        <span class="mono" style="font-size:12px;">${cleanDate(sale.Date)} ${new Date().toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'})}</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:${szMeta};font-weight:900;margin-bottom:1.5px;text-align:right;">
+        <span>رقم الإيصال: <b class="mono" style="font-size:${szItemNum};">#${receiptId}</b></span>
+        <span class="mono" style="font-size:${szSub};">${cleanDate(sale.Date)} ${new Date().toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'})}</span>
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;font-weight:900;margin-bottom:3px;text-align:right;">
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:${szMeta};font-weight:900;margin-bottom:${isCompact ? '2px' : '3px'};text-align:right;">
         <span>العميل: <b>${escapeHtml(sale.CustomerName||'عميل زائر')}</b></span>
         ${rPrn.showCashier ? `<span>الكاشير: <b>${escapeHtml(cashierName)}</b></span>` : ''}
       </div>
@@ -10352,58 +10420,58 @@ function openSalePrint(sale, cartItems, meta={}){
         <thead>
           <tr>
             <th style="text-align:right;">الصنف والبيان</th>
-            <th style="text-align:center;width:32px;">كمية</th>
-            <th style="text-align:center;width:55px;">السعر</th>
-            <th style="text-align:left;width:68px;">الإجمالي</th>
+            <th style="text-align:center;width:28px;">كمية</th>
+            <th style="text-align:center;width:48px;">السعر</th>
+            <th style="text-align:left;width:58px;">الإجمالي</th>
           </tr>
         </thead>
         <tbody>
           ${cartItems.map(c => `
             <tr>
-              <td style="font-weight:900;line-height:1.25;font-size:${is58mm?'12.5px':'14.5px'};">${escapeHtml(c.name)}</td>
-              <td style="text-align:center;font-weight:900;font-size:${is58mm?'13px':'15px'};" class="mono">${c.qty}</td>
-              <td style="text-align:center;font-weight:900;font-size:${is58mm?'12.5px':'14px'};" class="mono">${Number(c.price).toLocaleString()}</td>
-              <td style="text-align:left;font-weight:900;font-size:${is58mm?'13px':'15px'};" class="mono">${(Number(c.qty)*Number(c.price)).toLocaleString()}</td>
+              <td style="font-weight:900;line-height:1.2;font-size:${szItemName};">${escapeHtml(c.name)}</td>
+              <td style="text-align:center;font-weight:900;font-size:${szItemNum};" class="mono">${c.qty}</td>
+              <td style="text-align:center;font-weight:900;font-size:${szItemNum};" class="mono">${Number(c.price).toLocaleString()}</td>
+              <td style="text-align:left;font-weight:900;font-size:${szItemNum};" class="mono">${(Number(c.qty)*Number(c.price)).toLocaleString()}</td>
             </tr>
           `).join('')}
         </tbody>
       </table>
 
       <!-- Financial Totals Block -->
-      <div style="font-size:${is58mm?'12.5px':'14px'};font-weight:900;text-align:right;margin-top:3px;">
-        <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+      <div style="font-size:${szMeta};font-weight:900;text-align:right;margin-top:${isCompact ? '2px' : '3px'};">
+        <div style="display:flex;justify-content:space-between;margin-bottom:1.5px;">
           <span>المجموع الفرعي:</span>
           <span class="mono">${subtotal.toLocaleString()} ج.م</span>
         </div>
         ${discountAmt > 0 ? `
-          <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:1.5px;">
             <span>الخصم الممنوح:</span>
             <span class="mono font-bold">-${discountAmt.toLocaleString()} ج.م</span>
           </div>
         ` : ''}
         ${taxAmt > 0 ? `
-          <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:1.5px;">
             <span>ضريبة القيمة المضافة:</span>
             <span class="mono">+${taxAmt.toLocaleString()} ج.م</span>
           </div>
         ` : ''}
         
-        <!-- Large High-Contrast Grand Total -->
-        <div style="display:flex;justify-content:space-between;align-items:center;border-top:2.5px solid #000;border-bottom:2.5px solid #000;padding:5px 1px;margin:5px 0;background:#f9f9f9;">
-          <span style="font-size:${is58mm?'14.5px':'16.5px'};font-weight:900;">الإجمالي النهائي:</span>
-          <span class="mono" style="font-size:${is58mm?'19px':'24px'};font-weight:900;color:#000;">${grandTotal.toLocaleString()} ج.م</span>
+        <!-- High-Contrast Grand Total -->
+        <div style="display:flex;justify-content:space-between;align-items:center;border-top:2px solid #000;border-bottom:2px solid #000;padding:${isCompact ? '2.5px 1px' : '5px 1px'};margin:${isCompact ? '3px 0' : '5px 0'};background:#f9f9f9;">
+          <span style="font-size:${szTotalLbl};font-weight:900;">الإجمالي النهائي:</span>
+          <span class="mono" style="font-size:${szTotalAmt};font-weight:900;color:#000;">${grandTotal.toLocaleString()} ج.م</span>
         </div>
 
-        <div style="display:flex;justify-content:space-between;margin-bottom:2px;font-size:${is58mm?'12px':'13px'};">
+        <div style="display:flex;justify-content:space-between;margin-bottom:1.5px;font-size:${szSub};">
           <span>طريقة الدفع:</span>
           <span><b>${escapeHtml(payMethod)}</b></span>
         </div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:2px;font-size:${is58mm?'12px':'13px'};">
+        <div style="display:flex;justify-content:space-between;margin-bottom:1.5px;font-size:${szSub};">
           <span>المبلغ المدفوع:</span>
           <span class="mono font-bold">${paidAmt.toLocaleString()} ج.م</span>
         </div>
         ${changeAmt > 0 ? `
-          <div style="display:flex;justify-content:space-between;font-size:${is58mm?'13px':'14.5px'};font-weight:900;border-top:1.5px dashed #000;padding-top:2px;margin-top:2px;">
+          <div style="display:flex;justify-content:space-between;font-size:${szMeta};font-weight:900;border-top:1px dashed #000;padding-top:1.5px;margin-top:1.5px;">
             <span>الباقي للعميل:</span>
             <span class="mono">${changeAmt.toLocaleString()} ج.م</span>
           </div>
@@ -10414,16 +10482,16 @@ function openSalePrint(sale, cartItems, meta={}){
 
       <!-- Vector Barcode -->
       ${rPrn.printBarcode ? `
-        <div style="text-align:center;margin:5px 0 2px;">
-          <svg id="saleReceiptBarcodeSvg" style="max-height:38px;max-width:190px;margin:0 auto;"></svg>
+        <div style="text-align:center;margin:${isCompact ? '3px 0 1px' : '5px 0 2px'};">
+          <svg id="saleReceiptBarcodeSvg" style="max-height:${barcodeH}px;max-width:170px;margin:0 auto;"></svg>
         </div>
       ` : ''}
 
       <!-- Footer Notes -->
-      <div style="font-size:${is58mm?'11.5px':'13px'};font-weight:900;color:#000;margin-top:3px;line-height:1.35;">
+      <div style="font-size:${szFooter};font-weight:900;color:#000;margin-top:2px;line-height:1.25;">
         ${escapeHtml(rPrn.footerText || posSettings.receiptFooter || 'شكراً لتعاملكم معنا • نسعد دائماً بخدمتكم')}
       </div>
-      <div style="font-size:10.5px;font-weight:800;color:#333;margin-top:2px;">
+      <div style="font-size:${isCompact ? '7.5px' : '9.5px'};font-weight:800;color:#333;margin-top:1px;">
         ميكروERP • نظام إدارة المبيعات والصيانة
       </div>
 
@@ -10440,10 +10508,10 @@ function openSalePrint(sale, cartItems, meta={}){
     try {
       JsBarcode('#saleReceiptBarcodeSvg', receiptId, {
         format: 'CODE128',
-        width: is58mm ? 1.3 : 1.55,
-        height: 26,
+        width: is58mm ? 1.1 : (isCompact ? 1.25 : 1.5),
+        height: barcodeH,
         displayValue: true,
-        fontSize: 10.5,
+        fontSize: isCompact ? 9 : 10.5,
         margin: 0
       });
     } catch(e){}
@@ -12186,7 +12254,8 @@ function renderCompanySettings(main){
 function buildPrinterSelectHtml(category, currentName){
   const known = getKnownWindowsPrinters();
   const currentTrimmed = (currentName || '').trim();
-  let hasExactMatch = false;
+  const hasExactMatch = known.some(p => p.name.trim().toLowerCase() === currentTrimmed.toLowerCase());
+  let selectedRendered = false;
 
   const optGroups = {
     receipt: { label: '🧾 طابعات إيصالات الكاشير والبون الحراري (POS / Receipt)', list: [] },
@@ -12198,14 +12267,12 @@ function buildPrinterSelectHtml(category, currentName){
     const cat = p.category || 'laser';
     if(optGroups[cat]) optGroups[cat].list.push(p.name);
     else optGroups.laser.list.push(p.name);
-    if(p.name.trim().toLowerCase() === currentTrimmed.toLowerCase()){
-      hasExactMatch = true;
-    }
   });
 
   let optionsHtml = '';
   if(currentTrimmed && !hasExactMatch){
-    optionsHtml += `<option value="${escapeHtml(currentTrimmed)}" selected>⭐ [طابعة مخصصة] ${escapeHtml(currentTrimmed)}</option>`;
+    optionsHtml += `<option value="${escapeHtml(currentTrimmed)}" selected>⭐ [طابعة محفوظة ومخصصة] ${escapeHtml(currentTrimmed)}</option>`;
+    selectedRendered = true;
   }
 
   // Render primary category first, then others
@@ -12215,7 +12282,8 @@ function buildPrinterSelectHtml(category, currentName){
     if(grp && grp.list.length > 0){
       optionsHtml += `<optgroup label="${grp.label}">`;
       grp.list.forEach(name => {
-        const isSel = (!hasExactMatch && optionsHtml.includes('selected')) ? false : (name.trim().toLowerCase() === currentTrimmed.toLowerCase());
+        const isSel = !selectedRendered && (name.trim().toLowerCase() === currentTrimmed.toLowerCase());
+        if(isSel) selectedRendered = true;
         optionsHtml += `<option value="${escapeHtml(name)}" ${isSel ? 'selected' : ''}>${escapeHtml(name)}</option>`;
       });
       optionsHtml += `</optgroup>`;
@@ -12348,16 +12416,16 @@ function renderPrintersSettings(main){
 
       <div class="grid2" style="margin-bottom:12px;">
         <div class="field">
-          <label>وضوح وحجم الخطوط على الورق الحراري (Windows 11 Typography Clarity)</label>
+          <label>وضوح وحجم الخطوط على الورق الحراري (Receipt Scale & Size)</label>
           <select id="prnReceiptFontScale">
-            <option value="max" ${r.fontScale==='max'||!r.fontScale?'selected':''}>عريض جداً عالي التباين وكبير وواضح (موصى به لويندوز 11 و Xprinter 808) ✨</option>
-            <option value="large" ${r.fontScale==='large'?'selected':''}>كبير وواضح قياسي (Standard 80mm)</option>
-            <option value="normal" ${r.fontScale==='normal'?'selected':''}>عادي متوسط</option>
+            <option value="compact" ${r.fontScale==='compact'||!r.fontScale?'selected':''}>مدمج وموفر للورق (نصف الحجم وأنيق ومقروء - موصى به) ✨</option>
+            <option value="normal" ${r.fontScale==='normal'?'selected':''}>عادي متوسط قياسي (Standard 80mm)</option>
+            <option value="large" ${r.fontScale==='large'||r.fontScale==='max'?'selected':''}>كبير وعريض عالي التباين (Full Large)</option>
           </select>
         </div>
         <div class="field">
           <label>مسافة أمان تفريغ الورق للقاطع التلقائي (Auto-Cutter Feed Margin mm)</label>
-          <input type="number" id="prnReceiptCutterFeed" value="${r.cutterFeedMm||10}" class="mono font-bold" min="0" max="35">
+          <input type="number" id="prnReceiptCutterFeed" value="${r.cutterFeedMm!=null?r.cutterFeedMm:4}" class="mono font-bold" min="0" max="35">
         </div>
       </div>
 
@@ -12720,11 +12788,17 @@ function attachPrintersSettingsEvents(main){
     setCache('settings', state.settings);
 
     try {
+      localStorage.setItem('microerp_printers_settings', JSON.stringify(prn));
+      localStorage.setItem('microerp_known_printers', JSON.stringify(getKnownWindowsPrinters()));
+    } catch(e){}
+
+    try {
       await saveSettingRemote('printers', JSON.stringify(prn));
       await saveSettingRemote('pos', JSON.stringify(state.settings.pos));
-      showToast('تم حفظ وتطبيق كافة إعدادات وتخصيص الطابعات بنجاح ✅', 'success');
+      await saveSettingRemote('knownWindowsPrinters', JSON.stringify(getKnownWindowsPrinters()));
+      showToast('تم حفظ وتطبيق كافة إعدادات وأسماء الطابعات بنجاح ✅', 'success');
     } catch(e) {
-      showToast('تم حفظ إعدادات الطابعات محلياً', 'info');
+      showToast('تم حفظ إعدادات وأسماء الطابعات محلياً بنجاح ✅', 'success');
     }
     renderPrintersSettings(main);
   };

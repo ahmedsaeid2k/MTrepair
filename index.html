@@ -1684,109 +1684,85 @@ tr:last-child td { border-bottom: none; }
 }
 
 @media print {
-  @page {
-    size: A5 landscape;
-    margin: 0;
-  }
-  body.printing-sticker {
-    width: 50mm !important;
-    height: 30mm !important;
-    max-height: 30mm !important;
-  }
-  body.printing-sticker @page {
-    size: 50mm 30mm;
-    margin: 0;
-  }
-  body.printing-barcode-studio {
-    width: auto !important;
-    height: auto !important;
-    max-height: none !important;
-    position: static !important;
-    overflow: visible !important;
-    background: #ffffff !important;
-  }
   *, *::before, *::after {
     box-sizing: border-box !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
   html, body {
-    width: 210mm !important;
-    height: 148mm !important;
-    max-height: 148mm !important;
-    margin: 0 !important;
-    padding: 0 !important;
     background: #ffffff !important;
     color: #000000 !important;
-    overflow: hidden !important;
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    page-break-inside: avoid !important;
-    page-break-after: avoid !important;
-    break-inside: avoid !important;
-    break-after: avoid !important;
-  }
-  body.printing-barcode-studio {
-    width: 100% !important;
-    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
     position: static !important;
     overflow: visible !important;
   }
-  #app, #toastContainer, .modal-overlay, .login-screen, .tracking-container {
+  #app, #toastContainer, .modal-overlay, .login-screen, .tracking-container, .cmd-palette-overlay {
     display: none !important;
   }
   #printMount {
-    width: 210mm !important;
-    height: 148mm !important;
-    max-height: 148mm !important;
+    display: block !important;
     margin: 0 !important;
     padding: 0 !important;
-    display: block !important;
+    position: static !important;
+    background: #ffffff !important;
+  }
+
+  /* --- 1. A5 Landscape Maintenance Receipt (Single Sheet 210mm x 148mm) --- */
+  body.printing-a5-receipt {
+    width: 210mm !important;
+    min-height: 148mm !important;
+    max-height: 148mm !important;
+    overflow: visible !important;
+    position: static !important;
+  }
+  body.printing-a5-receipt #printMount {
+    width: 210mm !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  body.printing-a5-receipt #receiptPaper {
+    position: static !important;
+    width: 198mm !important;
+    height: 138mm !important;
+    max-height: 138mm !important;
+    margin: 2mm auto !important;
+    padding: 4mm 6mm !important;
+    border: 1.5px solid #0f172a !important;
+    border-radius: 4px !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
     overflow: hidden !important;
+    box-sizing: border-box !important;
     page-break-inside: avoid !important;
     page-break-after: avoid !important;
     break-inside: avoid !important;
     break-after: avoid !important;
+    font-size: 9.5px !important;
+    line-height: 1.25 !important;
+  }
+
+  /* --- 2. Thermal Sticker Label (50mm x 30mm) --- */
+  body.printing-sticker {
+    width: 50mm !important;
+    height: 30mm !important;
+    max-height: 30mm !important;
+    overflow: hidden !important;
   }
   body.printing-sticker #printMount {
     width: 50mm !important;
     height: 30mm !important;
     max-height: 30mm !important;
-  }
-  body.printing-barcode-studio #printMount {
-    width: 100% !important;
-    height: auto !important;
-    max-height: none !important;
-    position: static !important;
-    overflow: visible !important;
-  }
-  #receiptPaper {
-    position: absolute !important;
-    top: 0 !important;
-    left: 0 !important;
-    width: 210mm !important;
-    height: 148mm !important;
-    max-height: 148mm !important;
-    box-shadow: none !important;
-    border-radius: 0 !important;
-    padding: 6mm 10mm !important;
-    overflow: hidden !important;
-    box-sizing: border-box !important;
-    display: flex !important;
-    flex-direction: column !important;
-    justify-content: space-between !important;
-    page-break-inside: avoid !important;
-    page-break-after: avoid !important;
-    break-inside: avoid !important;
-    break-after: avoid !important;
-    font-size: 10px !important;
-    line-height: 1.3 !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
   #stickerPaper {
-    position: absolute !important;
-    top: 0 !important;
-    left: 0 !important;
+    position: static !important;
     width: 50mm !important;
     height: 30mm !important;
     max-height: 30mm !important;
@@ -1799,6 +1775,29 @@ tr:last-child td { border-bottom: none; }
     flex-direction: column !important;
     justify-content: space-between !important;
     box-sizing: border-box !important;
+  }
+
+  /* --- 3. Barcode Studio A4 Sheet --- */
+  body.printing-barcode-studio {
+    width: 100% !important;
+    height: auto !important;
+    position: static !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+  }
+  body.printing-barcode-studio #printMount {
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    position: static !important;
+    overflow: visible !important;
+  }
+
+  /* --- 4. Voucher / General Print --- */
+  body.printing-voucher #printMount {
+    width: 100% !important;
+    max-width: 210mm !important;
+    margin: 0 auto !important;
   }
 }
 
@@ -5722,12 +5721,84 @@ async function openReceiptDetail(r){
 
 /* ---------------- Print A5 Single Sheet Guarantee ---------------- */
 function openReceiptPrint(r, kind){
-  document.body.classList.remove('printing-sticker');
+  // 1. Clean previous print styles and mounts
+  const oldMount = document.getElementById('printMount');
+  if(oldMount) oldMount.remove();
+  const oldA5Style = document.getElementById('dynamicA5ReceiptStyle');
+  if(oldA5Style) oldA5Style.remove();
+  const oldThermal = document.getElementById('dynamicThermalReceiptStyle');
+  if(oldThermal) oldThermal.remove();
+
+  document.body.classList.remove(
+    'printing-sticker',
+    'printing-pos-receipt',
+    'printing-quotation-doc',
+    'printing-voucher',
+    'printing-barcode-studio'
+  );
+  document.body.classList.add('printing-a5-receipt');
+
+  // Inject strictly-calibrated A5 Landscape page rule
+  const a5Style = document.createElement('style');
+  a5Style.id = 'dynamicA5ReceiptStyle';
+  a5Style.innerHTML = `
+    @media print {
+      @page {
+        size: A5 landscape !important;
+        margin: 4mm 5mm !important;
+      }
+      body.printing-a5-receipt {
+        width: 210mm !important;
+        min-height: 148mm !important;
+        max-height: 148mm !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+        position: static !important;
+        overflow: visible !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      body.printing-a5-receipt #printMount {
+        display: block !important;
+        width: 200mm !important;
+        margin: 0 auto !important;
+        padding: 0 !important;
+        position: static !important;
+        overflow: visible !important;
+      }
+      body.printing-a5-receipt #receiptPaper {
+        position: static !important;
+        width: 198mm !important;
+        height: 138mm !important;
+        max-height: 138mm !important;
+        margin: 1mm auto !important;
+        padding: 4mm 6mm !important;
+        border: 1.5px solid #0f172a !important;
+        border-radius: 4px !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+        box-shadow: none !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
+        page-break-inside: avoid !important;
+        page-break-after: avoid !important;
+        break-inside: avoid !important;
+        break-after: avoid !important;
+        font-size: 9.5px !important;
+        line-height: 1.25 !important;
+      }
+    }
+  `;
+  document.head.appendChild(a5Style);
+
   const remaining = Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0);
-  const old = document.getElementById('printMount');
-  if(old) old.remove();
   const mount = document.createElement('div');
-  mount.id='printMount';
+  mount.id = 'printMount';
 
   const titles = {receipt:'إيصال استلام جهاز للصيانة', invoice:'فاتورة صيانة نهائية', workorder:'أمر شغل داخلي للفني'};
   const trackUrl = `${window.location.origin}${window.location.pathname}?track=${r.receiptNumber}`;
@@ -5788,10 +5859,23 @@ function openReceiptPrint(r, kind){
     </div>
   </div>`;
   document.body.appendChild(mount);
+
   if(typeof JsBarcode !== 'undefined'){
     try{ JsBarcode('#printBarcode', r.receiptNumber, {format:'CODE128', width:1.2, height:22, displayValue:false, margin:0}); }catch(e){}
   }
-  setTimeout(()=>{ window.print(); mount.remove(); }, 200);
+
+  const cleanupA5 = ()=>{
+    if(mount && mount.parentNode) mount.remove();
+    document.body.classList.remove('printing-a5-receipt');
+    if(a5Style && a5Style.parentNode) a5Style.remove();
+    window.removeEventListener('afterprint', cleanupA5);
+  };
+  window.addEventListener('afterprint', cleanupA5);
+
+  setTimeout(()=>{
+    window.print();
+    setTimeout(cleanupA5, 800);
+  }, 150);
 }
 
 /* ---------------- Print Thermal Barcode Sticker (50x30mm) ---------------- */
@@ -9869,20 +9953,35 @@ function openSalePrint(sale, cartItems, meta={}){
     document.head.appendChild(receiptStyle);
   }
 
+  // Exact 72mm printable width for 80mm roll on Xprinter 808 to eliminate the 1cm side margin
+  const thermalPrintWidth = is58mm ? '48mm' : (rPrn.paperSize === '76mm' ? '70mm' : '72mm');
+
   receiptStyle.innerHTML = `
     @media print {
       @page {
         size: ${paperSize} auto !important;
         margin: 0mm !important;
       }
+      @page :left { margin: 0mm !important; }
+      @page :right { margin: 0mm !important; }
+      @page :first { margin: 0mm !important; }
       html, body {
-        width: ${paperSize} !important;
+        width: 100% !important;
+        max-width: ${thermalPrintWidth} !important;
         margin: 0 !important;
         padding: 0 !important;
         background: #ffffff !important;
         color: #000000 !important;
+        position: static !important;
+        overflow: visible !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
+      }
+      body.printing-pos-receipt {
+        width: 100% !important;
+        max-width: ${thermalPrintWidth} !important;
+        margin: 0 !important;
+        padding: 0 !important;
       }
       body.printing-pos-receipt #app,
       body.printing-pos-receipt .sidebar,
@@ -9893,16 +9992,17 @@ function openSalePrint(sale, cartItems, meta={}){
       }
       body.printing-pos-receipt #printMount {
         display: block !important;
-        width: ${paperSize} !important;
-        margin: 0 auto !important;
+        width: 100% !important;
+        max-width: ${thermalPrintWidth} !important;
+        margin: 0 !important;
         padding: 0 !important;
         background: #ffffff !important;
       }
       .pos-thermal-receipt {
-        width: ${is58mm ? '55mm' : '79mm'} !important;
-        max-width: 100% !important;
-        margin: 0 auto !important;
-        padding: 1mm 1mm ${cutterFeed}mm 1mm !important;
+        width: 100% !important;
+        max-width: ${thermalPrintWidth} !important;
+        margin: 0 !important;
+        padding: 0 0.5mm ${cutterFeed}mm 0.5mm !important;
         box-sizing: border-box !important;
         font-family: 'Segoe UI', Tahoma, Arial, sans-serif !important;
         font-size: ${is58mm ? '13px' : (isMaxFont ? '15px' : '13.5px')} !important;
@@ -9920,10 +10020,10 @@ function openSalePrint(sale, cartItems, meta={}){
       .pos-thermal-receipt table {
         width: 100% !important;
         border-collapse: collapse !important;
-        margin: 4px 0 !important;
+        margin: 3px 0 !important;
       }
       .pos-thermal-receipt th, .pos-thermal-receipt td {
-        padding: 4px 1px !important;
+        padding: 3px 0.5mm !important;
         vertical-align: middle !important;
       }
       .pos-thermal-receipt th {
@@ -9939,35 +10039,35 @@ function openSalePrint(sale, cartItems, meta={}){
       }
       .pos-thermal-receipt .r-divider {
         border-top: 2px dashed #000000 !important;
-        margin: 6px 0 !important;
+        margin: 5px 0 !important;
       }
       .pos-thermal-receipt .r-divider-solid {
         border-top: 2px solid #000000 !important;
-        margin: 6px 0 !important;
+        margin: 5px 0 !important;
       }
     }
   `;
 
   mount.innerHTML = `
-    <div class="pos-thermal-receipt" style="text-align:center;padding:2px 1px;">
+    <div class="pos-thermal-receipt" style="text-align:center;padding:0 0.5mm;">
       
       <!-- Header & Store Identity -->
-      ${rPrn.showLogo && logoUrl ? `<div style="text-align:center;margin-bottom:4px;"><img src="${logoUrl}" style="max-height:50px;max-width:180px;object-fit:contain;"></div>` : ''}
-      <div style="font-size:${is58mm?'17px':'22px'};font-weight:900;margin-bottom:2px;line-height:1.2;color:#000;">${escapeHtml(shopName)}</div>
-      ${state.settings && state.settings.shopPhone ? `<div style="font-size:13.5px;font-weight:900;margin-bottom:1px;">هاتف: <span class="mono">${escapeHtml(state.settings.shopPhone)}</span></div>` : ''}
-      ${state.settings && state.settings.shopAddress ? `<div style="font-size:12.5px;font-weight:800;margin-bottom:1px;">${escapeHtml(state.settings.shopAddress)}</div>` : ''}
-      ${state.settings && state.settings.shopTaxNumber ? `<div style="font-size:12px;font-weight:900;">س.ت / ضريبي: <span class="mono">${escapeHtml(state.settings.shopTaxNumber)}</span></div>` : ''}
+      ${rPrn.showLogo && logoUrl ? `<div style="text-align:center;margin-bottom:3px;"><img src="${logoUrl}" style="max-height:48px;max-width:180px;object-fit:contain;"></div>` : ''}
+      <div style="font-size:${is58mm?'17px':'21px'};font-weight:900;margin-bottom:2px;line-height:1.2;color:#000;">${escapeHtml(shopName)}</div>
+      ${state.settings && state.settings.shopPhone ? `<div style="font-size:13px;font-weight:900;margin-bottom:1px;">هاتف: <span class="mono">${escapeHtml(state.settings.shopPhone)}</span></div>` : ''}
+      ${state.settings && state.settings.shopAddress ? `<div style="font-size:12px;font-weight:800;margin-bottom:1px;">${escapeHtml(state.settings.shopAddress)}</div>` : ''}
+      ${state.settings && state.settings.shopTaxNumber ? `<div style="font-size:11.5px;font-weight:900;">س.ت / ضريبي: <span class="mono">${escapeHtml(state.settings.shopTaxNumber)}</span></div>` : ''}
       
-      <div style="font-size:${is58mm?'13.5px':'15px'};font-weight:900;border:2px solid #000;border-radius:4px;padding:3px 0;margin:6px 0;text-align:center;background:#f5f5f5;">
+      <div style="font-size:${is58mm?'13px':'14.5px'};font-weight:900;border:2px solid #000;border-radius:4px;padding:2px 0;margin:5px 0;text-align:center;background:#f5f5f5;">
         🧾 إيصال مبيعات نقدية (POS)
       </div>
 
       <!-- Receipt Meta Info -->
-      <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:900;margin-bottom:3px;text-align:right;">
-        <span>رقم الإيصال: <b class="mono" style="font-size:15px;">#${receiptId}</b></span>
-        <span class="mono" style="font-size:12.5px;">${cleanDate(sale.Date)} ${new Date().toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'})}</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;font-weight:900;margin-bottom:2px;text-align:right;">
+        <span>رقم الإيصال: <b class="mono" style="font-size:14.5px;">#${receiptId}</b></span>
+        <span class="mono" style="font-size:12px;">${cleanDate(sale.Date)} ${new Date().toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'})}</span>
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:900;margin-bottom:4px;text-align:right;">
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;font-weight:900;margin-bottom:3px;text-align:right;">
         <span>العميل: <b>${escapeHtml(sale.CustomerName||'عميل زائر')}</b></span>
         ${rPrn.showCashier ? `<span>الكاشير: <b>${escapeHtml(cashierName)}</b></span>` : ''}
       </div>
@@ -9977,58 +10077,58 @@ function openSalePrint(sale, cartItems, meta={}){
         <thead>
           <tr>
             <th style="text-align:right;">الصنف والبيان</th>
-            <th style="text-align:center;width:35px;">كمية</th>
-            <th style="text-align:center;width:60px;">السعر</th>
-            <th style="text-align:left;width:75px;">الإجمالي</th>
+            <th style="text-align:center;width:32px;">كمية</th>
+            <th style="text-align:center;width:55px;">السعر</th>
+            <th style="text-align:left;width:68px;">الإجمالي</th>
           </tr>
         </thead>
         <tbody>
           ${cartItems.map(c => `
             <tr>
-              <td style="font-weight:900;line-height:1.25;font-size:${is58mm?'13px':'15px'};">${escapeHtml(c.name)}</td>
-              <td style="text-align:center;font-weight:900;font-size:${is58mm?'13.5px':'15.5px'};" class="mono">${c.qty}</td>
-              <td style="text-align:center;font-weight:900;font-size:${is58mm?'13px':'14.5px'};" class="mono">${Number(c.price).toLocaleString()}</td>
-              <td style="text-align:left;font-weight:900;font-size:${is58mm?'13.5px':'15.5px'};" class="mono">${(Number(c.qty)*Number(c.price)).toLocaleString()}</td>
+              <td style="font-weight:900;line-height:1.25;font-size:${is58mm?'12.5px':'14.5px'};">${escapeHtml(c.name)}</td>
+              <td style="text-align:center;font-weight:900;font-size:${is58mm?'13px':'15px'};" class="mono">${c.qty}</td>
+              <td style="text-align:center;font-weight:900;font-size:${is58mm?'12.5px':'14px'};" class="mono">${Number(c.price).toLocaleString()}</td>
+              <td style="text-align:left;font-weight:900;font-size:${is58mm?'13px':'15px'};" class="mono">${(Number(c.qty)*Number(c.price)).toLocaleString()}</td>
             </tr>
           `).join('')}
         </tbody>
       </table>
 
       <!-- Financial Totals Block -->
-      <div style="font-size:${is58mm?'13px':'14.5px'};font-weight:900;text-align:right;margin-top:4px;">
-        <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+      <div style="font-size:${is58mm?'12.5px':'14px'};font-weight:900;text-align:right;margin-top:3px;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
           <span>المجموع الفرعي:</span>
           <span class="mono">${subtotal.toLocaleString()} ج.م</span>
         </div>
         ${discountAmt > 0 ? `
-          <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
             <span>الخصم الممنوح:</span>
             <span class="mono font-bold">-${discountAmt.toLocaleString()} ج.م</span>
           </div>
         ` : ''}
         ${taxAmt > 0 ? `
-          <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
             <span>ضريبة القيمة المضافة:</span>
             <span class="mono">+${taxAmt.toLocaleString()} ج.م</span>
           </div>
         ` : ''}
         
         <!-- Large High-Contrast Grand Total -->
-        <div style="display:flex;justify-content:space-between;align-items:center;border-top:2.5px solid #000;border-bottom:2.5px solid #000;padding:6px 2px;margin:6px 0;background:#f9f9f9;">
-          <span style="font-size:${is58mm?'15px':'17px'};font-weight:900;">الإجمالي النهائي:</span>
-          <span class="mono" style="font-size:${is58mm?'20px':'25px'};font-weight:900;color:#000;">${grandTotal.toLocaleString()} ج.م</span>
+        <div style="display:flex;justify-content:space-between;align-items:center;border-top:2.5px solid #000;border-bottom:2.5px solid #000;padding:5px 1px;margin:5px 0;background:#f9f9f9;">
+          <span style="font-size:${is58mm?'14.5px':'16.5px'};font-weight:900;">الإجمالي النهائي:</span>
+          <span class="mono" style="font-size:${is58mm?'19px':'24px'};font-weight:900;color:#000;">${grandTotal.toLocaleString()} ج.م</span>
         </div>
 
-        <div style="display:flex;justify-content:space-between;margin-bottom:2px;font-size:${is58mm?'12.5px':'13.5px'};">
+        <div style="display:flex;justify-content:space-between;margin-bottom:2px;font-size:${is58mm?'12px':'13px'};">
           <span>طريقة الدفع:</span>
           <span><b>${escapeHtml(payMethod)}</b></span>
         </div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:2px;font-size:${is58mm?'12.5px':'13.5px'};">
+        <div style="display:flex;justify-content:space-between;margin-bottom:2px;font-size:${is58mm?'12px':'13px'};">
           <span>المبلغ المدفوع:</span>
           <span class="mono font-bold">${paidAmt.toLocaleString()} ج.م</span>
         </div>
         ${changeAmt > 0 ? `
-          <div style="display:flex;justify-content:space-between;font-size:${is58mm?'13.5px':'15px'};font-weight:900;border-top:1.5px dashed #000;padding-top:3px;margin-top:2px;">
+          <div style="display:flex;justify-content:space-between;font-size:${is58mm?'13px':'14.5px'};font-weight:900;border-top:1.5px dashed #000;padding-top:2px;margin-top:2px;">
             <span>الباقي للعميل:</span>
             <span class="mono">${changeAmt.toLocaleString()} ج.م</span>
           </div>
@@ -10039,16 +10139,16 @@ function openSalePrint(sale, cartItems, meta={}){
 
       <!-- Vector Barcode -->
       ${rPrn.printBarcode ? `
-        <div style="text-align:center;margin:6px 0 3px;">
-          <svg id="saleReceiptBarcodeSvg" style="max-height:40px;max-width:200px;margin:0 auto;"></svg>
+        <div style="text-align:center;margin:5px 0 2px;">
+          <svg id="saleReceiptBarcodeSvg" style="max-height:38px;max-width:190px;margin:0 auto;"></svg>
         </div>
       ` : ''}
 
       <!-- Footer Notes -->
-      <div style="font-size:${is58mm?'12px':'13.5px'};font-weight:900;color:#000;margin-top:4px;line-height:1.4;">
+      <div style="font-size:${is58mm?'11.5px':'13px'};font-weight:900;color:#000;margin-top:3px;line-height:1.35;">
         ${escapeHtml(rPrn.footerText || posSettings.receiptFooter || 'شكراً لتعاملكم معنا • نسعد دائماً بخدمتكم')}
       </div>
-      <div style="font-size:11px;font-weight:800;color:#333;margin-top:3px;">
+      <div style="font-size:10.5px;font-weight:800;color:#333;margin-top:2px;">
         ميكروERP • نظام إدارة المبيعات والصيانة
       </div>
 
@@ -10065,21 +10165,26 @@ function openSalePrint(sale, cartItems, meta={}){
     try {
       JsBarcode('#saleReceiptBarcodeSvg', receiptId, {
         format: 'CODE128',
-        width: is58mm ? 1.3 : 1.6,
-        height: 28,
+        width: is58mm ? 1.3 : 1.55,
+        height: 26,
         displayValue: true,
-        fontSize: 11,
+        fontSize: 10.5,
         margin: 0
       });
     } catch(e){}
   }
 
+  const cleanupReceipt = ()=>{
+    if(mount && mount.parentNode) mount.remove();
+    document.body.classList.remove('printing-pos-receipt');
+    if(receiptStyle && receiptStyle.parentNode) receiptStyle.remove();
+    window.removeEventListener('afterprint', cleanupReceipt);
+  };
+  window.addEventListener('afterprint', cleanupReceipt);
+
   setTimeout(()=>{
     window.print();
-    setTimeout(()=>{
-      mount.remove();
-      document.body.classList.remove('printing-pos-receipt');
-    }, 500);
+    setTimeout(cleanupReceipt, 800);
   }, 120);
 }
 
@@ -12395,8 +12500,35 @@ function executeTestBarcodePrint(){
 }
 
 function executeTestLaserPrint(){
-  const old = document.getElementById('printMount');
-  if(old) old.remove();
+  const oldMount = document.getElementById('printMount');
+  if(oldMount) oldMount.remove();
+  const oldA5 = document.getElementById('dynamicA5ReceiptStyle');
+  if(oldA5) oldA5.remove();
+  const oldThermal = document.getElementById('dynamicThermalReceiptStyle');
+  if(oldThermal) oldThermal.remove();
+
+  const laserStyle = document.createElement('style');
+  laserStyle.id = 'dynamicLaserTestStyle';
+  laserStyle.innerHTML = `
+    @media print {
+      @page {
+        size: A4 portrait !important;
+        margin: 10mm !important;
+      }
+      body.printing-voucher {
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+      }
+      body.printing-voucher #printMount {
+        width: 100% !important;
+        margin: 0 auto !important;
+      }
+    }
+  `;
+  document.head.appendChild(laserStyle);
 
   const shopName = (state.settings && state.settings.shopName) || 'صيانة ميكروتك';
   const shopPhone = (state.settings && state.settings.shopPhone) || '01000000000';
@@ -12406,7 +12538,7 @@ function executeTestLaserPrint(){
   mount.id = 'printMount';
 
   mount.innerHTML = `
-    <div style="background:#fff;color:#000;padding:15mm 12mm;width:210mm;min-height:148mm;margin:0 auto;box-sizing:border-box;font-family:'Segoe UI',Tahoma,Arial,sans-serif;direction:rtl;text-align:right;">
+    <div style="background:#fff;color:#000;padding:10mm 8mm;width:100%;max-width:190mm;min-height:140mm;margin:0 auto;box-sizing:border-box;font-family:'Segoe UI',Tahoma,Arial,sans-serif;direction:rtl;text-align:right;">
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:14px;">
         <div>
           <h2 style="margin:0;font-size:22px;font-weight:900;">${escapeHtml(shopName)}</h2>
@@ -12468,13 +12600,18 @@ function executeTestLaserPrint(){
   document.body.appendChild(mount);
   document.body.classList.add('printing-voucher');
 
+  const cleanupLaser = ()=>{
+    if(mount && mount.parentNode) mount.remove();
+    document.body.classList.remove('printing-voucher');
+    if(laserStyle && laserStyle.parentNode) laserStyle.remove();
+    window.removeEventListener('afterprint', cleanupLaser);
+  };
+  window.addEventListener('afterprint', cleanupLaser);
+
   setTimeout(()=>{
     window.print();
-    setTimeout(()=>{
-      mount.remove();
-      document.body.classList.remove('printing-voucher');
-    }, 500);
-  }, 200);
+    setTimeout(cleanupLaser, 800);
+  }, 150);
 }
 
 /* 4. POS & Cashier Settings (إعدادات نقطة البيع وخيارات الدفع) */

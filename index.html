@@ -5680,6 +5680,108 @@ function attachRowActions(root){
   });
 }
 
+/* ---------------- Smart Status & Payment Handshake Prompts ---------------- */
+/**
+ * نافذة تأكيد سداد المتبقي عند تغيير الحالة إلى "تم التسليم"
+ */
+function promptDeliveryRemainingPayment(r, remaining, onProceed){
+  const pOverlay = document.createElement('div');
+  pOverlay.className = 'modal-overlay';
+  pOverlay.style.zIndex = '11500';
+  pOverlay.innerHTML = `
+    <div class="modal-content" style="max-width:440px;text-align:center;padding:22px;border-top:4px solid var(--amber);">
+      <div style="font-size:38px;margin-bottom:6px;">🤝</div>
+      <h3 style="margin:0 0 6px;font-size:16.5px;color:var(--ink);">تسليم الجهاز للعميل (إيصال #${escapeHtml(r.receiptNumber)})</h3>
+      <div style="font-size:12.5px;color:var(--ink-secondary);margin-bottom:12px;">العميل: <b>${escapeHtml(r.customer.name)}</b> | الجهاز: ${escapeHtml(r.device.category)} ${escapeHtml(r.device.brand)}</div>
+      
+      <div style="background:var(--amber-bg);border:1.5px solid var(--amber);border-radius:var(--radius-sm);padding:12px;margin-bottom:16px;text-align:right;">
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:900;color:var(--amber-text);margin-bottom:4px;">
+          <span>المبلغ المتبقي على الإيصال:</span>
+          <span class="mono" style="font-size:16.5px;color:#b45309;">${Number(remaining).toLocaleString()} ج.م</span>
+        </div>
+        <div style="font-size:11.5px;color:var(--ink);line-height:1.45;">
+          الجهاز عليه مبلغ غير مسدد. هل ترغب في تحصيل وسداد المبلغ المتبقي بالكامل الآن وإثباته بالخزينة مع تسليم الجهاز؟
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button class="btn btn-green" id="promptBtnPayAndDeliver" style="justify-content:center;font-weight:800;padding:10px;">
+          💰 سداد المتبقي (${Number(remaining).toLocaleString()} ج.م) وتسليم الجهاز
+        </button>
+        <button class="btn btn-ghost" id="promptBtnDeliverOnly" style="justify-content:center;font-weight:700;border-color:var(--line);">
+          📦 تسليم الجهاز فقط (تأجيل السداد / آجل)
+        </button>
+        <button class="btn btn-ghost btn-sm" id="promptBtnCancel" style="justify-content:center;color:var(--ink-secondary);margin-top:4px;">
+          إلغاء التغيير
+        </button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(pOverlay);
+
+  pOverlay.querySelector('#promptBtnPayAndDeliver').onclick = ()=>{
+    pOverlay.remove();
+    onProceed(true); // true = سداد المتبقي + تسليم
+  };
+  pOverlay.querySelector('#promptBtnDeliverOnly').onclick = ()=>{
+    pOverlay.remove();
+    onProceed(false); // false = تسليم فقط دون سداد
+  };
+  pOverlay.querySelector('#promptBtnCancel').onclick = ()=>{
+    pOverlay.remove();
+  };
+}
+
+/**
+ * نافذة تأكيد تغيير الحالة إلى "تم التسليم" عند سداد المبلغ المتبقي
+ */
+function promptPaymentDeliveryStatus(r, amt, onProceed){
+  const pOverlay = document.createElement('div');
+  pOverlay.className = 'modal-overlay';
+  pOverlay.style.zIndex = '11500';
+  pOverlay.innerHTML = `
+    <div class="modal-content" style="max-width:440px;text-align:center;padding:22px;border-top:4px solid var(--green);">
+      <div style="font-size:38px;margin-bottom:6px;">💰</div>
+      <h3 style="margin:0 0 6px;font-size:16.5px;color:var(--ink);">سداد المبلغ المتبقي (${Number(amt).toLocaleString()} ج.م)</h3>
+      <div style="font-size:12.5px;color:var(--ink-secondary);margin-bottom:12px;">الإيصال: <b class="mono">#${escapeHtml(r.receiptNumber)}</b> | العميل: <b>${escapeHtml(r.customer.name)}</b></div>
+
+      <div style="background:var(--green-bg);border:1.5px solid var(--green);border-radius:var(--radius-sm);padding:12px;margin-bottom:16px;text-align:right;">
+        <div style="font-size:12.5px;font-weight:900;color:var(--green-text);margin-bottom:4px;">
+          ✅ سيتم تسجيل إتمام سداد المبلغ كاملاً وإيداعه في الخزينة.
+        </div>
+        <div style="font-size:12.5px;font-weight:800;color:var(--ink);margin-top:6px;line-height:1.4;">
+          هل ترغب أيضاً في تغيير حالة الجهاز إلى "تم التسليم 🤝"؟
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button class="btn btn-green" id="promptBtnDeliver" style="justify-content:center;font-weight:800;padding:10px;">
+          🤝 نعم، سداد وتغيير الحالة إلى "تم التسليم"
+        </button>
+        <button class="btn btn-primary" id="promptBtnKeepStatus" style="justify-content:center;font-weight:700;padding:9px;">
+          📦 سداد المبلغ فقط دون تسليم (الاحتفاظ بالحالة أو مكتمل)
+        </button>
+        <button class="btn btn-ghost btn-sm" id="promptBtnCancelPay" style="justify-content:center;color:var(--ink-secondary);margin-top:4px;">
+          إلغاء
+        </button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(pOverlay);
+
+  pOverlay.querySelector('#promptBtnDeliver').onclick = ()=>{
+    pOverlay.remove();
+    onProceed(true); // true = تغيير الحالة لتم التسليم
+  };
+  pOverlay.querySelector('#promptBtnKeepStatus').onclick = ()=>{
+    pOverlay.remove();
+    onProceed(false); // false = سداد فقط مع إبقاء الحالة
+  };
+  pOverlay.querySelector('#promptBtnCancelPay').onclick = ()=>{
+    pOverlay.remove();
+  };
+}
+
 /* ---------------- Quick Status Changer Modal ---------------- */
 function openQuickStatusModal(r){
   const overlay = document.createElement('div');
@@ -5742,6 +5844,38 @@ function openQuickStatusModal(r){
       const newStatus = btn.dataset.setstatus;
       const newTech = overlay.querySelector('#quickTechSelect').value;
       const sendWa = overlay.querySelector('#sendWaAfterStatus').checked;
+      const remaining = Number(r.cost||0) + Number(r.partsCost||0) - Number(r.deposit||0) + Number(r.refunded||0);
+
+      // إذا كان التغيير إلى "تم التسليم" وهناك مبلغ متبقي غير مسدد
+      if(newStatus === 'تم التسليم' && remaining > 0){
+        promptDeliveryRemainingPayment(r, remaining, async (shouldPay)=>{
+          if(newTech) r.technician = newTech;
+          r.status = 'تم التسليم';
+          r.updatedBy = state.user.name;
+          r.updatedAt = new Date().toISOString();
+
+          if(shouldPay){
+            try {
+              await savePaymentRemote(r.id, remaining, 'سداد المتبقي عند التسليم');
+              r.deposit = Number(r.deposit||0) + remaining;
+              r.paid = true;
+              await refreshPayments();
+            } catch(e){}
+          }
+          overlay.remove();
+          renderMain();
+          try {
+            await saveReceiptRemote(r);
+            showToast(shouldPay ? `تم سداد ${remaining.toLocaleString()} ج.م وتسليم الجهاز بنجاح 🤝✅` : 'تم تسليم الجهاز بنجاح (المتبقي آجل) 🤝', 'success');
+            if(sendWa){
+              setTimeout(()=>sendWhatsappByStatus(r, 'تم التسليم'), 400);
+            }
+          } catch(e){
+            showToast('تم الحفظ محلياً (وضع غير متصل)', 'info');
+          }
+        });
+        return;
+      }
 
       r.status = newStatus;
       if(newTech) r.technician = newTech;
@@ -5959,6 +6093,33 @@ async function openReceiptDetail(r){
 
   overlay.querySelector('#saveEditBtn').onclick = async ()=>{
     collectEdits();
+    const remainingNow = Number(r.cost||0) + Number(r.partsCost||0) - Number(r.deposit||0) + Number(r.refunded||0);
+
+    if(r.status === 'تم التسليم' && remainingNow > 0){
+      promptDeliveryRemainingPayment(r, remainingNow, async (shouldPay)=>{
+        const btn = overlay.querySelector('#saveEditBtn');
+        if(btn){ btn.disabled = true; btn.textContent = 'جارٍ الحفظ...'; }
+        if(shouldPay){
+          try{
+            await savePaymentRemote(r.id, remainingNow, 'سداد المتبقي عند التسليم');
+            r.deposit = Number(r.deposit||0) + remainingNow;
+            r.paid = true;
+            await refreshPayments();
+          }catch(e){}
+        }
+        try{
+          await saveReceiptRemote(r);
+          overlay.remove();
+          showToast(shouldPay ? `تم سداد ${remainingNow.toLocaleString()} ج.م وتسليم الجهاز بنجاح 🤝✅` : 'تم تسليم الجهاز بنجاح (المتبقي آجل) 🤝', 'success');
+          renderMain();
+        }catch(err){
+          showToast('تم الحفظ محلياً: '+err.message, 'info');
+          if(btn){ btn.disabled = false; btn.textContent = '💾 حفظ التعديلات'; }
+        }
+      });
+      return;
+    }
+
     const btn = overlay.querySelector('#saveEditBtn');
     btn.disabled = true; btn.textContent = 'جارٍ الحفظ...';
     try{
@@ -5969,6 +6130,7 @@ async function openReceiptDetail(r){
     }catch(err){
       showToast('تم الحفظ محلياً: '+err.message, 'info');
       btn.disabled = false;
+      btn.textContent = '💾 حفظ التعديلات';
     }
   };
 
@@ -5976,12 +6138,41 @@ async function openReceiptDetail(r){
     const amt = Number(overlay.querySelector('#newPayAmt').value);
     const note = overlay.querySelector('#newPayNote').value.trim();
     if(!amt || amt<=0){ showToast('أدخل مبلغاً صحيحاً', 'error'); return; }
+
+    const remainingBefore = Number(r.cost||0) + Number(r.partsCost||0) - Number(r.deposit||0) + Number(r.refunded||0);
+
+    // إذا كانت الدفعة تغطي المبلغ المتبقي بالكامل والحالة لم تسلم بعد
+    if(amt >= remainingBefore && r.status !== 'تم التسليم'){
+      promptPaymentDeliveryStatus(r, amt, async (shouldDeliver)=>{
+        try{
+          await savePaymentRemote(r.id, amt, note || (shouldDeliver ? 'سداد المتبقي عند التسليم' : 'سداد الدفعة المتبقية'));
+          r.deposit = Number(r.deposit||0) + amt;
+          if(r.deposit >= (Number(r.cost||0) + Number(r.partsCost||0))) r.paid = true;
+          if(shouldDeliver){
+            r.status = 'تم التسليم';
+          }
+          r.updatedBy = state.user ? state.user.name : 'نظام';
+          r.updatedAt = new Date().toISOString();
+
+          await saveReceiptRemote(r);
+          await refreshPayments();
+          overlay.remove();
+          showToast(shouldDeliver ? 'تم سداد كامل المبلغ وتحديث الحالة إلى تم التسليم 🤝✅' : 'تم سداد كامل المبلغ وتحديث الحسابات بنجاح ✅', 'success');
+          renderMain();
+        }catch(e){ showToast('تم الحفظ محلياً: '+e.message, 'info'); }
+      });
+      return;
+    }
+
     try{
       await savePaymentRemote(r.id, amt, note);
       r.deposit = Number(r.deposit||0) + amt;
+      if(r.deposit >= (Number(r.cost||0) + Number(r.partsCost||0))) r.paid = true;
       const newRem = Number(r.cost||0) + Number(r.partsCost||0) - Number(r.deposit||0) + Number(r.refunded||0);
       const remInp = overlay.querySelector('#eRem');
-      if(remInp) remInp.value = newRem;
+      if(remInp) remInp.value = Math.max(0, newRem);
+      const depInp = overlay.querySelector('#eDeposit');
+      if(depInp) depInp.value = r.deposit;
       overlay.querySelector('#newPayAmt').value = '';
       overlay.querySelector('#newPayNote').value = '';
       await saveReceiptRemote(r);
@@ -5995,19 +6186,35 @@ async function openReceiptDetail(r){
   const payBtn = overlay.querySelector('#payBtn');
   if(payBtn) payBtn.onclick = async ()=>{
     const remainingNow = Number(r.cost||0) + Number(r.partsCost||0) - Number(r.deposit||0) + Number(r.refunded||0);
-    payBtn.disabled = true;
-    try{
-      if(remainingNow > 0){
-        await savePaymentRemote(r.id, remainingNow, 'سداد المتبقي بالكامل');
+    if(remainingNow <= 0){
+      showToast('الإيصال مسدد بالكامل بالفعل', 'info');
+      return;
+    }
+
+    promptPaymentDeliveryStatus(r, remainingNow, async (shouldDeliver)=>{
+      payBtn.disabled = true;
+      try{
+        await savePaymentRemote(r.id, remainingNow, shouldDeliver ? 'سداد المتبقي عند التسليم' : 'سداد المتبقي بالكامل');
         r.deposit = Number(r.deposit||0) + remainingNow;
+        r.paid = true;
+        if(shouldDeliver){
+          r.status = 'تم التسليم';
+        } else if(r.status === 'قيد الفحص' || r.status === 'الصيانة'){
+          r.status = 'مكتمل';
+        }
+        r.updatedBy = state.user ? state.user.name : 'نظام';
+        r.updatedAt = new Date().toISOString();
+
+        await saveReceiptRemote(r);
         await refreshPayments();
+        overlay.remove();
+        showToast(shouldDeliver ? 'تم سداد المتبقي بالكامل وتحديث الحالة إلى "تم التسليم" 🤝✅' : 'تم سداد المتبقي بنجاح وتحديث الحسابات ✅', 'success');
+        renderMain();
+      }catch(e){
+        showToast('تم السداد محلياً: '+e.message, 'info');
+        payBtn.disabled = false;
       }
-      r.paid = true; r.status='مكتمل';
-      await saveReceiptRemote(r);
-      overlay.remove();
-      showToast('تم سداد الإيصال بالكامل وتحديث الحالة إلى مكتمل ✅', 'success');
-      renderMain();
-    }catch(e){ showToast('تم السداد محلياً', 'info'); payBtn.disabled=false; }
+    });
   };
 
   const convInvBtn = overlay.querySelector('#convertReceiptToInvoiceBtn');

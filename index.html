@@ -853,6 +853,167 @@ tr:last-child td { border-bottom: none; }
 .toast.info { background: #1e3a8a; border-right: 4px solid #3b82f6; }
 @keyframes slideInLeft { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
 
+/* ---------------- Apple iOS Design System & Notification System ---------------- */
+.ios-floating-alert {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 99999;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border: 1.5px solid #fca5a5;
+  border-radius: 20px;
+  box-shadow: 0 12px 36px rgba(220, 38, 38, 0.16), 0 4px 14px rgba(0, 0, 0, 0.04);
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 320px;
+  max-width: 660px;
+  width: 90%;
+  animation: iosBounceIn 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+[data-theme="dark"] .ios-floating-alert {
+  background: rgba(30, 41, 59, 0.92);
+  border-color: rgba(239, 68, 68, 0.4);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.6);
+}
+@keyframes iosBounceIn {
+  from { opacity: 0; transform: translate(-50%, -30px) scale(0.96); }
+  to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+.ios-alert-bell-pulse {
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: #fff;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4);
+  animation: bellRing 1.2s infinite ease-in-out;
+  flex-shrink: 0;
+}
+@keyframes bellRing {
+  0%, 100% { transform: rotate(0); }
+  20%, 60% { transform: rotate(14deg); }
+  40%, 80% { transform: rotate(-14deg); }
+}
+.notification-bell-btn {
+  position: relative;
+  background: var(--paper2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 18px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--shadow-sm);
+}
+.notification-bell-btn:hover {
+  background: var(--paper3);
+  transform: scale(1.05);
+  border-color: var(--primary);
+}
+.notification-bell-badge {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  background: #ef4444;
+  color: #fff;
+  border-radius: 10px;
+  padding: 1px 6px;
+  font-size: 10.5px;
+  font-weight: 900;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.45);
+  animation: badgePulse 2s infinite ease-in-out;
+}
+@keyframes badgePulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+.ios-segmented-bar {
+  display: inline-flex;
+  gap: 4px;
+  background: var(--paper3);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px;
+  margin-bottom: 18px;
+  overflow-x: auto;
+  max-width: 100%;
+}
+.ios-segment-item {
+  padding: 7px 16px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--ink-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+}
+.ios-segment-item:hover {
+  color: var(--ink);
+}
+.ios-segment-item.active {
+  background: var(--paper2);
+  color: var(--ink);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+[data-theme="dark"] .ios-segment-item.active {
+  background: var(--slate-700);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+.ios-app-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+  flex-shrink: 0;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.smart-sec-card:hover .ios-app-icon {
+  transform: scale(1.08) rotate(3deg);
+}
+.ios-cluster-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+}
+.ios-cluster-title {
+  font-size: 16px;
+  font-weight: 900;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
 /* Executive Command Center & Smart Hub */
 .command-center-wrap {
   max-width: 1280px;
@@ -1917,42 +2078,41 @@ tr:last-child td { border-bottom: none; }
 function toEngDigits(str){
   if(str == null) return '';
   return String(str)
-    .replace(/[٠-٩]/g, d => '0123456789'['٠١٢٣٤٥٦٧٨٩'.indexOf(d)])
-    .replace(/[۰-۹]/g, d => '0123456789'['۰۱۲۳۴۵۶۷۸۹'.indexOf(d)]);
+    .replace(/[٠۰]/g, '0')
+    .replace(/[١۱]/g, '1')
+    .replace(/[٢۲]/g, '2')
+    .replace(/[٣۳]/g, '3')
+    .replace(/[٤۴]/g, '4')
+    .replace(/[٥۵]/g, '5')
+    .replace(/[٦۶]/g, '6')
+    .replace(/[٧۷]/g, '7')
+    .replace(/[٨۸]/g, '8')
+    .replace(/[٩۹]/g, '9')
+    .replace(/٫/g, '.');
 }
 
-// Global Real-time Auto-converter for Phone and Numeric Inputs
+// Global Real-time Auto-converter for All Inputs & Textareas
 document.addEventListener('input', function(e) {
   const target = e.target;
   if (!target || (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA')) return;
+  const val = target.value;
+  if (!val) return;
 
-  const isPhone = target.type === 'tel' || 
-                  (target.id && /phone|tel|mobile|هاتف|جوال/i.test(target.id)) ||
-                  (target.name && /phone|tel|mobile|هاتف|جوال/i.test(target.name)) ||
-                  (target.placeholder && /هاتف|تليفون|موبايل|phone|01/i.test(target.placeholder));
+  if (/[٠-٩۰-۹٫]/.test(val)) {
+    const isPhone = target.type === 'tel' || 
+                    (target.id && /phone|tel|mobile|هاتف|جوال/i.test(target.id)) ||
+                    (target.name && /phone|tel|mobile|هاتف|جوال/i.test(target.name)) ||
+                    (target.placeholder && /هاتف|تليفون|موبايل|phone|01/i.test(target.placeholder));
 
-  const isNumeric = target.type === 'number' || 
-                    target.inputMode === 'numeric' || 
-                    target.inputMode === 'decimal' ||
-                    isPhone ||
-                    (target.id && /cost|price|deposit|amt|amount|qty|quantity|rem|bonus|total|barcode|rate|tax|credit|debit|discount/i.test(target.id)) ||
-                    (target.className && /mono/i.test(target.className));
-
-  if (isPhone) {
-    target.dir = 'ltr';
-    target.style.textAlign = 'right';
-    target.style.fontFamily = 'var(--font-mono)';
-    const originalVal = target.value;
-    const converted = toEngDigits(originalVal).replace(/[^0-9+\-\s()]/g, '');
-    if (originalVal !== converted) {
-      const cursor = target.selectionStart;
-      target.value = converted;
-      try { target.setSelectionRange(cursor, cursor); } catch(err){}
+    let converted = toEngDigits(val);
+    if (isPhone) {
+      target.dir = 'ltr';
+      target.style.textAlign = 'right';
+      target.style.fontFamily = 'var(--font-mono)';
+      converted = converted.replace(/[^0-9+\-\s()]/g, '');
     }
-  } else if (isNumeric) {
-    const originalVal = target.value;
-    const converted = toEngDigits(originalVal);
-    if (originalVal !== converted) {
+
+    if (val !== converted) {
       const cursor = target.selectionStart;
       target.value = converted;
       try { target.setSelectionRange(cursor, cursor); } catch(err){}
@@ -2476,6 +2636,7 @@ async function savePaymentRemote(receiptId, amount, note){
   };
   state.payments.push(payment);
   setCache('payments', state.payments);
+  recordAuditLog('تحصيل دفعة نقدية', 'الخزينة', `تحصيل دفعة نقدية بقيمة ${amount} ج.م للإيصال (${receiptId}) - البيان: ${note||'دفعة'}`, receiptId);
   // Auto Journal Entry: Dr. 1101 (الخزينة) / Cr. 4101 (إيرادات الصيانة)
   recordAutoJournalEntry(
     `تحصيل دفعة صيانة (${note || 'دفعة إيصال'})`,
@@ -2499,6 +2660,7 @@ async function saveInventoryItemRemote(item){
   const idx = state.inventory.findIndex(x=>x.ID===item.ID);
   if(idx>-1) state.inventory[idx] = item; else state.inventory.push(item);
   setCache('inventory', state.inventory);
+  recordAuditLog('حفظ صنف مخزن', 'المخزن', `تسجيل / تعديل صنف بالمخزن: (${item.Name}) - الكمية: ${item.Quantity} - سعر البيع: ${item.SellPrice} ج.م`, item.ID);
   return apiPost('saveInventoryItem', {data:item});
 }
 async function deleteInventoryItemRemote(id){
@@ -2510,6 +2672,7 @@ async function adjustInventoryQtyRemote(id, delta){
   const it = state.inventory.find(x=>x.ID===id);
   if(it) it.Quantity = Number(it.Quantity||0) + Number(delta);
   setCache('inventory', state.inventory);
+  recordAuditLog('تعديل رصيد صنف', 'المخزن', `تعديل رصيد الصنف (${it ? it.Name : id}) بفارق (${delta}) - الرصيد الجديد: ${it ? it.Quantity : '-'}`, id);
   return apiPost('adjustInventoryQty', {id, delta});
 }
 async function refreshInventory(){ state.inventory = await loadInventory(); }
@@ -2528,6 +2691,7 @@ async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, cust
   };
   state.sales.push(sale);
   setCache('sales', state.sales);
+  recordAuditLog('مبيعات كاشير POS', 'مبيعات', `فاتورة مبيعات POS بقيمة ${total} ج.م للعميل (${customerName||'عميل زائر'}) - الأصناف: ${itemsSummary}`, sale.ID);
   // Auto Journal Entry: Dr. 1101 (الخزينة) / Cr. 4102 (إيرادات مبيعات الأجهزة والإكسسوار)
   recordAutoJournalEntry(
     `مبيعات نقدية فاتورة POS (${itemsSummary})`,
@@ -2971,10 +3135,10 @@ async function saveTechnicianRemote(name){
 
 /* ---------------- User Management & Auth Engine ---------------- */
 const DEFAULT_USERS = [
-  { ID: 'usr_admin', Name: 'admin', Password: 'admin', Role: 'admin', Sections: 'daily,maintenance,invoices,pos,inventory,cameras,finance,users', Notes: 'المدير العام للنظام' },
-  { ID: 'usr_cashier', Name: 'كاشير 1', Password: '123', Role: 'cashier', Sections: 'pos,daily', Notes: 'كاشير مبيعات ونقطة بيع' },
-  { ID: 'usr_tech', Name: 'فني صيانة', Password: '123', Role: 'technician', Sections: 'maintenance', Notes: 'فني ورشة واستلام أجهزة' },
-  { ID: 'usr_accountant', Name: 'محاسب', Password: '123', Role: 'accountant', Sections: 'daily,invoices,finance,inventory', Notes: 'إدارة الحسابات واليومية والمخزون' }
+  { ID: 'usr_admin', Name: 'admin', Password: 'admin', Role: 'admin', Superuser: true, Sections: 'daily,maintenance,invoices,pos,inventory,cameras,finance,users', Notes: 'المدير العام للنظام' },
+  { ID: 'usr_cashier', Name: 'كاشير 1', Password: '123', Role: 'cashier', Superuser: false, Sections: 'pos,daily', Notes: 'كاشير مبيعات ونقطة بيع' },
+  { ID: 'usr_tech', Name: 'فني صيانة', Password: '123', Role: 'technician', Superuser: false, Sections: 'maintenance', Notes: 'فني ورشة واستلام أجهزة' },
+  { ID: 'usr_accountant', Name: 'محاسب', Password: '123', Role: 'accountant', Superuser: false, Sections: 'daily,invoices,finance,inventory', Notes: 'إدارة الحسابات واليومية والمخزون' }
 ];
 
 async function loadUsers(){
@@ -3054,6 +3218,401 @@ async function deleteUserRemote(userId){
   return true;
 }
 
+/* ---------------- Audit & Authorization System (الرقابة وسجل العمليات وتصاريح الحذف) ---------------- */
+
+function recordAuditLog(action, section, details, refId, status = 'success'){
+  const log = {
+    id: 'log_' + Date.now() + '_' + Math.floor(Math.random()*1000),
+    timestamp: new Date().toISOString(),
+    user: state.user ? state.user.name : 'نظام',
+    role: state.user ? state.user.role : 'admin',
+    action: action,
+    section: section,
+    details: details || '',
+    refId: refId ? String(refId) : '',
+    status: status
+  };
+  if(!Array.isArray(state.auditLogs)) state.auditLogs = [];
+  state.auditLogs.unshift(log);
+  if(state.auditLogs.length > 2000) state.auditLogs = state.auditLogs.slice(0, 2000);
+  setCache('audit_logs', state.auditLogs);
+  try { localStorage.setItem('microerp_audit_logs', JSON.stringify(state.auditLogs)); } catch(e){}
+  try { apiPost('saveAuditLog', { data: log }).catch(()=>{}); } catch(e){}
+  return log;
+}
+
+function getPendingAuthCountBadge(){
+  const count = (state.authRequests || []).filter(r => r.status === 'pending').length;
+  if(!count) return '';
+  return `<span class="badge" style="background:#ef4444;color:#fff;border-radius:10px;padding:2px 7px;font-size:11px;font-weight:900;margin-right:6px;">${count}</span>`;
+}
+
+function playNotificationChime(){
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if(!AudioContext) return;
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    // Pleasant iOS-style 2-tone ping
+    osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+    osc.frequency.setValueAtTime(880, ctx.currentTime + 0.12); // A5
+    gain.gain.setValueAtTime(0.28, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.42);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.44);
+  } catch(e){}
+}
+
+function updateNotificationBellBadge(){
+  const count = (state.authRequests || []).filter(r => r.status === 'pending').length;
+  document.querySelectorAll('.notification-bell-badge').forEach(b => {
+    b.textContent = count;
+    b.style.display = count > 0 ? 'inline-block' : 'none';
+  });
+}
+
+function notifySupervisorNewAuthRequest(req){
+  playNotificationChime();
+
+  const existing = document.getElementById('supervisorAuthAlertBanner');
+  if(existing) existing.remove();
+
+  const banner = document.createElement('div');
+  banner.id = 'supervisorAuthAlertBanner';
+  banner.className = 'ios-floating-alert';
+  banner.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;flex:1;">
+      <div class="ios-alert-bell-pulse">🔔</div>
+      <div style="text-align:right;">
+        <div style="font-weight:900;font-size:13.5px;color:var(--ink);display:flex;align-items:center;gap:6px;">
+          <span>تنبيه إداري: طلب تصريح حذف جديد!</span>
+          <span class="status-badge" style="background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;font-size:10.5px;">مطلوب موافقة</span>
+        </div>
+        <div style="font-size:12px;color:var(--ink-secondary);margin-top:2px;">
+          الموظف: <b>${escapeHtml(req.reqUser)}</b> • العنصر: <b>${escapeHtml(req.entityType)} — ${escapeHtml(req.entityTitle)}</b>
+        </div>
+        <div style="font-size:11.5px;color:#b91c1c;margin-top:2px;font-weight:700;">
+          السبب: "${escapeHtml(req.reason)}"
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button class="btn btn-sm btn-primary" id="openPendingAuthReqBtn" style="font-weight:900;padding:6px 14px;border-radius:10px;">
+        ⚡ مراجعة واعتماد الآن
+      </button>
+      <button class="btn btn-sm btn-ghost" id="dismissAuthBannerBtn" style="border-radius:10px;">✕</button>
+    </div>
+  `;
+
+  document.body.appendChild(banner);
+
+  banner.querySelector('#dismissAuthBannerBtn').onclick = ()=>banner.remove();
+  banner.querySelector('#openPendingAuthReqBtn').onclick = ()=>{
+    banner.remove();
+    state.currentSection = 'audit';
+    state.auditTab = 'requests';
+    render();
+  };
+
+  setTimeout(()=>{
+    if(document.getElementById('supervisorAuthAlertBanner')) {
+      banner.remove();
+    }
+  }, 16000);
+
+  updateNotificationBellBadge();
+}
+
+function openNotificationCenterModal(){
+  const pending = (state.authRequests || []).filter(r => r.status === 'pending');
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.zIndex = '13000';
+
+  overlay.innerHTML = `
+    <div class="modal-content" style="max-width:560px;max-height:85vh;overflow-y:auto;border-radius:22px;padding:24px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="ios-alert-bell-pulse" style="animation:none;width:36px;height:36px;font-size:18px;">🔔</div>
+          <div>
+            <h3 style="margin:0;font-size:16px;font-weight:900;">مركز الإشعارات وتصاريح الحذف</h3>
+            <div style="font-size:11.5px;color:var(--ink-secondary);">${pending.length} طلبات معلقة بانتظار قرار الإدارة</div>
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-xs" id="closeNotifModalBtn">✕</button>
+      </div>
+
+      ${pending.length === 0 ? `
+        <div style="text-align:center;padding:32px 16px;color:var(--ink-secondary);">
+          <div style="font-size:36px;margin-bottom:8px;">✨</div>
+          <div style="font-weight:800;font-size:14px;color:var(--ink);">لا توجد أي طلبات تصريح معلقة حالياً</div>
+          <div style="font-size:12px;margin-top:2px;">كافة العمليات مؤمنة ومحدثة بالكامل</div>
+        </div>
+      ` : `
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          ${pending.map(req => `
+            <div class="card" style="border-right:4px solid #ef4444;padding:14px;background:var(--paper2);">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
+                <div>
+                  <div style="font-weight:800;font-size:13px;color:var(--ink);">${escapeHtml(req.action)}: <span style="color:#b91c1c;">${escapeHtml(req.entityType)} — ${escapeHtml(req.entityTitle)}</span></div>
+                  <div style="font-size:11.5px;color:var(--ink-secondary);margin-top:2px;">
+                    الموظف: <b>${escapeHtml(req.reqUser)}</b> • ${new Date(req.timestamp).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'})}
+                  </div>
+                  <div style="font-size:12px;background:var(--paper3);border-radius:6px;padding:6px 10px;margin-top:6px;color:var(--ink);">
+                    السبب: "${escapeHtml(req.reason)}"
+                  </div>
+                </div>
+                <div style="display:flex;gap:6px;align-items:center;">
+                  <button class="btn btn-xs btn-green" data-notifapprove="${req.id}" style="font-weight:800;">✅ اعتماد</button>
+                  <button class="btn btn-xs btn-red" data-notifreject="${req.id}" style="font-weight:800;">❌ رفض</button>
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `}
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px;border-top:1px solid var(--line);padding-top:12px;">
+        <button class="btn btn-sm btn-ghost" id="viewAllAuditCenterBtn">🛡️ فتح قسم الرقابة بالكامل</button>
+        <button class="btn btn-sm btn-primary" id="closeNotifModalBtn2">إغلاق</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+  const close = ()=> overlay.remove();
+  overlay.querySelector('#closeNotifModalBtn').onclick = close;
+  overlay.querySelector('#closeNotifModalBtn2').onclick = close;
+
+  overlay.querySelector('#viewAllAuditCenterBtn').onclick = ()=>{
+    close();
+    state.currentSection = 'audit';
+    state.auditTab = 'requests';
+    render();
+  };
+
+  overlay.querySelectorAll('[data-notifapprove]').forEach(btn => {
+    btn.onclick = async ()=>{
+      const rid = btn.dataset.notifapprove;
+      const r = state.authRequests.find(x => x.id === rid);
+      if(!r) return;
+      btn.disabled = true;
+      btn.textContent = 'جارٍ الاعتماد...';
+      try {
+        r.status = 'approved';
+        r.resolvedAt = new Date().toISOString();
+        r.resolvedBy = state.user ? state.user.name : 'المدير العام';
+        setCache('auth_requests', state.authRequests);
+        try { localStorage.setItem('microerp_auth_requests', JSON.stringify(state.authRequests)); } catch(e){}
+        recordAuditLog('موافقة على حذف', r.entityType, `تم اعتماد طلب الحذف لـ (${r.entityTitle}) بناء على طلب (${r.reqUser})`, r.entityId, 'معتمد');
+
+        // Execute actual deletion
+        if(r.entityType === 'صيانة' || r.entityType === 'إيصال صيانة'){
+          await deleteReceiptRemote(r.entityId);
+        } else if(r.entityType === 'فاتورة' || r.entityType === 'فاتورة ضريبية'){
+          await deleteInvoiceRemote(r.entityId);
+        } else if(r.entityType === 'صنف مخزن' || r.entityType === 'منتج'){
+          await deleteItemRemote(r.entityId);
+        } else if(r.entityType === 'قيد يومية' || r.entityType === 'حركة مالية'){
+          await deleteJournalEntryRemote(r.entityId);
+        }
+
+        showToast(`تمت الموافقة وحذف (${r.entityTitle}) بنجاح ✅`, 'success');
+        close();
+        render();
+      } catch(err){
+        showToast('تعذر التنفيذ: ' + err.message, 'error');
+        btn.disabled = false;
+      }
+    };
+  });
+
+  overlay.querySelectorAll('[data-notifreject]').forEach(btn => {
+    btn.onclick = ()=>{
+      const rid = btn.dataset.notifreject;
+      const r = state.authRequests.find(x => x.id === rid);
+      if(!r) return;
+      r.status = 'rejected';
+      r.resolvedAt = new Date().toISOString();
+      r.resolvedBy = state.user ? state.user.name : 'المدير العام';
+      setCache('auth_requests', state.authRequests);
+      try { localStorage.setItem('microerp_auth_requests', JSON.stringify(state.authRequests)); } catch(e){}
+      recordAuditLog('رفض طلب حذف', r.entityType, `تم رفض طلب حذف (${r.entityTitle}) المقدم من (${r.reqUser})`, r.entityId, 'مرفوض');
+      showToast('تم رفض طلب الحذف بنجاح ❌', 'info');
+      close();
+      render();
+    };
+  });
+}
+
+function verifySupervisorPin(pass){
+  const clean = String(pass||'').trim();
+  if(!clean) return null;
+  const adminUser = (state.users || []).find(u => (u.Role === 'admin' || u.role === 'admin') && String(u.Password||'').trim() === clean);
+  if(adminUser) return adminUser.Name;
+  if(clean === 'admin') return 'admin';
+  return null;
+}
+
+/**
+ * دالة طلب تصريح الحذف أو الإجراء الحساس
+ * إذا كان المستخدم مدير عام -> تأكيد مباشر وتسجيل في سجل الرقابة
+ * إذا كان موظف -> إظهار نافذة التصريح الفوري بكلمة سر المدير أو إرسال طلب للإدارة
+ */
+function requestAdminAuthorization({ action, entityType, entityId, entityTitle, onApproved }){
+  const currentUser = state.user || { name: 'مستخدم', role: 'staff' };
+
+  // 1. إذا كان المستخدم الحالي مدير عام (Admin) أو لديه صلاحية Superuser (الحذف المباشر بدون إذن)
+  const isSuperuser = currentUser.role === 'admin' || !!currentUser.superuser || !!currentUser.Superuser;
+  if(isSuperuser){
+    if(confirm(`⚠️ تأكيد إداري: هل أنت متأكد من رغبتك في ${action} (${entityTitle})؟\nسيتم توثيق هذه العملية في سجل الرقابة والتدقيق.`)){
+      recordAuditLog(action, entityType, `تم الحذف مباشرة بواسطة المستخدم المصرح له (${currentUser.name}) [Superuser]`, entityId, 'معتمد');
+      onApproved();
+    }
+    return;
+  }
+
+  // 2. إذا كان المستخدم لا يمتلك صلاحية Superuser -> إظهار نافذة تصريح المدير
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.zIndex = '12000';
+
+  overlay.innerHTML = `
+    <div class="modal-content" style="max-width:490px;border-top:4px solid #ef4444;padding:22px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:24px;">🔒</span>
+          <div>
+            <h3 style="margin:0;font-size:16px;color:#b91c1c;">تصريح حذف مطلوب من الإدارة</h3>
+            <div style="font-size:11px;color:#dc2626;font-weight:700;">بدون صلاحية Superuser (موافقة المدير مطلوبة)</div>
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-xs" id="closeAuthModal">✕</button>
+      </div>
+
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:12px;margin-bottom:14px;font-size:12.5px;color:#991b1b;line-height:1.5;">
+        <b>⚠️ تنبيه الأمان والرقابة:</b> هذا الحساب لا يمتلك <b>صلاحية Superuser (الحذف والتعديل المباشر)</b>. لحماية البيانات والمحاسبة، يلزم إدخال رمز المشرف أو إرسال طلب اعتماد فوري لمدير النظام.
+        <div style="margin-top:6px;color:var(--ink);">
+          العنصر المطلوب حذفه: <b style="color:#b91c1c;">${escapeHtml(entityType)} — ${escapeHtml(entityTitle)}</b>
+        </div>
+        <div style="margin-top:2px;font-size:11.5px;color:var(--ink-secondary);">الموظف مقدم الطلب: <b>${escapeHtml(currentUser.name)}</b></div>
+      </div>
+
+      <!-- Tab Switcher -->
+      <div class="chip-group" style="margin-bottom:14px;">
+        <div class="chip sel" id="authTabPinBtn" style="flex:1;justify-content:center;font-weight:700;">🔑 تصريح فوري بالمحل</div>
+        <div class="chip" id="authTabReqBtn" style="flex:1;justify-content:center;font-weight:700;">📨 إرسال طلب للإدارة</div>
+      </div>
+
+      <!-- Mode 1: Instant Supervisor PIN / Password -->
+      <div id="authModePin">
+        <div class="field">
+          <label style="font-size:12.5px;font-weight:700;">كلمة مرور المدير العام أو المشرف</label>
+          <input id="supervisorPasswordInp" type="password" placeholder="أدخل كلمة مرور المدير للتصريح الفوري..." style="font-size:14px;">
+          <div style="font-size:11px;color:var(--ink-secondary);margin-top:4px;">يمكن للمدير كتابة كلمة المرور فورياً للاعتماد المباشر.</div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
+          <button class="btn btn-ghost btn-sm" id="cancelAuthPinBtn">إلغاء</button>
+          <button class="btn btn-red btn-sm" id="confirmSupervisorPinBtn" style="font-weight:800;">🔓 اعتماد وتنفيذ الحذف</button>
+        </div>
+      </div>
+
+      <!-- Mode 2: Submit Request for Admin Review -->
+      <div id="authModeReq" style="display:none;">
+        <div class="field">
+          <label style="font-size:12.5px;font-weight:700;">سبب طلب الحذف (إلزامي للإدارة)</label>
+          <textarea id="authRequestReasonInp" rows="3" placeholder="اكتب سبب طلب حذف هذا العنصر بالتفصيل..." style="font-size:13px;"></textarea>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
+          <button class="btn btn-ghost btn-sm" id="cancelAuthReqBtn">إلغاء</button>
+          <button class="btn btn-primary btn-sm" id="sendAuthRequestBtn" style="font-weight:800;">📨 إرسال الطلب للإدارة</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const close = ()=> overlay.remove();
+  overlay.querySelector('#closeAuthModal').onclick = close;
+  overlay.querySelector('#cancelAuthPinBtn').onclick = close;
+  overlay.querySelector('#cancelAuthReqBtn').onclick = close;
+
+  const pinTab = overlay.querySelector('#authTabPinBtn');
+  const reqTab = overlay.querySelector('#authTabReqBtn');
+  const modePin = overlay.querySelector('#authModePin');
+  const modeReq = overlay.querySelector('#authModeReq');
+
+  pinTab.onclick = ()=>{
+    pinTab.classList.add('sel');
+    reqTab.classList.remove('sel');
+    modePin.style.display = 'block';
+    modeReq.style.display = 'none';
+  };
+  reqTab.onclick = ()=>{
+    reqTab.classList.add('sel');
+    pinTab.classList.remove('sel');
+    modePin.style.display = 'none';
+    modeReq.style.display = 'block';
+  };
+
+  // 1. Submit Supervisor Password
+  overlay.querySelector('#confirmSupervisorPinBtn').onclick = ()=>{
+    const pass = overlay.querySelector('#supervisorPasswordInp').value;
+    const adminName = verifySupervisorPin(pass);
+    if(!adminName){
+      showToast('كلمة مرور المدير غير صحيحة! تم رفض التصريح ❌', 'error');
+      recordAuditLog('محاولة حذف فاشلة', entityType, `محاولة حذف غير مصرح بها لـ (${entityTitle}) من الموظف (${currentUser.name}) - كلمة سر خاطئة`, entityId, 'مرفوض');
+      overlay.querySelector('#supervisorPasswordInp').focus();
+      return;
+    }
+
+    recordAuditLog(action, entityType, `تم التصريح الفوري بالحذف من المدير (${adminName}) للموظف (${currentUser.name})`, entityId, 'بتصريح فوري');
+    close();
+    showToast(`تم التصريح بنجاح بواسطة المدير (${adminName}) وجارٍ الحذف ✅`, 'success');
+    onApproved();
+  };
+
+  // 2. Send Authorization Request to Admin Box
+  overlay.querySelector('#sendAuthRequestBtn').onclick = async ()=>{
+    const reason = overlay.querySelector('#authRequestReasonInp').value.trim();
+    if(!reason){
+      showToast('يرجى ذكر سبب طلب الحذف للإدارة', 'error');
+      overlay.querySelector('#authRequestReasonInp').focus();
+      return;
+    }
+
+    const reqObj = {
+      id: 'req_' + Date.now(),
+      timestamp: new Date().toISOString(),
+      reqUser: currentUser.name,
+      action: action,
+      entityType: entityType,
+      entityId: entityId,
+      entityTitle: entityTitle,
+      reason: reason,
+      status: 'pending'
+    };
+
+    if(!Array.isArray(state.authRequests)) state.authRequests = [];
+    state.authRequests.unshift(reqObj);
+    setCache('auth_requests', state.authRequests);
+    try { localStorage.setItem('microerp_auth_requests', JSON.stringify(state.authRequests)); } catch(e){}
+
+    recordAuditLog('طلب تصريح حذف', entityType, `الموظف (${currentUser.name}) أرسل طلب حذف (${entityTitle}) - السبب: ${reason}`, entityId, 'بانتظار الموافقة');
+
+    try { apiPost('saveAuthRequest', { data: reqObj }).catch(()=>{}); } catch(e){}
+
+    close();
+    showToast('تم إرسال طلب تصريح الحذف للإدارة بنجاح، وستتم مراجعته من قسم الرقابة 🛡️', 'info');
+    notifySupervisorNewAuthRequest(reqObj);
+  };
+}
+
 async function loginRemote(name, password){
   const cleanName = String(name||'').trim();
   const cleanPass = String(password||'').trim();
@@ -3063,10 +3622,11 @@ async function loginRemote(name, password){
 
   if(!navigator.onLine){
     if(found){
-      return { name: found.Name, role: found.Role, sections: found.Sections };
+      const isSuper = found.Role === 'admin' || !!found.Superuser || !!found.superuser;
+      return { name: found.Name, role: found.Role, sections: found.Sections, superuser: isSuper, Superuser: isSuper };
     }
     if(cleanName==='admin' && cleanPass==='admin'){
-      return { name:'admin', role:'admin', sections:'daily,maintenance,invoices,pos,inventory,cameras,finance,users' };
+      return { name:'admin', role:'admin', superuser: true, Superuser: true, sections:'daily,maintenance,invoices,pos,inventory,cameras,finance,users' };
     }
     throw new Error('بيانات الدخول غير صحيحة (وضع غير متصل)');
   }
@@ -3076,24 +3636,29 @@ async function loginRemote(name, password){
     if(res && !res.error && res.name){
       const users = getCache('users', DEFAULT_USERS);
       const idx = users.findIndex(u=>u.Name.toLowerCase() === cleanName.toLowerCase());
+      const isSuper = res.role === 'admin' || !!res.superuser || !!res.Superuser || (found && (found.Role === 'admin' || !!found.Superuser));
       const userObj = {
         ID: (found && found.ID) || ('usr_' + Date.now()),
         Name: res.name,
         Password: cleanPass,
         Role: res.role,
+        Superuser: isSuper,
         Sections: res.sections || (found && found.Sections) || 'daily,maintenance,invoices,pos,inventory,cameras,finance,users'
       };
       if(idx > -1) users[idx] = userObj; else users.push(userObj);
       setCache('users', users);
+      res.superuser = isSuper;
+      res.Superuser = isSuper;
       return res;
     }
   } catch(e){}
 
   if(found){
-    return { name: found.Name, role: found.Role, sections: found.Sections };
+    const isSuper = found.Role === 'admin' || !!found.Superuser || !!found.superuser;
+    return { name: found.Name, role: found.Role, sections: found.Sections, superuser: isSuper, Superuser: isSuper };
   }
   if(cleanName==='admin' && cleanPass==='admin'){
-    return { name:'admin', role:'admin', sections:'daily,maintenance,invoices,pos,inventory,cameras,finance,users' };
+    return { name:'admin', role:'admin', superuser: true, Superuser: true, sections:'daily,maintenance,invoices,pos,inventory,cameras,finance,users' };
   }
   throw new Error('اسم المستخدم أو كلمة المرور غير صحيحة');
 }
@@ -3729,6 +4294,16 @@ let state = {
     showBarcodeText: true,
     showDate: false
   },
+  auditLogs: getCache('audit_logs', []),
+  authRequests: getCache('auth_requests', []),
+  auditTab: 'logs',
+  auditUserFilter: 'all',
+  auditActionFilter: 'all',
+  auditDateFilter: 'all',
+  auditSearchQ: '',
+  warehouses: getCache('warehouses', ['المخزن الرئيسي', 'مخزن المعرض / المحل', 'مخزن قطع الغيار']),
+  warehouseTransfers: getCache('warehouse_transfers', []),
+  selectedWarehouseFilter: 'all',
   theme: localStorage.getItem('microerp_theme') || 'light'
 };
 
@@ -3947,7 +4522,7 @@ async function refreshExpenses(){ state.expenses = await loadExpenses(); }
 
 function normalizeUserSections(u){
   if(!u) return;
-  const allSections = ['maintenance', 'pos', 'inventory', 'cameras', 'barcode', 'daily', 'invoices', 'finance', 'users', 'settings'];
+  const allSections = ['maintenance', 'pos', 'invoices', 'cameras', 'daily', 'finance', 'inventory', 'barcode', 'audit', 'users', 'settings'];
   if(u.role === 'admin'){
     u.sections = allSections;
   } else {
@@ -3975,6 +4550,7 @@ function render(){
   if(state.currentSection==='daily') return renderDailyJournalSectionApp(app);
   if(state.currentSection==='invoices') return renderInvoicesSectionApp(app);
   if(state.currentSection==='finance') return renderFinanceSectionApp(app);
+  if(state.currentSection==='audit') return renderAuditSectionApp(app);
   if(state.currentSection==='users') return renderUsersSectionApp(app);
   if(state.currentSection==='settings') return renderSettingsSectionApp(app);
   renderSectionPicker(app);
@@ -3982,20 +4558,25 @@ function render(){
 
 const SECTION_INFO = {
   // 1. العمليات التشغيلية (Core Operations)
-  maintenance: {label:'الصيانة والتصليح', icon:'🛠️', desc:'استلام وتسليم الأجهزة، أوامر الشغل، وتتبع الحالات', group:'ops', groupTitle:'🛠️ العمليات التشغيلية والمبيعات'},
-  pos: {label:'نقطة البيع السريعة (POS)', icon:'🧾', desc:'كاشير سريع، مبيعات بالباركود، الفاتورة الفورية وضمان المنتجات', group:'ops', groupTitle:'🛠️ العمليات التشغيلية والمبيعات'},
-  inventory: {label:'المخزن العام والمشتريات', icon:'📦', desc:'الأصناف، فواتير الشراء، الموردين، وتتبع الأرصدة والتحويلات', group:'ops', groupTitle:'🛠️ العمليات التشغيلية والمبيعات'},
-  cameras: {label:'كاميرات المراقبة', icon:'📷', desc:'كتالوج الكاميرات وعروض أسعار التركيب والمشاريع', group:'ops', groupTitle:'🛠️ العمليات التشغيلية والمبيعات'},
-  barcode: {label:'استوديو طباعة الباركود', icon:'🏷️', desc:'طباعة ملصقات الباركود للأصناف والأجهزة بكافة المقاسات والطابعات', group:'ops', groupTitle:'🛠️ العمليات التشغيلية والمبيعات'},
+  maintenance: {label:'الصيانة والتصليح', icon:'🛠️', gradient:'linear-gradient(135deg, #007AFF, #0051a8)', desc:'استلام وتسليم الأجهزة، أوامر الشغل، وتتبع الحالات', group:'ops', groupTitle:'📱 العمليات التشغيلية (Operations)'},
+  pos: {label:'نقطة البيع (POS)', icon:'🧾', gradient:'linear-gradient(135deg, #34C759, #248a3d)', desc:'كاشير سريع، مبيعات بالباركود، الفاتورة الفورية وضمان المنتجات', group:'ops', groupTitle:'📱 العمليات التشغيلية (Operations)'},
+  invoices: {label:'الفواتير وعروض الأسعار', icon:'📄', gradient:'linear-gradient(135deg, #FF9500, #c97500)', desc:'إصدار الفواتير، عروض الأسعار، المطالبات، ومتابعة التحصيل', group:'ops', groupTitle:'📱 العمليات التشغيلية (Operations)'},
+  cameras: {label:'كاميرات المراقبة', icon:'📷', gradient:'linear-gradient(135deg, #30B0C7, #1f7b8c)', desc:'كتالوج الكاميرات وعروض أسعار التركيب والمشاريع الأمنية', group:'ops', groupTitle:'📱 العمليات التشغيلية (Operations)'},
 
-  // 2. القطاع المالي والمحاسبي (Finance & Accounting)
-  daily: {label:'اليومية وحركة الخزينة', icon:'📔', desc:'دفتر حركة النقدية اليومية، وارد ومنصرف ونثريات وتقفيل الدرج', group:'finance', groupTitle:'💰 القطاع المالي والمحاسبي'},
-  invoices: {label:'الفواتير الضريبية وعروض الأسعار', icon:'📄', desc:'إصدار وإدارة الفواتير، التحويل من الصيانة، ومتابعة التحصيل', group:'finance', groupTitle:'💰 القطاع المالي والمحاسبي'},
-  finance: {label:'القسم المالي والمحاسبي', icon:'💰', desc:'شجرة الحسابات، قيود اليومية، ميزان المراجعة، ومكافآت الفنيين', group:'finance', groupTitle:'💰 القطاع المالي والمحاسبي'},
+  // 2. القسم المالي والخزينة (Finance & Treasury)
+  daily: {label:'اليومية وحركة الخزينة', icon:'📔', gradient:'linear-gradient(135deg, #5856D6, #3b3996)', desc:'دفتر النقدية، مقبوضات الصيانة، مبيعات POS، والمصروفات', group:'finance', groupTitle:'💰 القسم المالي والخزينة (Finance)'},
+  finance: {label:'الحسابات والميزانية', icon:'💰', gradient:'linear-gradient(135deg, #AF52DE, #7b399c)', desc:'شجرة الحسابات، قيود اليومية، ميزان المراجعة، ومكافآت الفنيين', group:'finance', groupTitle:'💰 القسم المالي والخزينة (Finance)'},
 
-  // 3. الإدارة والتهيئة (Administration & Tools)
-  users: {label:'إدارة المستخدمين والصلاحيات', icon:'👥', desc:'تخصيص الشاشات والأقسام لكل مستخدم وإدارة كلمات المرور', group:'admin', groupTitle:'⚙️ الإدارة والتهيئة الشاملة'},
-  settings: {label:'الإعدادات وتخصيص النظام', icon:'⚙️', desc:'المظهر، الثيمات، ألوان النظام، تصنيفات الأجهزة، وبنود الضمان', group:'admin', groupTitle:'⚙️ الإدارة والتهيئة الشاملة'}
+  // 3. المخازن والمشتريات (Inventory & Warehouses)
+  inventory: {label:'المخزن العام والمخازن المتعددة', icon:'📦', gradient:'linear-gradient(135deg, #FF9500, #e05300)', desc:'الأصناف، فروع المخازن، والتحويلات المخزنية والمشتريات', group:'inventory', groupTitle:'📦 المخازن والمشتريات (Inventory & Warehouses)'},
+  barcode: {label:'استوديو طباعة الباركود', icon:'🏷️', gradient:'linear-gradient(135deg, #32ADE6, #0077a8)', desc:'طباعة ملصقات الباركود للأصناف والأجهزة بكافة المقاسات', group:'inventory', groupTitle:'📦 المخازن والمشتريات (Inventory & Warehouses)'},
+
+  // 4. الإدارة والرقابة (Management & Control)
+  audit: {label:'الرقابة وتصاريح العمليات', icon:'🛡️', gradient:'linear-gradient(135deg, #FF3B30, #b81c13)', desc:'سجل الرقابة الشامل وصندوق تصاريح واعتماد الحذف', group:'admin', groupTitle:'🛡️ الإدارة والرقابة (Management & Control)'},
+  users: {label:'المستخدمين والصلاحيات', icon:'👥', gradient:'linear-gradient(135deg, #64748b, #334155)', desc:'تخصيص الشاشات والأقسام لكل مستخدم وصلاحية Superuser', group:'admin', groupTitle:'🛡️ الإدارة والرقابة (Management & Control)'},
+
+  // 5. النظام والإعدادات (Settings & System)
+  settings: {label:'الإعدادات وتخصيص النظام', icon:'⚙️', gradient:'linear-gradient(135deg, #8E8E93, #48484A)', desc:'بيانات المحل، المظهر، الثيمات، رسائل واتساب، وبنود الضمان', group:'settings', groupTitle:'⚙️ النظام والإعدادات (Settings & System)'}
 };
 const INVENTORY_CATEGORIES = ['صيانة','كاميرات','كمبيوتر','إكسسوار'];
 
@@ -4269,49 +4850,64 @@ function renderExecutiveCommandCenter(app){
 
   const lowStockCount = (state.inventory || []).filter(i => Number(i.Quantity||0) <= 2).length;
   const unpaidInvoices = (state.invoices || []).filter(i => !i.isPaid).length;
+  const pendingAuthsCount = (state.authRequests || []).filter(r => r.status === 'pending').length;
 
-  // Group sections by cluster
+  // Group sections by all 5 distinct clusters
   const opsSections = sections.filter(s => SECTION_INFO[s] && SECTION_INFO[s].group === 'ops');
   const finSections = sections.filter(s => SECTION_INFO[s] && SECTION_INFO[s].group === 'finance');
+  const invSections = sections.filter(s => SECTION_INFO[s] && SECTION_INFO[s].group === 'inventory');
   const admSections = sections.filter(s => SECTION_INFO[s] && SECTION_INFO[s].group === 'admin');
+  const setSections = sections.filter(s => SECTION_INFO[s] && SECTION_INFO[s].group === 'settings');
 
   function renderClusterCards(clusterSecs){
     return clusterSecs.map(s => {
-      const info = SECTION_INFO[s] || { label: s, icon: '📁', desc: '' };
+      const info = SECTION_INFO[s] || { label: s, icon: '📁', desc: '', gradient: 'linear-gradient(135deg, #007AFF, #0051a8)' };
       let microStat = '';
       let accentBorder = '';
 
       if(s === 'daily'){
         microStat = `صافي اليومية: ${netCashToday>=0?'+':''}${netCashToday.toLocaleString()} ج.م`;
-        accentBorder = 'border:2px solid var(--green);';
+        accentBorder = 'border-right: 4px solid var(--green);';
       } else if(s === 'maintenance'){
         microStat = `${inProgressRepairs} أجهزة قيد العمل • ${readyRepairs} جاهز`;
-        accentBorder = 'border:2px solid var(--primary);';
+        accentBorder = 'border-right: 4px solid var(--primary);';
       } else if(s === 'invoices'){
         microStat = `${(state.invoices||[]).length} فواتير • ${unpaidInvoices} معلقة`;
+        accentBorder = 'border-right: 4px solid #f59e0b;';
       } else if(s === 'pos'){
         microStat = `مبيعات اليوم: ${todaySalesTotal.toLocaleString()} ج.م`;
+        accentBorder = 'border-right: 4px solid var(--green);';
       } else if(s === 'inventory'){
-        microStat = `${(state.inventory||[]).length} صنف مسجل بالمخزن`;
+        microStat = `${(state.inventory||[]).length} صنف • ${(state.warehouses||[]).length} مخازن`;
+        accentBorder = 'border-right: 4px solid #ea580c;';
       } else if(s === 'cameras'){
         microStat = `${(state.quotations||[]).length} عرض سعر مسجل`;
+        accentBorder = 'border-right: 4px solid #06b6d4;';
       } else if(s === 'barcode'){
         microStat = `طباعة ملصقات حرارية وورق A4 مقسم`;
+        accentBorder = 'border-right: 4px solid #0284c7;';
       } else if(s === 'finance'){
         microStat = `${(state.accounts||[]).length} حساب بالشجرة المحاسبية`;
+        accentBorder = 'border-right: 4px solid #9333ea;';
+      } else if(s === 'audit'){
+        microStat = `${pendingAuthsCount} تصاريح معلقة • ${(state.auditLogs||[]).length} سجل رقابة`;
+        accentBorder = 'border-right: 4px solid #dc2626;';
       } else if(s === 'users'){
         microStat = `${(state.users||[]).length} مستخدم مسجل بالنظام`;
+        accentBorder = 'border-right: 4px solid #475569;';
       } else if(s === 'settings'){
         microStat = `المظهر، الثيمات، واتساب، والضمان`;
-        accentBorder = 'border:2px solid var(--purple);';
+        accentBorder = 'border-right: 4px solid #6b7280;';
       }
+
+      const grad = info.gradient || 'linear-gradient(135deg, #007AFF, #0051a8)';
 
       return `
         <div class="smart-sec-card" data-sec="${s}" style="${accentBorder}">
           <div>
             <div class="smart-sec-head">
-              <div class="smart-sec-icon-box">${info.icon}</div>
-              <div>
+              <div class="ios-app-icon" style="background:${grad};">${info.icon}</div>
+              <div style="flex:1;">
                 <div class="smart-sec-title">${info.label}</div>
                 <div class="smart-sec-desc">${info.desc}</div>
               </div>
@@ -4333,12 +4929,12 @@ function renderExecutiveCommandCenter(app){
       <div class="hub-hero">
         <div class="hub-hero-brand">
           <div class="hub-hero-logo">
-            ${logoUrl ? `<img src="${logoUrl}" style="width:100%;height:100%;object-fit:contain;border-radius:12px;">` : '⚡'}
+            ${logoUrl ? `<img src="${logoUrl}" style="width:100%;height:100%;object-fit:contain;border-radius:14px;">` : '⚡'}
           </div>
           <div>
             <div style="display:flex;align-items:center;gap:10px;">
               <h1 class="hub-hero-title">${state.settings.shopName || 'ميكروERP'}</h1>
-              <span class="status-badge st-check" style="font-size:10.5px;">NextGen Pro 2026</span>
+              <span class="status-badge st-check" style="font-size:10.5px;">Apple iOS Pro 2026</span>
             </div>
             <div class="hub-hero-subtitle">
               مرحبًا بك، <b>${state.user.name}</b> (${state.user.role==='admin'?'👑 المدير العام':'👤 موظف'}) • ${new Date().toLocaleDateString('ar-EG', {weekday:'long', year:'numeric', month:'long', day:'numeric'})}
@@ -4347,6 +4943,11 @@ function renderExecutiveCommandCenter(app){
         </div>
 
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <!-- Notification Bell for Manager -->
+          <button class="notification-bell-btn" id="topHeroNotifBellBtn" title="مركز الإشعارات وتصاريح الحذف">
+            🔔<span class="notification-bell-badge" id="topHeroNotifBellBadge" style="display:none;">0</span>
+          </button>
+          
           <button class="universal-search-btn" id="openCmdSearchBtn">
             <span>🔍</span>
             <span>البحث السريع في النظام...</span>
@@ -4369,6 +4970,14 @@ function renderExecutiveCommandCenter(app){
           <div class="quick-dock-icon" style="background:var(--purple-bg);color:var(--purple-text);">🧾</div>
           <div><div class="quick-dock-title">نقطة البيع (POS)</div><div class="quick-dock-desc">شاشة الكاشير والباركود</div></div>
         </div>
+        <div class="quick-dock-btn" id="quickActTransfer">
+          <div class="quick-dock-icon" style="background:rgba(59,130,246,0.15);color:#2563eb;">🔄</div>
+          <div><div class="quick-dock-title">تحويل بين المخازن</div><div class="quick-dock-desc">نقل أرصدة بين الفروع</div></div>
+        </div>
+        <div class="quick-dock-btn" id="quickActWarehouses">
+          <div class="quick-dock-icon" style="background:rgba(234,88,12,0.15);color:#ea580c;">🏢</div>
+          <div><div class="quick-dock-title">إدارة المخازن</div><div class="quick-dock-desc">الفروع والمخازن المتعددة</div></div>
+        </div>
         <div class="quick-dock-btn" id="quickActBarcode">
           <div class="quick-dock-icon" style="background:var(--cyan-bg);color:var(--cyan-text);">🏷️</div>
           <div><div class="quick-dock-title">استوديو الباركود</div><div class="quick-dock-desc">طباعة ستيكر ومقاسات</div></div>
@@ -4385,6 +4994,11 @@ function renderExecutiveCommandCenter(app){
           <div class="quick-dock-icon" style="background:var(--amber-bg);color:var(--amber-text);">📦</div>
           <div><div class="quick-dock-title">إضافة صنف بالمخزن</div><div class="quick-dock-desc">تسجيل منتج جديد</div></div>
         </div>
+        ${state.user.role==='admin' ? `
+        <div class="quick-dock-btn" id="quickActAudit">
+          <div class="quick-dock-icon" style="background:rgba(239,68,68,0.15);color:var(--red);">🛡️</div>
+          <div><div class="quick-dock-title">الرقابة والتصاريح ${pendingAuthsCount>0?`<span style="background:var(--red);color:#fff;font-size:10px;padding:1px 6px;border-radius:10px;">${pendingAuthsCount}</span>`:''}</div><div class="quick-dock-desc">اعتماد طلبات الحذف</div></div>
+        </div>` : ''}
         <div class="quick-dock-btn" id="quickActSettings">
           <div class="quick-dock-icon" style="background:var(--paper3);color:var(--primary);">⚙️</div>
           <div><div class="quick-dock-title">مركز الإعدادات</div><div class="quick-dock-desc">المظهر، الشروط، واتساب</div></div>
@@ -4450,14 +5064,14 @@ function renderExecutiveCommandCenter(app){
         </div>
       </div>
 
-      <!-- Functional Clusters & Sections Grid -->
+      <!-- Functional Clusters & Sections Grid (All 5 Application Groups) -->
       
       <!-- Cluster 1: Core Operations -->
       ${opsSections.length > 0 ? `
         <div style="margin-bottom:28px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:8px;">
             <h2 style="font-size:16px;font-weight:900;margin:0;display:flex;align-items:center;gap:8px;color:var(--ink);">
-              <span>🛠️ العمليات التشغيلية والمبيعات (Core Operations)</span>
+              <span>📱 العمليات التشغيلية ونقاط البيع (Core Operations)</span>
               <span style="font-size:11.5px;font-weight:normal;color:var(--ink-secondary);">(${opsSections.length} شاشات)</span>
             </h2>
           </div>
@@ -4472,7 +5086,7 @@ function renderExecutiveCommandCenter(app){
         <div style="margin-bottom:28px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:8px;">
             <h2 style="font-size:16px;font-weight:900;margin:0;display:flex;align-items:center;gap:8px;color:var(--ink);">
-              <span>💰 القطاع المالي والمحاسبي الموحد (Finance & Accounting)</span>
+              <span>💰 القطاع المالي وحركة الخزينة (Finance & Treasury)</span>
               <span style="font-size:11.5px;font-weight:normal;color:var(--ink-secondary);">(${finSections.length} شاشات)</span>
             </h2>
           </div>
@@ -4482,12 +5096,27 @@ function renderExecutiveCommandCenter(app){
         </div>
       ` : ''}
 
-      <!-- Cluster 3: Administration & Settings -->
+      <!-- Cluster 3: Warehouses & Procurement -->
+      ${invSections.length > 0 ? `
+        <div style="margin-bottom:28px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:8px;">
+            <h2 style="font-size:16px;font-weight:900;margin:0;display:flex;align-items:center;gap:8px;color:var(--ink);">
+              <span>📦 المخازن والمشتريات والمخازن المتعددة (Inventory & Warehouses)</span>
+              <span style="font-size:11.5px;font-weight:normal;color:var(--ink-secondary);">(${invSections.length} شاشات)</span>
+            </h2>
+          </div>
+          <div class="smart-section-grid">
+            ${renderClusterCards(invSections)}
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- Cluster 4: Management & Control -->
       ${admSections.length > 0 ? `
         <div style="margin-bottom:28px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:8px;">
             <h2 style="font-size:16px;font-weight:900;margin:0;display:flex;align-items:center;gap:8px;color:var(--ink);">
-              <span>⚙️ الإدارة والتهيئة الشاملة (Administration & Settings)</span>
+              <span>🛡️ الإدارة والرقابة والحماية (Management & Control)</span>
               <span style="font-size:11.5px;font-weight:normal;color:var(--ink-secondary);">(${admSections.length} شاشات)</span>
             </h2>
           </div>
@@ -4497,12 +5126,31 @@ function renderExecutiveCommandCenter(app){
         </div>
       ` : ''}
 
+      <!-- Cluster 5: System & Settings -->
+      ${setSections.length > 0 ? `
+        <div style="margin-bottom:28px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:8px;">
+            <h2 style="font-size:16px;font-weight:900;margin:0;display:flex;align-items:center;gap:8px;color:var(--ink);">
+              <span>⚙️ النظام والإعدادات العامة (Settings & System)</span>
+              <span style="font-size:11.5px;font-weight:normal;color:var(--ink-secondary);">(${setSections.length} شاشات)</span>
+            </h2>
+          </div>
+          <div class="smart-section-grid">
+            ${renderClusterCards(setSections)}
+          </div>
+        </div>
+      ` : ''}
+
     </div>
   `;
 
   // Attach Handlers
   updateSyncStatusPill();
+  updateNotificationBellBadge();
   
+  const notifBellBtn = document.getElementById('topHeroNotifBellBtn');
+  if(notifBellBtn) notifBellBtn.onclick = ()=>openNotificationCenterModal();
+
   document.getElementById('openCmdSearchBtn').onclick = ()=>openCommandPalette();
   
   const topHeroSet = document.getElementById('topHeroSettingsBtn');
@@ -4534,6 +5182,12 @@ function renderExecutiveCommandCenter(app){
     state.currentSection = 'pos';
     render();
   };
+  const qTrans = document.getElementById('quickActTransfer');
+  if(qTrans) qTrans.onclick = ()=>openWarehouseTransferModal();
+
+  const qWh = document.getElementById('quickActWarehouses');
+  if(qWh) qWh.onclick = ()=>openWarehouseManagerModal();
+
   const qBar = document.getElementById('quickActBarcode');
   if(qBar) qBar.onclick = ()=>{
     state.currentSection = 'barcode';
@@ -4552,7 +5206,13 @@ function renderExecutiveCommandCenter(app){
   document.getElementById('quickActItem').onclick = ()=>{
     state.currentSection = 'inventory';
     render();
-    openItemModal();
+    openInventoryItemModal();
+  };
+  const qAud = document.getElementById('quickActAudit');
+  if(qAud) qAud.onclick = ()=>{
+    state.currentSection = 'audit';
+    state.auditTab = 'requests';
+    render();
   };
   const qSet = document.getElementById('quickActSettings');
   if(qSet) qSet.onclick = ()=>{
@@ -4645,7 +5305,8 @@ function renderMaintenanceApp(app){
         </div>
         ${navItem('analytics','📈','التقارير والإحصائيات')}
 
-        ${state.user.role==='admin' ? `<div class="nav-section">الإدارة والتهيئة</div>` : ''}
+        ${state.user.role==='admin' ? `<div class="nav-section">الإدارة والتهيئة والرقابة</div>` : ''}
+        ${state.user.role==='admin' ? navItem('audit','🛡️',`الرقابة وسجل العمليات ${getPendingAuthCountBadge()}`) : ''}
         ${state.user.role==='admin' ? navItem('users','👥','المستخدمين والصلاحيات') : ''}
         ${state.user.role==='admin' ? navItem('settings','⚙️','مركز الإعدادات') : ''}
       </div>
@@ -4682,7 +5343,7 @@ function navItem(tab, icon, label){
 /* ---------------- Main Router ---------------- */
 function renderMain(){
   const main = document.getElementById('main');
-  if((state.tab==='settings' || state.tab==='users') && state.user.role!=='admin'){ state.tab='dashboard'; }
+  if((state.tab==='settings' || state.tab==='users' || state.tab==='audit') && state.user.role!=='admin'){ state.tab='dashboard'; }
   if(state.tab==='dashboard') return renderDashboard(main);
   if(state.tab==='new') return renderForm(main);
   if(state.tab==='archive') return renderArchive(main);
@@ -4690,6 +5351,7 @@ function renderMain(){
   if(state.tab==='invoices') return renderInvoicesPage(main);
   if(state.tab==='analytics') return renderMaintenanceAnalytics(main);
   if(state.tab==='inventory') return renderInventory(main, 'صيانة', 'مخزن قطع الغيار');
+  if(state.tab==='audit') return renderAuditCenterPage(main);
   if(state.tab==='users') return renderUsersManagementPage(main);
   if(state.tab==='settings') return renderSettings(main);
 }
@@ -5158,6 +5820,21 @@ function stepFinance(body,d){
     d.deliveryDate = document.getElementById('finDate').value;
   };
   stepNav(body, true, ()=>{
+    const cost = Number(document.getElementById('finCost').value || 0);
+    const parts = Number(d.partsCost || 0);
+    const total = cost + parts;
+    const dep = Number(document.getElementById('finDep').value || 0);
+
+    if(dep < 0){
+      showToast('لا يمكن إدخال دفعة مقدمة سالبة', 'error');
+      return;
+    }
+    if(total > 0 && dep > total){
+      showToast(`عفواً: مبلغ العربون (${dep.toLocaleString()} ج.م) أكبر من إجمالي تكلفة الجهاز (${total.toLocaleString()} ج.م)`, 'error');
+      document.getElementById('finDep').focus();
+      return;
+    }
+
     currentStepCollector();
     state.formStep=4; renderMain();
   }, 'مراجعة وحفظ ➔');
@@ -5280,7 +5957,7 @@ function archiveTable(list){
         <button class="btn btn-xs btn-amber" data-act="sticker" data-id="${r.id}">🏷️ ملصق</button>
         <button class="btn btn-xs btn-whatsapp" data-act="wa" data-id="${r.id}">${WA_ICON} واتساب</button>
         <button class="btn btn-xs btn-green" data-act="print" data-id="${r.id}">طباعة A5</button>
-        ${state.user.role==='admin' ? `<button class="btn btn-xs btn-red" data-act="del" data-id="${r.id}">حذف</button>`:''}
+        <button class="btn btn-xs btn-red" data-act="del" data-id="${r.id}" title="${state.user.role==='admin'?'حذف الإيصال':'طلب تصريح حذف من الإدارة'}">${state.user.role==='admin'?'حذف':'🔒 طلب حذف'}</button>
       </td>
     </tr>`;
   }).join('')}
@@ -5662,11 +6339,20 @@ function attachRowActions(root){
       if(act==='print') openReceiptPrint(r,'receipt');
       if(act==='sticker') openStickerPrint(r);
       if(act==='del'){
-        if(confirm(`هل تريد حذف الإيصال ${r.receiptNumber} نهائياً؟`)){
-          deleteReceiptRemote(r.id)
-            .then(()=>{ state.receipts = state.receipts.filter(x=>x.id!==r.id); showToast('تم حذف الإيصال بنجاح', 'success'); renderMain(); })
-            .catch(e=>showToast('تعذر الحذف: '+e.message, 'error'));
-        }
+        requestAdminAuthorization({
+          action: 'حذف إيصال صيانة',
+          entityType: 'إيصال صيانة',
+          entityId: r.id,
+          entityTitle: `#${r.receiptNumber} (${r.customer.name})`,
+          onApproved: async ()=>{
+            try{
+              await deleteReceiptRemote(r.id);
+              state.receipts = state.receipts.filter(x=>x.id!==r.id);
+              showToast(`تم حذف الإيصال #${r.receiptNumber} بنجاح`, 'success');
+              renderMain();
+            }catch(e){ showToast('تعذر الحذف: '+e.message, 'error'); }
+          }
+        });
       }
     };
   });
@@ -5853,6 +6539,7 @@ function openQuickStatusModal(r){
           r.status = 'تم التسليم';
           r.updatedBy = state.user.name;
           r.updatedAt = new Date().toISOString();
+          recordAuditLog('تسليم جهاز', 'صيانة', `تم تسليم الجهاز للإيصال #${r.receiptNumber} للعميل (${r.customer.name})` + (shouldPay ? ` مع سداد كامل المتبقي (${remaining} ج.م)` : ' (المتبقي آجل)'), r.id);
 
           if(shouldPay){
             try {
@@ -5881,6 +6568,7 @@ function openQuickStatusModal(r){
       if(newTech) r.technician = newTech;
       r.updatedBy = state.user.name;
       r.updatedAt = new Date().toISOString();
+      recordAuditLog('تغيير حالة جهاز', 'صيانة', `تم تغيير حالة الجهاز للإيصال #${r.receiptNumber} إلى "${newStatus}" للعميل (${r.customer.name})`, r.id);
 
       showToast(`تم تحديث حالة الإيصال محلياً: ${newStatus}`, 'info');
       overlay.remove();
@@ -6029,9 +6717,13 @@ async function openReceiptDetail(r){
       <h3 style="font-size:13.5px;margin-bottom:6px;">سجل الدفعات</h3>
       <div id="paymentsList" style="font-size:12px;margin-bottom:10px;">جارٍ التحميل...</div>
       <div style="display:flex;gap:8px;align-items:flex-end;">
-        <div class="field" style="flex:1;margin-bottom:0;"><label>مبلغ دفعة جديدة</label><input id="newPayAmt" type="number" placeholder="0"></div>
+        <div class="field" style="flex:1;margin-bottom:0;">
+          <label>مبلغ دفعة جديدة</label>
+          <input id="newPayAmt" type="number" placeholder="0" min="1" max="${remaining}">
+          <div id="newPayAmtHint" style="font-size:11px;color:var(--ink-secondary);margin-top:2px;">الحد الأقصى: <b class="mono">${remaining}</b> ج.م</div>
+        </div>
         <div class="field" style="flex:2;margin-bottom:0;"><label>ملاحظة</label><input id="newPayNote" placeholder="دفعة تحت الحساب..."></div>
-        <button class="btn btn-green btn-sm" id="addPayBtn">تسجيل دفعة</button>
+        <button class="btn btn-green btn-sm" id="addPayBtn" ${remaining<=0?'disabled':''}>تسجيل دفعة</button>
       </div>
     </div>
 
@@ -6093,7 +6785,18 @@ async function openReceiptDetail(r){
 
   overlay.querySelector('#saveEditBtn').onclick = async ()=>{
     collectEdits();
-    const remainingNow = Number(r.cost||0) + Number(r.partsCost||0) - Number(r.deposit||0) + Number(r.refunded||0);
+    const totalCost = Number(r.cost||0) + Number(r.partsCost||0);
+    const totalPaid = Number(r.deposit||0);
+
+    // التحقق: لا يجوز تقليل التكلفة لتصبح أقل من المبلغ المدفوع مسبقاً دون تسوية استرداد
+    if(totalCost > 0 && totalPaid > totalCost){
+      showToast(`عفواً: إجمالي التكلفة (${totalCost.toLocaleString()} ج.م) أقل من إجمالي المبلغ المسدد مسبقاً (${totalPaid.toLocaleString()} ج.م). يرجى إثبات استرداد أولاً.`, 'error');
+      const costInp = overlay.querySelector('#eCost');
+      if(costInp) costInp.focus();
+      return;
+    }
+
+    const remainingNow = Math.max(0, totalCost - totalPaid + Number(r.refunded||0));
 
     if(r.status === 'تم التسليم' && remainingNow > 0){
       promptDeliveryRemainingPayment(r, remainingNow, async (shouldPay)=>{
@@ -6140,6 +6843,17 @@ async function openReceiptDetail(r){
     if(!amt || amt<=0){ showToast('أدخل مبلغاً صحيحاً', 'error'); return; }
 
     const remainingBefore = Number(r.cost||0) + Number(r.partsCost||0) - Number(r.deposit||0) + Number(r.refunded||0);
+
+    // منع دفع مبلغ أكبر من حساب الجهاز المتبقي نهائياً
+    if(amt > remainingBefore){
+      showToast(`عفواً: لا يمكن دفع مبلغ (${amt.toLocaleString()} ج.م) أكبر من حساب الجهاز المتبقي (${remainingBefore.toLocaleString()} ج.م)`, 'error');
+      const payInp = overlay.querySelector('#newPayAmt');
+      if(payInp){
+        payInp.value = remainingBefore;
+        payInp.focus();
+      }
+      return;
+    }
 
     // إذا كانت الدفعة تغطي المبلغ المتبقي بالكامل والحالة لم تسلم بعد
     if(amt >= remainingBefore && r.status !== 'تم التسليم'){
@@ -7148,8 +7862,7 @@ function renderInvoicesPage(main){
                     <button class="btn btn-xs btn-blue" data-invact="print" data-invid="${inv.ID}" title="طباعة فاتورة ضريبية رسمية">🖨️ فاتورة</button>
                     <button class="btn btn-xs btn-ghost" data-invact="printquote" data-invid="${inv.ID}" title="طباعة بيان سعر وعرض أسعار رسمي">📑 بيان سعر</button>
                     <button class="btn btn-xs btn-whatsapp" data-invact="wa" data-invid="${inv.ID}" title="إرسال الفاتورة عبر واتساب">${WA_ICON}</button>
-                    <button class="btn btn-xs btn-ghost" data-invact="edit" data-invid="${inv.ID}" title="تعديل الفاتورة">✏️</button>
-                    ${state.user.role==='admin' ? `<button class="btn btn-xs btn-red" data-invact="del" data-invid="${inv.ID}" title="حذف">🗑️</button>` : ''}
+                    <button class="btn btn-xs btn-red" data-invact="del" data-invid="${inv.ID}" title="${state.user.role==='admin'?'حذف الفاتورة':'طلب تصريح حذف من المدير'}">${state.user.role==='admin'?'🗑️':'🔒 طلب حذف'}</button>
                   </td>
                 </tr>
               `;
@@ -7193,12 +7906,20 @@ function renderInvoicesPage(main){
         window.open(`https://wa.me/${phoneFormatted}?text=${encodeURIComponent(msg)}`, '_blank');
       }
       if(act==='del'){
-        if(!confirm(`هل تريد حذف الفاتورة (${inv.InvoiceNumber}) نهائياً؟`)) return;
-        try{
-          await deleteInvoiceRemote(inv.ID);
-          showToast('تم حذف الفاتورة بنجاح', 'success');
-          renderInvoicesPage(main);
-        }catch(e){ showToast('تعذر الحذف: '+e.message, 'error'); }
+        requestAdminAuthorization({
+          action: 'حذف فاتورة',
+          entityType: 'فاتورة رسمية',
+          entityId: inv.ID,
+          entityTitle: `رقم ${inv.InvoiceNumber} (${inv.CustomerName})`,
+          onApproved: async ()=>{
+            try{
+              await deleteInvoiceRemote(inv.ID);
+              state.invoices = (state.invoices||[]).filter(x => x.ID !== inv.ID);
+              showToast('تم حذف الفاتورة بنجاح', 'success');
+              renderInvoicesPage(main);
+            }catch(e){ showToast('تعذر الحذف: '+e.message, 'error'); }
+          }
+        });
       }
     };
   });
@@ -7268,7 +7989,7 @@ function renderInvoicesSectionApp(app){
 function getUnifiedDailyTransactions(){
   const transactions = [];
 
-  // 1. Maintenance Payments (Inflow)
+  // 1. Maintenance Payments (Inflow) - ح/ 4101 إيرادات خدمات صيانة وتصليح
   (state.payments || []).forEach(p => {
     const r = state.receipts.find(x => x.id === p.ReceiptID || x.receiptNumber === p.ReceiptNumber);
     const custName = r ? r.customer.name : '';
@@ -7279,9 +8000,12 @@ function getUnifiedDailyTransactions(){
       type: 'in',
       sourceType: 'maintenance',
       sourceIcon: '🛠️',
-      category: 'مقبوضات صيانة',
+      accountCode: '4101',
+      accountName: 'إيرادات خدمات صيانة وتصليح',
+      accountTag: '4101 • صيانة',
+      category: 'مقبوضات ودفعات صيانة',
       title: `تحصيل صيانة: ${custName ? custName + ' — ' : ''}${p.Note || 'دفعة إيصال'}`,
-      reference: p.ReceiptNumber ? `إيصال #${p.ReceiptNumber}` : `إيصال صيانة`,
+      reference: p.ReceiptNumber ? `إيصال #${p.ReceiptNumber}` : (r ? `إيصال #${r.receiptNumber}` : `إيصال صيانة`),
       in: Number(p.Amount || 0),
       out: 0,
       by: p.By || 'نظام',
@@ -7291,7 +8015,7 @@ function getUnifiedDailyTransactions(){
     });
   });
 
-  // 2. POS Cash Sales (Inflow)
+  // 2. POS Cash Sales (Inflow) - ح/ 4102 إيرادات مبيعات بضائع وقطع غيار
   (state.sales || []).forEach(s => {
     const paidAmt = Number(s.AmountPaid != null ? s.AmountPaid : s.Total);
     transactions.push({
@@ -7301,7 +8025,10 @@ function getUnifiedDailyTransactions(){
       type: 'in',
       sourceType: 'pos',
       sourceIcon: '🧾',
-      category: 'مبيعات نقدية (POS)',
+      accountCode: '4102',
+      accountName: 'إيرادات مبيعات بضائع وقطع غيار',
+      accountTag: '4102 • مبيعات POS',
+      category: 'مبيعات الكاشير POS',
       title: `مبيعات كاشير: ${s.CustomerName || 'عميل زائر'} — ${(s.ItemsSummary||'مبيعات POS')}`,
       reference: `مبيعات #${s.ID.slice(-8)}`,
       in: paidAmt,
@@ -7315,7 +8042,8 @@ function getUnifiedDailyTransactions(){
 
   // 3. Direct Tax Invoices (Inflow for invoices that are not from POS or Receipt to avoid double counting)
   (state.invoices || []).forEach(inv => {
-    if(!inv.ReferenceType || (inv.ReferenceType !== 'Receipt' && inv.ReferenceType !== 'POS')){
+    const ref = String(inv.ReferenceType || '').toUpperCase();
+    if(ref !== 'RECEIPT' && ref !== 'POS'){
       const paidAmt = Number(inv.AmountPaid || 0);
       if(paidAmt > 0){
         transactions.push({
@@ -7325,7 +8053,10 @@ function getUnifiedDailyTransactions(){
           type: 'in',
           sourceType: 'invoice',
           sourceIcon: '📄',
-          category: 'مقبوضات فواتير',
+          accountCode: '4102',
+          accountName: 'إيرادات مبيعات وفواتير مباشرة',
+          accountTag: '4102 • فواتير',
+          category: 'مقبوضات فواتير عامة',
           title: `تحصيل فاتورة: ${inv.InvoiceNumber} — ${inv.CustomerName}`,
           reference: `فاتورة ${inv.InvoiceNumber}`,
           in: paidAmt,
@@ -7350,6 +8081,9 @@ function getUnifiedDailyTransactions(){
         type: 'out',
         sourceType: 'purchase',
         sourceIcon: '📥',
+        accountCode: '2101',
+        accountName: 'الموردون والدائنون / تكلفة بضاعة',
+        accountTag: '2101 • موردين',
         category: 'مشتريات موردين',
         title: `سداد مشتريات: ${pur.Supplier} (${pur.ItemsSummary || 'بضاعة/قطع غيار'})`,
         reference: `شراء #${pur.ID}`,
@@ -7373,6 +8107,9 @@ function getUnifiedDailyTransactions(){
         type: 'out',
         sourceType: 'refund',
         sourceIcon: '↩️',
+        accountCode: '4101',
+        accountName: 'مردودات خدمات صيانة وتصليح',
+        accountTag: '4101 • استرداد صيانة',
         category: 'استرداد صيانة',
         title: `استرداد مبالغ صيانة للعميل: ${r.customer.name}`,
         reference: `إيصال #${r.receiptNumber}`,
@@ -7396,22 +8133,34 @@ function getUnifiedDailyTransactions(){
     let sIcon = '💸';
     let sCat = ex.Category || 'مصروفات تشغيلية';
     let sRef = 'مصروف';
+    let accCode = EXPENSE_ACCOUNT_MAP[ex.Category] || '5200';
+    let accName = ex.Category || 'مصروفات تشغيلية وعمومية';
+    let accTag = accCode + ' • مصروف';
 
     if(isIncome){
       tType = 'in';
       sIcon = '🟢';
       sCat = ex.Category || 'وارد / إيداع';
       sRef = 'وارد يدوي';
+      accCode = '1101';
+      accName = 'الخزينة الرئيسية (وارد يدوي)';
+      accTag = '1101 • وارد يدوي';
     } else if(isPetty){
       tType = 'petty';
       sIcon = '☕';
       sCat = 'نثريات وبوفيه';
       sRef = 'نثريات';
+      accCode = '5204';
+      accName = 'بوفيه ونثريات وضيافة';
+      accTag = '5204 • نثريات';
     } else if(isDraw){
       tType = 'out';
       sIcon = '📤';
       sCat = 'مسحوبات شركاء';
       sRef = 'مسحوبات';
+      accCode = '3103';
+      accName = 'جاري الشركاء والمسحوبات';
+      accTag = '3103 • مسحوبات';
     }
 
     transactions.push({
@@ -7422,6 +8171,9 @@ function getUnifiedDailyTransactions(){
       type: tType,
       sourceType: isIncome ? 'manual_in' : (isPetty ? 'petty' : 'expense'),
       sourceIcon: sIcon,
+      accountCode: accCode,
+      accountName: accName,
+      accountTag: accTag,
       category: sCat,
       title: ex.Title,
       reference: sRef,
@@ -7616,6 +8368,9 @@ function openDailyClosePrint(date, stats, list){
   const mount = document.createElement('div');
   mount.id='printMount';
 
+  const maintIn = list.filter(t=>t.sourceType==='maintenance').reduce((s,t)=>s+Number(t.in||0), 0);
+  const posIn = list.filter(t=>t.sourceType==='pos').reduce((s,t)=>s+Number(t.in||0), 0);
+
   mount.innerHTML = `
   <div style="width:100%;max-width:750px;margin:0 auto;background:#fff;padding:22px 26px;color:#0f172a;font-family:var(--font-main);border-radius:8px;box-sizing:border-box;">
     <!-- Header -->
@@ -7632,23 +8387,27 @@ function openDailyClosePrint(date, stats, list){
       </div>
     </div>
 
-    <!-- Summary Box -->
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1.2fr;gap:8px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:6px;padding:10px 12px;margin-bottom:14px;text-align:center;">
-      <div>
-        <div style="font-size:10.5px;color:#64748b;">إجمالي الوارد 🟢</div>
-        <div style="font-size:14px;font-weight:900;color:#16a34a;" class="mono">${stats.totalIn.toLocaleString()} ج.م</div>
+    <!-- Summary Box (Separated Maintenance vs Sales) -->
+    <div style="display:grid;grid-template-columns:repeat(5, 1fr);gap:8px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:6px;padding:10px 12px;margin-bottom:14px;text-align:center;">
+      <div style="background:#e0f2fe;border-radius:4px;padding:4px 6px;">
+        <div style="font-size:10px;color:#0369a1;font-weight:800;">🛠️ إيرادات الصيانة (4101)</div>
+        <div style="font-size:13.5px;font-weight:900;color:#0284c7;" class="mono">${maintIn.toLocaleString()} ج.م</div>
+      </div>
+      <div style="background:#dcfce7;border-radius:4px;padding:4px 6px;">
+        <div style="font-size:10px;color:#15803d;font-weight:800;">🧾 مبيعات POS (4102)</div>
+        <div style="font-size:13.5px;font-weight:900;color:#16a34a;" class="mono">${posIn.toLocaleString()} ج.م</div>
       </div>
       <div>
-        <div style="font-size:10.5px;color:#64748b;">إجمالي المنصرف 🔴</div>
-        <div style="font-size:14px;font-weight:900;color:#dc2626;" class="mono">${stats.totalOut.toLocaleString()} ج.م</div>
+        <div style="font-size:10px;color:#64748b;">إجمالي المقبوضات 🟢</div>
+        <div style="font-size:13.5px;font-weight:900;color:#16a34a;" class="mono">${stats.totalIn.toLocaleString()} ج.م</div>
       </div>
       <div>
-        <div style="font-size:10.5px;color:#64748b;">نثريات وبوفيه ☕</div>
-        <div style="font-size:14px;font-weight:900;color:#d97706;" class="mono">${stats.totalPetty.toLocaleString()} ج.م</div>
+        <div style="font-size:10px;color:#64748b;">إجمالي المنصرف 🔴</div>
+        <div style="font-size:13.5px;font-weight:900;color:#dc2626;" class="mono">${stats.totalOut.toLocaleString()} ج.م</div>
       </div>
       <div style="background:#0f172a;color:#fff;border-radius:4px;padding:4px 6px;">
         <div style="font-size:10px;color:#cbd5e1;">الصافي الفعلي بالدرج 💰</div>
-        <div style="font-size:15px;font-weight:900;color:#38bdf8;" class="mono">${stats.netCash.toLocaleString()} ج.م</div>
+        <div style="font-size:14px;font-weight:900;color:#38bdf8;" class="mono">${stats.netCash.toLocaleString()} ج.م</div>
       </div>
     </div>
 
@@ -7693,6 +8452,26 @@ function openDailyClosePrint(date, stats, list){
 
   document.body.appendChild(mount);
   setTimeout(()=>{ window.print(); mount.remove(); }, 250);
+}
+
+/* ---------------- Helper: Accounting Badge for Daily Journal ---------------- */
+function getAccountBadgeHtml(t){
+  if(t.sourceType === 'maintenance'){
+    return '<span class="badge" style="background:#e0f2fe;color:#0369a1;font-weight:800;border:1px solid #bae6fd;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;">🛠️ 4101 صيانة</span>';
+  }
+  if(t.sourceType === 'pos'){
+    return '<span class="badge" style="background:#dcfce7;color:#15803d;font-weight:800;border:1px solid #bbf7d0;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;">🧾 4102 مبيعات POS</span>';
+  }
+  if(t.sourceType === 'invoice'){
+    return '<span class="badge" style="background:#f1f5f9;color:#334155;font-weight:800;border:1px solid #cbd5e1;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;">📄 4102 فواتير</span>';
+  }
+  if(t.type === 'petty'){
+    return '<span class="badge" style="background:#fef3c7;color:#b45309;font-weight:800;border:1px solid #fde68a;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;">☕ 5204 نثريات</span>';
+  }
+  if(t.sourceType === 'purchase'){
+    return '<span class="badge" style="background:#ffedd5;color:#c2410c;font-weight:800;border:1px solid #fed7aa;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;">📥 2101 موردين</span>';
+  }
+  return '<span class="badge" style="background:#fee2e2;color:#b91c1c;font-weight:800;border:1px solid #fecaca;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;">💸 ' + (t.accountTag || '5200 مصروف') + '</span>';
 }
 
 /* ---------------- Daily Journal Page View (شاشة اليومية وحركة الخزينة العامة) ---------------- */
@@ -7759,6 +8538,8 @@ function renderDailyJournalPage(main){
   }
 
   // KPIs
+  const totalMaintIn = filtered.filter(t => t.sourceType==='maintenance').reduce((s,t)=>s+Number(t.in||0), 0);
+  const totalPosIn = filtered.filter(t => t.sourceType==='pos').reduce((s,t)=>s+Number(t.in||0), 0);
   const totalIn = filtered.reduce((s,t)=>s+Number(t.in||0), 0);
   const totalOut = filtered.reduce((s,t)=>s+Number(t.out||0), 0);
   const totalPetty = filtered.filter(t=>t.type==='petty'||t.category.includes('نثريات')).reduce((s,t)=>s+Number(t.out||0), 0);
@@ -7771,7 +8552,7 @@ function renderDailyJournalPage(main){
     <div class="top-header">
       <div>
         <h2 class="page-title">📔 دفتر اليومية وحركة الخزينة العامة</h2>
-        <div class="subtitle">تصب فيه آلياً كافة مقبوضات الصيانة، مبيعات POS، الفواتير، المشتريات، والمصروفات والنثريات (${filtered.length} حركة)</div>
+        <div class="subtitle">فصل تام ومستقل بين مقبوضات الصيانة (ح/ 4101) ومبيعات POS (ح/ 4102) والمصروفات والنثريات (${filtered.length} حركة)</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn btn-ghost btn-sm" id="exportDailyExcelBtn">📥 تصدير Excel</button>
@@ -7783,23 +8564,32 @@ function renderDailyJournalPage(main){
       </div>
     </div>
 
-    <!-- KPIs Grid -->
-    <div class="stat-grid">
-      <div class="stat-card green">
-        <div class="top-row"><span class="lbl">إجمالي الوارد (مقبوضات)</span><div class="icon-box">📥</div></div>
-        <div class="num mono">${totalIn.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
+    <!-- KPIs Grid (Separated Maintenance & Sales without overlap) -->
+    <div class="stat-grid" style="grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;margin-bottom:16px;">
+      <div class="stat-card" style="border-top:3px solid #0284c7;background:linear-gradient(180deg, #f0f9ff 0%, #fff 100%);">
+        <div class="top-row"><span class="lbl" style="color:#0369a1;font-weight:800;">🛠️ مقبوضات الصيانة (ح/ 4101)</span><div class="icon-box" style="background:#e0f2fe;">🛠️</div></div>
+        <div class="num mono" style="color:#0369a1;">${totalMaintIn.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
+        <div style="font-size:11px;color:var(--ink-secondary);margin-top:3px;">دفعات وعرابين أجهزة الصيانة</div>
       </div>
-      <div class="stat-card red">
-        <div class="top-row"><span class="lbl">إجمالي المنصرف (مدفوعات)</span><div class="icon-box">📤</div></div>
-        <div class="num mono">${totalOut.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
+      <div class="stat-card" style="border-top:3px solid #16a34a;background:linear-gradient(180deg, #f0fdf4 0%, #fff 100%);">
+        <div class="top-row"><span class="lbl" style="color:#15803d;font-weight:800;">🧾 مبيعات POS (ح/ 4102)</span><div class="icon-box" style="background:#dcfce7;">🧾</div></div>
+        <div class="num mono" style="color:#15803d;">${totalPosIn.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
+        <div style="font-size:11px;color:var(--ink-secondary);margin-top:3px;">مبيعات الكاشير وإكسسوارات</div>
       </div>
-      <div class="stat-card amber">
-        <div class="top-row"><span class="lbl">النثريات والبوفيه</span><div class="icon-box">☕</div></div>
-        <div class="num mono">${totalPetty.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
+      <div class="stat-card" style="border-top:3px solid #6366f1;">
+        <div class="top-row"><span class="lbl">📥 إجمالي المقبوضات الكلي</span><div class="icon-box" style="background:#e0e7ff;">📥</div></div>
+        <div class="num mono" style="color:#4338ca;">${totalIn.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
+        <div style="font-size:11px;color:var(--ink-secondary);margin-top:3px;">شامل الصيانة والـ POS والفواتير</div>
       </div>
-      <div class="stat-card purple">
-        <div class="top-row"><span class="lbl">صافي رصيد الخزينة بالدرج</span><div class="icon-box">💰</div></div>
-        <div class="num mono" style="font-weight:900;">${currentTotalCashInDrawer.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
+      <div class="stat-card" style="border-top:3px solid #ef4444;">
+        <div class="top-row"><span class="lbl">📤 إجمالي المنصرفات</span><div class="icon-box" style="background:#fee2e2;">📤</div></div>
+        <div class="num mono" style="color:#b91c1c;">${totalOut.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
+        <div style="font-size:11px;color:var(--ink-secondary);margin-top:3px;">مصروفات، نثريات (${totalPetty.toLocaleString()} ج.م)، ومشتريات</div>
+      </div>
+      <div class="stat-card" style="border-top:3px solid #8b5cf6;background:linear-gradient(180deg, #f5f3ff 0%, #fff 100%);">
+        <div class="top-row"><span class="lbl" style="color:#6d28d9;font-weight:800;">💰 رصيد الخزينة بالدرج</span><div class="icon-box" style="background:#ede9fe;">💵</div></div>
+        <div class="num mono" style="font-weight:900;color:#6d28d9;">${currentTotalCashInDrawer.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
+        <div style="font-size:11px;color:var(--ink-secondary);margin-top:3px;">الرصيد الفعلي الحاضر بالدرج</div>
       </div>
     </div>
 
@@ -7813,6 +8603,15 @@ function renderDailyJournalPage(main){
       <div class="chip ${state.dailyDateFilter==='custom'?'sel':''}" data-dchip="custom">تاريخ مخصص 📆</div>
     </div>
 
+    <!-- Quick Department Filter Buttons -->
+    <div class="chip-group" id="dailyDeptChips" style="margin-bottom:12px;">
+      <div class="chip ${state.dailyTypeFilter==='all'?'sel':''}" data-tchip="all">كل الحسابات</div>
+      <div class="chip ${state.dailyTypeFilter==='maintenance'?'sel':''}" data-tchip="maintenance" style="font-weight:700;">🛠️ إيرادات ودفعات الصيانة فقط</div>
+      <div class="chip ${state.dailyTypeFilter==='pos'?'sel':''}" data-tchip="pos" style="font-weight:700;">🧾 مبيعات ونقطة البيع POS فقط</div>
+      <div class="chip ${state.dailyTypeFilter==='expense'?'sel':''}" data-tchip="expense">💸 المصروفات والمشتريات</div>
+      <div class="chip ${state.dailyTypeFilter==='petty'?'sel':''}" data-tchip="petty">☕ النثريات والبوفيه</div>
+    </div>
+
     <div class="filters-bar" style="margin-bottom:14px;flex-wrap:wrap;">
       ${state.dailyDateFilter==='custom' ? `
         <input id="dailyCustomDateInp" type="date" value="${state.dailyCustomDate}" style="width:140px;">
@@ -7821,11 +8620,11 @@ function renderDailyJournalPage(main){
         <option value="all" ${state.dailyTypeFilter==='all'?'selected':''}>كل أنواع العمليات (الكل)</option>
         <option value="in" ${state.dailyTypeFilter==='in'?'selected':''}>📥 وارد ومقبوضات فقط</option>
         <option value="out" ${state.dailyTypeFilter==='out'?'selected':''}>📤 منصرف ومسحوبات فقط</option>
-        <option value="petty" ${state.dailyTypeFilter==='petty'?'selected':''}>☕ نثريات وبوفيه فقط</option>
-        <option value="maintenance" ${state.dailyTypeFilter==='maintenance'?'selected':''}>🛠️ حركات الصيانة</option>
-        <option value="pos" ${state.dailyTypeFilter==='pos'?'selected':''}>🧾 مبيعات نقطة البيع POS</option>
-        <option value="invoice" ${state.dailyTypeFilter==='invoice'?'selected':''}>📄 مقبوضات الفواتير</option>
+        <option value="maintenance" ${state.dailyTypeFilter==='maintenance'?'selected':''}>🛠️ حركات ودفعات الصيانة (ح/ 4101)</option>
+        <option value="pos" ${state.dailyTypeFilter==='pos'?'selected':''}>🧾 مبيعات نقطة البيع POS (ح/ 4102)</option>
+        <option value="invoice" ${state.dailyTypeFilter==='invoice'?'selected':''}>📄 مقبوضات الفواتير العامة</option>
         <option value="expense" ${state.dailyTypeFilter==='expense'?'selected':''}>💸 المصروفات والمشتريات</option>
+        <option value="petty" ${state.dailyTypeFilter==='petty'?'selected':''}>☕ نثريات وبوفيه فقط</option>
       </select>
       <input id="dailySearchInp" placeholder="🔍 بحث في المعاملات، الإيصالات، النثريات، أو المسؤول..." value="${state.dailySearchQ}" style="flex:1;min-width:220px;">
       ${(state.dailySearchQ || state.dailyTypeFilter!=='all' || state.dailyDateFilter!=='today') ? `<button class="btn btn-ghost btn-sm" id="clearDailyFilters">إعادة ضبط</button>` : ''}
@@ -7842,6 +8641,7 @@ function renderDailyJournalPage(main){
               <th>التاريخ</th>
               <th>البيان والمعاملة</th>
               <th>المرجع / القسم</th>
+              <th>الحساب المحاسبي</th>
               <th>التصنيف</th>
               <th style="text-align:center;">🟢 وارد (مدين)</th>
               <th style="text-align:center;">🔴 منصرف (دائن)</th>
@@ -7862,6 +8662,9 @@ function renderDailyJournalPage(main){
                   </td>
                   <td>
                     <span class="status-badge st-check" style="font-size:10.5px;">${t.sourceIcon} ${t.reference}</span>
+                  </td>
+                  <td>
+                    ${getAccountBadgeHtml(t)}
                   </td>
                   <td>
                     <span style="font-size:11.5px;color:var(--ink-secondary);">${t.category}</span>
@@ -7894,6 +8697,13 @@ function renderDailyJournalPage(main){
   document.querySelectorAll('#dailyDateChips .chip').forEach(c => {
     c.onclick = ()=>{
       state.dailyDateFilter = c.dataset.dchip;
+      renderDailyJournalPage(main);
+    };
+  });
+
+  document.querySelectorAll('#dailyDeptChips .chip').forEach(c => {
+    c.onclick = ()=>{
+      state.dailyTypeFilter = c.dataset.tchip;
       renderDailyJournalPage(main);
     };
   });
@@ -7938,12 +8748,21 @@ function renderDailyJournalPage(main){
   // Row Delete
   main.querySelectorAll('[data-txdel]').forEach(btn => {
     btn.onclick = async ()=>{
-      if(!confirm('هل تريد حذف هذا المصروف / القيد اليدوي نهائياً؟')) return;
-      try{
-        await deleteExpenseRemote(btn.dataset.txdel);
-        showToast('تم حذف الحركة بنجاح', 'success');
-        renderDailyJournalPage(main);
-      }catch(e){ showToast('تعذر الحذف: '+e.message, 'error'); }
+      const exp = (state.expenses || []).find(x=>x.ID === btn.dataset.txdel);
+      const title = exp ? exp.Title : 'حركة باليومية';
+      requestAdminAuthorization({
+        action: 'حذف حركة باليومية',
+        entityType: 'حركة يومية / مصروف',
+        entityId: btn.dataset.txdel,
+        entityTitle: title,
+        onApproved: async ()=>{
+          try{
+            await deleteExpenseRemote(btn.dataset.txdel);
+            showToast('تم حذف الحركة بنجاح', 'success');
+            renderDailyJournalPage(main);
+          }catch(e){ showToast('تعذر الحذف: '+e.message, 'error'); }
+        }
+      });
     };
   });
 }
@@ -9114,9 +9933,15 @@ function renderInventoryHubApp(app){
 function renderInventory(main, categoryFilter, titleOverride){
   if(!state.invSearchQ) state.invSearchQ = '';
   if(!state.invStockFilter) state.invStockFilter = 'all';
+  if(!state.selectedWarehouseFilter) state.selectedWarehouseFilter = 'all';
 
   const rawList = state.inventory || [];
   let list = categoryFilter === 'all' ? rawList : rawList.filter(it=>(it.Category||'صيانة')===categoryFilter);
+
+  // Warehouse Filter
+  if(state.selectedWarehouseFilter && state.selectedWarehouseFilter !== 'all'){
+    list = list.filter(it => (it.Warehouse || 'المخزن الرئيسي') === state.selectedWarehouseFilter);
+  }
 
   // Stock Filter (Low Stock / Out of Stock / In Stock)
   if(state.invStockFilter === 'low'){
@@ -9135,6 +9960,7 @@ function renderInventory(main, categoryFilter, titleOverride){
       (it.Barcode||'').toLowerCase().includes(q) ||
       (it.SKU||'').toLowerCase().includes(q) ||
       (it.ShelfLocation||'').toLowerCase().includes(q) ||
+      (it.Warehouse||'المخزن الرئيسي').toLowerCase().includes(q) ||
       (it.CompatibleModels||'').toLowerCase().includes(q) ||
       (it.SubCategory||'').toLowerCase().includes(q)
     );
@@ -9145,14 +9971,17 @@ function renderInventory(main, categoryFilter, titleOverride){
   const totalCostValue = rawList.reduce((s,it)=>s + (Number(it.Quantity||0) * Number(it.PurchasePrice||0)), 0);
   const totalRetailValue = rawList.reduce((s,it)=>s + (Number(it.Quantity||0) * Number(it.SellPrice||it.PurchasePrice||0)), 0);
   const lowStockCount = rawList.filter(it=>Number(it.Quantity||0) <= Number(it.MinStock||2)).length;
+  const whNames = (state.warehouses || ['المخزن الرئيسي', 'مخزن المعرض / المحل', 'مخزن قطع الغيار']).map(w => typeof w === 'string' ? w : w.name);
 
   main.innerHTML = `
     <div class="top-header">
       <div>
-        <h2 class="page-title">📦 ${titleOverride || 'إدارة المخزن والأصناف'}</h2>
-        <div class="subtitle">إدارة شاملة للمنتجات، الباركود، التسعير الذكي، ومواقع الرفوف (${list.length} صنف معروض)</div>
+        <h2 class="page-title">📦 ${titleOverride || 'إدارة المخازن والأصناف'}</h2>
+        <div class="subtitle">نظام المخازن المتعددة، الباركود، التسعير، ومواقع الرفوف (${list.length} صنف معروض من إجمالي ${totalItemsCount})</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" id="btnManageWarehouses" style="border-color:var(--line-strong);">🏢 إدارة المخازن (${whNames.length})</button>
+        <button class="btn btn-ghost btn-sm" id="btnTransferWarehouses" style="color:var(--primary);border-color:var(--primary);">🔄 تحويل بين المخازن</button>
         <button class="btn btn-ghost btn-sm" id="exportInvExcelBtn">📥 تصدير Excel</button>
         <button class="btn btn-ghost btn-sm" id="importInvExcelBtn">📂 استيراد من Excel</button>
         <button class="btn btn-primary btn-sm" id="addNewItemMasterBtn">➕ إضافة صنف جديد</button>
@@ -9180,15 +10009,22 @@ function renderInventory(main, categoryFilter, titleOverride){
     </div>
 
     <!-- Filters & Quick Actions Bar -->
-    <div class="filters-bar" style="margin-bottom:14px;">
-      <input id="invSearchInput" placeholder="🔍 بحث بالاسم، الباركود، رقم الموديل SKU، موقع الرف، أو الأجهزة المتوافقة..." value="${state.invSearchQ}" style="flex:1;min-width:240px;">
+    <div class="filters-bar" style="margin-bottom:14px;display:flex;gap:10px;flex-wrap:wrap;">
+      <input id="invSearchInput" placeholder="🔍 بحث بالاسم، الباركود، رقم الموديل SKU، المخزن، الرف..." value="${state.invSearchQ}" style="flex:1;min-width:220px;">
+      
+      <!-- Multi-Warehouse Selector -->
+      <select id="invWarehouseFilterSelect" style="min-width:160px;font-weight:700;">
+        <option value="all" ${state.selectedWarehouseFilter==='all'?'selected':''}>🏢 كل المخازن والفروع</option>
+        ${whNames.map(w=>`<option value="${w}" ${state.selectedWarehouseFilter===w?'selected':''}>🏢 ${w}</option>`).join('')}
+      </select>
+
       <select id="invStockFilterSelect" style="min-width:140px;">
-        <option value="all" ${state.invStockFilter==='all'?'selected':''}>📦 كل المخزون</option>
+        <option value="all" ${state.invStockFilter==='all'?'selected':''}>📦 كل مستويات المخزون</option>
         <option value="available" ${state.invStockFilter==='available'?'selected':''}>✅ متوفر بالمخزن</option>
         <option value="low" ${state.invStockFilter==='low'?'selected':''}>⚠️ قارب على النفاد (حد الأمان)</option>
         <option value="out" ${state.invStockFilter==='out'?'selected':''}>🚫 رصيد صفري (منتهي)</option>
       </select>
-      ${(state.invSearchQ || state.invStockFilter!=='all') ? `<button class="btn btn-ghost btn-sm" id="clearInvFiltersBtn">مسح الفلاتر</button>` : ''}
+      ${(state.invSearchQ || state.invStockFilter!=='all' || state.selectedWarehouseFilter!=='all') ? `<button class="btn btn-ghost btn-sm" id="clearInvFiltersBtn">مسح الفلاتر</button>` : ''}
     </div>
 
     <div class="card">
@@ -9198,6 +10034,7 @@ function renderInventory(main, categoryFilter, titleOverride){
           <thead>
             <tr>
               <th>الصنف والموديل</th>
+              <th>المخزن / الفرع</th>
               ${categoryFilter==='all'?'<th>القسم</th>':''}
               <th>مكان الرف</th>
               <th>الباركود</th>
@@ -9219,17 +10056,23 @@ function renderInventory(main, categoryFilter, titleOverride){
               const profitAmt = sell - buy;
               const profitMarginPct = sell > 0 ? Math.round((profitAmt / sell) * 100) : 0;
               const isLowStock = qty <= minStock;
+              const whName = it.Warehouse || 'المخزن الرئيسي';
 
               return `
                 <tr style="${isLowStock ? 'background:rgba(239,68,68,0.05);' : ''}">
                   <td>
-                    <div style="font-weight:800;font-size:13px;color:var(--ink);">${it.Name}</div>
+                    <div style="font-weight:800;font-size:13px;color:var(--ink);cursor:pointer;" data-edititem="${it.ID}">${it.Name}</div>
                     <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:var(--ink-secondary);margin-top:2px;">
                       ${it.SKU ? `<span class="mono" style="color:var(--primary);font-weight:700;">#${it.SKU}</span>` : ''}
                       ${it.SubCategory ? `<span>• ${it.SubCategory}</span>` : ''}
                       ${it.WarrantyMonths ? `<span>• 🛡️ ضمان ${it.WarrantyMonths} شهر</span>` : ''}
                     </div>
                     ${it.CompatibleModels ? `<div style="font-size:10.5px;color:var(--slate-500);margin-top:1px;">💻 متوافق: ${it.CompatibleModels}</div>` : ''}
+                  </td>
+                  <td>
+                    <span style="background:rgba(0,122,255,0.08);color:var(--primary);padding:3px 8px;border-radius:6px;font-size:11px;font-weight:800;white-space:nowrap;">
+                      🏢 ${whName}
+                    </span>
                   </td>
                   ${categoryFilter==='all'?`<td><span class="status-badge st-check">${it.Category||'صيانة'}</span></td>`:''}
                   <td>
@@ -9259,10 +10102,11 @@ function renderInventory(main, categoryFilter, titleOverride){
                     </span>
                   </td>
                   <td class="row-actions">
+                    <button class="btn btn-xs btn-primary" data-edititem="${it.ID}" title="تعديل بيانات الصنف">✏️ تعديل</button>
+                    <button class="btn btn-xs btn-ghost" data-transferitem="${it.ID}" title="تحويل رصيد لمخزن آخر">🔄 تحويل</button>
                     <button class="btn btn-xs btn-amber" data-printsticker="${it.ID}" title="طباعة ملصق الباركود">🏷️ ملصق</button>
                     <button class="btn btn-xs btn-ghost" data-cloneitem="${it.ID}" title="تكرار الصنف">📋 نسخ</button>
-                    <button class="btn btn-xs btn-ghost" data-edititem="${it.ID}" title="تعديل">✏️</button>
-                    ${state.user.role==='admin' ? `<button class="btn btn-xs btn-red" data-delitem="${it.ID}" title="حذف">🗑️</button>` : ''}
+                    <button class="btn btn-xs btn-red" data-delitem="${it.ID}" title="${state.user.role==='admin'?'حذف الصنف':'طلب تصريح حذف من المدير'}">${state.user.role==='admin'?'🗑️':'🔒'}</button>
                   </td>
                 </tr>
               `;
@@ -9275,13 +10119,27 @@ function renderInventory(main, categoryFilter, titleOverride){
 
   // Attach search & filter handlers
   const searchInput = document.getElementById('invSearchInput');
-  searchInput.oninput = (e)=>{ state.invSearchQ = e.target.value; renderInventory(main, categoryFilter, titleOverride); };
+  if(searchInput) searchInput.oninput = (e)=>{ state.invSearchQ = e.target.value; renderInventory(main, categoryFilter, titleOverride); };
   
+  const whFilterSelect = document.getElementById('invWarehouseFilterSelect');
+  if(whFilterSelect) whFilterSelect.onchange = (e)=>{ state.selectedWarehouseFilter = e.target.value; renderInventory(main, categoryFilter, titleOverride); };
+
   const filterSelect = document.getElementById('invStockFilterSelect');
-  filterSelect.onchange = (e)=>{ state.invStockFilter = e.target.value; renderInventory(main, categoryFilter, titleOverride); };
+  if(filterSelect) filterSelect.onchange = (e)=>{ state.invStockFilter = e.target.value; renderInventory(main, categoryFilter, titleOverride); };
 
   const clearBtn = document.getElementById('clearInvFiltersBtn');
-  if(clearBtn) clearBtn.onclick = ()=>{ state.invSearchQ = ''; state.invStockFilter = 'all'; renderInventory(main, categoryFilter, titleOverride); };
+  if(clearBtn) clearBtn.onclick = ()=>{ 
+    state.invSearchQ = ''; 
+    state.invStockFilter = 'all'; 
+    state.selectedWarehouseFilter = 'all'; 
+    renderInventory(main, categoryFilter, titleOverride); 
+  };
+
+  const btnWh = document.getElementById('btnManageWarehouses');
+  if(btnWh) btnWh.onclick = ()=>openWarehouseManagerModal();
+
+  const btnTrans = document.getElementById('btnTransferWarehouses');
+  if(btnTrans) btnTrans.onclick = ()=>openWarehouseTransferModal();
 
   document.getElementById('addNewItemMasterBtn').onclick = ()=>openInventoryItemModal(null, false, categoryFilter);
   document.getElementById('exportInvExcelBtn').onclick = ()=>exportInventoryToExcel(list);
@@ -9292,6 +10150,12 @@ function renderInventory(main, categoryFilter, titleOverride){
     btn.onclick = ()=>{
       const item = state.inventory.find(x=>x.ID===btn.dataset.edititem);
       if(item) openInventoryItemModal(item, false, categoryFilter);
+    };
+  });
+  main.querySelectorAll('[data-transferitem]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const item = state.inventory.find(x=>x.ID===btn.dataset.transferitem);
+      if(item) openWarehouseTransferModal(item);
     };
   });
   main.querySelectorAll('[data-cloneitem]').forEach(btn=>{
@@ -9310,12 +10174,19 @@ function renderInventory(main, categoryFilter, titleOverride){
     btn.onclick = async ()=>{
       const item = state.inventory.find(x=>x.ID===btn.dataset.delitem);
       if(!item) return;
-      if(!confirm(`هل تريد حذف الصنف "${item.Name}" نهائياً من المخزن؟`)) return;
-      try{
-        await deleteInventoryItemRemote(item.ID);
-        showToast('تم حذف الصنف بنجاح', 'success');
-        renderInventory(main, categoryFilter, titleOverride);
-      }catch(e){ showToast('تعذر الحذف: '+e.message, 'error'); }
+      requestAdminAuthorization({
+        action: 'حذف صنف مخزن',
+        entityType: 'صنف من المخزن',
+        entityId: item.ID,
+        entityTitle: `${item.Name} (${item.Category||'صيانة'})`,
+        onApproved: async ()=>{
+          try{
+            await deleteInventoryItemRemote(item.ID);
+            showToast('تم حذف الصنف بنجاح', 'success');
+            renderInventory(main, categoryFilter, titleOverride);
+          }catch(e){ showToast('تعذر الحذف: '+e.message, 'error'); }
+        }
+      });
     };
   });
 }
@@ -9335,6 +10206,7 @@ function openInventoryItemModal(editItem, cloneMode=false, defaultCategory='صي
     SKU: isClone ? '' : (editItem.SKU || ''),
     Barcode: isClone ? '' : (editItem.Barcode || ''),
     ShelfLocation: editItem.ShelfLocation || '',
+    Warehouse: editItem.Warehouse || 'المخزن الرئيسي',
     Quantity: isClone ? 0 : (editItem.Quantity || 0),
     MinStock: editItem.MinStock != null ? editItem.MinStock : 2,
     Unit: editItem.Unit || 'قطعة',
@@ -9352,6 +10224,7 @@ function openInventoryItemModal(editItem, cloneMode=false, defaultCategory='صي
     SKU: '',
     Barcode: '',
     ShelfLocation: '',
+    Warehouse: (state.selectedWarehouseFilter && state.selectedWarehouseFilter!=='all') ? state.selectedWarehouseFilter : 'المخزن الرئيسي',
     Quantity: 0,
     MinStock: 2,
     Unit: 'قطعة',
@@ -9364,6 +10237,7 @@ function openInventoryItemModal(editItem, cloneMode=false, defaultCategory='صي
   };
 
   const UNITS = ['قطعة', 'طقم / Set', 'متر', 'رول', 'كرتونة', 'علبة', 'حبة'];
+  const whNames = (state.warehouses || ['المخزن الرئيسي', 'مخزن المعرض / المحل', 'مخزن قطع الغيار']).map(w => typeof w === 'string' ? w : w.name);
   const COMMON_SUBCATS = {
     'صيانة': ['شاشات لابتوب', 'بطاريات لابتوب', 'شواحن وكابلات', 'كيبورد ومفصلات', 'سوكت شحن وباور', 'هاردات SSD/HDD', 'رامات RAM', 'أدوات وصيانة', 'أخرى'],
     'كاميرات': ['كاميرات مراقبة خارجية', 'كاميرات داخلية', 'أجهزة تسجيل DVR/NVR', 'هارد ديسك مراقبة', 'باور سبلاي وسويتشات', 'كابلات وإكسسوار', 'أخرى'],
@@ -9411,8 +10285,10 @@ function openInventoryItemModal(editItem, cloneMode=false, defaultCategory='صي
               </datalist>
             </div>
             <div class="field">
-              <label>كود القطعة / SKU (اختياري)</label>
-              <input id="mItemSKU" value="${item.SKU}" placeholder="مثال: NT156FHM-N61">
+              <label>المخزن أو الفرع 🏢 *</label>
+              <select id="mItemWarehouse">
+                ${whNames.map(w=>`<option value="${w}" ${(item.Warehouse||'المخزن الرئيسي')===w?'selected':''}>🏢 ${w}</option>`).join('')}
+              </select>
             </div>
             <div class="field">
               <label>مكان التخزين والرف 📍</label>
@@ -9420,9 +10296,15 @@ function openInventoryItemModal(editItem, cloneMode=false, defaultCategory='صي
             </div>
           </div>
 
-          <div class="field" style="margin-bottom:0;">
-            <label>الأجهزة والموديلات المتوافقة (Compatibility Notes)</label>
-            <input id="mItemCompat" value="${item.CompatibleModels}" placeholder="مثال: Dell G15 5515, HP Pavilion 15-ec, Lenovo Legion 5...">
+          <div class="grid2">
+            <div class="field">
+              <label>كود القطعة / SKU (اختياري)</label>
+              <input id="mItemSKU" value="${item.SKU}" placeholder="مثال: NT156FHM-N61">
+            </div>
+            <div class="field">
+              <label>الأجهزة والموديلات المتوافقة (Compatibility)</label>
+              <input id="mItemCompat" value="${item.CompatibleModels}" placeholder="مثال: Dell G15 5515, HP 15-ec...">
+            </div>
           </div>
         </div>
 
@@ -9571,6 +10453,7 @@ function openInventoryItemModal(editItem, cloneMode=false, defaultCategory='صي
       item.SubCategory = overlay.querySelector('#mItemSubCat').value.trim();
       item.SKU = overlay.querySelector('#mItemSKU').value.trim();
       item.ShelfLocation = overlay.querySelector('#mItemShelf').value.trim();
+      item.Warehouse = (overlay.querySelector('#mItemWarehouse') ? overlay.querySelector('#mItemWarehouse').value : null) || item.Warehouse || 'المخزن الرئيسي';
       item.CompatibleModels = overlay.querySelector('#mItemCompat').value.trim();
       item.Barcode = overlay.querySelector('#mItemBarcode').value.trim();
       item.PurchasePrice = Number(overlay.querySelector('#mItemBuy').value)||0;
@@ -9773,6 +10656,344 @@ function openInventoryImportModal(){
     overlay.remove();
     renderMain();
   };
+}
+
+/* ---------------- Multi-Warehouse Manager Modal (إدارة المخازن والفروع المتعددة) ---------------- */
+function openWarehouseManagerModal(){
+  const existing = document.getElementById('warehouseManagerModal');
+  if(existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'warehouseManagerModal';
+
+  function renderModal(){
+    const rawWhs = state.warehouses || ['المخزن الرئيسي', 'مخزن المعرض / المحل', 'مخزن قطع الغيار'];
+    const whList = rawWhs.map(w => typeof w === 'string' ? { name: w } : w);
+
+    overlay.innerHTML = `
+      <div class="modal-content" style="max-width:680px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:16px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#FF9500,#e05300);display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;box-shadow:0 4px 10px rgba(255,149,0,0.3);">🏢</div>
+            <div>
+              <h3 style="margin:0;font-size:17px;font-weight:900;">إدارة المخازن والفروع المتعددة</h3>
+              <div style="font-size:12px;color:var(--ink-secondary);">إضافة وحذف وتخصيص المخازن ونقاط التخزين للشركة</div>
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-xs" id="closeWhModal">✕ إغلاق</button>
+        </div>
+
+        <!-- Add New Warehouse Input -->
+        <div class="card" style="padding:14px;background:var(--paper3);border:1px solid var(--line-strong);margin-bottom:16px;">
+          <div style="font-weight:800;font-size:13px;margin-bottom:8px;color:var(--ink);">➕ إنشاء مخزن أو نقطة توزيع جديدة</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <input type="text" id="newWhNameInput" placeholder="اسم المخزن أو الفرع (مثال: مخزن فرع المعادي، مخزن الصيانة)..." style="flex:1;min-width:200px;">
+            <button class="btn btn-primary" id="addNewWhBtn">➕ إضافة المخزن</button>
+          </div>
+        </div>
+
+        <!-- Existing Warehouses List -->
+        <div style="font-weight:800;font-size:13.5px;margin-bottom:10px;color:var(--ink);">قائمة المخازن المسجلة حالياً (${whList.length}):</div>
+        <div style="display:flex;flex-direction:column;gap:10px;max-height:360px;overflow-y:auto;padding-left:4px;">
+          ${whList.map((w, idx) => {
+            const wName = w.name;
+            const itemsInWh = (state.inventory || []).filter(it => (it.Warehouse || 'المخزن الرئيسي') === wName);
+            const totalUnits = itemsInWh.reduce((s, it) => s + Number(it.Quantity || 0), 0);
+            const isMain = wName === 'المخزن الرئيسي' || idx === 0;
+
+            return `
+              <div style="display:flex;justify-content:space-between;align-items:center;background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:12px 14px;box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+                <div style="display:flex;align-items:center;gap:12px;">
+                  <div style="width:34px;height:34px;border-radius:10px;background:rgba(255,149,0,0.12);color:#ea580c;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:900;">🏢</div>
+                  <div>
+                    <div style="font-weight:800;font-size:13.5px;color:var(--ink);display:flex;align-items:center;gap:6px;">
+                      ${wName}
+                      ${isMain ? `<span class="status-badge st-check" style="font-size:10px;">الأساسي</span>` : ''}
+                    </div>
+                    <div style="font-size:11.5px;color:var(--ink-secondary);margin-top:2px;">
+                      <span>الأصناف المسجلة: <b class="mono" style="color:var(--ink);">${itemsInWh.length}</b> صنف</span> • 
+                      <span>إجمالي القطع: <b class="mono" style="color:var(--ink);">${totalUnits}</b> قطعة</span>
+                    </div>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <button class="btn btn-xs btn-ghost" data-filterwh="${wName}" title="عرض أصناف هذا المخزن">👁️ استعراض</button>
+                  ${!isMain ? `
+                    <button class="btn btn-xs btn-red" data-delwh="${wName}" title="حذف المخزن">🗑️ حذف</button>
+                  ` : ''}
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+
+        <div class="actions-row" style="margin-top:16px;border-top:1px solid var(--line);padding-top:12px;">
+          <button class="btn btn-ghost" id="closeWhModal2">إغلاق</button>
+        </div>
+      </div>
+    `;
+
+    // Handlers
+    overlay.querySelector('#closeWhModal').onclick = ()=>overlay.remove();
+    overlay.querySelector('#closeWhModal2').onclick = ()=>overlay.remove();
+
+    overlay.querySelector('#addNewWhBtn').onclick = ()=>{
+      const val = (overlay.querySelector('#newWhNameInput').value || '').trim();
+      if(!val){ showToast('يرجى إدخال اسم المخزن أولاً', 'error'); return; }
+      const current = (state.warehouses || ['المخزن الرئيسي']).map(w => typeof w === 'string' ? w : w.name);
+      if(current.includes(val)){ showToast('اسم المخزن موجود بالفعل', 'error'); return; }
+      current.push(val);
+      state.warehouses = current;
+      setCache('warehouses', state.warehouses);
+      recordAuditLog('إنشاء مخزن جديد', 'المخزن', `تم إنشاء مخزن جديد باسم: (${val})`, val);
+      showToast(`تم إضافة المخزن "${val}" بنجاح 🏢`, 'success');
+      renderModal();
+      renderMain();
+    };
+
+    overlay.querySelectorAll('[data-filterwh]').forEach(btn => {
+      btn.onclick = ()=>{
+        state.selectedWarehouseFilter = btn.dataset.filterwh;
+        overlay.remove();
+        if(state.currentSection !== 'inventory'){ state.currentSection = 'inventory'; render(); }
+        else renderMain();
+      };
+    });
+
+    overlay.querySelectorAll('[data-delwh]').forEach(btn => {
+      btn.onclick = ()=>{
+        const targetWh = btn.dataset.delwh;
+        const current = (state.warehouses || ['المخزن الرئيسي']).map(w => typeof w === 'string' ? w : w.name);
+        const hasItems = (state.inventory || []).some(it => (it.Warehouse || 'المخزن الرئيسي') === targetWh);
+        if(hasItems){
+          if(!confirm(`تنبيه: يوجد أصناف مسجلة في "${targetWh}". هل تريد بالتأكيد حذف المخزن ونقل أصنافه للمخزن الرئيسي؟`)) return;
+          (state.inventory || []).forEach(it => {
+            if((it.Warehouse || 'المخزن الرئيسي') === targetWh){
+              it.Warehouse = 'المخزن الرئيسي';
+            }
+          });
+          setCache('inventory', state.inventory);
+        } else {
+          if(!confirm(`هل أنت متأكد من حذف المخزن "${targetWh}"؟`)) return;
+        }
+        state.warehouses = current.filter(w => w !== targetWh);
+        setCache('warehouses', state.warehouses);
+        recordAuditLog('حذف مخزن', 'المخزن', `تم حذف المخزن (${targetWh})`, targetWh);
+        showToast(`تم حذف المخزن "${targetWh}" بنجاح`, 'info');
+        renderModal();
+        renderMain();
+      };
+    });
+  }
+
+  renderModal();
+  document.body.appendChild(overlay);
+}
+
+/* ---------------- Multi-Warehouse Transfer Modal (تحويل أرصدة بين المخازن والفروع) ---------------- */
+function openWarehouseTransferModal(preselectedItem=null){
+  const existing = document.getElementById('warehouseTransferModal');
+  if(existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'warehouseTransferModal';
+
+  const whs = (state.warehouses || ['المخزن الرئيسي', 'مخزن المعرض / المحل', 'مخزن قطع الغيار']).map(w => typeof w === 'string' ? w : w.name);
+  if(whs.length < 2){
+    showToast('يجب إنشاء مخزنين على الأقل لتنفيذ عمليات التحويل المخزني', 'error');
+    openWarehouseManagerModal();
+    return;
+  }
+
+  let selItem = preselectedItem || (state.inventory && state.inventory[0]) || null;
+  let fromWh = selItem ? (selItem.Warehouse || 'المخزن الرئيسي') : whs[0];
+  let toWh = whs.find(w => w !== fromWh) || whs[1];
+
+  function renderModal(){
+    const availQty = selItem ? Number(selItem.Quantity || 0) : 0;
+
+    overlay.innerHTML = `
+      <div class="modal-content" style="max-width:640px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:16px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#007AFF,#0051a8);display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;box-shadow:0 4px 10px rgba(0,122,255,0.3);">🔄</div>
+            <div>
+              <h3 style="margin:0;font-size:17px;font-weight:900;">تحويل أرصدة بين المخازن والفروع</h3>
+              <div style="font-size:12px;color:var(--ink-secondary);">نقل كميات الأصناف وتحديث الأرصدة وسجل الحركات آلياً</div>
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-xs" id="closeWhTransModal">✕ إغلاق</button>
+        </div>
+
+        <!-- Step 1: Select Item -->
+        <div class="field" style="margin-bottom:14px;">
+          <label>الصنف المراد تحويله *</label>
+          <select id="transItemSelect" style="font-weight:700;font-size:13.5px;">
+            ${(state.inventory || []).map(it => `
+              <option value="${it.ID}" ${selItem && selItem.ID===it.ID ? 'selected' : ''}>
+                ${it.Name} (${it.Warehouse || 'المخزن الرئيسي'}) - الرصيد: ${it.Quantity} ${it.Unit||'قطعة'}
+              </option>
+            `).join('')}
+          </select>
+        </div>
+
+        ${selItem ? `
+          <div style="background:var(--paper3);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
+            <div>
+              <div style="font-weight:800;font-size:13px;color:var(--ink);">${selItem.Name}</div>
+              <div style="font-size:11.5px;color:var(--ink-secondary);margin-top:2px;">
+                ${selItem.Barcode ? `باركود: <span class="mono">${selItem.Barcode}</span> • ` : ''}
+                القسم: ${selItem.Category||'صيانة'}
+              </div>
+            </div>
+            <div style="text-align:left;">
+              <div style="font-size:11px;color:var(--ink-secondary);">الرصيد المتاح بالمخزن المصدر</div>
+              <div class="mono font-bold" style="font-size:16px;color:${availQty>0?'var(--green-text)':'var(--red)'};">${availQty} <span style="font-size:11px;">${selItem.Unit||'قطعة'}</span></div>
+            </div>
+          </div>
+        ` : ''}
+
+        <!-- Step 2: From Warehouse & To Warehouse -->
+        <div class="grid2" style="margin-bottom:14px;">
+          <div class="field">
+            <label>من المخزن (المصدر) *</label>
+            <select id="transFromWh">
+              ${whs.map(w => `<option value="${w}" ${fromWh===w ? 'selected' : ''}>🏢 ${w}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field">
+            <label>إلى المخزن (الوجهة) *</label>
+            <select id="transToWh">
+              ${whs.map(w => `<option value="${w}" ${toWh===w ? 'selected' : ''} ${fromWh===w ? 'disabled' : ''}>🏢 ${w}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+
+        <!-- Step 3: Quantity & Notes -->
+        <div class="grid2" style="margin-bottom:14px;">
+          <div class="field">
+            <label>الكمية المراد تحويلها *</label>
+            <input type="number" id="transQty" value="1" min="1" max="${availQty}" style="font-weight:900;font-size:15px;color:var(--primary);">
+          </div>
+          <div class="field">
+            <label>السبب / بيان التحويل (اختياري)</label>
+            <input type="text" id="transNotes" placeholder="مثال: تموين فرع، صرف لورشة الصيانة...">
+          </div>
+        </div>
+
+        <div class="actions-row" style="margin-top:16px;border-top:1px solid var(--line);padding-top:12px;">
+          <button class="btn btn-ghost" id="cancelWhTransBtn">إلغاء</button>
+          <button class="btn btn-primary" id="confirmWhTransBtn" ${availQty<=0?'disabled':''}>🚀 تنفيذ التحويل المخزني</button>
+        </div>
+      </div>
+    `;
+
+    // Handlers
+    overlay.querySelector('#closeWhTransModal').onclick = ()=>overlay.remove();
+    overlay.querySelector('#cancelWhTransBtn').onclick = ()=>overlay.remove();
+
+    const itemSel = overlay.querySelector('#transItemSelect');
+    if(itemSel){
+      itemSel.onchange = (e)=>{
+        selItem = (state.inventory || []).find(x => x.ID === e.target.value);
+        if(selItem) fromWh = selItem.Warehouse || 'المخزن الرئيسي';
+        if(toWh === fromWh) toWh = whs.find(w => w !== fromWh) || whs[0];
+        renderModal();
+      };
+    }
+
+    const fromSel = overlay.querySelector('#transFromWh');
+    if(fromSel){
+      fromSel.onchange = (e)=>{
+        fromWh = e.target.value;
+        if(toWh === fromWh) toWh = whs.find(w => w !== fromWh) || whs[0];
+        renderModal();
+      };
+    }
+
+    const toSel = overlay.querySelector('#transToWh');
+    if(toSel){
+      toSel.onchange = (e)=>{
+        toWh = e.target.value;
+      };
+    }
+
+    const confirmBtn = overlay.querySelector('#confirmWhTransBtn');
+    if(confirmBtn){
+      confirmBtn.onclick = async ()=>{
+        if(!selItem){ showToast('يرجى اختيار الصنف أولاً', 'error'); return; }
+        if(fromWh === toWh){ showToast('لا يمكن التحويل لنفس المخزن', 'error'); return; }
+        
+        const qty = Number(overlay.querySelector('#transQty').value) || 0;
+        if(qty <= 0){ showToast('يرجى تحديد كمية صحيحة أكبر من صفر', 'error'); return; }
+        if(qty > availQty){ showToast(`الكمية المطلوبة (${qty}) تتجاوز الرصيد المتاح (${availQty})`, 'error'); return; }
+
+        const notes = (overlay.querySelector('#transNotes').value || '').trim();
+
+        confirmBtn.disabled = true; confirmBtn.textContent = 'جارٍ التنفيذ...';
+
+        // 1. Deduct from source item
+        selItem.Quantity = Math.max(0, Number(selItem.Quantity || 0) - qty);
+        selItem.Warehouse = fromWh; // ensure set
+
+        // 2. Add to destination warehouse:
+        // Find if target warehouse already has an item with matching Barcode or Name
+        let destItem = (state.inventory || []).find(x => 
+          (x.Warehouse || 'المخزن الرئيسي') === toWh &&
+          ((selItem.Barcode && x.Barcode === selItem.Barcode) || (x.Name === selItem.Name))
+        );
+
+        if(destItem){
+          destItem.Quantity = Number(destItem.Quantity || 0) + qty;
+        } else {
+          // Clone item into destination warehouse
+          destItem = {
+            ...selItem,
+            ID: 'inv_' + Date.now() + '_' + Math.floor(Math.random()*1000),
+            Warehouse: toWh,
+            Quantity: qty
+          };
+          state.inventory.push(destItem);
+        }
+
+        // 3. Record transfer history
+        const transferRecord = {
+          id: 'wht_' + Date.now(),
+          date: new Date().toISOString(),
+          itemId: selItem.ID,
+          itemName: selItem.Name,
+          barcode: selItem.Barcode || '',
+          fromWarehouse: fromWh,
+          toWarehouse: toWh,
+          qty: qty,
+          user: state.user ? state.user.name : 'مدير',
+          notes: notes
+        };
+
+        if(!state.warehouseTransfers) state.warehouseTransfers = [];
+        state.warehouseTransfers.unshift(transferRecord);
+        setCache('warehouse_transfers', state.warehouseTransfers);
+        setCache('inventory', state.inventory);
+
+        recordAuditLog('تحويل مخزني', 'المخزن', `تم تحويل ${qty} قطعة من (${selItem.Name}) من [${fromWh}] إلى [${toWh}] - السبب: ${notes||'تحويل بضاعة'}`, transferRecord.id);
+
+        try{
+          await saveInventoryItemRemote(selItem);
+          await saveInventoryItemRemote(destItem);
+        }catch(e){}
+
+        showToast(`تم تحويل ${qty} قطعة من "${selItem.Name}" إلى ${toWh} بنجاح ✅`, 'success');
+        playNotificationChime();
+        overlay.remove();
+        renderMain();
+      };
+    }
+  }
+
+  renderModal();
+  document.body.appendChild(overlay);
 }
 
 /* ---------------- POS Section ---------------- */
@@ -11737,6 +12958,7 @@ function exportUsersToExcel(list){
 
 function openUserModal(editUser=null){
   const isEdit = !!editUser;
+  const isSuper = editUser ? (editUser.Role === 'admin' || !!editUser.Superuser || !!editUser.superuser) : false;
   const allSectionsList = [
     { key: 'daily', icon: '📔', label: 'اليومية وحركة الخزينة', desc: 'دفتر النقدية، الإيرادات والمصروفات، وتقفيل الدرج' },
     { key: 'maintenance', icon: '🛠️', label: 'الصيانة والتصليح', desc: 'استلام وتسليم الأجهزة، أوامر الشغل، والتتبع' },
@@ -11766,7 +12988,7 @@ function openUserModal(editUser=null){
             <span>${isEdit ? '✏️ تعديل المستخدم وتخصيص الصلاحيات' : '➕ إضافة مستخدم جديد وتخصيص الصلاحيات'}</span>
           </h3>
           <div style="font-size:12px;color:var(--ink-secondary);margin-top:3px;">
-            تحديد بيانات الدخول وتعيين الشاشات والأقسام المسموح للمستخدم برؤيتها والعمل عليها
+            تحديد بيانات الدخول وتعيين الشاشات والأقسام وصلاحية Superuser المباشرة للمستخدم
           </div>
         </div>
         <button class="btn btn-ghost btn-xs" id="closeUserModal">✕</button>
@@ -11798,6 +13020,36 @@ function openUserModal(editUser=null){
         <div class="field">
           <label>ملاحظات إضافية</label>
           <input id="uModalNotes" value="${editUser ? (editUser.Notes||'') : ''}" placeholder="ملاحظات حول الموظف أو الفرع">
+        </div>
+      </div>
+
+      <!-- Superuser Direct Authorization Box -->
+      <div class="card" style="padding:14px 16px;background:rgba(239,68,68,0.03);border:1.5px solid #fca5a5;border-radius:var(--radius-sm);margin-bottom:16px;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+          <div style="flex:1;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+              <span style="font-size:22px;">🛡️</span>
+              <div>
+                <div style="color:#b91c1c;font-weight:900;font-size:14px;line-height:1.4;">
+                  صلاحية الحذف والتعديل المباشر (Superuser Authorization)
+                </div>
+                <div style="color:#dc2626;font-weight:900;font-size:12.5px;margin-top:2px;">
+                  (Superuser - بدون طلب موافقة من المدير)
+                </div>
+              </div>
+            </div>
+            <div style="font-size:12px;color:var(--ink-secondary);line-height:1.6;margin-top:6px;">
+              تُمكّن المستخدم من حذف وتعديل وإلغاء المعاملات والعمليات مباشرة. أما إذا لم يتم تفعيلها، فعند قيامه بأي عملية حذف، سيطلب منه النظام إدخال سبب الحذف ويتم إرسال إشعار فوري لمدير النظام للموافقة أو الرفض (أو إدخال رمز المشرف).
+            </div>
+          </div>
+          <div style="padding-top:4px;">
+            <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;background:var(--card-bg);border:1.5px solid ${isSuper ? '#ef4444' : 'var(--line)'};padding:7px 12px;border-radius:6px;user-select:none;transition:all 0.15s ease;" id="uModalSuperuserContainer">
+              <input type="checkbox" id="uModalSuperuser" ${isSuper ? 'checked' : ''} ${isEdit && editUser.Name==='admin' ? 'disabled' : ''} style="width:18px;height:18px;cursor:pointer;accent-color:#dc2626;">
+              <span style="font-size:12px;font-weight:800;color:${isSuper ? '#dc2626' : 'var(--ink)'};" id="uModalSuperuserLbl">
+                ${isSuper ? 'مفعلة (Superuser ⚡)' : 'غير مفعلة (يتطلب إذن 🔒)'}
+              </span>
+            </label>
+          </div>
         </div>
       </div>
 
@@ -11865,6 +13117,18 @@ function openUserModal(editUser=null){
   overlay.querySelector('#closeUserModal').onclick = ()=>overlay.remove();
   overlay.querySelector('#cancelUserModalBtn').onclick = ()=>overlay.remove();
 
+  // Superuser checkbox handler
+  const suChk = overlay.querySelector('#uModalSuperuser');
+  const suLbl = overlay.querySelector('#uModalSuperuserLbl');
+  const suCont = overlay.querySelector('#uModalSuperuserContainer');
+  if(suChk && suLbl){
+    suChk.onchange = ()=>{
+      suLbl.textContent = suChk.checked ? 'مفعلة (Superuser ⚡)' : 'غير مفعلة (يتطلب إذن 🔒)';
+      suLbl.style.color = suChk.checked ? '#dc2626' : 'var(--ink)';
+      if(suCont) suCont.style.borderColor = suChk.checked ? '#ef4444' : 'var(--line)';
+    };
+  }
+
   // Checkbox toggle handlers
   overlay.querySelectorAll('input[data-seckey]').forEach(chk => {
     chk.onchange = ()=>{
@@ -11889,11 +13153,28 @@ function openUserModal(editUser=null){
   const roleSel = overlay.querySelector('#uModalRole');
   roleSel.onchange = ()=>{
     const val = roleSel.value;
-    if(val === 'admin') selectedSections = allSectionsList.map(s => s.key);
-    else if(val === 'cashier') selectedSections = ['pos', 'daily'];
-    else if(val === 'technician') selectedSections = ['maintenance'];
-    else if(val === 'accountant') selectedSections = ['daily', 'invoices', 'finance', 'inventory'];
-    else if(val === 'storekeeper') selectedSections = ['inventory', 'pos'];
+    if(val === 'admin') {
+      selectedSections = allSectionsList.map(s => s.key);
+      if(suChk) {
+        suChk.checked = true;
+        suChk.disabled = true;
+        if(suLbl) { suLbl.textContent = 'مفعلة تلقائياً للمدير (Superuser ⚡)'; suLbl.style.color = '#dc2626'; }
+        if(suCont) suCont.style.borderColor = '#ef4444';
+      }
+    } else {
+      if(suChk && (!editUser || editUser.Name !== 'admin')) {
+        suChk.disabled = false;
+        if(suLbl) {
+          suLbl.textContent = suChk.checked ? 'مفعلة (Superuser ⚡)' : 'غير مفعلة (يتطلب إذن 🔒)';
+          suLbl.style.color = suChk.checked ? '#dc2626' : 'var(--ink)';
+        }
+        if(suCont) suCont.style.borderColor = suChk.checked ? '#ef4444' : 'var(--line)';
+      }
+      if(val === 'cashier') selectedSections = ['pos', 'daily'];
+      else if(val === 'technician') selectedSections = ['maintenance'];
+      else if(val === 'accountant') selectedSections = ['daily', 'invoices', 'finance', 'inventory'];
+      else if(val === 'storekeeper') selectedSections = ['inventory', 'pos'];
+    }
     syncSecUI();
   };
 
@@ -11903,6 +13184,7 @@ function openUserModal(editUser=null){
     const password = overlay.querySelector('#uModalPassword').value.trim();
     const role = overlay.querySelector('#uModalRole').value;
     const notes = overlay.querySelector('#uModalNotes').value.trim();
+    const isSuperuser = role === 'admin' || (overlay.querySelector('#uModalSuperuser') && overlay.querySelector('#uModalSuperuser').checked);
 
     if(!name){ showToast('يرجى إدخال اسم المستخدم', 'error'); return; }
     if(!password){ showToast('يرجى إدخال كلمة المرور', 'error'); return; }
@@ -11913,6 +13195,7 @@ function openUserModal(editUser=null){
       Name: name,
       Password: password,
       Role: role,
+      Superuser: isSuperuser,
       Sections: selectedSections.join(','),
       Notes: notes
     };
@@ -11923,6 +13206,8 @@ function openUserModal(editUser=null){
       // If current user modified own permissions, apply live
       if(state.user && state.user.name.toLowerCase() === name.toLowerCase()){
         state.user.role = role;
+        state.user.superuser = isSuperuser;
+        state.user.Superuser = isSuperuser;
         state.user.sections = selectedSections;
         try{ localStorage.setItem('microerp_session', JSON.stringify(state.user)); }catch(e){}
       }
@@ -11944,14 +13229,15 @@ function renderUsersManagementPage(main){
   const usersList = state.users || [];
   const totalUsers = usersList.length;
   const adminUsers = usersList.filter(u => u.Role === 'admin').length;
+  const superUsers = usersList.filter(u => u.Role === 'admin' || !!u.Superuser || !!u.superuser).length;
   const cashierUsers = usersList.filter(u => u.Role === 'cashier' || String(u.Sections||'').includes('pos')).length;
   const techUsers = usersList.filter(u => u.Role === 'technician' || String(u.Sections||'').includes('maintenance')).length;
 
   main.innerHTML = `
     <div class="top-header">
       <div>
-        <h2 class="page-title">👥 إدارة المستخدمين وتخصيص صلاحيات الشاشات</h2>
-        <div class="subtitle">إضافة وتعديل حسابات الموظفين، تعيين كلمات المرور، وتخصيص الشاشات والأقسام المسموحة لكل مستخدم (${totalUsers} مستخدم)</div>
+        <h2 class="page-title">👥 إدارة المستخدمين وتخصيص صلاحيات الشاشات و Superuser</h2>
+        <div class="subtitle">إضافة وتعديل حسابات الموظفين، تعيين كلمات المرور، وتخصيص الشاشات وصلاحية الحذف المباشر بدون إذن (${totalUsers} مستخدم)</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn btn-ghost btn-sm" id="importTechsAsUsersBtn">👨‍🔧 استيراد الفنيين كمستخدمين</button>
@@ -11969,6 +13255,10 @@ function renderUsersManagementPage(main){
       <div class="stat-card purple">
         <div class="top-row"><span class="lbl">مدراء بصلاحيات كاملة</span><div class="icon-box">👑</div></div>
         <div class="num mono">${adminUsers}</div>
+      </div>
+      <div class="stat-card red" style="border-color:#fca5a5;background:linear-gradient(135deg, #fff, #fef2f2);">
+        <div class="top-row"><span class="lbl">صلاحية الحذف المباشر (Superuser)</span><div class="icon-box">⚡</div></div>
+        <div class="num mono" style="color:#b91c1c;">${superUsers}</div>
       </div>
       <div class="stat-card green">
         <div class="top-row"><span class="lbl">مستخدمو نقطة البيع واليومية</span><div class="icon-box">🧾</div></div>
@@ -11988,6 +13278,7 @@ function renderUsersManagementPage(main){
               <th>#</th>
               <th>اسم المستخدم</th>
               <th>المسمى / الدور</th>
+              <th>صلاحية Superuser (الحذف المباشر)</th>
               <th>كلمة المرور</th>
               <th>الشاشات والأقسام المسموح بها</th>
               <th>ملاحظات</th>
@@ -11998,6 +13289,7 @@ function renderUsersManagementPage(main){
             ${usersList.map((u, idx)=>{
               const secs = Array.isArray(u.Sections) ? u.Sections : String(u.Sections||'').split(',').map(s=>s.trim()).filter(Boolean);
               const isAdmin = u.Role === 'admin';
+              const isSuper = isAdmin || !!u.Superuser || !!u.superuser;
 
               return `
                 <tr>
@@ -12010,6 +13302,17 @@ function renderUsersManagementPage(main){
                     <span class="status-badge ${isAdmin ? 'st-done' : 'st-check'}" style="font-size:11px;">
                       ${isAdmin ? '👑 مدير عام' : (u.Role === 'cashier' ? '🧾 كاشير مبيعات' : (u.Role === 'technician' ? '🛠️ فني صيانة' : (u.Role === 'accountant' ? '💰 محاسب مالي' : (u.Role === 'storekeeper' ? '📦 أمين مخزن' : u.Role))))}
                     </span>
+                  </td>
+                  <td>
+                    ${isSuper ? `
+                      <span class="status-badge" style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca;font-size:11px;font-weight:900;display:inline-flex;align-items:center;gap:4px;">
+                        ⚡ Superuser (مباشر)
+                      </span>
+                    ` : `
+                      <span class="status-badge" style="background:var(--paper3);color:var(--ink-secondary);border:1px solid var(--line);font-size:11px;display:inline-flex;align-items:center;gap:4px;">
+                        🔒 يتطلب إذن المدير
+                      </span>
+                    `}
                   </td>
                   <td>
                     <div style="display:flex;align-items:center;gap:6px;">
@@ -12027,7 +13330,7 @@ function renderUsersManagementPage(main){
                   </td>
                   <td style="font-size:11.5px;color:var(--ink-secondary);">${u.Notes || '-'}</td>
                   <td class="row-actions">
-                    <button class="btn btn-xs btn-primary" data-useract="edit" data-uid="${u.ID||u.Name}">✏️ تخصيص الشاشات</button>
+                    <button class="btn btn-xs btn-primary" data-useract="edit" data-uid="${u.ID||u.Name}">✏️ تخصيص الصلاحيات</button>
                     ${u.Name !== 'admin' && (!state.user || state.user.name !== u.Name) ? `
                       <button class="btn btn-xs btn-red" data-useract="del" data-uid="${u.ID||u.Name}">🗑️</button>
                     ` : ''}
@@ -12112,6 +13415,8 @@ function renderUsersSectionApp(app){
       <div class="sidebar-nav-wrap">
         <div class="nav-section">إدارة النظام</div>
         <div class="nav-item active"><span class="nav-item-icon">👥</span><span>المستخدمين والصلاحيات</span></div>
+        <div class="nav-item" id="usersToAuditNav"><span class="nav-item-icon">🛡️</span><span>الرقابة والتصاريح</span></div>
+        <div class="nav-item" id="usersToSettingsNav"><span class="nav-item-icon">⚙️</span><span>الإعدادات العامة</span></div>
       </div>
       ${sidebarFootHtml()}
     </div>
@@ -12120,7 +13425,530 @@ function renderUsersSectionApp(app){
   const sw = document.getElementById('switchSectionBtn');
   if(sw) sw.onclick = ()=>{ state.currentSection = null; render(); };
   attachSidebarHandlers();
+  const toAud = document.getElementById('usersToAuditNav');
+  if(toAud) toAud.onclick = ()=>{ state.currentSection = 'audit'; render(); };
+  const toSet = document.getElementById('usersToSettingsNav');
+  if(toSet) toSet.onclick = ()=>{ state.currentSection = 'settings'; render(); };
   renderUsersManagementPage(document.getElementById('main'));
+}
+
+/* ---------------- Audit & Control Section Application ---------------- */
+function renderAuditSectionApp(app){
+  if(!state.auditTab) state.auditTab = 'logs';
+  const pendingCount = (state.authRequests || []).filter(r => r.status === 'pending').length;
+
+  app.innerHTML = `
+    <div class="sidebar">
+      ${brandHtml("الرقابة والتصاريح")}
+      ${sectionSwitcherHtml()}
+      <div class="sidebar-nav-wrap">
+        <div class="nav-section">الإدارة والرقابة</div>
+        <div class="nav-item ${state.auditTab==='logs'?'active':''}" id="auditNavLogs">
+          <span class="nav-item-icon">🛡️</span><span>سجل الرقابة الشامل</span>
+        </div>
+        <div class="nav-item ${state.auditTab==='requests'?'active':''}" id="auditNavRequests">
+          <span class="nav-item-icon">🔐</span><span>تصاريح الحذف والعمليات</span>
+          ${pendingCount > 0 ? `<span class="status-badge st-reject" style="font-size:11px;padding:2px 7px;">${pendingCount}</span>` : ''}
+        </div>
+
+        <div class="nav-section">إدارة النظام</div>
+        <div class="nav-item" id="auditToUsersNav">
+          <span class="nav-item-icon">👥</span><span>المستخدمين والصلاحيات</span>
+        </div>
+        <div class="nav-item" id="auditToSettingsNav">
+          <span class="nav-item-icon">⚙️</span><span>الإعدادات العامة</span>
+        </div>
+      </div>
+      ${sidebarFootHtml()}
+    </div>
+    <main id="main"></main>
+  `;
+
+  const sw = document.getElementById('switchSectionBtn');
+  if(sw) sw.onclick = ()=>{ state.currentSection = null; render(); };
+  attachSidebarHandlers();
+
+  const navLogs = document.getElementById('auditNavLogs');
+  if(navLogs) navLogs.onclick = ()=>{ state.auditTab = 'logs'; renderAuditSectionApp(app); };
+
+  const navReqs = document.getElementById('auditNavRequests');
+  if(navReqs) navReqs.onclick = ()=>{ state.auditTab = 'requests'; renderAuditSectionApp(app); };
+
+  const toUsers = document.getElementById('auditToUsersNav');
+  if(toUsers) toUsers.onclick = ()=>{ state.currentSection = 'users'; render(); };
+
+  const toSet = document.getElementById('auditToSettingsNav');
+  if(toSet) toSet.onclick = ()=>{ state.currentSection = 'settings'; render(); };
+
+  renderAuditCenterPage(document.getElementById('main'));
+}
+
+/* ---------------- Audit & Control Center (مركز الرقابة والتدقيق وتصاريح العمليات) ---------------- */
+
+function exportAuditLogsToExcel(list){
+  const rows = [
+    ['#', 'التاريخ والوقت', 'المستخدم', 'الدور', 'نوع العملية', 'القسم', 'البيان والتفاصيل', 'المرجع', 'الحالة']
+  ];
+  list.forEach((l, idx) => {
+    rows.push([
+      idx + 1,
+      new Date(l.timestamp).toLocaleString('ar-EG'),
+      l.user || '',
+      l.role === 'admin' ? 'مدير عام' : 'موظف',
+      l.action || '',
+      l.section || '',
+      l.details || '',
+      l.refId || '',
+      l.status || ''
+    ]);
+  });
+  let csv = '\uFEFF' + rows.map(r => r.map(f => `"${String(f||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `audit_logs_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function renderAuditCenterPage(main){
+  if(state.user && state.user.role !== 'admin'){
+    main.innerHTML = `<div class="empty">عفواً: قسم الرقابة وتصاريح العمليات مقصور على المدير العام فقط.</div>`;
+    return;
+  }
+
+  const activeTab = state.auditTab || 'logs'; // 'logs' | 'requests' | 'policies'
+  const allLogs = state.auditLogs || [];
+  const allRequests = state.authRequests || [];
+  const pendingRequests = allRequests.filter(r => r.status === 'pending');
+
+  // Filtering Logs
+  let filteredLogs = allLogs;
+  if(state.auditActionFilter && state.auditActionFilter !== 'all'){
+    filteredLogs = filteredLogs.filter(l => (l.action||'').includes(state.auditActionFilter) || (l.section||'').includes(state.auditActionFilter));
+  }
+  if(state.auditUserFilter && state.auditUserFilter !== 'all'){
+    filteredLogs = filteredLogs.filter(l => l.user === state.auditUserFilter);
+  }
+  if(state.auditDateFilter && state.auditDateFilter !== 'all'){
+    const todayStr = new Date().toISOString().slice(0,10);
+    if(state.auditDateFilter === 'today'){
+      filteredLogs = filteredLogs.filter(l => (l.timestamp||'').slice(0,10) === todayStr);
+    } else if(state.auditDateFilter === 'yesterday'){
+      const y = new Date(); y.setDate(y.getDate()-1);
+      const yStr = y.toISOString().slice(0,10);
+      filteredLogs = filteredLogs.filter(l => (l.timestamp||'').slice(0,10) === yStr);
+    } else if(state.auditDateFilter === 'week'){
+      const w = new Date(); w.setDate(w.getDate()-7);
+      const wStr = w.toISOString().slice(0,10);
+      filteredLogs = filteredLogs.filter(l => (l.timestamp||'').slice(0,10) >= wStr);
+    } else if(state.auditDateFilter === 'month'){
+      const mStr = todayStr.slice(0,7) + '-01';
+      filteredLogs = filteredLogs.filter(l => (l.timestamp||'').slice(0,10) >= mStr);
+    }
+  }
+  if(state.auditSearchQ){
+    const q = state.auditSearchQ.trim().toLowerCase();
+    filteredLogs = filteredLogs.filter(l =>
+      (l.action||'').toLowerCase().includes(q) ||
+      (l.details||'').toLowerCase().includes(q) ||
+      (l.user||'').toLowerCase().includes(q) ||
+      (l.section||'').toLowerCase().includes(q) ||
+      (l.refId||'').toLowerCase().includes(q)
+    );
+  }
+
+  main.innerHTML = `
+    <div class="top-header">
+      <div>
+        <h2 class="page-title">🛡️ مركز الرقابة والتدقيق وتصاريح العمليات</h2>
+        <div class="subtitle">مراقبة حركات المستخدمين، سجل وتتبع العمليات الشامل، واعتماد أو رفض طلبات الحذف (${allLogs.length} حركة مسجلة)</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" id="exportAuditExcelBtn">📥 تصدير السجل Excel</button>
+        <button class="btn btn-primary btn-sm" id="refreshAuditBtn">🔄 تحديث السجل</button>
+      </div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="stat-grid" style="grid-template-columns:repeat(auto-fit, minmax(210px, 1fr));gap:12px;margin-bottom:16px;">
+      <div class="stat-card blue">
+        <div class="top-row"><span class="lbl">إجمالي العمليات الموثقة</span><div class="icon-box">📜</div></div>
+        <div class="num mono">${allLogs.length}</div>
+        <div style="font-size:11px;color:var(--ink-secondary);margin-top:2px;">تسجيل لحظي مشفر للأنشطة</div>
+      </div>
+      <div class="stat-card red" style="${pendingRequests.length>0?'border:2px solid #ef4444;background:#fef2f2;':''}">
+        <div class="top-row"><span class="lbl" style="font-weight:800;color:#b91c1c;">طلبات تصاريح حذف معلقة</span><div class="icon-box" style="background:#fee2e2;">⏳</div></div>
+        <div class="num mono" style="color:#b91c1c;">${pendingRequests.length}</div>
+        <div style="font-size:11px;color:#991b1b;margin-top:2px;">${pendingRequests.length>0?'⚠️ تتطلب قراراً إدارياً الآن':'لا توجد طلبات معلقة'}</div>
+      </div>
+      <div class="stat-card green">
+        <div class="top-row"><span class="lbl">تصاريح الحذف المعتمدة</span><div class="icon-box">✅</div></div>
+        <div class="num mono">${allRequests.filter(r=>r.status==='approved').length}</div>
+        <div style="font-size:11px;color:var(--ink-secondary);margin-top:2px;">حذف قانوني موثق ومصرح به</div>
+      </div>
+      <div class="stat-card purple">
+        <div class="top-row"><span class="lbl">المستخدمين تحت الرقابة</span><div class="icon-box">👥</div></div>
+        <div class="num mono">${(state.users||[]).length}</div>
+        <div style="font-size:11px;color:var(--ink-secondary);margin-top:2px;">حسابات موظفين وفنيين وكاشير</div>
+      </div>
+    </div>
+
+    <!-- Sub-tabs navigation -->
+    <div class="chip-group" id="auditSubTabs" style="margin-bottom:14px;border-bottom:1px solid var(--line);padding-bottom:8px;">
+      <div class="chip ${activeTab==='logs'?'sel':''}" data-atab="logs" style="font-weight:800;padding:8px 16px;">
+        📜 سجل وتتبع العمليات الشامل (${allLogs.length})
+      </div>
+      <div class="chip ${activeTab==='requests'?'sel':''}" data-atab="requests" style="font-weight:800;padding:8px 16px;${pendingRequests.length>0?'border-color:#ef4444;color:#b91c1c;background:#fee2e2;':''}">
+        📨 صندوق تصاريح وطلبات الحذف ${pendingRequests.length>0?`<span class="badge" style="background:#ef4444;color:#fff;border-radius:10px;padding:1px 6px;margin-right:4px;">${pendingRequests.length}</span>`:''}
+      </div>
+      <div class="chip ${activeTab==='policies'?'sel':''}" data-atab="policies" style="font-weight:800;padding:8px 16px;">
+        ⚙️ سياسات الرقابة والصلاحيات
+      </div>
+    </div>
+
+    <!-- TAB CONTENT -->
+    ${activeTab === 'logs' ? `
+      <!-- Filter Bar for Audit Logs -->
+      <div class="filters-bar" style="margin-bottom:12px;flex-wrap:wrap;">
+        <select id="auditActionFilterSelect" style="min-width:170px;">
+          <option value="all" ${state.auditActionFilter==='all'?'selected':''}>كل أنواع العمليات (الكل)</option>
+          <option value="حذف" ${state.auditActionFilter==='حذف'?'selected':''}>🗑️ عمليات الحذف والتصاريح</option>
+          <option value="تغيير حالة" ${state.auditActionFilter==='تغيير حالة'?'selected':''}>⚡ تغيير حالات الأجهزة</option>
+          <option value="دفعة" ${state.auditActionFilter==='دفعة'?'selected':''}>💰 سداد ومقبوضات نقدية</option>
+          <option value="مبيعات" ${state.auditActionFilter==='مبيعات'?'selected':''}>🧾 مبيعات الكاشير POS</option>
+          <option value="مخزن" ${state.auditActionFilter==='مخزن'?'selected':''}>📦 حركات وتعديل المخزن</option>
+          <option value="فاتورة" ${state.auditActionFilter==='فاتورة'?'selected':''}>📄 الفواتير والمطبوعات</option>
+          <option value="دخول" ${state.auditActionFilter==='دخول'?'selected':''}>🔑 تسجيل الدخول والأمان</option>
+        </select>
+
+        <select id="auditUserFilterSelect" style="min-width:160px;">
+          <option value="all" ${state.auditUserFilter==='all'?'selected':''}>كل المستخدمين (الكل)</option>
+          ${(state.users||[]).map(u => `<option value="${escapeHtml(u.Name)}" ${state.auditUserFilter===u.Name?'selected':''}>${escapeHtml(u.Name)} (${u.Role==='admin'?'مدير':'موظف'})</option>`).join('')}
+        </select>
+
+        <div class="chip-group" id="auditDateChips">
+          <div class="chip ${state.auditDateFilter==='all'?'sel':''}" data-adchip="all">كل الأوقات</div>
+          <div class="chip ${state.auditDateFilter==='today'?'sel':''}" data-adchip="today">اليوم</div>
+          <div class="chip ${state.auditDateFilter==='yesterday'?'sel':''}" data-adchip="yesterday">أمس</div>
+          <div class="chip ${state.auditDateFilter==='week'?'sel':''}" data-adchip="week">آخر 7 أيام</div>
+          <div class="chip ${state.auditDateFilter==='month'?'sel':''}" data-adchip="month">هذا الشهر</div>
+        </div>
+
+        <input id="auditSearchInp" placeholder="🔍 بحث في السجل، البيان، المرجع، أو التفاصيل..." value="${escapeHtml(state.auditSearchQ||'')}" style="flex:1;min-width:200px;">
+        ${(state.auditSearchQ || state.auditActionFilter!=='all' || state.auditUserFilter!=='all' || state.auditDateFilter!=='all') ? `<button class="btn btn-ghost btn-sm" id="clearAuditFilters">إعادة ضبط</button>` : ''}
+      </div>
+
+      <!-- Logs Table -->
+      <div class="card">
+        ${filteredLogs.length === 0 ? '<div class="empty">لا توجد حركات مسجلة في سجل الرقابة مطابقة للفلتر الحالي.</div>' : `
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:40px;">#</th>
+                  <th>التاريخ والوقت</th>
+                  <th>المستخدم والدور</th>
+                  <th>نوع العملية</th>
+                  <th>القسم</th>
+                  <th>البيان والتفاصيل الكاملة</th>
+                  <th>المرجع</th>
+                  <th style="text-align:center;">الحالة والاعتماد</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${filteredLogs.map((l, idx) => {
+                  const isDelete = (l.action||'').includes('حذف');
+                  const isPay = (l.action||'').includes('سداد') || (l.action||'').includes('دفعة');
+                  const isSale = (l.action||'').includes('بيع') || (l.action||'').includes('POS');
+                  const isStatus = (l.action||'').includes('حالة');
+
+                  let actBadge = `<span class="badge" style="background:#f1f5f9;color:#334155;font-weight:800;border:1px solid #cbd5e1;">${l.action}</span>`;
+                  if(isDelete) actBadge = `<span class="badge" style="background:#fee2e2;color:#b91c1c;font-weight:800;border:1px solid #fecaca;">🗑️ ${l.action}</span>`;
+                  else if(isPay) actBadge = `<span class="badge" style="background:#e0f2fe;color:#0369a1;font-weight:800;border:1px solid #bae6fd;">💰 ${l.action}</span>`;
+                  else if(isSale) actBadge = `<span class="badge" style="background:#dcfce7;color:#15803d;font-weight:800;border:1px solid #bbf7d0;">🧾 ${l.action}</span>`;
+                  else if(isStatus) actBadge = `<span class="badge" style="background:#fef3c7;color:#b45309;font-weight:800;border:1px solid #fde68a;">⚡ ${l.action}</span>`;
+
+                  return `
+                    <tr>
+                      <td class="mono" style="font-size:11px;color:var(--ink-secondary);font-weight:bold;">${filteredLogs.length - idx}</td>
+                      <td style="font-size:11.5px;color:var(--ink-secondary);white-space:nowrap;" class="mono">${new Date(l.timestamp).toLocaleString('ar-EG', {dateStyle:'short', timeStyle:'short'})}</td>
+                      <td>
+                        <div style="font-weight:800;font-size:12.5px;">${escapeHtml(l.user)}</div>
+                        <div style="font-size:10.5px;color:var(--ink-secondary);">${l.role==='admin'?'👑 مدير عام':'👤 موظف'}</div>
+                      </td>
+                      <td>${actBadge}</td>
+                      <td><span style="font-size:11.5px;color:var(--ink-secondary);font-weight:600;">${escapeHtml(l.section||'-')}</span></td>
+                      <td style="font-size:12.5px;line-height:1.4;max-width:320px;">
+                        <div>${escapeHtml(l.details||'-')}</div>
+                      </td>
+                      <td class="mono" style="font-size:11.5px;color:var(--primary);">${escapeHtml(l.refId||'-')}</td>
+                      <td style="text-align:center;">
+                        <span class="status-badge ${l.status==='مرفوض'?'st-failed':(l.status==='بتصريح فوري'?'st-done':(l.status==='بانتظار الموافقة'?'st-repair':'st-check'))}" style="font-size:10.5px;">
+                          ${l.status==='بتصريح فوري'?'🔓 بتصريح فوري':(l.status==='معتمد'?'✅ معتمد':(l.status==='مرفوض'?'❌ مرفوض':l.status||'مسجل'))}
+                        </span>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        `}
+      </div>
+    ` : ''}
+
+    ${activeTab === 'requests' ? `
+      <!-- PENDING REQUESTS -->
+      <div style="margin-bottom:20px;">
+        <h3 style="font-size:15px;margin-bottom:10px;display:flex;align-items:center;gap:8px;">
+          <span>⏳ طلبات بانتظار قرار المدير العام</span>
+          <span class="badge" style="background:${pendingRequests.length>0?'#ef4444':'#64748b'};color:#fff;">${pendingRequests.length} طلب</span>
+        </h3>
+
+        ${pendingRequests.length === 0 ? `
+          <div class="card" style="padding:24px;text-align:center;color:var(--ink-secondary);background:var(--paper2);">
+            <div style="font-size:32px;margin-bottom:6px;">✨</div>
+            <div style="font-weight:700;font-size:13.5px;color:var(--ink);">صندوق التصاريح فارغ!</div>
+            <div style="font-size:12px;margin-top:2px;">لا توجد أي طلبات حذف أو تعديلات معلقة من الموظفين حالياً.</div>
+          </div>
+        ` : `
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            ${pendingRequests.map(req => `
+              <div class="card" style="border-right:5px solid #ef4444;background:#fff;padding:16px;">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
+                  <div>
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                      <span style="font-size:18px;">🔒</span>
+                      <span style="font-weight:900;font-size:14.5px;color:var(--ink);">${escapeHtml(req.action)}</span>
+                      <span class="badge" style="background:#fee2e2;color:#b91c1c;font-weight:800;border:1px solid #fecaca;font-size:11px;">${escapeHtml(req.entityType)}</span>
+                    </div>
+                    <div style="font-size:13px;color:var(--ink);margin-bottom:6px;">
+                      العنصر المستهدف: <b class="mono" style="color:#b91c1c;">${escapeHtml(req.entityTitle)}</b>
+                    </div>
+                    <div style="background:#f8fafc;border:1px dashed #cbd5e1;padding:8px 12px;border-radius:6px;margin-bottom:8px;">
+                      <div style="font-size:11px;color:var(--ink-secondary);font-weight:700;">سبب طلب الحذف الموضح من الموظف:</div>
+                      <div style="font-size:12.5px;color:var(--ink);font-weight:800;margin-top:2px;">"${escapeHtml(req.reason)}"</div>
+                    </div>
+                    <div style="font-size:11.5px;color:var(--ink-secondary);">
+                      مقدم الطلب: <b>${escapeHtml(req.reqUser)}</b> • التوقيت: <span class="mono">${new Date(req.timestamp).toLocaleString('ar-EG')}</span>
+                    </div>
+                  </div>
+
+                  <div style="display:flex;gap:8px;align-items:center;">
+                    <button class="btn btn-green btn-sm" data-approveauth="${req.id}" style="font-weight:800;padding:8px 14px;">
+                      ✅ موافقة واعتماد الحذف الآن
+                    </button>
+                    <button class="btn btn-red btn-sm" data-rejectauth="${req.id}" style="font-weight:800;padding:8px 14px;">
+                      ❌ رفض الطلب
+                    </button>
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `}
+      </div>
+
+      <!-- RESOLVED REQUESTS ARCHIVE -->
+      <div class="card" style="margin-top:20px;">
+        <h3 style="font-size:14px;margin-bottom:10px;">📜 أرشيف طلبات التصاريح السابقة (المعتمدة والمرفوضة)</h3>
+        ${allRequests.filter(r => r.status !== 'pending').length === 0 ? '<div class="empty">لا توجد طلبات سابقة بالأرشيف.</div>' : `
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>التاريخ</th>
+                  <th>الموظف</th>
+                  <th>العملية والعنصر</th>
+                  <th>سبب الحذف</th>
+                  <th>القرار الإداري</th>
+                  <th>المعتمد / الرافض</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${allRequests.filter(r => r.status !== 'pending').map(req => `
+                  <tr>
+                    <td class="mono" style="font-size:11.5px;color:var(--ink-secondary);white-space:nowrap;">${cleanDate(req.timestamp)}</td>
+                    <td style="font-weight:700;">${escapeHtml(req.reqUser)}</td>
+                    <td>
+                      <div style="font-weight:800;font-size:12.5px;">${escapeHtml(req.action)}</div>
+                      <div class="mono" style="font-size:11px;color:var(--ink-secondary);">${escapeHtml(req.entityTitle)}</div>
+                    </td>
+                    <td style="font-size:12px;color:var(--ink);">${escapeHtml(req.reason)}</td>
+                    <td>
+                      <span class="status-badge ${req.status==='approved'?'st-done':'st-failed'}">
+                        ${req.status==='approved'?'✅ تمت الموافقة والحذف':'❌ تم الرفض'}
+                      </span>
+                    </td>
+                    <td style="font-size:12px;">${escapeHtml(req.resolvedBy||'المدير العام')}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `}
+      </div>
+    ` : ''}
+
+    ${activeTab === 'policies' ? `
+      <!-- Security Policies Overview -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));gap:14px;">
+        <div class="card" style="border-top:4px solid #16a34a;">
+          <h3 style="font-size:14.5px;margin-bottom:8px;color:#15803d;display:flex;align-items:center;gap:6px;">
+            <span>🔒</span><span>سياسة الحذف الصارمة (Strict Delete Control)</span>
+          </h3>
+          <p style="font-size:12.5px;line-height:1.6;color:var(--ink-secondary);margin:0 0 10px;">
+            مفعلة تلقائياً: لا يمكن لأي موظف عادي حذف إيصال صيانة، أو فاتورة، أو صنف مخزن، أو حركة مالية إلا بـ <b>تصريح فوري بكلمة مرور المدير</b> أو <b>تقديم طلب تصريح للإدارة</b> للمراجعة في هذا القسم.
+          </p>
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;padding:8px 12px;border-radius:6px;font-size:12px;color:#166534;font-weight:700;">
+            ✅ النظام مؤمّن ضد الحذف العشوائي أو غير المعتمد
+          </div>
+        </div>
+
+        <div class="card" style="border-top:4px solid #0284c7;">
+          <h3 style="font-size:14.5px;margin-bottom:8px;color:#0369a1;display:flex;align-items:center;gap:6px;">
+            <span>💰</span><span>ضبط مدفوعات الصيانة ومنع الزيادة</span>
+          </h3>
+          <p style="font-size:12.5px;line-height:1.6;color:var(--ink-secondary);margin:0 0 10px;">
+            مفعلة تلقائياً: يمنع النظام تماماً إدخال أو سداد أي مبلغ أكبر من المبلغ المتبقي على حساب الجهاز. كما يتم التحقق عند إدخال إيصال جديد من عدم تجاوز العربون للتكلفة الكلية.
+          </p>
+          <div style="background:#f0f9ff;border:1px solid #bae6fd;padding:8px 12px;border-radius:6px;font-size:12px;color:#075985;font-weight:700;">
+            ✅ منع الأرصدة السالبة والأخطاء الحسابية
+          </div>
+        </div>
+
+        <div class="card" style="border-top:4px solid #6366f1;">
+          <h3 style="font-size:14.5px;margin-bottom:8px;color:#4338ca;display:flex;align-items:center;gap:6px;">
+            <span>📔</span><span>فصل حسابات اليومية والخزينة</span>
+          </h3>
+          <p style="font-size:12.5px;line-height:1.6;color:var(--ink-secondary);margin:0 0 10px;">
+            مفعلة تلقائياً: يتم فصل إيرادات الصيانة (ح/ 4101) عن مبيعات الكاشير POS (ح/ 4102) في بطاقات إحصائية مستقلة وشرائح تصفية وعمود حسابات صريح، مع منع ازدواجية الفواتير.
+          </p>
+          <div style="background:#e0e7ff;border:1px solid #c7d2fe;padding:8px 12px;border-radius:6px;font-size:12px;color:#3730a3;font-weight:700;">
+            ✅ تقارير تقفيل نقدية منفصلة ودقيقة 100%
+          </div>
+        </div>
+
+        <div class="card" style="border-top:4px solid #dc2626;">
+          <h3 style="font-size:14.5px;margin-bottom:8px;color:#b91c1c;display:flex;align-items:center;gap:6px;">
+            <span>🛡️</span><span>صلاحية Superuser (بدون طلب موافقة من المدير)</span>
+          </h3>
+          <p style="font-size:12.5px;line-height:1.6;color:var(--ink-secondary);margin:0 0 10px;">
+            تُمكّن المستخدم من حذف وتعديل وإلغاء المعاملات والعمليات مباشرة. أما إذا لم يتم تفعيلها، فعند قيامه بأي عملية حذف، سيطلب منه النظام إدخال سبب الحذف ويتم إرسال إشعار فوري لمدير النظام للموافقة أو الرفض (أو إدخال رمز المشرف).
+          </p>
+          <div style="background:#fef2f2;border:1px solid #fecaca;padding:8px 12px;border-radius:6px;font-size:12px;color:#991b1b;font-weight:700;">
+            ⚡ تمنح للمستخدمين الموثوقين من شاشة إدارة المستخدمين
+          </div>
+        </div>
+      </div>
+    ` : ''}
+  `;
+
+  // Bindings
+  document.querySelectorAll('#auditSubTabs .chip').forEach(c => {
+    c.onclick = ()=>{
+      state.auditTab = c.dataset.atab;
+      renderAuditCenterPage(main);
+    };
+  });
+
+  const actFilterSel = document.getElementById('auditActionFilterSelect');
+  if(actFilterSel) actFilterSel.onchange = (e)=>{ state.auditActionFilter = e.target.value; renderAuditCenterPage(main); };
+
+  const userFilterSel = document.getElementById('auditUserFilterSelect');
+  if(userFilterSel) userFilterSel.onchange = (e)=>{ state.auditUserFilter = e.target.value; renderAuditCenterPage(main); };
+
+  document.querySelectorAll('#auditDateChips .chip').forEach(c => {
+    c.onclick = ()=>{
+      state.auditDateFilter = c.dataset.adchip;
+      renderAuditCenterPage(main);
+    };
+  });
+
+  const searchInp = document.getElementById('auditSearchInp');
+  if(searchInp) searchInp.oninput = (e)=>{ state.auditSearchQ = e.target.value; renderAuditCenterPage(main); };
+
+  const clearBtn = document.getElementById('clearAuditFilters');
+  if(clearBtn) clearBtn.onclick = ()=>{
+    state.auditActionFilter = 'all';
+    state.auditUserFilter = 'all';
+    state.auditDateFilter = 'all';
+    state.auditSearchQ = '';
+    renderAuditCenterPage(main);
+  };
+
+  const refreshBtn = document.getElementById('refreshAuditBtn');
+  if(refreshBtn) refreshBtn.onclick = ()=> renderAuditCenterPage(main);
+
+  const expBtn = document.getElementById('exportAuditExcelBtn');
+  if(expBtn) expBtn.onclick = ()=> exportAuditLogsToExcel(filteredLogs);
+
+  // Approve Authorization Request
+  main.querySelectorAll('[data-approveauth]').forEach(btn => {
+    btn.onclick = async ()=>{
+      const reqId = btn.dataset.approveauth;
+      const req = (state.authRequests||[]).find(x => x.id === reqId);
+      if(!req) return;
+
+      if(!confirm(`هل أنت متأكد من اعتماد طلب الحذف وحذف (${req.entityTitle}) نهائياً من النظام؟`)) return;
+
+      btn.disabled = true; btn.textContent = 'جارٍ التنفيذ...';
+      try {
+        // Execute the actual deletion based on entityType
+        if(req.entityType.includes('إيصال')){
+          await deleteReceiptRemote(req.entityId);
+          state.receipts = (state.receipts||[]).filter(x => x.id !== req.entityId);
+        } else if(req.entityType.includes('فاتورة')){
+          await deleteInvoiceRemote(req.entityId);
+          state.invoices = (state.invoices||[]).filter(x => x.ID !== req.entityId);
+        } else if(req.entityType.includes('مخزن') || req.entityType.includes('صنف')){
+          await deleteInventoryItemRemote(req.entityId);
+          state.inventory = (state.inventory||[]).filter(x => x.ID !== req.entityId);
+        } else if(req.entityType.includes('مصروف') || req.entityType.includes('يومية')){
+          await deleteExpenseRemote(req.entityId);
+          state.expenses = (state.expenses||[]).filter(x => x.ID !== req.entityId);
+        }
+
+        req.status = 'approved';
+        req.resolvedBy = state.user.name;
+        req.resolvedAt = new Date().toISOString();
+        setCache('auth_requests', state.authRequests);
+        try { localStorage.setItem('microerp_auth_requests', JSON.stringify(state.authRequests)); } catch(e){}
+
+        recordAuditLog('اعتماد تصريح حذف', req.entityType, `تم اعتماد حذف (${req.entityTitle}) المطلوب من الموظف (${req.reqUser}) بواسطة المدير (${state.user.name})`, req.entityId, 'معتمد');
+
+        showToast(`تم اعتماد الطلب وحذف (${req.entityTitle}) بنجاح ✅`, 'success');
+        renderAuditCenterPage(main);
+      } catch(err){
+        showToast('تعذر تنفيذ الحذف: ' + err.message, 'error');
+        btn.disabled = false; btn.textContent = '✅ موافقة واعتماد الحذف الآن';
+      }
+    };
+  });
+
+  // Reject Authorization Request
+  main.querySelectorAll('[data-rejectauth]').forEach(btn => {
+    btn.onclick = async ()=>{
+      const reqId = btn.dataset.rejectauth;
+      const req = (state.authRequests||[]).find(x => x.id === reqId);
+      if(!req) return;
+
+      if(!confirm(`هل أنت متأكد من رغبتك في رفض طلب حذف (${req.entityTitle})؟`)) return;
+
+      req.status = 'rejected';
+      req.resolvedBy = state.user.name;
+      req.resolvedAt = new Date().toISOString();
+      setCache('auth_requests', state.authRequests);
+      try { localStorage.setItem('microerp_auth_requests', JSON.stringify(state.authRequests)); } catch(e){}
+
+      recordAuditLog('رفض تصريح حذف', req.entityType, `تم رفض طلب حذف (${req.entityTitle}) المطلوب من الموظف (${req.reqUser}) بواسطة المدير (${state.user.name})`, req.entityId, 'مرفوض');
+
+      showToast(`تم رفض طلب الحذف ❌`, 'info');
+      renderAuditCenterPage(main);
+    };
+  });
 }
 
 /* ---------------- Enterprise Settings & Customization Center ---------------- */
@@ -14739,7 +16567,8 @@ function attachLogin(){
         sections = String(res.sections||'').split(',').map(s=>s.trim()).filter(Boolean);
         if(sections.length===0) sections = ['daily','maintenance','invoices','pos','inventory','cameras','finance','users'];
       }
-      state.user = {name: res.name, role: res.role, sections};
+      const isSuper = res.role === 'admin' || !!res.superuser || !!res.Superuser;
+      state.user = {name: res.name, role: res.role, superuser: isSuper, Superuser: isSuper, sections};
       normalizeUserSections(state.user);
       try{ localStorage.setItem('microerp_session', JSON.stringify(state.user)); }catch(e){}
       await init();
@@ -14757,6 +16586,20 @@ function attachLogin(){
     const saved = localStorage.getItem('microerp_session');
     if(saved) {
       state.user = JSON.parse(saved);
+      if(state.user){
+        if(state.user.role === 'admin'){
+          state.user.superuser = true;
+          state.user.Superuser = true;
+        } else {
+          const cachedUsers = getCache('users', []);
+          const uRecord = cachedUsers.find(u => u.Name && u.Name.toLowerCase() === (state.user.name||'').toLowerCase());
+          if(uRecord){
+            const isSuper = uRecord.Role === 'admin' || !!uRecord.Superuser || !!uRecord.superuser;
+            state.user.superuser = isSuper;
+            state.user.Superuser = isSuper;
+          }
+        }
+      }
       normalizeUserSections(state.user);
     }
   }catch(e){}

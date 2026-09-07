@@ -2511,7 +2511,10 @@ function receiptToRow(d){
     Faults: (d.faults||[]).join('، '), FaultNotes: d.faultNotes,
     Technician: d.technician, Cost: d.cost, Deposit: d.deposit, Refunded: d.refunded || 0, PartsCost: d.partsCost || 0, PartsUsed: d.partsUsed || '',
     DeliveryDate: d.deliveryDate, Status: d.status, Paid: d.paid ? 'TRUE' : 'FALSE',
-    Bonus: d.bonus || '', CreatedBy: d.createdBy, UpdatedBy: d.updatedBy, UpdatedAt: d.updatedAt
+    Bonus: d.bonus || '', CreatedBy: d.createdBy, UpdatedBy: d.updatedBy, UpdatedAt: d.updatedAt,
+    PreviousReceiptID: d.previousReceiptId || '', PreviousReceiptNumber: d.previousReceiptNumber || '',
+    RootReceiptID: d.rootReceiptId || '', ReIntakeReason: d.reIntakeReason || '', ServiceCycle: d.serviceCycle || 1,
+    NextReceiptID: d.nextReceiptId || '', NextReceiptNumber: d.nextReceiptNumber || ''
   };
 }
 
@@ -2550,7 +2553,15 @@ function rowToReceipt(row){
     bonus: row.Bonus || row.bonus || '',
     createdBy: row.CreatedBy || row.createdBy || '',
     updatedBy: row.UpdatedBy || row.updatedBy || '',
-    updatedAt: row.UpdatedAt || row.updatedAt || ''
+    updatedAt: row.UpdatedAt || row.updatedAt || '',
+    previousReceiptId: row.PreviousReceiptID || row.previousReceiptId || '',
+    previousReceiptNumber: row.PreviousReceiptNumber || row.previousReceiptNumber || '',
+    rootReceiptId: row.RootReceiptID || row.rootReceiptId || '',
+    reIntakeReason: row.ReIntakeReason || row.reIntakeReason || '',
+    serviceCycle: Number(row.ServiceCycle || row.serviceCycle || 1),
+    nextReceiptId: row.NextReceiptID || row.nextReceiptId || '',
+    nextReceiptNumber: row.NextReceiptNumber || row.nextReceiptNumber || '',
+    maintenanceHistory: row.maintenanceHistory || []
   };
 }
 
@@ -4360,6 +4371,14 @@ function newDraft(){
     deliveryDate: today.toISOString().slice(0,10),
     status: 'قيد الفحص',
     paid: false,
+    previousReceiptId: '',
+    previousReceiptNumber: '',
+    rootReceiptId: '',
+    reIntakeReason: '',
+    serviceCycle: 1,
+    nextReceiptId: '',
+    nextReceiptNumber: '',
+    maintenanceHistory: [],
     createdBy: state.user ? state.user.name : '',
     updatedBy: '',
     updatedAt: ''
@@ -5674,9 +5693,57 @@ function stepCustomer(body,d){
 function stepDevice(body,d){
   const brandsObj = getBrands();
   const cats = Object.keys(brandsObj);
+
+  // Detect prior devices for this customer in maintenance history
+  const custName = (d.customer && d.customer.name || '').trim().toLowerCase();
+  const custPhone = (d.customer && d.customer.phone || '').trim();
+  const priorReceipts = (state.receipts || []).filter(r => {
+    if(!r || !r.device) return false;
+    const rPhone = (r.customer && r.customer.phone || '').trim();
+    const rName = (r.customer && r.customer.name || '').trim().toLowerCase();
+    const matchPhone = custPhone && rPhone && custPhone === rPhone;
+    const matchName = custName && rName && custName === rName;
+    return matchPhone || matchName;
+  });
+
+  const seenDevices = new Set();
+  const priorDevices = [];
+  priorReceipts.forEach(pr => {
+    const brandStr = pr.device.brand === 'أخرى' ? pr.device.brandOther : pr.device.brand;
+    const key = `${pr.device.category || ''}|${brandStr || ''}|${pr.device.model || ''}`.trim().toLowerCase();
+    if(key && !seenDevices.has(key)){
+      seenDevices.add(key);
+      priorDevices.push(pr);
+    }
+  });
+
   body.innerHTML = `
     <div class="card">
       <h3>💻 بيانات الجهاز المستلم</h3>
+
+      ${priorDevices.length > 0 ? `
+        <div style="background:rgba(245,158,11,0.08);border:1px dashed var(--amber);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:14px;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+            <span style="font-size:16px;">🔄</span>
+            <b style="color:var(--amber-text);font-size:12.5px;">أجهزة سابقة لهذا العميل في السجل:</b>
+          </div>
+          <div style="font-size:11px;color:var(--ink-secondary);margin-bottom:8px;">
+            إذا كان هذا الجهاز قد تم إدخاله للصيانة من قبل، يمكنك اختياره لربط السجل التراكمي وتعبئة البيانات بضغطة واحدة:
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;" id="priorDevicesList">
+            ${priorDevices.map(pd => `
+              <button type="button" class="btn btn-xs btn-amber pick-prior-device-btn" data-recid="${pd.id}" style="font-weight:700;">
+                💻 ${escapeHtml(pd.device.category)} - ${escapeHtml(pd.device.brand==='أخرى'?pd.device.brandOther:pd.device.brand)} ${escapeHtml(pd.device.model||'')} (إيصال #${escapeHtml(pd.receiptNumber)})
+              </button>
+            `).join('')}
+          </div>
+          <div id="priorDeviceLinkedBadge" style="display:${d.previousReceiptNumber?'flex':'none'};align-items:center;justify-content:space-between;gap:6px;margin-top:8px;padding:6px 10px;background:var(--green-bg);color:var(--green-text);border-radius:4px;font-size:12px;">
+            <span>✅ تم ربط الجهاز بسجل الصيانة التراكمي للإيصال السابق <b class="mono">#${escapeHtml(d.previousReceiptNumber||'')}</b></span>
+            <button type="button" class="btn btn-ghost btn-xs" id="clearPriorLinkBtn" style="color:var(--red);padding:2px 6px;">إلغاء الربط ✕</button>
+          </div>
+        </div>
+      ` : ''}
+
       <div class="field"><label>فئة الجهاز</label>
         <select id="devCat">${cats.map(c=>`<option ${c===d.device.category?'selected':''}>${c}</option>`).join('')}</select>
       </div>
@@ -5698,6 +5765,59 @@ function stepDevice(body,d){
   fillBrands();
   document.getElementById('devCat').onchange = fillBrands;
   document.getElementById('devBrand').onchange = ()=>{ document.getElementById('brandOtherWrap').style.display = document.getElementById('devBrand').value==='أخرى'?'':'none'; };
+
+  body.querySelectorAll('.pick-prior-device-btn').forEach(btn => {
+    btn.onclick = ()=>{
+      const picked = priorReceipts.find(p => p.id === btn.dataset.recid);
+      if(!picked) return;
+      d.previousReceiptId = picked.id;
+      d.previousReceiptNumber = picked.receiptNumber;
+      d.rootReceiptId = picked.rootReceiptId || picked.id;
+      d.serviceCycle = (Number(picked.serviceCycle) || 1) + 1;
+      d.reIntakeReason = 'صيانة تكرارية لنفس الجهاز';
+
+      const catSel = document.getElementById('devCat');
+      if(catSel && picked.device.category){
+        catSel.value = picked.device.category;
+        fillBrands();
+      }
+      const brandSel = document.getElementById('devBrand');
+      if(brandSel && picked.device.brand){
+        brandSel.value = picked.device.brand;
+        if(brandSel.value === 'أخرى'){
+          document.getElementById('brandOtherWrap').style.display = '';
+          document.getElementById('devBrandOther').value = picked.device.brandOther || '';
+        } else {
+          document.getElementById('brandOtherWrap').style.display = 'none';
+        }
+      }
+      const modelInp = document.getElementById('devModel');
+      if(modelInp) modelInp.value = picked.device.model || '';
+      const accInp = document.getElementById('devAcc');
+      if(accInp && !accInp.value) accInp.value = picked.device.accessories || '';
+
+      const badge = document.getElementById('priorDeviceLinkedBadge');
+      if(badge){
+        badge.style.display = 'flex';
+        badge.querySelector('b').textContent = '#' + picked.receiptNumber;
+      }
+      showToast(`تم استيراد بيانات الجهاز وربطه بالإيصال السابق #${picked.receiptNumber} بنجاح 🔄`, 'success');
+    };
+  });
+
+  const clearLinkBtn = document.getElementById('clearPriorLinkBtn');
+  if(clearLinkBtn){
+    clearLinkBtn.onclick = ()=>{
+      d.previousReceiptId = '';
+      d.previousReceiptNumber = '';
+      d.rootReceiptId = '';
+      d.serviceCycle = 1;
+      d.reIntakeReason = '';
+      const badge = document.getElementById('priorDeviceLinkedBadge');
+      if(badge) badge.style.display = 'none';
+      showToast('تم إلغاء ربط الإيصال السابق', 'info');
+    };
+  }
 
   currentStepCollector = ()=>{
     d.device.category = document.getElementById('devCat').value;
@@ -5849,6 +5969,7 @@ function stepReview(body,d){
       <div class="grid2" style="font-size:13.5px;line-height:2;">
         <div><b>👤 العميل:</b> ${d.customer.name} — <span class="mono">${d.customer.phone}</span></div>
         <div><b>💻 الجهاز:</b> ${d.device.category} / ${d.device.brand==='أخرى'?d.device.brandOther:d.device.brand} / ${d.device.model||'-'}</div>
+        ${d.previousReceiptNumber ? `<div><b>🔄 صيانة راجعة / تكرارية:</b> <span class="badge badge-amber mono">#${escapeHtml(d.previousReceiptNumber)}</span> <span style="font-size:11.5px;color:var(--ink-secondary);">${d.reIntakeReason ? '('+escapeHtml(d.reIntakeReason)+')' : ''}</span></div>` : ''}
         <div><b>⚠️ الأعطال:</b> ${d.faults.join('، ')||'-'}</div>
         <div><b>👨‍🔧 الفني المسؤول:</b> ${d.technician||'غير محدد'}</div>
         <div><b>💵 تكلفة الخدمة:</b> ${d.cost||0} ج.م</div>
@@ -5882,6 +6003,16 @@ async function saveReceipt(d, printA5, sendWa, printSticker){
   btns.forEach(b=>{ b.disabled = true; b.textContent = 'جارٍ الحفظ...'; });
   try{
     await saveReceiptRemote(d);
+    if(d.previousReceiptId || d.previousReceiptNumber){
+      const prev = state.receipts.find(x => (d.previousReceiptId && x.id === d.previousReceiptId) || (d.previousReceiptNumber && x.receiptNumber === d.previousReceiptNumber));
+      if(prev){
+        prev.nextReceiptId = d.id;
+        prev.nextReceiptNumber = d.receiptNumber;
+        prev.updatedBy = state.user ? state.user.name : 'نظام';
+        prev.updatedAt = new Date().toISOString();
+        try{ await saveReceiptRemote(prev); }catch(errPrev){ console.warn(errPrev); }
+      }
+    }
     if(Number(d.deposit||0) > 0){
       try{ await savePaymentRemote(d.id, Number(d.deposit), 'دفعة مقدمة عند الاستلام'); }
       catch(payErr){ console.warn(payErr); }
@@ -5928,6 +6059,7 @@ function archiveTable(list){
     return `<tr style="${isOverdue?'background:rgba(245,158,11,0.08);':''}">
       <td>
         <span class="mono" style="font-weight:800;font-size:13px;color:var(--primary);">${r.receiptNumber}</span>
+        ${r.previousReceiptNumber ? `<div style="font-size:10px;color:#b45309;font-weight:700;margin-top:1px;">🔄 صيانة راجعة (#${r.previousReceiptNumber})</div>` : ''}
         <div style="color:var(--ink-secondary);font-size:11px;">${cleanDate(r.date)}</div>
       </td>
       <td>
@@ -5951,6 +6083,7 @@ function archiveTable(list){
       </td>
       <td class="mono" style="font-weight:800;${remaining>0?'color:var(--red);':'color:var(--green);'}">${remaining} ج.م</td>
       <td class="row-actions">
+        <button class="btn btn-xs btn-amber" data-act="reintake" data-id="${r.id}" title="إعادة إدخال نفس الجهاز للصيانة (صيانة راجعة أو عطل جديد)">🔄 إعادة صيانة</button>
         <button class="btn btn-xs btn-blue" data-act="invoice" data-id="${r.id}" title="تحويل لفاتورة ضريبية رسمية">📄 فاتورة</button>
         <button class="btn btn-xs btn-ghost" data-act="view" data-id="${r.id}">تعديل</button>
         <button class="btn btn-xs btn-status-quick" style="background:var(--green-bg);color:var(--green-text);" data-quickstatus="${r.id}">⚡ الحالة</button>
@@ -6064,7 +6197,7 @@ function renderCustomersPage(main){
         <div class="subtitle">إدارة بيانات وهواتف العملاء ومزامنتها واسترداد الأرقام المفقودة (${allCusts.length} عميل مسجل)</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-        <button class="btn btn-ghost btn-sm" id="custRecoverBtn" style="color:var(--primary);border-color:var(--primary);font-weight:800;">
+        <button class="btn btn-ghost btn-sm" id="custRecoverBtn" style="color:var(--primary);font-weight:800;">
           🔄 فحص واسترداد الأرقام المفقودة
         </button>
         <button class="btn btn-ghost btn-sm" id="exportCustsExcelBtn">📥 تصدير Excel</button>
@@ -6231,13 +6364,13 @@ function renderCustomersPage(main){
   main.querySelectorAll('.cust-new-inv-btn').forEach(btn => {
     btn.onclick = ()=>{
       const newInv = {
-        ID: 'inv_' + Date.now(),
-        InvoiceNumber: 'INV-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-4),
-        Date: new Date().toISOString().slice(0,10),
-        DueDate: new Date().toISOString().slice(0,10),
-        CustomerName: btn.dataset.custname,
+        InvoiceNumber: typeof nextInvoiceNumber === 'function' ? nextInvoiceNumber() : '',
+        Date: typeof todayISO === 'function' ? todayISO() : new Date().toISOString().slice(0, 10),
+        DueDate: typeof todayISO === 'function' ? todayISO() : new Date().toISOString().slice(0, 10),
+        CustomerName: btn.dataset.custname || '',
         CustomerPhone: btn.dataset.custphone || '',
-        Items: [{ Name: 'صيانة / قطع غيار', Qty: 1, Price: 0, Total: 0 }],
+        Type: 'مبيعات',
+        Items: [],
         Subtotal: 0, TaxPercent: 0, TaxAmount: 0, Discount: 0, Total: 0, AmountPaid: 0, Remaining: 0,
         Status: 'غير مدفوعة (آجلة)', PaymentMethod: 'نقدي'
       };
@@ -6333,6 +6466,7 @@ function attachRowActions(root){
       const r = state.receipts.find(x=>x.id===btn.dataset.id);
       if(!r) return;
       const act = btn.dataset.act;
+      if(act==='reintake') openReIntakeDeviceModal(r);
       if(act==='invoice') convertReceiptToInvoice(r.id);
       if(act==='view') openReceiptDetail(r);
       if(act==='wa') openWhatsapp(r);
@@ -6669,6 +6803,354 @@ function openWhatsappChoice(r){
   overlay.querySelector('#waCancel').onclick = ()=>overlay.remove();
 }
 
+/* ---------------- Cumulative Maintenance History & Re-Intake Engine ---------------- */
+function getDeviceMaintenanceHistory(r){
+  if(!r) return [];
+  const all = state.receipts || [];
+  const historyMap = new Map();
+
+  const rootId = r.rootReceiptId || r.previousReceiptId || r.id;
+  all.forEach(rec => {
+    if(!rec) return;
+    if(rec.id === r.id ||
+       (rec.rootReceiptId && (rec.rootReceiptId === rootId || rec.rootReceiptId === r.id)) ||
+       rec.previousReceiptId === r.id || rec.id === r.previousReceiptId ||
+       (rec.previousReceiptNumber && r.receiptNumber && rec.previousReceiptNumber === r.receiptNumber) ||
+       (r.previousReceiptNumber && rec.receiptNumber === r.previousReceiptNumber)){
+      historyMap.set(rec.id, rec);
+    }
+  });
+
+  const cPhone = (r.customer && r.customer.phone || '').trim();
+  const cName = (r.customer && r.customer.name || '').trim().toLowerCase();
+  const dBrand = (r.device && (r.device.brand==='أخرى' ? r.device.brandOther : r.device.brand) || '').trim().toLowerCase();
+  const dModel = (r.device && r.device.model || '').trim().toLowerCase();
+  const dCat = (r.device && r.device.category || '').trim().toLowerCase();
+
+  if((cPhone || cName) && (dBrand || dModel)){
+    all.forEach(rec => {
+      if(!rec || historyMap.has(rec.id)) return;
+      const recPhone = (rec.customer && rec.customer.phone || '').trim();
+      const recName = (rec.customer && rec.customer.name || '').trim().toLowerCase();
+      const recBrand = (rec.device && (rec.device.brand==='أخرى' ? rec.device.brandOther : rec.device.brand) || '').trim().toLowerCase();
+      const recModel = (rec.device && rec.device.model || '').trim().toLowerCase();
+      const recCat = (rec.device && rec.device.category || '').trim().toLowerCase();
+
+      const sameCust = (cPhone && recPhone === cPhone) || (cName && recName === cName);
+      const sameBrand = dBrand && recBrand && dBrand === recBrand;
+      const sameModel = dModel && recModel && dModel === recModel;
+      const sameCat = !dCat || !recCat || dCat === recCat;
+
+      if(sameCust && sameBrand && (sameModel || (!dModel && !recModel)) && sameCat){
+        historyMap.set(rec.id, rec);
+      }
+    });
+  }
+
+  const list = Array.from(historyMap.values());
+  list.sort((a,b) => {
+    const da = new Date(a.createdAt || a.date || 0).getTime();
+    const db = new Date(b.createdAt || b.date || 0).getTime();
+    if(da !== db) return da - db;
+    return String(a.receiptNumber || '').localeCompare(String(b.receiptNumber || ''));
+  });
+
+  return list;
+}
+
+function renderDeviceHistoryCard(r){
+  const history = getDeviceMaintenanceHistory(r);
+  if(!history || !history.length) return '';
+
+  let html = `
+    <div class="card" style="background:var(--paper3);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px;margin-top:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid var(--line);padding-bottom:6px;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="font-size:16px;">📋</span>
+          <div>
+            <h4 style="margin:0;font-size:13.5px;font-weight:900;color:var(--ink);">سجل الصيانة التراكمي للجهاز</h4>
+            <div style="font-size:11px;color:var(--ink-secondary);">إجمالي مرات دخول هذا الجهاز للصيانة: <b class="mono" style="color:var(--primary);">${history.length}</b> ${history.length>1?'(زيارات سابقة وحالية)':'(الدخول الأول)'}</div>
+          </div>
+        </div>
+        <button type="button" class="btn btn-amber btn-xs" id="historyReIntakeBtn" title="إعادة إدخال الجهاز للصيانة بدورة جديدة">🔄 إعادة إدخال الجهاز</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;max-height:220px;overflow-y:auto;padding-right:2px;">
+  `;
+
+  history.forEach((h, idx) => {
+    const isCurrent = h.id === r.id;
+    const cycleNum = h.serviceCycle || (idx + 1);
+    const costTotal = Number(h.cost || 0) + Number(h.partsCost || 0);
+    const paidTotal = Number(h.deposit || 0);
+    const rem = Math.max(0, costTotal - paidTotal + Number(h.refunded || 0));
+
+    html += `
+      <div style="border-radius:var(--radius-sm);border:1px solid ${isCurrent ? 'var(--primary)' : 'var(--line)'};background:${isCurrent ? 'var(--primary-subtle, rgba(24,119,242,0.06))' : 'var(--paper2)'};padding:8px 10px;font-size:11.5px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:5px;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span class="badge ${isCurrent ? 'badge-blue' : 'badge-gray'} mono" style="font-weight:900;">#${escapeHtml(h.receiptNumber)}</span>
+            <span style="font-weight:800;color:var(--ink);">دورة ${cycleNum}</span>
+            ${h.reIntakeReason ? `<span class="badge badge-amber" style="font-size:10px;">${escapeHtml(h.reIntakeReason)}</span>` : ''}
+            ${isCurrent ? `<span class="badge badge-green" style="font-size:10px;">الإيصال الحالي</span>` : ''}
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span class="mono" style="color:var(--ink-secondary);font-size:11px;">📅 ${cleanDate(h.date || h.createdAt)}</span>
+            <span class="badge ${h.status==='تم التسليم'?'badge-green':(h.status==='مكتمل'?'badge-blue':'badge-amber')}">${escapeHtml(h.status)}</span>
+            ${!isCurrent ? `<button type="button" class="btn btn-ghost btn-xs view-hist-receipt-btn" data-histid="${h.id}" style="padding:1px 6px;font-size:10.5px;">عرض ↗</button>` : ''}
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:4px 8px;color:var(--ink-secondary);font-size:11px;">
+          <div><b>الأعطال:</b> <span style="color:var(--ink);">${escapeHtml((h.faults || []).join('، ') || 'غير محدد')}</span></div>
+          <div><b>الفني:</b> <span style="color:var(--ink);">${escapeHtml(h.technician || '-')}</span></div>
+          <div><b>التشخيص:</b> <span style="color:var(--ink);">${escapeHtml(h.faultNotes || '-')}</span></div>
+          <div><b>المالي:</b> تكلفة <b class="mono" style="color:var(--ink);">${costTotal}</b> | مدفوع <b class="mono" style="color:var(--green-text);">${paidTotal}</b> ${rem > 0 ? `| متبقي <b class="mono" style="color:var(--red-text);">${rem}</b>` : ''}</div>
+        </div>
+      </div>
+    `;
+  });
+
+  html += `
+      </div>
+    </div>
+  `;
+  return html;
+}
+
+function openReIntakeDeviceModal(previousReceipt){
+  if(!previousReceipt){
+    showToast('لم يتم تحديد إيصال الجهاز السابق', 'error');
+    return;
+  }
+
+  const cycleCount = (Number(previousReceipt.serviceCycle) || 1) + 1;
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-content" style="max-width:640px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
+        <h3 style="margin:0;font-size:16.5px;font-weight:900;color:var(--ink);">
+          🔄 إعادة إدخال الجهاز للصيانة <span class="mono" style="color:var(--amber-text);font-size:14px;">(دورة صيانة ${cycleCount})</span>
+        </h3>
+        <button class="btn btn-ghost btn-xs" id="closeReIntakeModalBtn">✕ إغلاق</button>
+      </div>
+
+      <!-- Previous Receipt Summary -->
+      <div style="background:var(--paper3);border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:14px;font-size:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <span><b>العميل:</b> ${escapeHtml(previousReceipt.customer.name)} (${escapeHtml(previousReceipt.customer.phone || 'بدون هاتف')})</span>
+          <span class="badge badge-gray mono">إيصال سابق: #${escapeHtml(previousReceipt.receiptNumber)}</span>
+        </div>
+        <div><b>الجهاز:</b> ${escapeHtml(previousReceipt.device.category)} — ${previousReceipt.device.brand==='أخرى'?escapeHtml(previousReceipt.device.brandOther):escapeHtml(previousReceipt.device.brand)} ${escapeHtml(previousReceipt.device.model||'')}</div>
+        <div style="color:var(--ink-secondary);margin-top:2px;"><b>الأعطال السابقة:</b> ${escapeHtml((previousReceipt.faults||[]).join('، ')||'-')} | <b>الفني السابق:</b> ${escapeHtml(previousReceipt.technician||'-')}</div>
+      </div>
+
+      <!-- Re-Intake Reason Selector -->
+      <div class="field" style="margin-bottom:12px;">
+        <label style="font-weight:800;margin-bottom:6px;display:block;">نوع أو سبب إعادة الإدخال:</label>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(170px, 1fr));gap:8px;" id="reIntakeReasonOptions">
+          <label style="border:2px solid var(--amber);border-radius:var(--radius-sm);padding:8px 10px;cursor:pointer;background:rgba(245,158,11,0.06);display:flex;flex-direction:column;gap:3px;" id="lblReasonWarranty">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <input type="radio" name="reIntakeReasonRadio" value="ضمان / صيانة راجعة" checked>
+              <b style="color:var(--amber-text);font-size:12px;">🛡️ ضمان / صيانة راجعة</b>
+            </div>
+            <span style="font-size:11px;color:var(--ink-secondary);">نفس العطل السابق تحت الضمان (0 ج.م)</span>
+          </label>
+
+          <label style="border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 10px;cursor:pointer;background:var(--paper2);display:flex;flex-direction:column;gap:3px;" id="lblReasonNew">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <input type="radio" name="reIntakeReasonRadio" value="عطل جديد لنفس الجهاز">
+              <b style="color:var(--primary);font-size:12px;">⚡ عطل جديد لنفس الجهاز</b>
+            </div>
+            <span style="font-size:11px;color:var(--ink-secondary);">عطل مختلف بتكلفة كشف/صيانة جديدة</span>
+          </label>
+
+          <label style="border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 10px;cursor:pointer;background:var(--paper2);display:flex;flex-direction:column;gap:3px;" id="lblReasonParts">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <input type="radio" name="reIntakeReasonRadio" value="قطع غيار / صيانة تكميلية">
+              <b style="color:var(--green-text);font-size:12px;">🔩 قطع غيار / تكميلية</b>
+            </div>
+            <span style="font-size:11px;color:var(--ink-secondary);">إضافة قطعة غيار أو صيانة إضافية</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Faults Selection -->
+      <div class="field" style="margin-bottom:12px;">
+        <label style="font-weight:800;">الأعطال المرصودة في هذه الدورة</label>
+        <div class="chip-group" id="reIntakeFaultChips" style="margin-top:6px;">
+          ${getCommonFaults().map(f=>`<div class="chip ${(previousReceipt.faults||[]).includes(f)?'sel':''}" data-f="${f}">${f}</div>`).join('')}
+        </div>
+      </div>
+
+      <!-- Notes / Diagnosis -->
+      <div class="field" style="margin-bottom:12px;">
+        <label>ملاحظات الاستلام والتشخيص الجديد</label>
+        <textarea id="reIntakeNotes" placeholder="اكتب شكوى العميل عند إعادة الاستلام وملاحظات الفحص..." style="height:60px;">إعادة استلام الجهاز (صيانة راجعة بضمان) تابعة للإيصال السابق #${previousReceipt.receiptNumber}</textarea>
+      </div>
+
+      <!-- Technician and Cost Details -->
+      <div class="grid3" style="margin-bottom:12px;">
+        <div class="field">
+          <label>الفني المكلف</label>
+          <select id="reIntakeTech">
+            <option value="">-- اختر فني --</option>
+            ${state.technicians.map(t=>`<option ${t===previousReceipt.technician?'selected':''}>${t}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field">
+          <label>تكلفة الخدمة (ج.م)</label>
+          <input id="reIntakeCost" type="number" value="0">
+          <span id="reIntakeCostHint" style="font-size:10.5px;color:var(--amber-text);display:block;margin-top:2px;">(0 ج.م مشمول بالضمان)</span>
+        </div>
+        <div class="field">
+          <label>دفعة مقدمة (ج.م)</label>
+          <input id="reIntakeDeposit" type="number" value="0">
+        </div>
+      </div>
+
+      <div class="actions-row" style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px;">
+        <button class="btn btn-ghost btn-sm" id="cancelReIntakeBtn">إلغاء</button>
+        <button class="btn btn-amber btn-sm" id="confirmReIntakeBtn" style="font-weight:800;">
+          🚀 تأكيد إدخال الجهاز وإنشاء إيصال جديد
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('#closeReIntakeModalBtn').onclick = ()=>overlay.remove();
+  overlay.querySelector('#cancelReIntakeBtn').onclick = ()=>overlay.remove();
+
+  const costInp = overlay.querySelector('#reIntakeCost');
+  const costHint = overlay.querySelector('#reIntakeCostHint');
+  const notesArea = overlay.querySelector('#reIntakeNotes');
+
+  function updateReasonUi(){
+    const checked = overlay.querySelector('input[name="reIntakeReasonRadio"]:checked');
+    const val = checked ? checked.value : 'ضمان / صيانة راجعة';
+    const lblW = overlay.querySelector('#lblReasonWarranty');
+    const lblN = overlay.querySelector('#lblReasonNew');
+    const lblP = overlay.querySelector('#lblReasonParts');
+
+    if(lblW) lblW.style.border = val==='ضمان / صيانة راجعة' ? '2px solid var(--amber)' : '1px solid var(--line)';
+    if(lblN) lblN.style.border = val==='عطل جديد لنفس الجهاز' ? '2px solid var(--primary)' : '1px solid var(--line)';
+    if(lblP) lblP.style.border = val==='قطع غيار / صيانة تكميلية' ? '2px solid var(--green)' : '1px solid var(--line)';
+
+    if(val === 'ضمان / صيانة راجعة'){
+      costInp.value = 0;
+      costHint.textContent = '(0 ج.م مشمول بالضمان)';
+      costHint.style.color = 'var(--amber-text)';
+      notesArea.value = `إعادة استلام الجهاز (صيانة راجعة بضمان) تابعة للإيصال السابق #${previousReceipt.receiptNumber}`;
+    } else if(val === 'عطل جديد لنفس الجهاز'){
+      costInp.value = 50;
+      costHint.textContent = '(كشف / صيانة جديدة لعطل مستقل)';
+      costHint.style.color = 'var(--primary)';
+      notesArea.value = `إدخال الجهاز لعطل جديد (دورة ${cycleCount}) - الإيصال السابق #${previousReceipt.receiptNumber}`;
+      overlay.querySelectorAll('#reIntakeFaultChips .chip').forEach(c => c.classList.remove('sel'));
+    } else {
+      costInp.value = 0;
+      costHint.textContent = '(إضافة قطع غيار أو صيانة تكميلية)';
+      costHint.style.color = 'var(--green-text)';
+      notesArea.value = `صيانة تكميلية أو طلب قطع غيار إضافية - الإيصال السابق #${previousReceipt.receiptNumber}`;
+    }
+  }
+
+  overlay.querySelectorAll('input[name="reIntakeReasonRadio"]').forEach(r => {
+    r.onchange = updateReasonUi;
+  });
+
+  overlay.querySelectorAll('#reIntakeFaultChips .chip').forEach(c => {
+    c.onclick = ()=>c.classList.toggle('sel');
+  });
+
+  overlay.querySelector('#confirmReIntakeBtn').onclick = async ()=>{
+    const selectedRadio = overlay.querySelector('input[name="reIntakeReasonRadio"]:checked');
+    const reason = selectedRadio ? selectedRadio.value : 'ضمان / صيانة راجعة';
+    const notes = notesArea.value.trim();
+    const tech = overlay.querySelector('#reIntakeTech').value;
+    const cost = Number(costInp.value || 0);
+    const deposit = Number(overlay.querySelector('#reIntakeDeposit').value || 0);
+
+    const selectedFaults = [];
+    overlay.querySelectorAll('#reIntakeFaultChips .chip.sel').forEach(c => selectedFaults.push(c.dataset.f));
+
+    const btn = overlay.querySelector('#confirmReIntakeBtn');
+    btn.disabled = true;
+    btn.textContent = 'جارٍ تسجيل الإدخال...';
+
+    try {
+      const newRecNum = (typeof nextReceiptNumber === 'function') ? await nextReceiptNumber() : ('MT-' + Date.now());
+      const rootId = previousReceipt.rootReceiptId || previousReceipt.id;
+
+      const newReceipt = {
+        id: 'r_' + Date.now(),
+        receiptNumber: newRecNum,
+        date: (typeof todayISO === 'function') ? todayISO() : new Date().toISOString().slice(0, 10),
+        status: 'قيد الفحص',
+        customer: JSON.parse(JSON.stringify(previousReceipt.customer)),
+        device: JSON.parse(JSON.stringify(previousReceipt.device)),
+        faults: selectedFaults.length ? selectedFaults : [...(previousReceipt.faults || [])],
+        faultNotes: notes,
+        technician: tech,
+        cost: cost,
+        partsCost: 0,
+        deposit: deposit,
+        refunded: 0,
+        paid: (cost === 0 && deposit === 0) ? true : (deposit >= cost && cost > 0),
+        previousReceiptId: previousReceipt.id,
+        previousReceiptNumber: previousReceipt.receiptNumber,
+        rootReceiptId: rootId,
+        reIntakeReason: reason,
+        serviceCycle: cycleCount,
+        nextReceiptId: '',
+        nextReceiptNumber: '',
+        maintenanceHistory: [],
+        createdBy: (state.user && state.user.name) || 'نظام',
+        createdAt: new Date().toISOString(),
+        updatedBy: (state.user && state.user.name) || 'نظام',
+        updatedAt: new Date().toISOString()
+      };
+
+      state.receipts.unshift(newReceipt);
+
+      previousReceipt.nextReceiptId = newReceipt.id;
+      previousReceipt.nextReceiptNumber = newReceipt.receiptNumber;
+      previousReceipt.updatedBy = (state.user && state.user.name) || 'نظام';
+      previousReceipt.updatedAt = new Date().toISOString();
+
+      await saveReceiptRemote(newReceipt);
+      await saveReceiptRemote(previousReceipt);
+
+      if(deposit > 0){
+        try{
+          await savePaymentRemote(newReceipt.id, deposit, 'دفعة مقدمة عند إعادة إدخال الجهاز');
+          await refreshPayments();
+        }catch(e){}
+      }
+
+      if(typeof pushLog === 'function'){
+        pushLog(`إعادة إدخال جهاز للصيانة برقم إيصال جديد #${newRecNum} (سابق #${previousReceipt.receiptNumber} - ${reason})`);
+      }
+
+      overlay.remove();
+      showToast(`تم إدخال الجهاز بنجاح برقم إيصال جديد #${newRecNum} 🔄`, 'success');
+      renderMain();
+
+      setTimeout(()=>{
+        openReceiptDetail(newReceipt);
+      }, 350);
+
+    } catch(err){
+      console.error(err);
+      showToast('حدث خطأ أثناء إدخال الجهاز: ' + err.message, 'error');
+      btn.disabled = false;
+      btn.textContent = '🚀 تأكيد إدخال الجهاز وإنشاء إيصال جديد';
+    }
+  };
+}
+
 /* ---------------- Receipt Detail & Full Edit ---------------- */
 async function openReceiptDetail(r){
   const remaining = Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0);
@@ -6677,10 +7159,30 @@ async function openReceiptDetail(r){
 
   overlay.innerHTML = `
   <div class="modal-content" style="max-width:700px;">
-    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:16px;">
-      <h3 style="margin:0;font-size:17px;">⚙️ تعديل الإيصال: <span class="mono" style="color:var(--primary);">${r.receiptNumber}</span></h3>
+    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
+      <h3 style="margin:0;font-size:17px;">⚙️ إيصال صيانة: <span class="mono" style="color:var(--primary);">${r.receiptNumber}</span></h3>
       <button class="btn btn-ghost btn-xs" id="closeDetailBtn">✕ إغلاق</button>
     </div>
+
+    ${r.previousReceiptNumber ? `
+      <div style="background:rgba(245,158,11,0.1);border:1px solid var(--amber);border-radius:var(--radius-sm);padding:8px 12px;margin-bottom:12px;font-size:12px;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <span style="font-size:15px;margin-left:4px;">🔄</span>
+          <b>دورة صيانة ${r.serviceCycle || 2}:</b> مرتبط بالإيصال السابق <b class="mono">#${escapeHtml(r.previousReceiptNumber)}</b> <span style="color:var(--ink-secondary);font-size:11.5px;">${r.reIntakeReason ? '— ' + escapeHtml(r.reIntakeReason) : ''}</span>
+        </div>
+        <button type="button" class="btn btn-amber btn-xs view-hist-receipt-btn" data-histnum="${escapeHtml(r.previousReceiptNumber)}">عرض الإيصال السابق ↗</button>
+      </div>
+    ` : ''}
+
+    ${r.nextReceiptNumber ? `
+      <div style="background:rgba(59,130,246,0.1);border:1px solid var(--primary);border-radius:var(--radius-sm);padding:8px 12px;margin-bottom:12px;font-size:12px;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <span style="font-size:15px;margin-left:4px;">ℹ️</span>
+          <b>تمت إعادة إدخال الجهاز للصيانة لاحقاً:</b> برقم إيصال جديد <b class="mono">#${escapeHtml(r.nextReceiptNumber)}</b>
+        </div>
+        <button type="button" class="btn btn-blue btn-xs view-hist-receipt-btn" data-histnum="${escapeHtml(r.nextReceiptNumber)}">عرض الإيصال الجديد ↗</button>
+      </div>
+    ` : ''}
 
     <div class="grid2">
       <div class="field"><label>اسم العميل</label><input id="eName" value="${r.customer.name}"></div>
@@ -6727,8 +7229,11 @@ async function openReceiptDetail(r){
       </div>
     </div>
 
+    ${renderDeviceHistoryCard(r)}
+
     <div class="actions-row" style="flex-wrap:wrap;margin-top:16px;">
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn btn-amber btn-xs" id="reIntakeDeviceDetailBtn" title="إعادة إدخال نفس الجهاز للصيانة بدورة جديدة">🔄 إعادة صيانة الجهاز</button>
         <button class="btn btn-blue btn-xs" id="convertReceiptToInvoiceBtn" title="إصدار فاتورة ضريبية رسمية للعميل">📄 تحويل لفاتورة رسمية</button>
         ${!r.paid ? `<button class="btn btn-green btn-xs" id="payBtn">✅ سداد المتبقي</button>` : `<button class="btn btn-blue btn-xs" id="invBtn">🖨️ طباعة إيصال نهائي</button>`}
         <button class="btn btn-amber btn-xs" id="detailStickerBtn">🏷️ ملصق باركود</button>
@@ -6938,6 +7443,26 @@ async function openReceiptDetail(r){
   if(invBtn) invBtn.onclick = ()=>{ overlay.remove(); openReceiptPrint(r,'invoice'); };
   overlay.querySelector('#workOrderBtn').onclick = ()=>{ overlay.remove(); openReceiptPrint(r,'workorder'); };
   overlay.querySelector('#detailStickerBtn').onclick = ()=>{ overlay.remove(); openStickerPrint(r); };
+
+  const reIntakeBtn = overlay.querySelector('#reIntakeDeviceDetailBtn');
+  if(reIntakeBtn) reIntakeBtn.onclick = ()=>{ overlay.remove(); openReIntakeDeviceModal(r); };
+
+  const histReIntakeBtn = overlay.querySelector('#historyReIntakeBtn');
+  if(histReIntakeBtn) histReIntakeBtn.onclick = ()=>{ overlay.remove(); openReIntakeDeviceModal(r); };
+
+  overlay.querySelectorAll('.view-hist-receipt-btn').forEach(b => {
+    b.onclick = ()=>{
+      const targetId = b.dataset.histid;
+      const targetNum = b.dataset.histnum;
+      const target = state.receipts.find(x => (targetId && x.id === targetId) || (targetNum && x.receiptNumber === targetNum));
+      if(target){
+        overlay.remove();
+        openReceiptDetail(target);
+      } else {
+        showToast('لم يتم العثور على الإيصال المطلوب', 'error');
+      }
+    };
+  });
 }
 
 /* ---------------- Print A5 Single Sheet Guarantee ---------------- */
@@ -7090,6 +7615,7 @@ function openReceiptPrint(r, kind){
       <table>
         <tr><td class="k">الجهاز</td><td>${escapeHtml(r.device.category)} — ${r.device.brand==='أخرى'?escapeHtml(r.device.brandOther):escapeHtml(r.device.brand)} ${escapeHtml(r.device.model||'')}</td>
             <td class="k">الملحقات</td><td>${escapeHtml(r.device.accessories||'بدون')}</td></tr>
+        ${r.previousReceiptNumber ? `<tr><td class="k">دورة الصيانة</td><td colspan="3"><b>دورة ${r.serviceCycle||2}</b> — صيانة راجعة للإيصال السابق <span class="mono">#${escapeHtml(r.previousReceiptNumber)}</span> ${r.reIntakeReason ? '('+escapeHtml(r.reIntakeReason)+')' : ''}</td></tr>` : ''}
         <tr><td class="k">الأعطال</td><td colspan="3">${escapeHtml(r.faults.join('، ')||'-')}${r.faultNotes?' — '+escapeHtml(r.faultNotes):''}</td></tr>
         <tr><td class="k">الفني</td><td>${escapeHtml(r.technician||'-')}</td><td class="k">الحالة</td><td><b>${escapeHtml(r.status)}</b></td></tr>
         <tr><td class="k">موعد التسليم</td><td colspan="3"><b>${cleanDate(r.deliveryDate)||'غير محدد'}</b></td></tr>

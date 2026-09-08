@@ -2510,6 +2510,9 @@ function receiptToRow(d){
     Model: d.device.model, Accessories: d.device.accessories,
     Faults: (d.faults||[]).join('، '), FaultNotes: d.faultNotes,
     Technician: d.technician, Cost: d.cost, Deposit: d.deposit, Refunded: d.refunded || 0, PartsCost: d.partsCost || 0, PartsUsed: d.partsUsed || '',
+    ServiceItems: (Array.isArray(d.serviceItems) && d.serviceItems.length) ? JSON.stringify(d.serviceItems) : '',
+    OtherAccountDesc: d.otherAccountDesc || '',
+    OtherAccountAmount: Number(d.otherAccountAmount || 0),
     DeliveryDate: d.deliveryDate, Status: d.status, Paid: d.paid ? 'TRUE' : 'FALSE',
     Bonus: d.bonus || '', CreatedBy: d.createdBy, UpdatedBy: d.updatedBy, UpdatedAt: d.updatedAt,
     PreviousReceiptID: d.previousReceiptId || '', PreviousReceiptNumber: d.previousReceiptNumber || '',
@@ -2522,6 +2525,16 @@ function rowToReceipt(row){
   const cName = extractCustomerName(row);
   const cPhone = extractCustomerPhone(row);
   const cEmail = extractCustomerEmail(row);
+
+  let sItems = [];
+  if(Array.isArray(row.serviceItems)) sItems = row.serviceItems;
+  else if(Array.isArray(row.ServiceItems)) sItems = row.ServiceItems;
+  else {
+    const rawS = row.ServiceItems || row.serviceItems;
+    if(typeof rawS === 'string' && rawS.trim()){
+      try { const p = JSON.parse(rawS); if(Array.isArray(p)) sItems = p; } catch(e){}
+    }
+  }
 
   return {
     id: row.ID || row.id || row['رقم الجهاز'] || ('rec_' + Date.now() + '_' + Math.floor(Math.random()*1000)),
@@ -2547,6 +2560,9 @@ function rowToReceipt(row){
     refunded: Number(row.Refunded || row.refunded || 0),
     partsCost: Number(row.PartsCost || row.partsCost || 0),
     partsUsed: row.PartsUsed || row.partsUsed || '',
+    serviceItems: sItems,
+    otherAccountDesc: row.OtherAccountDesc || row.otherAccountDesc || '',
+    otherAccountAmount: Number(row.OtherAccountAmount != null ? row.OtherAccountAmount : (row.otherAccountAmount || 0)),
     deliveryDate: row.DeliveryDate || row.deliveryDate || '',
     status: row.Status || row.status || 'قيد الفحص',
     paid: String(row.Paid).toUpperCase() === 'TRUE' || row.paid === true,
@@ -2626,6 +2642,28 @@ function normalizeReceipt(r){
       r.faults = [];
     }
   }
+
+  // Normalize Service Items (بنود الصيانة المستحقة)
+  if(!Array.isArray(r.serviceItems)){
+    if(typeof r.serviceItems === 'string' && r.serviceItems.trim()){
+      try { const p = JSON.parse(r.serviceItems); if(Array.isArray(p)) r.serviceItems = p; else r.serviceItems = []; } catch(e){ r.serviceItems = []; }
+    } else if(r.ServiceItems){
+      if(Array.isArray(r.ServiceItems)) r.serviceItems = r.ServiceItems;
+      else if(typeof r.ServiceItems === 'string' && r.ServiceItems.trim()){
+        try { const p = JSON.parse(r.ServiceItems); if(Array.isArray(p)) r.serviceItems = p; else r.serviceItems = []; } catch(e){ r.serviceItems = []; }
+      } else { r.serviceItems = []; }
+    } else {
+      r.serviceItems = [];
+    }
+  }
+  r.serviceItems = r.serviceItems.map(it => ({
+    desc: String(it && it.desc != null ? it.desc : ''),
+    price: Number(it && it.price != null ? it.price : 0)
+  }));
+
+  // Normalize Other Customer Account (حساب إضافي / سابق على العميل)
+  r.otherAccountDesc = String(r.otherAccountDesc != null ? r.otherAccountDesc : (r.OtherAccountDesc || ''));
+  r.otherAccountAmount = Number(r.otherAccountAmount != null ? r.otherAccountAmount : (r.OtherAccountAmount || 0));
 
   // Financial fields normalization
   r.cost = Number(r.cost != null ? r.cost : (r.Cost || 0));
@@ -4458,6 +4496,9 @@ function newDraft(){
     refunded: 0,
     partsCost: 0,
     partsUsed: '',
+    serviceItems: [],
+    otherAccountDesc: '',
+    otherAccountAmount: 0,
     deliveryDate: today.toISOString().slice(0,10),
     status: 'قيد الفحص',
     paid: false,
@@ -5961,15 +6002,49 @@ function stepFaults(body,d){
 }
 
 function stepFinance(body,d){
+  if(!Array.isArray(d.serviceItems)) d.serviceItems = [];
+
   body.innerHTML = `
     <div class="card">
-      <h3>💰 التكلفة والجانب المالي</h3>
-      <div class="grid3">
-        <div class="field"><label>تكلفة الصيانة والخدمة (ج.م)</label><input id="finCost" type="number" value="${d.cost}" placeholder="0"></div>
-        <div class="field"><label>الدفعة المقدمة (ج.م)</label><input id="finDep" type="number" value="${d.deposit}" placeholder="0"></div>
-        <div class="field"><label>تكلفة قطع الغيار المستخدمة (ج.م)</label><input id="finParts" type="number" value="${d.partsCost||0}" disabled style="background:var(--paper3);"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <h3 style="margin:0;">🛠️ بنود الصيانة المستحقة على الجهاز</h3>
+        <button type="button" class="btn btn-primary btn-xs" id="draftAddServiceItemBtn">➕ إضافة بند صيانة</button>
+      </div>
+      <div id="draftServiceItemsList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px dashed var(--line);font-size:12.5px;">
+        <span style="color:var(--ink-secondary);">إجمالي بنود الصيانة:</span>
+        <span class="mono" style="font-weight:900;color:var(--primary);font-size:14px;"><span id="draftServiceItemsTotal">0</span> ج.م</span>
       </div>
     </div>
+
+    <div class="card" style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.3);">
+      <h3 style="color:var(--amber-text);margin-bottom:10px;">💳 حساب آخر / إضافي على نفس العميل (اختياري)</h3>
+      <div class="grid2">
+        <div class="field" style="margin-bottom:0;">
+          <label>وصف الحساب الإضافي أو السابق</label>
+          <input id="finOtherDesc" value="${escapeHtml(d.otherAccountDesc||'')}" placeholder="مثال: مديونية صيانة سابقة، شاحن لابتوب إضافي...">
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label>المبلغ الإضافي المستحق (ج.م)</label>
+          <input id="finOtherAmount" type="number" value="${d.otherAccountAmount||0}" min="0" placeholder="0">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>💰 التكلفة الإجمالية والجانب المالي</h3>
+      <div class="grid4" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:8px;">
+        <div class="field"><label>تكلفة الصيانة (ج.م)</label><input id="finCost" type="number" value="${d.cost||0}" placeholder="0"></div>
+        <div class="field"><label>حساب إضافي (ج.م)</label><input id="finOtherDisplay" type="number" value="${d.otherAccountAmount||0}" disabled style="background:var(--paper3);"></div>
+        <div class="field"><label>قطع الغيار (ج.م)</label><input id="finParts" type="number" value="${d.partsCost||0}" disabled style="background:var(--paper3);"></div>
+        <div class="field"><label>الدفعة المقدمة (ج.م)</label><input id="finDep" type="number" value="${d.deposit||0}" placeholder="0"></div>
+      </div>
+      <div style="margin-top:10px;padding:8px 12px;background:var(--paper3);border-radius:var(--radius-sm);display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-weight:700;font-size:13px;">المبلغ المتبقي المطلوب تقديريًا:</span>
+        <span class="mono" style="font-size:16px;font-weight:900;color:var(--primary);"><span id="finRemPreview">0</span> ج.م</span>
+      </div>
+    </div>
+
     <div class="card" style="background:var(--paper3);border-color:var(--line-strong);">
       <h3>📦 استخدام قطع غيار من المخزن (اختياري)</h3>
       <div id="draftPartsUsedList" style="font-size:13px;margin-bottom:12px;color:var(--ink);">${d.partsUsed ? d.partsUsed : '<span style="color:var(--ink-secondary);">لم تُضف قطع غيار بعد.</span>'}</div>
@@ -5996,6 +6071,99 @@ function stepFinance(body,d){
       <div class="field"><label>أو حدد تاريخ التسليم</label><input id="finDate" type="date" value="${d.deliveryDate}"></div>
     </div>
   `;
+
+  function renderDraftServiceItems(){
+    const listEl = document.getElementById('draftServiceItemsList');
+    if(!listEl) return;
+    if(!d.serviceItems.length){
+      listEl.innerHTML = '<div style="font-size:12px;color:var(--ink-secondary);padding:6px 0;">لا توجد بنود صيانة منفصلة مضافة. يمكنك إضافة بنود وتحديد سعر كل بند على حدة، أو كتابة التكلفة الإجمالية مباشرة أدناه.</div>';
+    } else {
+      listEl.innerHTML = d.serviceItems.map((it, idx) => `
+        <div style="display:flex;gap:8px;align-items:center;background:var(--paper2);padding:6px 8px;border-radius:4px;border:1px solid var(--line);" data-sidx="${idx}">
+          <span class="mono" style="font-size:12px;font-weight:700;color:var(--slate-400);width:20px;">#${idx+1}</span>
+          <input type="text" class="draft-s-desc" value="${escapeHtml(it.desc||'')}" placeholder="اسم بند الصيانة (مثال: تغيير شاشة، باور...)" style="flex:2;padding:6px 8px;font-size:12.5px;">
+          <div style="display:flex;align-items:center;gap:4px;flex:1;">
+            <input type="number" class="draft-s-price" value="${it.price||0}" min="0" placeholder="0" style="width:100%;padding:6px 8px;font-size:12.5px;">
+            <span style="font-size:11.5px;color:var(--ink-secondary);">ج.م</span>
+          </div>
+          <button type="button" class="btn btn-ghost btn-xs draft-del-s-item" data-sidx="${idx}" style="color:var(--red);padding:4px 8px;" title="حذف هذا البند">🗑️</button>
+        </div>
+      `).join('');
+    }
+    attachDraftItemListeners();
+    recalcDraftFinances();
+  }
+
+  function attachDraftItemListeners(){
+    document.querySelectorAll('#draftServiceItemsList .draft-s-desc').forEach(inp => {
+      inp.oninput = (e) => {
+        const idx = Number(e.target.closest('[data-sidx]').dataset.sidx);
+        if(d.serviceItems[idx]) d.serviceItems[idx].desc = e.target.value;
+      };
+    });
+    document.querySelectorAll('#draftServiceItemsList .draft-s-price').forEach(inp => {
+      inp.oninput = (e) => {
+        const idx = Number(e.target.closest('[data-sidx]').dataset.sidx);
+        if(d.serviceItems[idx]) d.serviceItems[idx].price = Number(e.target.value || 0);
+        recalcDraftFinances();
+      };
+    });
+    document.querySelectorAll('#draftServiceItemsList .draft-del-s-item').forEach(btn => {
+      btn.onclick = (e) => {
+        const idx = Number(btn.dataset.sidx);
+        d.serviceItems.splice(idx, 1);
+        renderDraftServiceItems();
+      };
+    });
+  }
+
+  function recalcDraftFinances(){
+    let sTotal = 0;
+    document.querySelectorAll('#draftServiceItemsList [data-sidx]').forEach(row => {
+      const p = Number(row.querySelector('.draft-s-price').value || 0);
+      sTotal += p;
+    });
+    const sTotalEl = document.getElementById('draftServiceItemsTotal');
+    if(sTotalEl) sTotalEl.textContent = sTotal.toLocaleString();
+    
+    if(d.serviceItems.length > 0 || sTotal > 0){
+      const finCostInp = document.getElementById('finCost');
+      if(finCostInp) finCostInp.value = sTotal;
+    }
+
+    const otherAmt = Number(document.getElementById('finOtherAmount') ? document.getElementById('finOtherAmount').value : (d.otherAccountAmount || 0));
+    const otherDisp = document.getElementById('finOtherDisplay');
+    if(otherDisp) otherDisp.value = otherAmt;
+
+    const cost = Number(document.getElementById('finCost') ? document.getElementById('finCost').value : (d.cost || 0));
+    const parts = Number(d.partsCost || 0);
+    const dep = Number(document.getElementById('finDep') ? document.getElementById('finDep').value : (d.deposit || 0));
+    const totalDue = cost + parts + otherAmt;
+    const rem = Math.max(0, totalDue - dep);
+
+    const remEl = document.getElementById('finRemPreview');
+    if(remEl) remEl.textContent = rem.toLocaleString();
+  }
+
+  const addBtn = document.getElementById('draftAddServiceItemBtn');
+  if(addBtn){
+    addBtn.onclick = () => {
+      d.serviceItems.push({ desc: '', price: 0 });
+      renderDraftServiceItems();
+      const lastRow = document.querySelector('#draftServiceItemsList [data-sidx="' + (d.serviceItems.length - 1) + '"] input');
+      if(lastRow) lastRow.focus();
+    };
+  }
+
+  const finCostInp = document.getElementById('finCost');
+  if(finCostInp) finCostInp.oninput = recalcDraftFinances;
+  const finOtherAmtInp = document.getElementById('finOtherAmount');
+  if(finOtherAmtInp) finOtherAmtInp.oninput = recalcDraftFinances;
+  const finDepInp = document.getElementById('finDep');
+  if(finDepInp) finDepInp.oninput = recalcDraftFinances;
+
+  renderDraftServiceItems();
+
   document.querySelectorAll('[data-days]').forEach(c=>{
     c.onclick = ()=>{
       const days = Number(c.dataset.days);
@@ -6020,39 +6188,54 @@ function stepFinance(body,d){
       d.partsUsed = (d.partsUsed ? d.partsUsed + '، ' : '') + `${item.Name} × ${qty}`;
       document.getElementById('finParts').value = d.partsCost;
       document.getElementById('draftPartsUsedList').innerHTML = d.partsUsed;
+      recalcDraftFinances();
       showToast('تم خصم الصنف من المخزن وتحديث التكلفة', 'success');
     }catch(e){ showToast('تعذر خصم الصنف: '+e.message, 'error'); }
     btn.disabled = false; btn.textContent = 'خصم من المخزن';
   };
   currentStepCollector = ()=>{
-    d.cost = document.getElementById('finCost').value;
-    d.deposit = document.getElementById('finDep').value;
+    const collectedItems = [];
+    document.querySelectorAll('#draftServiceItemsList [data-sidx]').forEach(row => {
+      const desc = row.querySelector('.draft-s-desc').value.trim();
+      const price = Number(row.querySelector('.draft-s-price').value || 0);
+      if(desc || price > 0){
+        collectedItems.push({ desc: desc || 'صيانة', price });
+      }
+    });
+    d.serviceItems = collectedItems;
+    d.otherAccountDesc = document.getElementById('finOtherDesc').value.trim();
+    d.otherAccountAmount = Number(document.getElementById('finOtherAmount').value || 0);
+    d.cost = Number(document.getElementById('finCost').value || 0);
+    d.deposit = Number(document.getElementById('finDep').value || 0);
     d.deliveryDate = document.getElementById('finDate').value;
   };
   stepNav(body, true, ()=>{
-    const cost = Number(document.getElementById('finCost').value || 0);
+    currentStepCollector();
+    const cost = Number(d.cost || 0);
     const parts = Number(d.partsCost || 0);
-    const total = cost + parts;
-    const dep = Number(document.getElementById('finDep').value || 0);
+    const other = Number(d.otherAccountAmount || 0);
+    const total = cost + parts + other;
+    const dep = Number(d.deposit || 0);
 
     if(dep < 0){
       showToast('لا يمكن إدخال دفعة مقدمة سالبة', 'error');
       return;
     }
     if(total > 0 && dep > total){
-      showToast(`عفواً: مبلغ العربون (${dep.toLocaleString()} ج.م) أكبر من إجمالي تكلفة الجهاز (${total.toLocaleString()} ج.م)`, 'error');
+      showToast(`عفواً: مبلغ العربون (${dep.toLocaleString()} ج.م) أكبر من إجمالي تكلفة الجهاز والمستحق (${total.toLocaleString()} ج.م)`, 'error');
       document.getElementById('finDep').focus();
       return;
     }
 
-    currentStepCollector();
     state.formStep=4; renderMain();
   }, 'مراجعة وحفظ ➔');
 }
 
 function stepReview(body,d){
   currentStepCollector = null;
-  const remaining = (Number(d.cost||0) + Number(d.partsCost||0) - Number(d.deposit||0));
+  const otherAmt = Number(d.otherAccountAmount || 0);
+  const totalCost = Number(d.cost||0) + Number(d.partsCost||0) + otherAmt;
+  const remaining = Math.max(0, totalCost - Number(d.deposit||0));
   body.innerHTML = `
     <div class="card">
       <h3>📋 مراجعة بيانات الإيصال قبل الحفظ</h3>
@@ -6063,7 +6246,9 @@ function stepReview(body,d){
         <div><b>⚠️ الأعطال:</b> ${d.faults.join('، ')||'-'}</div>
         <div><b>👨‍🔧 الفني المسؤول:</b> ${d.technician||'غير محدد'}</div>
         <div><b>💵 تكلفة الخدمة:</b> ${d.cost||0} ج.م</div>
+        ${(d.serviceItems && d.serviceItems.length > 0) ? `<div style="grid-column:1/-1;background:var(--paper2);padding:6px 10px;border-radius:4px;border:1px solid var(--line);font-size:12px;line-height:1.5;"><b>🛠️ تفاصيل بنود الصيانة (${d.serviceItems.length}):</b> ${d.serviceItems.map(it=>`${escapeHtml(it.desc)} (<b class="mono">${it.price}</b> ج.م)`).join(' | ')}</div>` : ''}
         <div><b>⚙️ تكلفة قطع الغيار:</b> ${d.partsCost||0} ج.م</div>
+        ${otherAmt > 0 ? `<div><b>💳 حساب إضافي على العميل:</b> <span class="mono" style="font-weight:800;color:var(--amber-text);">${otherAmt}</span> ج.م (${escapeHtml(d.otherAccountDesc || 'حساب سابق')})</div>` : ''}
         <div><b>📥 الدفعة المقدمة:</b> ${d.deposit||0} ج.م</div>
         <div><b style="color:var(--primary);">المبلغ المتبقي المطلوب:</b> <span class="mono" style="font-size:17px;font-weight:900;color:var(--primary);">${remaining}</span> ج.م</div>
         <div><b>📅 موعد التسليم:</b> ${d.deliveryDate||'غير محدد'}</div>
@@ -6250,7 +6435,9 @@ function archiveTable(list){
     const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
     if(!r) return '';
     const st = STATUSES.find(s=>s.v===r.status) || STATUSES[0];
-    const remaining = Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0);
+    const otherAmt = Number(r.otherAccountAmount || 0);
+    const totalDue = Number(r.cost||0) + Number(r.partsCost||0) + otherAmt;
+    const remaining = Math.max(0, totalDue - Number(r.deposit||0) + Number(r.refunded||0));
     const isOverdue = r.status==='مكتمل' && (Date.now()-new Date(r.updatedAt||r.date).getTime())/86400000 > 7;
     const cName = extractCustomerName(r) || 'عميل';
     const cPhone = extractCustomerPhone(r);
@@ -6286,7 +6473,10 @@ function archiveTable(list){
           <span style="font-size:9.5px;color:var(--slate-400);">⚡</span>
         </button>
       </td>
-      <td class="mono" style="font-weight:800;${remaining>0?'color:var(--red);':'color:var(--green);'}">${remaining} ج.م</td>
+      <td class="mono" style="font-weight:800;${remaining>0?'color:var(--red);':'color:var(--green);'}">
+        ${remaining} ج.م
+        ${otherAmt>0 ? `<div style="font-size:9.5px;color:var(--amber-text);font-weight:700;">(+${otherAmt} إضافي)</div>` : ''}
+      </td>
       <td class="row-actions">
         <button class="btn btn-xs btn-amber" onclick="openReIntakeModalDirect(this.dataset.id, this.dataset.num)" data-act="reintake" data-id="${safeTargetId}" data-num="${rNum}" title="إعادة إدخال نفس الجهاز للصيانة (صيانة راجعة أو عطل جديد)">🔄 إعادة صيانة</button>
         <button class="btn btn-xs btn-blue" onclick="convertReceiptToInvoiceDirect(this.dataset.id, this.dataset.num)" data-act="invoice" data-id="${safeTargetId}" data-num="${rNum}" title="تحويل لفاتورة ضريبية رسمية">📄 فاتورة</button>
@@ -6938,7 +7128,7 @@ function normalizePhoneForWa(phone){
 
 function getStatusCustomMessage(rawR, status){
   const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
-  const remaining = Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0);
+  const remaining = Number(r.cost||0)+Number(r.partsCost||0)+Number(r.otherAccountAmount||0)-Number(r.deposit||0)+Number(r.refunded||0);
   const shop = (state.settings && state.settings.shopName) || 'مركز الصيانة';
   const devCat = (r.device && r.device.category) || 'جهاز';
   const devBrand = r.device ? (r.device.brand==='أخرى' ? r.device.brandOther : r.device.brand) : '';
@@ -6967,7 +7157,7 @@ function getStatusCustomMessage(rawR, status){
     .replace(/{device}/g, device)
     .replace(/{faults}/g, faultsStr)
     .replace(/{status}/g, r.status || '')
-    .replace(/{cost}/g, (Number(r.cost||0)+Number(r.partsCost||0)).toLocaleString())
+    .replace(/{cost}/g, (Number(r.cost||0)+Number(r.partsCost||0)+Number(r.otherAccountAmount||0)).toLocaleString())
     .replace(/{deposit}/g, Number(r.deposit||0).toLocaleString())
     .replace(/{remaining}/g, remaining.toLocaleString())
     .replace(/{track_url}/g, trackUrl)
@@ -7010,14 +7200,16 @@ function openWhatsappChoice(rawR){
   document.body.appendChild(overlay);
   overlay.querySelector('#waCurrentStatus').onclick = ()=>{ sendWhatsappByStatus(r, r.status); overlay.remove(); };
   overlay.querySelector('#waFull').onclick = ()=>{
-    const remaining = Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0);
+    const otherAmt = Number(r.otherAccountAmount||0);
+    const remaining = Number(r.cost||0)+Number(r.partsCost||0)+otherAmt-Number(r.deposit||0)+Number(r.refunded||0);
     const trackUrl = `${window.location.origin}${window.location.pathname}?track=${encodeURIComponent(r.receiptNumber||'')}`;
     const devCat = (r.device && r.device.category) || 'جهاز';
     const devBrand = r.device ? (r.device.brand==='أخرى' ? r.device.brandOther : r.device.brand) : '';
     const devModel = (r.device && r.device.model) || '';
     const faultsStr = (Array.isArray(r.faults) ? r.faults.join('، ') : String(r.faults || '')) || '-';
     const shopName = (state.settings && state.settings.shopName) || 'صيانة ميكروتك';
-    const msg = `مرحبًا ${r.customer.name} 👋\n*إيصال صيانة رقم:* ${r.receiptNumber}\n*التاريخ:* ${cleanDate(r.date)}\n*الجهاز:* ${devCat} - ${devBrand} ${devModel}\n*الأعطال:* ${faultsStr}\n*الحالة الحالية:* ${r.status}\n*المتبقي المطلوب:* ${remaining} ج.م\n*رابط تتبع الجهاز مباشرة:* ${trackUrl}\n\n${shopName}`;
+    const otherNote = otherAmt > 0 ? `\n*حساب إضافي (${r.otherAccountDesc || 'رصيد آخر'}):* ${otherAmt} ج.م` : '';
+    const msg = `مرحبًا ${r.customer.name} 👋\n*إيصال صيانة رقم:* ${r.receiptNumber}\n*التاريخ:* ${cleanDate(r.date)}\n*الجهاز:* ${devCat} - ${devBrand} ${devModel}\n*الأعطال:* ${faultsStr}\n*الحالة الحالية:* ${r.status}${otherNote}\n*المتبقي المطلوب:* ${remaining} ج.م\n*رابط تتبع الجهاز مباشرة:* ${trackUrl}\n\n${shopName}`;
     sendWhatsapp(r, msg);
     overlay.remove();
   };
@@ -7420,7 +7612,7 @@ async function openReceiptDetail(rawR){
   }
   try {
     const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
-    const remaining = Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0);
+    const remaining = Number(r.cost||0)+Number(r.partsCost||0)+Number(r.otherAccountAmount||0)-Number(r.deposit||0)+Number(r.refunded||0);
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
 
@@ -7476,8 +7668,44 @@ async function openReceiptDetail(rawR){
         </div>
     </div>
 
-    <div class="grid3">
-      <div class="field"><label>تكلفة الخدمة (ج.م)</label><input id="eCost" type="number" value="${r.cost||0}"></div>
+    <!-- بنود الصيانة المستحقة على الجهاز -->
+    <div class="card" style="background:var(--paper3);padding:12px;border-radius:var(--radius-sm);margin-top:10px;border:1px solid var(--line);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div>
+          <h4 style="margin:0;font-size:13.5px;display:flex;align-items:center;gap:6px;">
+            <span>🛠️</span>
+            <span>بنود الصيانة المستحقة في الجهاز</span>
+          </h4>
+          <div style="font-size:11px;color:var(--ink-secondary);margin-top:2px;">حدد تفاصيل كل خدمة مع تكلفتها، وتجمع تلقائياً في تكلفة صيانة الجهاز</div>
+        </div>
+        <button type="button" class="btn btn-primary btn-xs" id="detailAddServiceItemBtn">+ إضافة بند صيانة</button>
+      </div>
+      <div id="detailServiceItemsList" style="display:flex;flex-direction:column;gap:6px;">
+        <!-- dynamic items rendered here -->
+      </div>
+    </div>
+
+    <!-- حساب آخر على العميل -->
+    <div class="card" style="background:var(--paper3);padding:12px;border-radius:var(--radius-sm);margin-top:10px;border:1px solid var(--line);">
+      <h4 style="margin:0 0 8px 0;font-size:13.5px;display:flex;align-items:center;gap:6px;">
+        <span>💼</span>
+        <span>حساب آخر / رصيد إضافي على نفس العميل</span>
+      </h4>
+      <div class="grid2">
+        <div class="field" style="margin-bottom:0;">
+          <label>وصف الحساب الآخر (مثلاً: رصيد سابق، جهاز آخر، مستلزمات)</label>
+          <input id="eOtherDesc" value="${escapeHtml(r.otherAccountDesc || '')}" placeholder="وصف الحساب الإضافي إن وجد...">
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label>المبلغ المستحق للحساب الآخر (ج.م)</label>
+          <input id="eOtherAmount" type="number" min="0" step="any" value="${r.otherAccountAmount || 0}" placeholder="0">
+        </div>
+      </div>
+    </div>
+
+    <div class="grid4" style="margin-top:10px;">
+      <div class="field"><label>تكلفة الصيانة (ج.م)</label><input id="eCost" type="number" value="${r.cost||0}"></div>
+      <div class="field"><label>حساب إضافي (ج.م)</label><input id="eOtherDisplay" type="number" value="${r.otherAccountAmount||0}" disabled style="background:var(--paper3);"></div>
       <div class="field"><label>إجمالي المدفوع (ج.م)</label><input id="eDeposit" type="number" value="${r.deposit||0}" disabled style="background:var(--paper3);"></div>
       <div class="field"><label>المتبقي حاليًا (ج.م)</label><input id="eRem" type="number" value="${remaining}" disabled style="background:var(--paper3);font-weight:bold;color:var(--primary);"></div>
     </div>
@@ -7529,6 +7757,111 @@ async function openReceiptDetail(rawR){
   }
   renderPaymentsList();
 
+  // Detail Service Items Handling
+  let detailServiceItems = Array.isArray(r.serviceItems) && r.serviceItems.length ? JSON.parse(JSON.stringify(r.serviceItems)) : [];
+  if(!detailServiceItems.length && Number(r.cost || 0) > 0){
+    detailServiceItems.push({ desc: (Array.isArray(r.faults) && r.faults.length ? r.faults.join('، ') : 'أجور وخدمات صيانة'), price: Number(r.cost) });
+  }
+
+  function renderDetailServiceItems(){
+    const list = overlay.querySelector('#detailServiceItemsList');
+    if(!list) return;
+    if(!detailServiceItems.length){
+      list.innerHTML = `
+        <div style="text-align:center;padding:10px;background:var(--paper2);border-radius:var(--radius-xs);color:var(--ink-secondary);font-size:12px;">
+          لا توجد بنود صيانة منفصلة مسجلة. اضغط <b>+ إضافة بند صيانة</b> لتفصيل بنود الصيانة وأسعارها.
+        </div>`;
+      return;
+    }
+    list.innerHTML = detailServiceItems.map((item, idx) => `
+      <div style="display:flex;gap:8px;align-items:center;background:var(--paper2);padding:6px 8px;border-radius:var(--radius-xs);border:1px solid var(--line);">
+        <span style="font-size:11.5px;color:var(--ink-secondary);font-weight:bold;width:20px;text-align:center;">${idx + 1}</span>
+        <input type="text" class="detail-svc-desc" data-idx="${idx}" value="${escapeHtml(item.desc || '')}" placeholder="وصف بند الصيانة (مثلاً: تغيير شاشة، تنظيف باور، صيانة بوردة...)" style="flex:3;padding:6px 9px;font-size:12.5px;">
+        <div style="display:flex;align-items:center;gap:4px;flex:1.5;">
+          <input type="number" min="0" step="any" class="detail-svc-price" data-idx="${idx}" value="${item.price != null ? item.price : ''}" placeholder="السعر" style="width:100%;padding:6px 9px;font-size:12.5px;font-weight:bold;">
+          <span style="font-size:11px;color:var(--ink-secondary);">ج.م</span>
+        </div>
+        <button type="button" class="btn btn-ghost btn-xs detail-svc-del-btn" data-idx="${idx}" title="حذف هذا البند" style="color:var(--red);padding:4px 8px;">✕</button>
+      </div>
+    `).join('');
+
+    attachDetailServiceItemEvents();
+  }
+
+  function attachDetailServiceItemEvents(){
+    overlay.querySelectorAll('.detail-svc-desc').forEach(inp => {
+      inp.oninput = (e) => {
+        const idx = Number(e.target.dataset.idx);
+        if(detailServiceItems[idx]){
+          detailServiceItems[idx].desc = e.target.value;
+        }
+      };
+    });
+    overlay.querySelectorAll('.detail-svc-price').forEach(inp => {
+      inp.oninput = (e) => {
+        const idx = Number(e.target.dataset.idx);
+        if(detailServiceItems[idx]){
+          detailServiceItems[idx].price = Number(e.target.value || 0);
+          recalcDetailFinances();
+        }
+      };
+    });
+    overlay.querySelectorAll('.detail-svc-del-btn').forEach(btn => {
+      btn.onclick = (e) => {
+        const idx = Number(btn.dataset.idx);
+        detailServiceItems.splice(idx, 1);
+        renderDetailServiceItems();
+        recalcDetailFinances();
+      };
+    });
+  }
+
+  function recalcDetailFinances(){
+    const sumSvc = detailServiceItems.reduce((acc, cur) => acc + Number(cur.price || 0), 0);
+    const costInput = overlay.querySelector('#eCost');
+    if(detailServiceItems.length > 0 && costInput){
+      costInput.value = sumSvc;
+    }
+    const costVal = Number(costInput ? costInput.value : 0) || 0;
+    const otherVal = Number(overlay.querySelector('#eOtherAmount')?.value || 0);
+    const partsVal = Number(r.partsCost || 0);
+    const depositVal = Number(r.deposit || 0);
+    const refundedVal = Number(r.refunded || 0);
+
+    const otherDisplay = overlay.querySelector('#eOtherDisplay');
+    if(otherDisplay) otherDisplay.value = otherVal;
+
+    const totalDue = costVal + partsVal + otherVal;
+    const currentRem = Math.max(0, totalDue - depositVal + refundedVal);
+
+    const remInput = overlay.querySelector('#eRem');
+    if(remInput) remInput.value = currentRem;
+
+    const newPayAmt = overlay.querySelector('#newPayAmt');
+    if(newPayAmt) newPayAmt.max = currentRem;
+    const newPayHint = overlay.querySelector('#newPayAmtHint');
+    if(newPayHint) newPayHint.innerHTML = `الحد الأقصى: <b class="mono">${currentRem}</b> ج.م`;
+    const addPayBtn = overlay.querySelector('#addPayBtn');
+    if(addPayBtn) addPayBtn.disabled = (currentRem <= 0);
+  }
+
+  renderDetailServiceItems();
+
+  const addSvcBtn = overlay.querySelector('#detailAddServiceItemBtn');
+  if(addSvcBtn){
+    addSvcBtn.onclick = () => {
+      detailServiceItems.push({ desc: '', price: 0 });
+      renderDetailServiceItems();
+      const lastDesc = overlay.querySelector(`.detail-svc-desc[data-idx="${detailServiceItems.length - 1}"]`);
+      if(lastDesc) lastDesc.focus();
+    };
+  }
+
+  const eCostInp = overlay.querySelector('#eCost');
+  if(eCostInp) eCostInp.oninput = recalcDetailFinances;
+  const eOtherInp = overlay.querySelector('#eOtherAmount');
+  if(eOtherInp) eOtherInp.oninput = recalcDetailFinances;
+
   overlay.querySelectorAll('#editFaultChips .chip').forEach(c=>{
     c.onclick = ()=>{
       const f = c.dataset.f;
@@ -7553,25 +7886,28 @@ async function openReceiptDetail(rawR){
     r.faultNotes = overlay.querySelector('#eFaultNotes').value.trim();
     r.technician = overlay.querySelector('#eTech').value;
     r.status = overlay.querySelector('#eStatus').value.replace(/^[^\s]+\s/, '');
-    r.cost = overlay.querySelector('#eCost').value;
+    r.serviceItems = detailServiceItems.filter(it => (it.desc && it.desc.trim()) || Number(it.price) > 0);
+    r.otherAccountDesc = (overlay.querySelector('#eOtherDesc')?.value || '').trim();
+    r.otherAccountAmount = Number(overlay.querySelector('#eOtherAmount')?.value || 0);
+    r.cost = Number(overlay.querySelector('#eCost').value || 0);
     r.updatedBy = state.user.name;
     r.updatedAt = new Date().toISOString();
   }
 
   overlay.querySelector('#saveEditBtn').onclick = async ()=>{
     collectEdits();
-    const totalCost = Number(r.cost||0) + Number(r.partsCost||0);
+    const totalDue = Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0);
     const totalPaid = Number(r.deposit||0);
 
     // التحقق: لا يجوز تقليل التكلفة لتصبح أقل من المبلغ المدفوع مسبقاً دون تسوية استرداد
-    if(totalCost > 0 && totalPaid > totalCost){
-      showToast(`عفواً: إجمالي التكلفة (${totalCost.toLocaleString()} ج.م) أقل من إجمالي المبلغ المسدد مسبقاً (${totalPaid.toLocaleString()} ج.م). يرجى إثبات استرداد أولاً.`, 'error');
+    if(totalDue > 0 && totalPaid > totalDue){
+      showToast(`عفواً: إجمالي التكلفة والحساب المطلوب (${totalDue.toLocaleString()} ج.م) أقل من إجمالي المبلغ المسدد مسبقاً (${totalPaid.toLocaleString()} ج.م). يرجى إثبات استرداد أولاً.`, 'error');
       const costInp = overlay.querySelector('#eCost');
       if(costInp) costInp.focus();
       return;
     }
 
-    const remainingNow = Math.max(0, totalCost - totalPaid + Number(r.refunded||0));
+    const remainingNow = Math.max(0, totalDue - totalPaid + Number(r.refunded||0));
 
     if(r.status === 'تم التسليم' && remainingNow > 0){
       promptDeliveryRemainingPayment(r, remainingNow, async (shouldPay)=>{
@@ -7617,11 +7953,12 @@ async function openReceiptDetail(rawR){
     const note = overlay.querySelector('#newPayNote').value.trim();
     if(!amt || amt<=0){ showToast('أدخل مبلغاً صحيحاً', 'error'); return; }
 
-    const remainingBefore = Number(r.cost||0) + Number(r.partsCost||0) - Number(r.deposit||0) + Number(r.refunded||0);
+    const totalDue = Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0);
+    const remainingBefore = Math.max(0, totalDue - Number(r.deposit||0) + Number(r.refunded||0));
 
     // منع دفع مبلغ أكبر من حساب الجهاز المتبقي نهائياً
     if(amt > remainingBefore){
-      showToast(`عفواً: لا يمكن دفع مبلغ (${amt.toLocaleString()} ج.م) أكبر من حساب الجهاز المتبقي (${remainingBefore.toLocaleString()} ج.م)`, 'error');
+      showToast(`عفواً: لا يمكن دفع مبلغ (${amt.toLocaleString()} ج.م) أكبر من الحساب المتبقي (${remainingBefore.toLocaleString()} ج.م)`, 'error');
       const payInp = overlay.querySelector('#newPayAmt');
       if(payInp){
         payInp.value = remainingBefore;
@@ -7636,7 +7973,7 @@ async function openReceiptDetail(rawR){
         try{
           await savePaymentRemote(r.id, amt, note || (shouldDeliver ? 'سداد المتبقي عند التسليم' : 'سداد الدفعة المتبقية'));
           r.deposit = Number(r.deposit||0) + amt;
-          if(r.deposit >= (Number(r.cost||0) + Number(r.partsCost||0))) r.paid = true;
+          if(r.deposit >= totalDue) r.paid = true;
           if(shouldDeliver){
             r.status = 'تم التسليم';
           }
@@ -7656,10 +7993,10 @@ async function openReceiptDetail(rawR){
     try{
       await savePaymentRemote(r.id, amt, note);
       r.deposit = Number(r.deposit||0) + amt;
-      if(r.deposit >= (Number(r.cost||0) + Number(r.partsCost||0))) r.paid = true;
-      const newRem = Number(r.cost||0) + Number(r.partsCost||0) - Number(r.deposit||0) + Number(r.refunded||0);
+      if(r.deposit >= totalDue) r.paid = true;
+      const newRem = Math.max(0, totalDue - Number(r.deposit||0) + Number(r.refunded||0));
       const remInp = overlay.querySelector('#eRem');
-      if(remInp) remInp.value = Math.max(0, newRem);
+      if(remInp) remInp.value = newRem;
       const depInp = overlay.querySelector('#eDeposit');
       if(depInp) depInp.value = r.deposit;
       overlay.querySelector('#newPayAmt').value = '';
@@ -7674,7 +8011,8 @@ async function openReceiptDetail(rawR){
 
   const payBtn = overlay.querySelector('#payBtn');
   if(payBtn) payBtn.onclick = async ()=>{
-    const remainingNow = Number(r.cost||0) + Number(r.partsCost||0) - Number(r.deposit||0) + Number(r.refunded||0);
+    const totalDue = Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0);
+    const remainingNow = Math.max(0, totalDue - Number(r.deposit||0) + Number(r.refunded||0));
     if(remainingNow <= 0){
       showToast('الإيصال مسدد بالكامل بالفعل', 'info');
       return;
@@ -7844,7 +8182,8 @@ function openReceiptPrint(rawR, kind){
   `;
   document.head.appendChild(a5Style);
 
-  const remaining = Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0);
+  const otherAmt = Number(r.otherAccountAmount || 0);
+  const remaining = Number(r.cost||0)+Number(r.partsCost||0)+otherAmt-Number(r.deposit||0)+Number(r.refunded||0);
   const mount = document.createElement('div');
   mount.id = 'printMount';
 
@@ -7852,11 +8191,24 @@ function openReceiptPrint(rawR, kind){
   const trackUrl = `${window.location.origin}${window.location.pathname}?track=${encodeURIComponent(r.receiptNumber)}`;
   const qrSvgHtml = QRCodeGenerator.toSvg(trackUrl, 38);
 
+  const svcItems = Array.isArray(r.serviceItems) ? r.serviceItems.filter(it => (it.desc && it.desc.trim()) || Number(it.price) > 0) : [];
+
   const financeSection = `
-    <div class="section-title">البيان المالي</div>
+    <div class="section-title">البيان المالي ${svcItems.length > 0 ? 'وتفاصيل بنود الصيانة' : ''}</div>
+    ${svcItems.length > 0 ? `
+      <table style="margin-bottom:3px;font-size:8px;">
+        <thead>
+          <tr style="background:#f1f5f9;"><th style="text-align:right;padding:1px 3px;">بند الصيانة المستحق</th><th style="text-align:center;width:60px;padding:1px 3px;">التكلفة</th></tr>
+        </thead>
+        <tbody>
+          ${svcItems.map(it => `<tr><td style="padding:1px 3px;">${escapeHtml(it.desc || 'بند صيانة')}</td><td class="mono" style="text-align:center;padding:1px 3px;font-weight:bold;">${Number(it.price || 0)} ج.م</td></tr>`).join('')}
+        </tbody>
+      </table>
+    ` : ''}
     <div class="fin-box">
       <div class="fin-cell"><div class="l">تكلفة الخدمة</div><div class="v">${Number(r.cost||0)}</div></div>
       ${Number(r.partsCost||0)>0 ? `<div class="fin-cell"><div class="l">قطع الغيار</div><div class="v">${Number(r.partsCost)}</div></div>` : ''}
+      ${otherAmt>0 ? `<div class="fin-cell" style="background:#fef3c7;"><div class="l">${escapeHtml(r.otherAccountDesc||'حساب آخر')}</div><div class="v">${otherAmt} ج.م</div></div>` : ''}
       <div class="fin-cell"><div class="l">دفعة مقدمة</div><div class="v">${Number(r.deposit||0)}</div></div>
       <div class="fin-cell hi"><div class="l">المتبقي المطلوب</div><div class="v">${remaining} ج.م</div></div>
     </div>`;
@@ -7976,10 +8328,11 @@ function openStickerPrint(rawR){
 /* ---------------- Excel Export Utility ---------------- */
 function exportReceiptsToExcel(receipts){
   if(!receipts || !receipts.length){ showToast('لا توجد بيانات للتصدير', 'error'); return; }
-  const headers = ['رقم الإيصال','التاريخ','الاسم','الهاتف','فئة الجهاز','الماركة','الموديل','الأعطال','الفني','التكلفة','المدفوع','قطع الغيار','المتبقي','الحالة','موعد التسليم'];
+  const headers = ['رقم الإيصال','التاريخ','الاسم','الهاتف','فئة الجهاز','الماركة','الموديل','الأعطال','الفني','تكلفة الصيانة','حساب إضافي','المدفوع','قطع الغيار','المتبقي','الحالة','موعد التسليم'];
   const rows = receipts.map(rawR=>{
     const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
-    const rem = Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0);
+    const otherAmt = Number(r.otherAccountAmount||0);
+    const rem = Number(r.cost||0)+Number(r.partsCost||0)+otherAmt-Number(r.deposit||0)+Number(r.refunded||0);
     const faultsStr = (Array.isArray(r.faults) ? r.faults.join(' - ') : String(r.faults || '')) || '-';
     const cName = (r.customer && r.customer.name) || extractCustomerName(r) || 'عميل';
     const cPhone = (r.customer && r.customer.phone) || extractCustomerPhone(r) || '';
@@ -7989,7 +8342,7 @@ function exportReceiptsToExcel(receipts){
     return [
       r.receiptNumber, cleanDate(r.date), `"${cName}"`, `"${cPhone}"`,
       dCat, dBrand, `"${dModel}"`, `"${faultsStr}"`,
-      `"${r.technician||''}"`, r.cost||0, r.deposit||0, r.partsCost||0, rem, `"${r.status}"`, r.deliveryDate||''
+      `"${r.technician||''}"`, r.cost||0, otherAmt, r.deposit||0, r.partsCost||0, rem, `"${r.status}"`, r.deliveryDate||''
     ];
   });
   downloadCSV(`Receipts_Export_${new Date().toISOString().slice(0,10)}.csv`, headers, rows);
@@ -8072,13 +8425,25 @@ function convertReceiptToInvoice(receiptId){
   const faultsDesc = (Array.isArray(r.faults) && r.faults.length) ? r.faults.join('، ') : (r.faultNotes || 'صيانة عامة');
 
   const items = [];
-  // Item 1: Service Labor
-  items.push({
-    Name: `أجور وخدمات صيانة ${devCat} ${brandName} ${devModel} (عطل: ${faultsDesc})`.trim(),
-    Qty: 1,
-    Price: laborCost > 0 ? laborCost : totalCost,
-    Total: laborCost > 0 ? laborCost : totalCost
-  });
+  const svcItems = Array.isArray(r.serviceItems) ? r.serviceItems.filter(it => (it.desc && it.desc.trim()) || Number(it.price) > 0) : [];
+  if(svcItems.length > 0){
+    svcItems.forEach(it => {
+      items.push({
+        Name: `خدمة صيانة: ${it.desc || 'بند صيانة'} (${devCat} ${brandName})`.trim(),
+        Qty: 1,
+        Price: Number(it.price || 0),
+        Total: Number(it.price || 0)
+      });
+    });
+  } else {
+    // Item 1: Service Labor
+    items.push({
+      Name: `أجور وخدمات صيانة ${devCat} ${brandName} ${devModel} (عطل: ${faultsDesc})`.trim(),
+      Qty: 1,
+      Price: laborCost > 0 ? laborCost : totalCost,
+      Total: laborCost > 0 ? laborCost : totalCost
+    });
+  }
 
   // Item 2: Parts (if any)
   if(partsCost > 0){
@@ -8087,6 +8452,17 @@ function convertReceiptToInvoice(receiptId){
       Qty: 1,
       Price: partsCost,
       Total: partsCost
+    });
+  }
+
+  // Item 3: Other Customer Account (if any)
+  const otherAmt = Number(r.otherAccountAmount || 0);
+  if(otherAmt > 0){
+    items.push({
+      Name: `حساب إضافي على العميل: ${r.otherAccountDesc || 'رصيد سابق / حساب آخر'}`,
+      Qty: 1,
+      Price: otherAmt,
+      Total: otherAmt
     });
   }
 

@@ -2497,17 +2497,59 @@ function recoverAndSyncAllCustomerPhones(verbose = false){
   return { recoveredCount, totalCustomers: state.customers.length };
 }
 
+/* ---------------- Receipt Date & Time Helpers ---------------- */
+function formatReceiptTime(rawR){
+  if(!rawR) return '';
+  const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
+  if(r.time && typeof r.time === 'string' && r.time.trim()){
+    return r.time.trim();
+  }
+  let dateObj = null;
+  if(r.receivedAt && !isNaN(new Date(r.receivedAt).getTime())){
+    dateObj = new Date(r.receivedAt);
+  } else if(r.createdAt && !isNaN(new Date(r.createdAt).getTime())){
+    dateObj = new Date(r.createdAt);
+  } else if(r.date && String(r.date).length > 10 && !isNaN(new Date(r.date).getTime())){
+    dateObj = new Date(r.date);
+  } else if(r.id && /^r_\d{12,14}$/.test(String(r.id))){
+    const ts = Number(String(r.id).replace('r_', ''));
+    if(!isNaN(ts) && ts > 1600000000000) dateObj = new Date(ts);
+  }
+  if(dateObj){
+    try {
+      const hours = dateObj.getHours();
+      const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+      const ampm = hours >= 12 ? 'م' : 'ص';
+      const h12 = hours % 12 || 12;
+      return `${h12}:${minutes} ${ampm}`;
+    } catch(e){}
+  }
+  return '';
+}
+
+function formatReceiptDateTime(rawR){
+  if(!rawR) return '';
+  const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
+  const dStr = (typeof cleanDate === 'function') ? cleanDate(r.date) : (String(r.date||'').slice(0,10));
+  const tStr = formatReceiptTime(r);
+  return tStr ? `${dStr} — ${tStr}` : dStr;
+}
+
 /* ---- Mapping between internal shape and flat sheet rows ---- */
 function receiptToRow(d){
   const cName = extractCustomerName(d);
   const cPhone = extractCustomerPhone(d);
   const cEmail = extractCustomerEmail(d);
 
+  const pass = (d.device && d.device.password) || d.password || '';
+  const timeStr = d.time || formatReceiptTime(d) || '';
+
   return {
-    ID: d.id, ReceiptNumber: d.receiptNumber, Date: d.date,
+    ID: d.id, ReceiptNumber: d.receiptNumber, Date: d.date, Time: timeStr,
+    ReceivedAt: d.receivedAt || d.createdAt || '',
     CustomerName: cName, CustomerPhone: cPhone, CustomerEmail: cEmail,
     Category: d.device.category, Brand: d.device.brand==='أخرى' ? d.device.brandOther : d.device.brand,
-    Model: d.device.model, Accessories: d.device.accessories,
+    Model: d.device.model, Accessories: d.device.accessories, Password: pass,
     Faults: (d.faults||[]).join('، '), FaultNotes: d.faultNotes,
     Technician: d.technician, Cost: d.cost, Deposit: d.deposit, Refunded: d.refunded || 0, PartsCost: d.partsCost || 0, PartsUsed: d.partsUsed || '',
     ServiceItems: (Array.isArray(d.serviceItems) && d.serviceItems.length) ? JSON.stringify(d.serviceItems) : '',
@@ -2536,10 +2578,17 @@ function rowToReceipt(row){
     }
   }
 
+  const pass = row.Password || row.password || (row.device && row.device.password) || '';
+  const timeStr = row.Time || row.time || row['الوقت'] || row['وقت الاستلام'] || '';
+  const recAt = row.ReceivedAt || row.receivedAt || row.CreatedAt || row.createdAt || '';
+
   return {
     id: row.ID || row.id || row['رقم الجهاز'] || ('rec_' + Date.now() + '_' + Math.floor(Math.random()*1000)),
     receiptNumber: row.ReceiptNumber || row.receiptNumber || row['رقم الإيصال'] || row['رقم الايصال'] || '',
     date: row.Date || row.date || row['التاريخ'] || '',
+    time: timeStr,
+    receivedAt: recAt,
+    createdAt: row.CreatedAt || row.createdAt || recAt,
     customer: {
       name: cName || 'عميل',
       phone: cPhone,
@@ -2550,8 +2599,10 @@ function rowToReceipt(row){
       brand: row.Brand || row.brand || (row.device && row.device.brand) || '',
       brandOther: (row.device && row.device.brandOther) || '',
       model: row.Model || row.model || (row.device && row.device.model) || '',
-      accessories: row.Accessories || row.accessories || (row.device && row.device.accessories) || ''
+      accessories: row.Accessories || row.accessories || (row.device && row.device.accessories) || '',
+      password: pass
     },
+    password: pass,
     faults: row.Faults ? (Array.isArray(row.Faults) ? row.Faults : String(row.Faults).split('، ').filter(Boolean)) : (row.faults || []),
     faultNotes: row.FaultNotes || row.faultNotes || '',
     technician: row.Technician || row.technician || '',
@@ -2597,6 +2648,12 @@ function normalizeReceipt(r){
   }
   r.receiptNumber = String(r.receiptNumber);
 
+  // Normalize Date & Time
+  r.date = r.date || r.Date || '';
+  r.time = r.time || r.Time || (typeof formatReceiptTime === 'function' ? formatReceiptTime(r) : '');
+  r.receivedAt = r.receivedAt || r.ReceivedAt || r.createdAt || r.CreatedAt || '';
+  r.createdAt = r.createdAt || r.CreatedAt || r.receivedAt || '';
+
   // Normalize Customer
   if(!r.customer || typeof r.customer !== 'object'){
     r.customer = {
@@ -2613,13 +2670,15 @@ function normalizeReceipt(r){
   r.customer.email = String(r.customer.email);
 
   // Normalize Device
+  const pass = String((r.device && r.device.password) || r.password || r.Password || '');
   if(!r.device || typeof r.device !== 'object'){
     r.device = {
       category: r.category || r.Category || 'لابتوب',
       brand: r.brand || r.Brand || '',
       brandOther: r.brandOther || '',
       model: r.model || r.Model || '',
-      accessories: r.accessories || r.Accessories || ''
+      accessories: r.accessories || r.Accessories || '',
+      password: pass
     };
   }
   r.device.category = String(r.device.category || 'أخرى');
@@ -2627,6 +2686,8 @@ function normalizeReceipt(r){
   r.device.brandOther = String(r.device.brandOther != null ? r.device.brandOther : '');
   r.device.model = String(r.device.model != null ? r.device.model : '');
   r.device.accessories = String(r.device.accessories != null ? r.device.accessories : '');
+  r.device.password = pass;
+  r.password = pass;
 
   // Normalize Faults strictly as an Array of strings
   if(!Array.isArray(r.faults)){
@@ -4481,13 +4542,23 @@ function applyTheme(t){
 applyThemeAndAppearance();
 
 function newDraft(){
-  const today = new Date();
+  const now = new Date();
+  const hours = now.getHours();
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const ampm = hours >= 12 ? 'م' : 'ص';
+  const h12 = hours % 12 || 12;
+  const currentTimeStr = `${h12}:${minutes} ${ampm}`;
+
   return {
-    id: 'r_'+Date.now(),
+    id: 'r_'+now.getTime(),
     receiptNumber: '',
-    date: today.toISOString().slice(0,10),
+    date: now.toISOString().slice(0,10),
+    time: currentTimeStr,
+    createdAt: now.toISOString(),
+    receivedAt: now.toISOString(),
     customer: {name:'', phone:'', email:''},
-    device: {category:'لابتوب', brand:'Apple', brandOther:'', model:'', accessories:''},
+    device: {category:'لابتوب', brand:'Apple', brandOther:'', model:'', accessories:'', password:''},
+    password: '',
     faults: [],
     faultNotes: '',
     technician: '',
@@ -5883,7 +5954,10 @@ function stepDevice(body,d){
         <div class="field" id="brandOtherWrap" style="display:none"><label>اكتب الماركة يدويًا</label><input id="devBrandOther" value="${d.device.brandOther}"></div>
         <div class="field"><label>الموديل / السيريال</label><input id="devModel" value="${d.device.model}" placeholder="مثال: Dell G15 5515"></div>
       </div>
-      <div class="field"><label>الملحقات المستلمة مع الجهاز</label><input id="devAcc" placeholder="شاحن أصلي، كابل باور، حقيبة، ماوس..." value="${d.device.accessories}"></div>
+      <div class="grid2">
+        <div class="field"><label>الملحقات المستلمة مع الجهاز</label><input id="devAcc" placeholder="شاحن أصلي، كابل باور، حقيبة، ماوس..." value="${d.device.accessories}"></div>
+        <div class="field"><label>كلمة المرور / الباسورد (اختياري)</label><input id="devPassword" type="text" placeholder="باسورد الجهاز أو رمز القفل للفحص إن وجد..." value="${(d.device && d.device.password) || d.password || ''}"></div>
+      </div>
     </div>
   `;
   function fillBrands(){
@@ -5926,6 +6000,8 @@ function stepDevice(body,d){
       if(modelInp) modelInp.value = picked.device.model || '';
       const accInp = document.getElementById('devAcc');
       if(accInp && !accInp.value) accInp.value = picked.device.accessories || '';
+      const passInp = document.getElementById('devPassword');
+      if(passInp && !passInp.value) passInp.value = (picked.device && picked.device.password) || picked.password || '';
 
       const badge = document.getElementById('priorDeviceLinkedBadge');
       if(badge){
@@ -5956,6 +6032,8 @@ function stepDevice(body,d){
     d.device.brandOther = document.getElementById('devBrandOther') ? document.getElementById('devBrandOther').value : '';
     d.device.model = document.getElementById('devModel').value.trim();
     d.device.accessories = document.getElementById('devAcc').value.trim();
+    d.device.password = document.getElementById('devPassword') ? document.getElementById('devPassword').value.trim() : '';
+    d.password = d.device.password;
   };
   stepNav(body, true, ()=>{
     currentStepCollector();
@@ -6241,7 +6319,8 @@ function stepReview(body,d){
       <h3>📋 مراجعة بيانات الإيصال قبل الحفظ</h3>
       <div class="grid2" style="font-size:13.5px;line-height:2;">
         <div><b>👤 العميل:</b> ${d.customer.name} — <span class="mono">${d.customer.phone}</span></div>
-        <div><b>💻 الجهاز:</b> ${d.device.category} / ${d.device.brand==='أخرى'?d.device.brandOther:d.device.brand} / ${d.device.model||'-'}</div>
+        <div><b>💻 الجهاز:</b> ${d.device.category} / ${d.device.brand==='أخرى'?d.device.brandOther:d.device.brand} / ${d.device.model||'-'} ${((d.device && d.device.password) || d.password) ? `<span style="margin-right:6px;color:var(--amber-text);font-size:12px;">(🔑 كلمة السر: <span class="mono">${escapeHtml((d.device && d.device.password) || d.password)}</span>)</span>` : ''}</div>
+        <div><b>📅 تاريخ ووقت الاستلام:</b> <span class="mono" style="font-weight:bold;">${cleanDate(d.date)}</span> <span class="badge badge-blue mono" style="font-size:11.5px;margin-right:4px;">⏰ ${formatReceiptTime(d) || d.time || ''}</span></div>
         ${d.previousReceiptNumber ? `<div><b>🔄 صيانة راجعة / تكرارية:</b> <span class="badge badge-amber mono">#${escapeHtml(d.previousReceiptNumber)}</span> <span style="font-size:11.5px;color:var(--ink-secondary);">${d.reIntakeReason ? '('+escapeHtml(d.reIntakeReason)+')' : ''}</span></div>` : ''}
         <div><b>⚠️ الأعطال:</b> ${d.faults.join('، ')||'-'}</div>
         <div><b>👨‍🔧 الفني المسؤول:</b> ${d.technician||'غير محدد'}</div>
@@ -6272,8 +6351,19 @@ function stepReview(body,d){
 }
 
 async function saveReceipt(d, printA5, sendWa, printSticker){
+  const now = new Date();
+  if(!d.date) d.date = now.toISOString().slice(0,10);
+  if(!d.time){
+    const hours = now.getHours();
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'م' : 'ص';
+    const h12 = hours % 12 || 12;
+    d.time = `${h12}:${minutes} ${ampm}`;
+  }
+  if(!d.createdAt) d.createdAt = now.toISOString();
+  if(!d.receivedAt) d.receivedAt = now.toISOString();
   d.updatedBy = state.user.name;
-  d.updatedAt = new Date().toISOString();
+  d.updatedAt = now.toISOString();
   const btns = document.querySelectorAll('#saveOnlyBtn,#savePrintBtn,#saveWaBtn,#saveStickerBtn');
   btns.forEach(b=>{ b.disabled = true; b.textContent = 'جارٍ الحفظ...'; });
   try{
@@ -6452,7 +6542,10 @@ function archiveTable(list){
       <td>
         <span class="mono" style="font-weight:800;font-size:13px;color:var(--primary);">${rNum}</span>
         ${r.previousReceiptNumber ? `<div style="font-size:10px;color:#b45309;font-weight:700;margin-top:1px;">🔄 صيانة راجعة (#${escapeHtml(r.previousReceiptNumber)})</div>` : ''}
-        <div style="color:var(--ink-secondary);font-size:11px;">${cleanDate(r.date)}</div>
+        <div style="color:var(--ink-secondary);font-size:11px;display:flex;align-items:center;gap:4px;margin-top:2px;">
+          <span>📅 ${cleanDate(r.date)}</span>
+          ${(formatReceiptTime(r) || r.time) ? `<span class="mono" style="color:var(--primary);font-size:10px;font-weight:600;">⏰ ${formatReceiptTime(r) || r.time}</span>` : ''}
+        </div>
       </td>
       <td>
         <b>${escapeHtml(cName)}</b>
@@ -7150,10 +7243,12 @@ function getStatusCustomMessage(rawR, status){
   if(!tmpl) tmpl = DEFAULT_WA_TEMPLATES[key] || '';
 
   // Replace placeholders
+  const receiptTimeStr = (typeof formatReceiptTime === 'function' ? formatReceiptTime(r) : (r.time || ''));
   return tmpl
     .replace(/{customer_name}/g, (r.customer && r.customer.name) || 'عميلنا العزيز')
     .replace(/{receipt_no}/g, r.receiptNumber || '')
     .replace(/{date}/g, cleanDate(r.date))
+    .replace(/{time}/g, receiptTimeStr)
     .replace(/{device}/g, device)
     .replace(/{faults}/g, faultsStr)
     .replace(/{status}/g, r.status || '')
@@ -7209,7 +7304,9 @@ function openWhatsappChoice(rawR){
     const faultsStr = (Array.isArray(r.faults) ? r.faults.join('، ') : String(r.faults || '')) || '-';
     const shopName = (state.settings && state.settings.shopName) || 'صيانة ميكروتك';
     const otherNote = otherAmt > 0 ? `\n*حساب إضافي (${r.otherAccountDesc || 'رصيد آخر'}):* ${otherAmt} ج.م` : '';
-    const msg = `مرحبًا ${r.customer.name} 👋\n*إيصال صيانة رقم:* ${r.receiptNumber}\n*التاريخ:* ${cleanDate(r.date)}\n*الجهاز:* ${devCat} - ${devBrand} ${devModel}\n*الأعطال:* ${faultsStr}\n*الحالة الحالية:* ${r.status}${otherNote}\n*المتبقي المطلوب:* ${remaining} ج.م\n*رابط تتبع الجهاز مباشرة:* ${trackUrl}\n\n${shopName}`;
+    const rTime = typeof formatReceiptTime === 'function' ? formatReceiptTime(r) : (r.time || '');
+    const dateStr = cleanDate(r.date) + (rTime ? ` (الساعة ${rTime})` : '');
+    const msg = `مرحبًا ${r.customer.name} 👋\n*إيصال صيانة رقم:* ${r.receiptNumber}\n*تاريخ ووقت الاستلام:* ${dateStr}\n*الجهاز:* ${devCat} - ${devBrand} ${devModel}\n*الأعطال:* ${faultsStr}\n*الحالة الحالية:* ${r.status}${otherNote}\n*المتبقي المطلوب:* ${remaining} ج.م\n*رابط تتبع الجهاز مباشرة:* ${trackUrl}\n\n${shopName}`;
     sendWhatsapp(r, msg);
     overlay.remove();
   };
@@ -7537,10 +7634,19 @@ function openReIntakeDeviceModal(previousReceipt){
       const newRecNum = (typeof nextReceiptNumber === 'function') ? await nextReceiptNumber() : ('MT-' + Date.now());
       const rootId = previousReceipt.rootReceiptId || previousReceipt.id;
 
+      const now = new Date();
+      const hours = now.getHours();
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const ampm = hours >= 12 ? 'م' : 'ص';
+      const h12 = hours % 12 || 12;
+      const currentTimeStr = `${h12}:${minutes} ${ampm}`;
+
       const newReceipt = {
-        id: 'r_' + Date.now(),
+        id: 'r_' + now.getTime(),
         receiptNumber: newRecNum,
-        date: (typeof todayISO === 'function') ? todayISO() : new Date().toISOString().slice(0, 10),
+        date: (typeof todayISO === 'function') ? todayISO() : now.toISOString().slice(0, 10),
+        time: currentTimeStr,
+        receivedAt: now.toISOString(),
         status: 'قيد الفحص',
         customer: JSON.parse(JSON.stringify(previousReceipt.customer)),
         device: JSON.parse(JSON.stringify(previousReceipt.device)),
@@ -7561,9 +7667,9 @@ function openReIntakeDeviceModal(previousReceipt){
         nextReceiptNumber: '',
         maintenanceHistory: [],
         createdBy: (state.user && state.user.name) || 'نظام',
-        createdAt: new Date().toISOString(),
+        createdAt: now.toISOString(),
         updatedBy: (state.user && state.user.name) || 'نظام',
-        updatedAt: new Date().toISOString()
+        updatedAt: now.toISOString()
       };
 
       state.receipts.unshift(newReceipt);
@@ -7623,6 +7729,11 @@ async function openReceiptDetail(rawR){
         <button class="btn btn-ghost btn-xs" id="closeDetailBtn">✕ إغلاق</button>
       </div>
 
+      <div style="background:var(--paper2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:7px 12px;margin-bottom:12px;font-size:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+        <div><b>📅 تاريخ ووقت الاستلام:</b> <span class="mono">${cleanDate(r.date)}</span> <b class="mono" style="color:var(--primary);margin-right:4px;">⏰ ${formatReceiptTime(r) || r.time || 'غير محدد'}</b></div>
+        ${r.createdBy ? `<div style="color:var(--ink-secondary);font-size:11.5px;">الموظف المستلم: <b>${escapeHtml(r.createdBy)}</b></div>` : ''}
+      </div>
+
       ${r.previousReceiptNumber ? `
         <div style="background:rgba(245,158,11,0.1);border:1px solid var(--amber);border-radius:var(--radius-sm);padding:8px 12px;margin-bottom:12px;font-size:12px;display:flex;justify-content:space-between;align-items:center;">
           <div>
@@ -7647,10 +7758,11 @@ async function openReceiptDetail(rawR){
         <div class="field"><label>اسم العميل</label><input id="eName" value="${escapeHtml(r.customer.name||'')}"></div>
         <div class="field"><label>رقم هاتف العميل</label><input id="ePhone" value="${escapeHtml(r.customer.phone||'')}"></div>
       </div>
-      <div class="grid3">
+      <div class="grid4">
         <div class="field"><label>فئة الجهاز</label><input id="eCat" value="${escapeHtml(r.device.category||'')}"></div>
         <div class="field"><label>الماركة</label><input id="eBrand" value="${escapeHtml(r.device.brand||'')}"></div>
         <div class="field"><label>الموديل</label><input id="eModel" value="${escapeHtml(r.device.model||'')}"></div>
+        <div class="field"><label>كلمة السر (اختياري)</label><input id="ePassword" value="${escapeHtml((r.device && r.device.password) || r.password || '')}" placeholder="باسورد الجهاز إن وجد"></div>
       </div>
       <div class="field"><label>الأعطال</label>
         <div class="chip-group" id="editFaultChips">
@@ -7883,6 +7995,8 @@ async function openReceiptDetail(rawR){
     r.device.category = overlay.querySelector('#eCat').value.trim();
     r.device.brand = overlay.querySelector('#eBrand').value.trim();
     r.device.model = overlay.querySelector('#eModel').value.trim();
+    r.device.password = (overlay.querySelector('#ePassword')?.value || '').trim();
+    r.password = r.device.password;
     r.faultNotes = overlay.querySelector('#eFaultNotes').value.trim();
     r.technician = overlay.querySelector('#eTech').value;
     r.status = overlay.querySelector('#eStatus').value.replace(/^[^\s]+\s/, '');
@@ -8232,21 +8346,30 @@ function openReceiptPrint(rawR, kind){
           </div>
           <div style="text-align:left;">
             <div class="r-badge mono">${r.receiptNumber}</div>
-            <div class="r-meta">التاريخ: ${cleanDate(r.date)}</div>
+            <div class="r-meta">تاريخ الاستلام: ${cleanDate(r.date)}</div>
+            ${(formatReceiptTime(r) || r.time) ? `<div class="r-meta" style="color:#0f766e;font-weight:700;">وقت الاستلام: ${formatReceiptTime(r) || r.time}</div>` : ''}
             <svg id="printBarcode" style="margin-top:2px;"></svg>
           </div>
         </div>
       </div>
 
-      <div class="section-title">بيانات العميل</div>
+      <div class="section-title">بيانات العميل والاستلام</div>
       <table>
-        <tr><td class="k">الاسم</td><td><b>${escapeHtml(r.customer.name)}</b></td><td class="k">الهاتف</td><td class="mono"><b>${escapeHtml(r.customer.phone)}</b></td></tr>
+        <tr>
+          <td class="k">اسم العميل</td><td><b>${escapeHtml(r.customer.name)}</b></td>
+          <td class="k">الهاتف</td><td class="mono"><b>${escapeHtml(r.customer.phone)}</b></td>
+        </tr>
+        <tr>
+          <td class="k">تاريخ الاستلام</td><td><b>${cleanDate(r.date)}</b></td>
+          <td class="k">وقت الاستلام</td><td><b class="mono" style="color:#0f766e;">⏰ ${formatReceiptTime(r) || r.time || '-'}</b></td>
+        </tr>
       </table>
 
       <div class="section-title">بيانات الجهاز والأعطال</div>
       <table>
         <tr><td class="k">الجهاز</td><td>${escapeHtml(r.device.category)} — ${r.device.brand==='أخرى'?escapeHtml(r.device.brandOther):escapeHtml(r.device.brand)} ${escapeHtml(r.device.model||'')}</td>
             <td class="k">الملحقات</td><td>${escapeHtml(r.device.accessories||'بدون')}</td></tr>
+        ${((r.device && r.device.password) || r.password) ? `<tr><td class="k">كلمة السر</td><td colspan="3"><span class="mono" style="font-weight:bold;color:#b45309;">🔑 ${escapeHtml((r.device && r.device.password) || r.password)}</span></td></tr>` : ''}
         ${r.previousReceiptNumber ? `<tr><td class="k">دورة الصيانة</td><td colspan="3"><b>دورة ${r.serviceCycle||2}</b> — صيانة راجعة للإيصال السابق <span class="mono">#${escapeHtml(r.previousReceiptNumber)}</span> ${r.reIntakeReason ? '('+escapeHtml(r.reIntakeReason)+')' : ''}</td></tr>` : ''}
         <tr><td class="k">الأعطال</td><td colspan="3">${escapeHtml((Array.isArray(r.faults) ? r.faults.join('، ') : String(r.faults || ''))||'-')}${r.faultNotes?' — '+escapeHtml(r.faultNotes):''}</td></tr>
         <tr><td class="k">الفني</td><td>${escapeHtml(r.technician||'-')}</td><td class="k">الحالة</td><td><b>${escapeHtml(r.status)}</b></td></tr>
@@ -8296,8 +8419,11 @@ function openStickerPrint(rawR){
   const dCat = (r.device && r.device.category) || 'جهاز';
   const dBrand = r.device ? (r.device.brand==='أخرى'?r.device.brandOther:r.device.brand) : '';
   const dModel = (r.device && r.device.model) || '';
+  const pass = ((r.device && r.device.password) || r.password || '').slice(0, 16);
   const firstFault = ((Array.isArray(r.faults) && r.faults.length ? r.faults[0] : (typeof r.faults === 'string' ? r.faults : '')) || r.faultNotes || '-').slice(0, 25);
   const shopName = (state.settings && state.settings.shopName) || 'صيانة ميكروتك';
+  const intakeTime = (typeof formatReceiptTime === 'function' ? formatReceiptTime(r) : (r.time || ''));
+  const dateTimeStr = `${cleanDate(r.date)}${intakeTime ? ' ' + intakeTime : ''}`;
 
   mount.innerHTML = `
   <div id="stickerPaper">
@@ -8309,8 +8435,9 @@ function openStickerPrint(rawR){
       <svg id="stickerBarcode"></svg>
     </div>
     <div style="font-size:7px;line-height:1.15;">
+      <div><b>الاستلام:</b> <span class="mono">${escapeHtml(dateTimeStr)}</span></div>
       <div><b>العميل:</b> ${escapeHtml(cName)} | <span class="mono">${escapeHtml(cPhone)}</span></div>
-      <div><b>الجهاز:</b> ${escapeHtml(dCat)} - ${escapeHtml(dBrand)} ${escapeHtml(dModel)}</div>
+      <div><b>الجهاز:</b> ${escapeHtml(dCat)} - ${escapeHtml(dBrand)} ${escapeHtml(dModel)}${pass ? ` | <b>باسورد:</b> <span class="mono">${escapeHtml(pass)}</span>` : ''}</div>
       <div><b>العطل:</b> ${escapeHtml(firstFault)}</div>
     </div>
   </div>`;
@@ -8328,7 +8455,7 @@ function openStickerPrint(rawR){
 /* ---------------- Excel Export Utility ---------------- */
 function exportReceiptsToExcel(receipts){
   if(!receipts || !receipts.length){ showToast('لا توجد بيانات للتصدير', 'error'); return; }
-  const headers = ['رقم الإيصال','التاريخ','الاسم','الهاتف','فئة الجهاز','الماركة','الموديل','الأعطال','الفني','تكلفة الصيانة','حساب إضافي','المدفوع','قطع الغيار','المتبقي','الحالة','موعد التسليم'];
+  const headers = ['رقم الإيصال','التاريخ','وقت الاستلام','الاسم','الهاتف','فئة الجهاز','الماركة','الموديل','كلمة السر','الأعطال','الفني','تكلفة الصيانة','حساب إضافي','المدفوع','قطع الغيار','المتبقي','الحالة','موعد التسليم'];
   const rows = receipts.map(rawR=>{
     const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
     const otherAmt = Number(r.otherAccountAmount||0);
@@ -8339,9 +8466,11 @@ function exportReceiptsToExcel(receipts){
     const dCat = (r.device && r.device.category) || 'جهاز';
     const dBrand = r.device ? (r.device.brand==='أخرى'?r.device.brandOther:r.device.brand) : '';
     const dModel = (r.device && r.device.model) || '';
+    const pass = (r.device && r.device.password) || r.password || '';
+    const rTime = (typeof formatReceiptTime === 'function' ? formatReceiptTime(r) : (r.time || ''));
     return [
-      r.receiptNumber, cleanDate(r.date), `"${cName}"`, `"${cPhone}"`,
-      dCat, dBrand, `"${dModel}"`, `"${faultsStr}"`,
+      r.receiptNumber, cleanDate(r.date), `"${rTime}"`, `"${cName}"`, `"${cPhone}"`,
+      dCat, dBrand, `"${dModel}"`, `"${pass}"`, `"${faultsStr}"`,
       `"${r.technician||''}"`, r.cost||0, otherAmt, r.deposit||0, r.partsCost||0, rem, `"${r.status}"`, r.deliveryDate||''
     ];
   });
@@ -16468,6 +16597,8 @@ function renderWhatsappSettings(main){
   const placeholders = [
     {p:'{customer_name}', label:'👤 اسم العميل'},
     {p:'{receipt_no}', label:'🔢 رقم الإيصال'},
+    {p:'{date}', label:'📅 تاريخ الاستلام'},
+    {p:'{time}', label:'⏰ وقت الاستلام'},
     {p:'{device}', label:'💻 الجهاز والماركة'},
     {p:'{faults}', label:'⚠️ الأعطال'},
     {p:'{status}', label:'📌 الحالة'},

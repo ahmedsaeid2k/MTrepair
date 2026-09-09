@@ -2500,19 +2500,24 @@ function recoverAndSyncAllCustomerPhones(verbose = false){
 /* ---------------- Receipt Date & Time Helpers ---------------- */
 function formatReceiptTime(rawR){
   if(!rawR) return '';
-  const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
-  if(r.time && typeof r.time === 'string' && r.time.trim()){
-    return r.time.trim();
+  const rawTime = rawR.time || rawR.Time || rawR['الوقت'] || rawR['وقت الاستلام'];
+  if(rawTime && typeof rawTime === 'string' && rawTime.trim()){
+    return rawTime.trim();
   }
   let dateObj = null;
-  if(r.receivedAt && !isNaN(new Date(r.receivedAt).getTime())){
-    dateObj = new Date(r.receivedAt);
-  } else if(r.createdAt && !isNaN(new Date(r.createdAt).getTime())){
-    dateObj = new Date(r.createdAt);
-  } else if(r.date && String(r.date).length > 10 && !isNaN(new Date(r.date).getTime())){
-    dateObj = new Date(r.date);
-  } else if(r.id && /^r_\d{12,14}$/.test(String(r.id))){
-    const ts = Number(String(r.id).replace('r_', ''));
+  const recAt = rawR.receivedAt || rawR.ReceivedAt;
+  const crAt = rawR.createdAt || rawR.CreatedAt;
+  const rDate = rawR.date || rawR.Date;
+  const rId = rawR.id || rawR.ID || rawR['رقم الجهاز'];
+
+  if(recAt && !isNaN(new Date(recAt).getTime())){
+    dateObj = new Date(recAt);
+  } else if(crAt && !isNaN(new Date(crAt).getTime())){
+    dateObj = new Date(crAt);
+  } else if(rDate && String(rDate).length > 10 && !isNaN(new Date(rDate).getTime())){
+    dateObj = new Date(rDate);
+  } else if(rId && /^r_\d{12,14}$/.test(String(rId))){
+    const ts = Number(String(rId).replace('r_', ''));
     if(!isNaN(ts) && ts > 1600000000000) dateObj = new Date(ts);
   }
   if(dateObj){
@@ -2529,9 +2534,8 @@ function formatReceiptTime(rawR){
 
 function formatReceiptDateTime(rawR){
   if(!rawR) return '';
-  const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
-  const dStr = (typeof cleanDate === 'function') ? cleanDate(r.date) : (String(r.date||'').slice(0,10));
-  const tStr = formatReceiptTime(r);
+  const dStr = (typeof cleanDate === 'function') ? cleanDate(rawR.date || rawR.Date) : (String(rawR.date || rawR.Date || '').slice(0,10));
+  const tStr = formatReceiptTime(rawR);
   return tStr ? `${dStr} — ${tStr}` : dStr;
 }
 

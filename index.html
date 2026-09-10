@@ -2342,7 +2342,17 @@ function showToast(msg, type='info', duration=2800){
   }, duration);
 }
 
-/* ---- Customer Data Extraction & Phone Recovery Engine ---- */
+/* ---- Customer Data Extraction, Titles & Phone Recovery Engine ---- */
+const CUSTOMER_TITLES = ['أستاذ', 'أستاذة', 'مهندس', 'مهندسة', 'دكتور', 'دكتورة', 'حاج', 'حاجة', 'شيخ', 'سيد', 'سيدة'];
+
+function extractCustomerTitle(obj){
+  if(!obj || typeof obj !== 'object') return '';
+  const val = obj.CustomerTitle ?? obj.customerTitle ?? obj.Title ?? obj.title ??
+              obj['اللقب'] ?? obj['صفة'] ?? obj['صفة العميل'] ??
+              (obj.customer ? (obj.customer.title ?? obj.customer.Title ?? obj.customer.CustomerTitle) : '') ?? '';
+  return String(val).replace(/["']/g, '').trim();
+}
+
 function extractCustomerPhone(obj){
   if(!obj) return '';
   if(typeof obj === 'string' && /^\+?[\d\s-]{4,}$/.test(obj.trim())) return obj.trim();
@@ -2363,6 +2373,17 @@ function extractCustomerName(obj){
   return String(val).replace(/["']/g, '').trim();
 }
 
+function formatCustomerFullName(objOrName, optTitle){
+  if(typeof objOrName === 'string'){
+    const name = objOrName.trim();
+    const title = (optTitle || '').trim();
+    return title ? `${title} / ${name}` : name;
+  }
+  const name = extractCustomerName(objOrName) || 'عميل';
+  const title = (optTitle != null ? optTitle : extractCustomerTitle(objOrName)).trim();
+  return title ? `${title} / ${name}` : name;
+}
+
 function extractCustomerEmail(obj){
   if(!obj || typeof obj !== 'object') return '';
   const val = obj.CustomerEmail ?? obj.customerEmail ?? obj.Email ?? obj.email ?? obj['البريد'] ?? obj['الإيميل'] ??
@@ -2380,9 +2401,10 @@ function recoverAndSyncAllCustomerPhones(verbose = false){
   (state.customers || []).forEach(c => {
     const name = extractCustomerName(c);
     const phone = extractCustomerPhone(c);
+    const title = extractCustomerTitle(c);
     if(name && phone && phone !== '0000000000'){
       nameToPhoneMap.set(name.toLowerCase(), phone);
-      phoneToCustomerMap.set(phone, { name, phone, email: extractCustomerEmail(c) });
+      phoneToCustomerMap.set(phone, { title, name, phone, email: extractCustomerEmail(c) });
     }
   });
 
@@ -2392,10 +2414,11 @@ function recoverAndSyncAllCustomerPhones(verbose = false){
     rawReceipts.forEach(r => {
       const name = extractCustomerName(r);
       const phone = extractCustomerPhone(r);
+      const title = extractCustomerTitle(r);
       if(name && phone && phone !== '0000000000'){
         nameToPhoneMap.set(name.toLowerCase(), phone);
         if(!phoneToCustomerMap.has(phone)){
-          phoneToCustomerMap.set(phone, { name, phone, email: extractCustomerEmail(r) });
+          phoneToCustomerMap.set(phone, { title, name, phone, email: extractCustomerEmail(r) });
         }
       }
     });
@@ -2405,10 +2428,11 @@ function recoverAndSyncAllCustomerPhones(verbose = false){
   (state.receipts || []).forEach(r => {
     const name = extractCustomerName(r);
     const phone = extractCustomerPhone(r);
+    const title = extractCustomerTitle(r);
     if(name && phone && phone !== '0000000000'){
       nameToPhoneMap.set(name.toLowerCase(), phone);
       if(!phoneToCustomerMap.has(phone)){
-        phoneToCustomerMap.set(phone, { name, phone, email: extractCustomerEmail(r) });
+        phoneToCustomerMap.set(phone, { title, name, phone, email: extractCustomerEmail(r) });
       }
     }
   });
@@ -2417,10 +2441,11 @@ function recoverAndSyncAllCustomerPhones(verbose = false){
   (state.sales || []).forEach(s => {
     const name = extractCustomerName(s);
     const phone = extractCustomerPhone(s);
+    const title = extractCustomerTitle(s);
     if(name && phone && phone !== '0000000000'){
       nameToPhoneMap.set(name.toLowerCase(), phone);
       if(!phoneToCustomerMap.has(phone)){
-        phoneToCustomerMap.set(phone, { name, phone, email: '' });
+        phoneToCustomerMap.set(phone, { title, name, phone, email: '' });
       }
     }
   });
@@ -2429,10 +2454,11 @@ function recoverAndSyncAllCustomerPhones(verbose = false){
   (state.quotations || []).forEach(q => {
     const name = extractCustomerName(q);
     const phone = extractCustomerPhone(q);
+    const title = extractCustomerTitle(q);
     if(name && phone && phone !== '0000000000'){
       nameToPhoneMap.set(name.toLowerCase(), phone);
       if(!phoneToCustomerMap.has(phone)){
-        phoneToCustomerMap.set(phone, { name, phone, email: '' });
+        phoneToCustomerMap.set(phone, { title, name, phone, email: '' });
       }
     }
   });
@@ -2441,10 +2467,11 @@ function recoverAndSyncAllCustomerPhones(verbose = false){
   (state.invoices || []).forEach(inv => {
     const name = extractCustomerName(inv);
     const phone = extractCustomerPhone(inv);
+    const title = extractCustomerTitle(inv);
     if(name && phone && phone !== '0000000000'){
       nameToPhoneMap.set(name.toLowerCase(), phone);
       if(!phoneToCustomerMap.has(phone)){
-        phoneToCustomerMap.set(phone, { name, phone, email: '' });
+        phoneToCustomerMap.set(phone, { title, name, phone, email: '' });
       }
     }
   });
@@ -2456,7 +2483,7 @@ function recoverAndSyncAllCustomerPhones(verbose = false){
     if((!currentPhone || currentPhone === '0000000000') && name){
       const knownPhone = nameToPhoneMap.get(name.toLowerCase());
       if(knownPhone){
-        if(!r.customer) r.customer = { name, phone: knownPhone, email: '' };
+        if(!r.customer) r.customer = { title: extractCustomerTitle(r), name, phone: knownPhone, email: '' };
         else r.customer.phone = knownPhone;
         recoveredCount++;
       }
@@ -2479,10 +2506,11 @@ function recoverAndSyncAllCustomerPhones(verbose = false){
   (state.customers || []).forEach(c => {
     const name = extractCustomerName(c);
     const phone = extractCustomerPhone(c);
+    const title = extractCustomerTitle(c);
     const key = (phone || name).toLowerCase();
     if(name && !addedKeys.has(key)){
       addedKeys.add(key);
-      unifiedCustomers.push({ name, phone: nameToPhoneMap.get(name.toLowerCase()) || phone || '', email: extractCustomerEmail(c) });
+      unifiedCustomers.push({ title, name, phone: nameToPhoneMap.get(name.toLowerCase()) || phone || '', email: extractCustomerEmail(c) });
     }
   });
 
@@ -2541,6 +2569,7 @@ function formatReceiptDateTime(rawR){
 
 /* ---- Mapping between internal shape and flat sheet rows ---- */
 function receiptToRow(d){
+  const cTitle = extractCustomerTitle(d);
   const cName = extractCustomerName(d);
   const cPhone = extractCustomerPhone(d);
   const cEmail = extractCustomerEmail(d);
@@ -2551,7 +2580,7 @@ function receiptToRow(d){
   return {
     ID: d.id, ReceiptNumber: d.receiptNumber, Date: d.date, Time: timeStr,
     ReceivedAt: d.receivedAt || d.createdAt || '',
-    CustomerName: cName, CustomerPhone: cPhone, CustomerEmail: cEmail,
+    CustomerTitle: cTitle, CustomerName: cName, CustomerPhone: cPhone, CustomerEmail: cEmail,
     Category: d.device.category, Brand: d.device.brand==='أخرى' ? d.device.brandOther : d.device.brand,
     Model: d.device.model, Accessories: d.device.accessories, Password: pass,
     Faults: (d.faults||[]).join('، '), FaultNotes: d.faultNotes,
@@ -2568,6 +2597,7 @@ function receiptToRow(d){
 }
 
 function rowToReceipt(row){
+  const cTitle = extractCustomerTitle(row);
   const cName = extractCustomerName(row);
   const cPhone = extractCustomerPhone(row);
   const cEmail = extractCustomerEmail(row);
@@ -2594,6 +2624,7 @@ function rowToReceipt(row){
     receivedAt: recAt,
     createdAt: row.CreatedAt || row.createdAt || recAt,
     customer: {
+      title: cTitle,
       name: cName || 'عميل',
       phone: cPhone,
       email: cEmail
@@ -2661,11 +2692,14 @@ function normalizeReceipt(r){
   // Normalize Customer
   if(!r.customer || typeof r.customer !== 'object'){
     r.customer = {
+      title: extractCustomerTitle(r) || '',
       name: extractCustomerName(r) || 'عميل',
       phone: extractCustomerPhone(r) || '',
       email: extractCustomerEmail(r) || ''
     };
   }
+  if(r.customer.title == null) r.customer.title = extractCustomerTitle(r) || '';
+  r.customer.title = String(r.customer.title);
   if(r.customer.name == null) r.customer.name = extractCustomerName(r) || 'عميل';
   r.customer.name = String(r.customer.name);
   if(r.customer.phone == null) r.customer.phone = extractCustomerPhone(r) || '';
@@ -3054,7 +3088,11 @@ async function loadSuppliers(){
 }
 async function saveSupplierRemote(s){
   if(!s.ID) s.ID = 'sup_' + Date.now();
-  state.suppliers.push(s);
+  if(!s.Title && s.title) s.Title = s.title;
+  s.Title = s.Title || '';
+  const idx = state.suppliers.findIndex(x => (s.ID && x.ID === s.ID) || (s.Name && x.Name === s.Name));
+  if(idx > -1) state.suppliers[idx] = s;
+  else state.suppliers.push(s);
   setCache('suppliers', state.suppliers);
   return apiPost('saveSupplier', {data:s});
 }
@@ -3310,6 +3348,7 @@ async function saveReceiptRemote(d){
   const idx = state.receipts.findIndex(x=>x.id===d.id);
   if(idx>-1) state.receipts[idx] = d; else state.receipts.push(d);
   setCache('receipts', state.receipts);
+  recoverAndSyncAllCustomerPhones(false);
   return apiPost('saveReceipt', {data: row, user: state.user?state.user.name:'نظام'});
 }
 async function deleteReceiptRemote(id){
@@ -3319,17 +3358,19 @@ async function deleteReceiptRemote(id){
 }
 async function saveCustomerRemote(c){
   if(!c || !c.name) return;
+  const cTitle = c.title || c.Title || '';
   const exists = state.customers.find(x => (c.phone && x.phone===c.phone) || (x.name && x.name.trim().toLowerCase()===c.name.trim().toLowerCase()));
   if(!exists){
-    state.customers.push({ name: c.name, phone: c.phone||'', email: c.email||'', taxNumber: c.taxNumber||'', address: c.address||'' });
+    state.customers.push({ title: cTitle, name: c.name, phone: c.phone||'', email: c.email||'', taxNumber: c.taxNumber||'', address: c.address||'' });
   } else {
+    if(cTitle) exists.title = cTitle;
     if(c.phone) exists.phone = c.phone;
     if(c.email) exists.email = c.email;
     if(c.taxNumber) exists.taxNumber = c.taxNumber;
     if(c.address) exists.address = c.address;
   }
   setCache('customers', state.customers);
-  return apiPost('saveCustomer', {data: {Name:c.name, Phone:c.phone||'', Email:c.email||''}});
+  return apiPost('saveCustomer', {data: {Title:cTitle, Name:c.name, Phone:c.phone||'', Email:c.email||'', TaxNumber:c.taxNumber||'', Address:c.address||''}});
 }
 async function saveTechnicianRemote(name){
   if(!state.technicians.includes(name)) state.technicians.push(name);
@@ -5825,7 +5866,10 @@ function stepNav(body, canBack, canNext, nextLabel){
 
 function stepCustomer(body,d){
   recoverAndSyncAllCustomerPhones(false);
-  const custOptions = state.customers.map(c=>`<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)} - ${escapeHtml(c.phone||'بدون هاتف')}</option>`).join('');
+  const custOptions = state.customers.map(c=>`<option value="${escapeHtml(c.name)}">${c.title ? escapeHtml(c.title)+' / ' : ''}${escapeHtml(c.name)} - ${escapeHtml(c.phone||'بدون هاتف')}</option>`).join('');
+  const curTitle = (d.customer && d.customer.title) || '';
+  const titleOptions = [''].concat(CUSTOMER_TITLES).map(t=>`<option value="${escapeHtml(t)}" ${curTitle===t?'selected':''}>${t ? escapeHtml(t) : '-- بدون لقب --'}</option>`).join('');
+
   body.innerHTML = `
     <div class="card">
       <h3>👤 بيانات العميل</h3>
@@ -5833,7 +5877,13 @@ function stepCustomer(body,d){
         <select id="custSelect"><option value="">-- اختر عميل مسجل (${state.customers.length} عميل) --</option>${custOptions}</select>
       </div>
       <button class="btn btn-ghost btn-sm" id="walkInBtn" type="button" style="margin-bottom:14px;">عميل زائر / Walk-in</button>
-      <div class="grid3">
+      <div style="display:grid;grid-template-columns:140px 1fr 1fr 1fr;gap:12px;" class="customer-fields-grid">
+        <div class="field">
+          <label>اللقب (اختياري)</label>
+          <select id="cTitle">
+            ${titleOptions}
+          </select>
+        </div>
         <div class="field">
           <label>اسم العميل *</label>
           <input id="cName" value="${escapeHtml(d.customer.name||'')}" placeholder="الاسم ثلاثي" list="custNamesDatalist">
@@ -5845,7 +5895,7 @@ function stepCustomer(body,d){
           <label>رقم الهاتف *</label>
           <input id="cPhone" value="${escapeHtml(d.customer.phone||'')}" placeholder="01xxxxxxxxx" class="mono" list="custPhonesDatalist">
           <datalist id="custPhonesDatalist">
-            ${state.customers.filter(c=>c.phone).map(c=>`<option value="${escapeHtml(c.phone)}">${escapeHtml(c.name)}</option>`).join('')}
+            ${state.customers.filter(c=>c.phone).map(c=>`<option value="${escapeHtml(c.phone)}">${c.title ? escapeHtml(c.title)+' / ' : ''}${escapeHtml(c.name)}</option>`).join('')}
           </datalist>
         </div>
         <div class="field"><label>البريد الإلكتروني (اختياري)</label><input id="cEmail" value="${escapeHtml(d.customer.email||'')}"></div>
@@ -5855,6 +5905,7 @@ function stepCustomer(body,d){
   document.getElementById('custSelect').onchange = (e)=>{
     const c = state.customers.find(x=>x.name===e.target.value);
     if(c){
+      if(c.title) document.getElementById('cTitle').value=c.title;
       document.getElementById('cName').value=c.name;
       document.getElementById('cPhone').value=c.phone||'';
       document.getElementById('cEmail').value=c.email||'';
@@ -5864,9 +5915,12 @@ function stepCustomer(body,d){
     const typed = e.target.value.trim();
     if(typed){
       const found = state.customers.find(x=>x.name.toLowerCase()===typed.toLowerCase());
-      if(found && found.phone && !document.getElementById('cPhone').value){
-        document.getElementById('cPhone').value = found.phone;
-        if(found.email && !document.getElementById('cEmail').value) document.getElementById('cEmail').value = found.email;
+      if(found){
+        if(found.title && !document.getElementById('cTitle').value) document.getElementById('cTitle').value = found.title;
+        if(found.phone && !document.getElementById('cPhone').value){
+          document.getElementById('cPhone').value = found.phone;
+          if(found.email && !document.getElementById('cEmail').value) document.getElementById('cEmail').value = found.email;
+        }
       }
     }
   };
@@ -5875,16 +5929,19 @@ function stepCustomer(body,d){
     if(typed && typed !== '0000000000'){
       const found = state.customers.find(x=>x.phone===typed);
       if(found && found.name && !document.getElementById('cName').value){
+        if(found.title && !document.getElementById('cTitle').value) document.getElementById('cTitle').value = found.title;
         document.getElementById('cName').value = found.name;
       }
     }
   };
   document.getElementById('walkInBtn').onclick = ()=>{
+    document.getElementById('cTitle').value = '';
     document.getElementById('cName').value = 'عميل زائر';
     document.getElementById('cPhone').value = '0000000000';
     document.getElementById('cEmail').value = '';
   };
   currentStepCollector = ()=>{
+    d.customer.title = document.getElementById('cTitle').value.trim();
     d.customer.name = document.getElementById('cName').value.trim();
     d.customer.phone = document.getElementById('cPhone').value.trim();
     d.customer.email = document.getElementById('cEmail').value.trim();
@@ -6533,6 +6590,7 @@ function archiveTable(list){
     const totalDue = Number(r.cost||0) + Number(r.partsCost||0) + otherAmt;
     const remaining = Math.max(0, totalDue - Number(r.deposit||0) + Number(r.refunded||0));
     const isOverdue = r.status==='مكتمل' && (Date.now()-new Date(r.updatedAt||r.date).getTime())/86400000 > 7;
+    const cTitle = extractCustomerTitle(r);
     const cName = extractCustomerName(r) || 'عميل';
     const cPhone = extractCustomerPhone(r);
     const dCat = escapeHtml((r.device && r.device.category) || 'جهاز');
@@ -6552,14 +6610,17 @@ function archiveTable(list){
         </div>
       </td>
       <td>
-        <b>${escapeHtml(cName)}</b>
+        <div style="display:flex;align-items:center;gap:5px;">
+          ${cTitle ? `<span class="badge" style="background:var(--paper2);color:var(--primary);font-size:10.5px;font-weight:700;border:1px solid var(--line);">${escapeHtml(cTitle)}</span>` : ''}
+          <b>${escapeHtml(cName)}</b>
+        </div>
         ${cPhone && cPhone !== '0000000000' ? `
-          <div style="color:var(--ink-secondary);font-size:11.5px;display:flex;align-items:center;gap:4px;" class="mono">
+          <div style="color:var(--ink-secondary);font-size:11.5px;display:flex;align-items:center;gap:4px;margin-top:2px;" class="mono">
             <span>${escapeHtml(cPhone)}</span>
             <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" style="color:#22c55e;text-decoration:none;font-size:12px;" title="محادثة واتساب">💬</a>
           </div>
         ` : `
-          <div style="color:var(--amber-text);font-size:10.5px;font-weight:700;cursor:pointer;" onclick="openQuickAddPhoneModal('${escapeHtml(cName)}')">⚠️ هاتف غير مسجل (اضغط للإضافة)</div>
+          <div style="color:var(--amber-text);font-size:10.5px;font-weight:700;cursor:pointer;margin-top:2px;" onclick="openQuickAddPhoneModal('${escapeHtml(cName)}', '${escapeHtml(cTitle)}')">⚠️ هاتف غير مسجل (اضغط للإضافة)</div>
         `}
       </td>
       <td>${dCat} - ${dBrand} <span style="color:var(--ink-secondary);">${dModel}</span></td>
@@ -6736,6 +6797,7 @@ function renderCustomersPage(main){
           </thead>
           <tbody>
             ${filtered.map(c => {
+              const cTitle = c.title || '';
               const cName = c.name || 'عميل';
               const cPhone = c.phone || '';
               const clientReceipts = (state.receipts||[]).filter(r => {
@@ -6747,7 +6809,10 @@ function renderCustomersPage(main){
               return `
                 <tr>
                   <td>
-                    <div style="font-weight:800;font-size:13.5px;color:var(--ink);">${escapeHtml(cName)}</div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      ${cTitle ? `<span class="badge" style="background:var(--paper2);color:var(--primary);font-size:11px;font-weight:700;border:1px solid var(--line);">${escapeHtml(cTitle)}</span>` : ''}
+                      <span style="font-weight:800;font-size:13.5px;color:var(--ink);">${escapeHtml(cName)}</span>
+                    </div>
                   </td>
                   <td>
                     ${cPhone && cPhone !== '0000000000' ? `
@@ -6757,7 +6822,7 @@ function renderCustomersPage(main){
                         <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" class="btn btn-ghost btn-xs" style="padding:2px 6px;color:#22c55e;" title="محادثة واتساب">💬</a>
                       </div>
                     ` : `
-                      <button class="btn btn-ghost btn-xs edit-cust-quick-phone-btn" data-custname="${escapeHtml(cName)}" style="color:var(--amber-text);border-color:var(--amber);font-weight:700;">
+                      <button class="btn btn-ghost btn-xs edit-cust-quick-phone-btn" data-custtitle="${escapeHtml(cTitle)}" data-custname="${escapeHtml(cName)}" style="color:var(--amber-text);border-color:var(--amber);font-weight:700;">
                         ⚠️ إضافة رقم الهاتف
                       </button>
                     `}
@@ -6774,13 +6839,13 @@ function renderCustomersPage(main){
                   </td>
                   <td style="text-align:center;">
                     <div style="display:inline-flex;gap:4px;flex-wrap:wrap;justify-content:center;">
-                      <button class="btn btn-ghost btn-xs edit-cust-btn" data-custname="${escapeHtml(cName)}" data-custphone="${escapeHtml(cPhone)}" data-custemail="${escapeHtml(c.email||'')}">
+                      <button class="btn btn-ghost btn-xs edit-cust-btn" data-custtitle="${escapeHtml(cTitle)}" data-custname="${escapeHtml(cName)}" data-custphone="${escapeHtml(cPhone)}" data-custemail="${escapeHtml(c.email||'')}">
                         ✏️ تعديل
                       </button>
-                      <button class="btn btn-ghost btn-xs cust-new-receipt-btn" data-custname="${escapeHtml(cName)}" data-custphone="${escapeHtml(cPhone)}" style="color:var(--blue-text);">
+                      <button class="btn btn-ghost btn-xs cust-new-receipt-btn" data-custtitle="${escapeHtml(cTitle)}" data-custname="${escapeHtml(cName)}" data-custphone="${escapeHtml(cPhone)}" style="color:var(--blue-text);">
                         ➕ صيانة
                       </button>
-                      <button class="btn btn-ghost btn-xs cust-new-inv-btn" data-custname="${escapeHtml(cName)}" data-custphone="${escapeHtml(cPhone)}" style="color:var(--purple);">
+                      <button class="btn btn-ghost btn-xs cust-new-inv-btn" data-custtitle="${escapeHtml(cTitle)}" data-custname="${escapeHtml(cName)}" data-custphone="${escapeHtml(cPhone)}" style="color:var(--purple);">
                         🧾 فاتورة
                       </button>
                     </div>
@@ -6825,10 +6890,11 @@ function renderCustomersPage(main){
   // Edit Customer
   main.querySelectorAll('.edit-cust-btn, .edit-cust-quick-phone-btn').forEach(btn => {
     btn.onclick = ()=>{
+      const title = btn.dataset.custtitle || '';
       const name = btn.dataset.custname;
       const phone = btn.dataset.custphone || '';
       const email = btn.dataset.custemail || '';
-      openEditCustomerModal({ name, phone, email });
+      openEditCustomerModal({ title, name, phone, email });
     };
   });
 
@@ -6845,6 +6911,7 @@ function renderCustomersPage(main){
   main.querySelectorAll('.cust-new-receipt-btn').forEach(btn => {
     btn.onclick = ()=>{
       startNewDraft();
+      state.draft.customer.title = btn.dataset.custtitle || '';
       state.draft.customer.name = btn.dataset.custname;
       state.draft.customer.phone = btn.dataset.custphone || '';
       state.tab = 'new';
@@ -6859,6 +6926,7 @@ function renderCustomersPage(main){
         InvoiceNumber: typeof nextInvoiceNumber === 'function' ? nextInvoiceNumber() : '',
         Date: typeof todayISO === 'function' ? todayISO() : new Date().toISOString().slice(0, 10),
         DueDate: typeof todayISO === 'function' ? todayISO() : new Date().toISOString().slice(0, 10),
+        CustomerTitle: btn.dataset.custtitle || '',
         CustomerName: btn.dataset.custname || '',
         CustomerPhone: btn.dataset.custphone || '',
         Type: 'مبيعات',
@@ -6871,14 +6939,16 @@ function renderCustomersPage(main){
   });
 }
 
-function openQuickAddPhoneModal(customerName){
-  openEditCustomerModal({ name: customerName, phone: '', email: '' });
+function openQuickAddPhoneModal(customerName, customerTitle=''){
+  openEditCustomerModal({ title: customerTitle, name: customerName, phone: '', email: '' });
 }
 
 function openEditCustomerModal(c){
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   const isEdit = !!c;
+  const curTitle = (c && (c.title || c.Title)) || '';
+  const titleOptions = [''].concat(CUSTOMER_TITLES).map(t=>`<option value="${escapeHtml(t)}" ${curTitle===t?'selected':''}>${t ? escapeHtml(t) : '-- بدون لقب --'}</option>`).join('');
 
   overlay.innerHTML = `
     <div class="modal-content" style="max-width:480px;">
@@ -6886,7 +6956,15 @@ function openEditCustomerModal(c){
         <h3 style="margin:0;font-size:16px;font-weight:900;">${isEdit ? '✏️ تعديل بيانات العميل' : '➕ إضافة عميل جديد'}</h3>
         <button class="btn btn-ghost btn-xs" id="closeCustModalBtn">✕</button>
       </div>
-      <div class="field"><label>اسم العميل / الشركة *</label><input id="editCustName" value="${escapeHtml(c ? c.name : '')}" placeholder="الاسم ثلاثي"></div>
+      <div style="display:grid;grid-template-columns:140px 1fr;gap:10px;">
+        <div class="field">
+          <label>اللقب (اختياري)</label>
+          <select id="editCustTitle">
+            ${titleOptions}
+          </select>
+        </div>
+        <div class="field"><label>اسم العميل / الشركة *</label><input id="editCustName" value="${escapeHtml(c ? c.name : '')}" placeholder="الاسم ثلاثي"></div>
+      </div>
       <div class="field"><label>رقم الهاتف *</label><input id="editCustPhone" value="${escapeHtml(c ? c.phone : '')}" placeholder="01xxxxxxxxx" class="mono"></div>
       <div class="field"><label>البريد الإلكتروني (اختياري)</label><input id="editCustEmail" value="${escapeHtml(c ? c.email : '')}" placeholder="example@mail.com"></div>
       <div style="display:flex;justify-content:space-between;margin-top:14px;">
@@ -6902,6 +6980,7 @@ function openEditCustomerModal(c){
   document.getElementById('cancelCustModalBtn').onclick = ()=>overlay.remove();
 
   document.getElementById('saveCustModalBtn').onclick = async ()=>{
+    const title = document.getElementById('editCustTitle').value.trim();
     const name = document.getElementById('editCustName').value.trim();
     const phone = document.getElementById('editCustPhone').value.trim();
     const email = document.getElementById('editCustEmail').value.trim();
@@ -6909,38 +6988,54 @@ function openEditCustomerModal(c){
     if(!name){ showToast('يرجى إدخال اسم العميل', 'error'); return; }
 
     const oldName = c ? c.name : null;
-    await saveCustomerRemote({ name, phone, email });
+    await saveCustomerRemote({ title, name, phone, email });
 
     // Update any receipts with this customer name
     (state.receipts || []).forEach(r => {
       const rName = extractCustomerName(r);
       if(rName && (rName.toLowerCase() === name.toLowerCase() || (oldName && rName.toLowerCase() === oldName.toLowerCase()))){
-        if(!r.customer) r.customer = { name, phone, email };
+        if(!r.customer) r.customer = { title, name, phone, email };
         else {
+          r.customer.title = title;
           r.customer.name = name;
           r.customer.phone = phone;
           r.customer.email = email;
         }
       }
     });
-    setCache('receipts', state.receipts);
+      setCache('receipts', state.receipts);
+      // Update customers list with new data
+      if (oldName) {
+        const cust = (state.customers || []).find(c => c.name && c.name.toLowerCase() === oldName.toLowerCase());
+        if (cust) {
+          cust.title = title;
+          cust.name = name;
+          cust.phone = phone;
+          cust.email = email;
+        }
+      } else {
+        // New customer - add if not already present
+        if (!state.customers.find(c => c.name && c.name.toLowerCase() === name.toLowerCase())) {
+          state.customers.push({ title, name, phone, email });
+        }
+      }
+      setCache('customers', state.customers);
+      recoverAndSyncAllCustomerPhones(false);
+      showToast('تم حفظ وتحديث بيانات العميل وألقابه بنجاح ✅', 'success');
+      overlay.remove();
 
-    recoverAndSyncAllCustomerPhones(false);
-    showToast('تم حفظ وتحديث بيانات العميل وأرقام هواتفه بنجاح ✅', 'success');
-    overlay.remove();
-
-    const main = document.getElementById('main');
-    if(state.tab === 'customers') renderCustomersPage(main);
-    else if(state.tab === 'archive') renderArchive(main);
+      const main = document.getElementById('main');
+      if (state.tab === 'customers') renderCustomersPage(main);
+      else if (state.tab === 'archive') renderArchive(main);
   };
 }
 
 function exportCustomersToExcel(list){
   const rows = [
-    ['اسم العميل', 'رقم الهاتف', 'البريد الإلكتروني']
+    ['اللقب', 'اسم العميل', 'رقم الهاتف', 'البريد الإلكتروني']
   ];
   list.forEach(c => {
-    rows.push([c.name, c.phone, c.email||'']);
+    rows.push([c.title||'', c.name, c.phone, c.email||'']);
   });
   let csv = '\uFEFF' + rows.map(r => r.map(f => `"${String(f||'').replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -7248,8 +7343,9 @@ function getStatusCustomMessage(rawR, status){
 
   // Replace placeholders
   const receiptTimeStr = (typeof formatReceiptTime === 'function' ? formatReceiptTime(r) : (r.time || ''));
+  const customerDisplayName = (typeof formatCustomerFullName === 'function') ? formatCustomerFullName(r) : ((r.customer && r.customer.name) || 'عميلنا العزيز');
   return tmpl
-    .replace(/{customer_name}/g, (r.customer && r.customer.name) || 'عميلنا العزيز')
+    .replace(/{customer_name}/g, customerDisplayName)
     .replace(/{receipt_no}/g, r.receiptNumber || '')
     .replace(/{date}/g, cleanDate(r.date))
     .replace(/{time}/g, receiptTimeStr)
@@ -7279,12 +7375,14 @@ function sendWhatsapp(rawR, msg){
 }
 
 function openWhatsapp(r){ openWhatsappChoice(r); }
+
 function openWhatsappChoice(rawR){
   if(!rawR) return;
   const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
-  const cName = escapeHtml((r.customer && r.customer.name) || extractCustomerName(r) || 'عميل');
+  const cFullName = (typeof formatCustomerFullName === 'function') ? formatCustomerFullName(r) : ((r.customer && r.customer.name) || extractCustomerName(r) || 'عميل');
+  const cName = escapeHtml(cFullName);
   overlay.innerHTML = `
     <div class="modal-content" style="max-width:400px;">
       <h3 style="margin-top:0;">💬 إرسال واتساب للعميل</h3>
@@ -7310,7 +7408,8 @@ function openWhatsappChoice(rawR){
     const otherNote = otherAmt > 0 ? `\n*حساب إضافي (${r.otherAccountDesc || 'رصيد آخر'}):* ${otherAmt} ج.م` : '';
     const rTime = typeof formatReceiptTime === 'function' ? formatReceiptTime(r) : (r.time || '');
     const dateStr = cleanDate(r.date) + (rTime ? ` (الساعة ${rTime})` : '');
-    const msg = `مرحبًا ${r.customer.name} 👋\n*إيصال صيانة رقم:* ${r.receiptNumber}\n*تاريخ ووقت الاستلام:* ${dateStr}\n*الجهاز:* ${devCat} - ${devBrand} ${devModel}\n*الأعطال:* ${faultsStr}\n*الحالة الحالية:* ${r.status}${otherNote}\n*المتبقي المطلوب:* ${remaining} ج.م\n*رابط تتبع الجهاز مباشرة:* ${trackUrl}\n\n${shopName}`;
+    const customerDisplayName = (typeof formatCustomerFullName === 'function') ? formatCustomerFullName(r) : (r.customer.name || 'عميلنا العزيز');
+    const msg = `مرحبًا ${customerDisplayName} 👋\n*إيصال صيانة رقم:* ${r.receiptNumber}\n*تاريخ ووقت الاستلام:* ${dateStr}\n*الجهاز:* ${devCat} - ${devBrand} ${devModel}\n*الأعطال:* ${faultsStr}\n*الحالة الحالية:* ${r.status}${otherNote}\n*المتبقي المطلوب:* ${remaining} ج.م\n*رابط تتبع الجهاز مباشرة:* ${trackUrl}\n\n${shopName}`;
     sendWhatsapp(r, msg);
     overlay.remove();
   };
@@ -7726,6 +7825,9 @@ async function openReceiptDetail(rawR){
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
 
+    const curTitle = (r.customer && r.customer.title) || '';
+    const titleOptions = [''].concat(CUSTOMER_TITLES).map(t=>`<option value="${escapeHtml(t)}" ${curTitle===t?'selected':''}>${t ? escapeHtml(t) : '-- بدون لقب --'}</option>`).join('');
+
     overlay.innerHTML = `
     <div class="modal-content" style="max-width:700px;">
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
@@ -7758,7 +7860,13 @@ async function openReceiptDetail(rawR){
         </div>
       ` : ''}
 
-      <div class="grid2">
+      <div style="display:grid;grid-template-columns:140px 1fr 1fr;gap:10px;">
+        <div class="field">
+          <label>اللقب (اختياري)</label>
+          <select id="eTitle">
+            ${titleOptions}
+          </select>
+        </div>
         <div class="field"><label>اسم العميل</label><input id="eName" value="${escapeHtml(r.customer.name||'')}"></div>
         <div class="field"><label>رقم هاتف العميل</label><input id="ePhone" value="${escapeHtml(r.customer.phone||'')}"></div>
       </div>
@@ -7994,6 +8102,7 @@ async function openReceiptDetail(rawR){
   if(closeModBtn) closeModBtn.onclick = ()=>overlay.remove();
 
   function collectEdits(){
+    r.customer.title = (overlay.querySelector('#eTitle')?.value || '').trim();
     r.customer.name = overlay.querySelector('#eName').value.trim();
     r.customer.phone = overlay.querySelector('#ePhone').value.trim();
     r.device.category = overlay.querySelector('#eCat').value.trim();
@@ -8360,7 +8469,7 @@ function openReceiptPrint(rawR, kind){
       <div class="section-title">بيانات العميل والاستلام</div>
       <table>
         <tr>
-          <td class="k">اسم العميل</td><td><b>${escapeHtml(r.customer.name)}</b></td>
+          <td class="k">اسم العميل</td><td><b>${escapeHtml((typeof formatCustomerFullName === 'function') ? formatCustomerFullName(r) : r.customer.name)}</b></td>
           <td class="k">الهاتف</td><td class="mono"><b>${escapeHtml(r.customer.phone)}</b></td>
         </tr>
         <tr>
@@ -8386,6 +8495,7 @@ function openReceiptPrint(rawR, kind){
     <div>
       ${termsSection}
       ${signSection}
+      <div style="font-size:7px;color:#94a3b8;text-align:center;margin-top:2px;">تم الطباعة بواسطة نظام ميكروتك ERP لإدارة مراكز الصيانة</div>
     </div>
   </div>`;
   document.body.appendChild(mount);
@@ -8418,7 +8528,8 @@ function openStickerPrint(rawR){
   const mount = document.createElement('div');
   mount.id='printMount';
 
-  const cName = ((r.customer && r.customer.name) || extractCustomerName(r) || 'عميل').slice(0, 18);
+  const fullCName = (typeof formatCustomerFullName === 'function') ? formatCustomerFullName(r) : ((r.customer && r.customer.name) || extractCustomerName(r) || 'عميل');
+  const cName = fullCName.slice(0, 22);
   const cPhone = (r.customer && r.customer.phone) || extractCustomerPhone(r) || '';
   const dCat = (r.device && r.device.category) || 'جهاز';
   const dBrand = r.device ? (r.device.brand==='أخرى'?r.device.brandOther:r.device.brand) : '';
@@ -8459,12 +8570,13 @@ function openStickerPrint(rawR){
 /* ---------------- Excel Export Utility ---------------- */
 function exportReceiptsToExcel(receipts){
   if(!receipts || !receipts.length){ showToast('لا توجد بيانات للتصدير', 'error'); return; }
-  const headers = ['رقم الإيصال','التاريخ','وقت الاستلام','الاسم','الهاتف','فئة الجهاز','الماركة','الموديل','كلمة السر','الأعطال','الفني','تكلفة الصيانة','حساب إضافي','المدفوع','قطع الغيار','المتبقي','الحالة','موعد التسليم'];
+  const headers = ['رقم الإيصال','التاريخ','وقت الاستلام','اللقب','الاسم','الهاتف','فئة الجهاز','الماركة','الموديل','كلمة السر','الأعطال','الفني','تكلفة الصيانة','حساب إضافي','المدفوع','قطع الغيار','المتبقي','الحالة','موعد التسليم'];
   const rows = receipts.map(rawR=>{
     const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
     const otherAmt = Number(r.otherAccountAmount||0);
     const rem = Number(r.cost||0)+Number(r.partsCost||0)+otherAmt-Number(r.deposit||0)+Number(r.refunded||0);
     const faultsStr = (Array.isArray(r.faults) ? r.faults.join(' - ') : String(r.faults || '')) || '-';
+    const cTitle = extractCustomerTitle(r);
     const cName = (r.customer && r.customer.name) || extractCustomerName(r) || 'عميل';
     const cPhone = (r.customer && r.customer.phone) || extractCustomerPhone(r) || '';
     const dCat = (r.device && r.device.category) || 'جهاز';
@@ -8473,7 +8585,7 @@ function exportReceiptsToExcel(receipts){
     const pass = (r.device && r.device.password) || r.password || '';
     const rTime = (typeof formatReceiptTime === 'function' ? formatReceiptTime(r) : (r.time || ''));
     return [
-      r.receiptNumber, cleanDate(r.date), `"${rTime}"`, `"${cName}"`, `"${cPhone}"`,
+      r.receiptNumber, cleanDate(r.date), `"${rTime}"`, `"${cTitle}"`, `"${cName}"`, `"${cPhone}"`,
       dCat, dBrand, `"${dModel}"`, `"${pass}"`, `"${faultsStr}"`,
       `"${r.technician||''}"`, r.cost||0, otherAmt, r.deposit||0, r.partsCost||0, rem, `"${r.status}"`, r.deliveryDate||''
     ];
@@ -8607,6 +8719,7 @@ function convertReceiptToInvoice(receiptId){
     InvoiceNumber: 'INV-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-4),
     Date: cleanDate(r.date) || new Date().toISOString().slice(0,10),
     DueDate: cleanDate(r.deliveryDate) || new Date().toISOString().slice(0,10),
+    CustomerTitle: r.customer.title || '',
     CustomerName: r.customer.name || '',
     CustomerPhone: r.customer.phone || '',
     CustomerTaxNumber: '',
@@ -8643,6 +8756,7 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
     InvoiceNumber: 'INV-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-4),
     Date: new Date().toISOString().slice(0,10),
     DueDate: new Date().toISOString().slice(0,10),
+    CustomerTitle: '',
     CustomerName: '',
     CustomerPhone: '',
     CustomerTaxNumber: '',
@@ -8673,11 +8787,14 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
     });
     inv.Subtotal = sub;
     inv.TaxAmount = Math.round((inv.Subtotal * (Number(inv.TaxPercent||0) / 100)) * 100) / 100;
-    inv.Total = Math.max(0, inv.Subtotal + inv.TaxAmount - Number(inv.Discount||0));
-    inv.Remaining = Math.max(0, inv.Total - Number(inv.AmountPaid||0));
-    if(inv.Remaining <= 0){ inv.Status = 'مدفوعة بالكامل'; }
-    else if(inv.AmountPaid > 0){ inv.Status = 'مدفوعة جزئياً'; }
+    inv.Total = Math.round((inv.Subtotal + inv.TaxAmount - Number(inv.Discount||0)) * 100) / 100;
+    inv.Remaining = Math.round(Math.max(0, inv.Total - Number(inv.AmountPaid||0)) * 100) / 100;
+    if(inv.Total > 0 && inv.Remaining <= 0){ inv.Status = 'مدفوعة بالكامل'; }
+    else if(inv.AmountPaid > 0 && inv.Remaining > 0){ inv.Status = 'مدفوعة جزئياً'; }
     else { inv.Status = 'غير مدفوعة (آجلة)'; }
+
+    const curTitle = inv.CustomerTitle || '';
+    const titleOptions = [''].concat(typeof CUSTOMER_TITLES !== 'undefined' ? CUSTOMER_TITLES : []).map(t=>`<option value="${escapeHtml(t)}" ${curTitle===t?'selected':''}>${t ? escapeHtml(t) : '-- بدون لقب --'}</option>`).join('');
 
     overlay.innerHTML = `
       <div class="modal-content" style="max-width:840px;">
@@ -8709,12 +8826,18 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
               <option value="__NEW__">➕ عميل جديد</option>
               ${state.customers.length ? `
                 <optgroup label="قائمة العملاء">
-                  ${state.customers.map(c=>`<option value="${c.name}" ${inv.CustomerName===c.name?'selected':''}>${c.name} - ${c.phone||'بدون هاتف'}</option>`).join('')}
+                  ${state.customers.map(c=>`<option value="${c.name}" ${inv.CustomerName===c.name?'selected':''}>${c.title ? c.title+' / ' : ''}${c.name} - ${c.phone||'بدون هاتف'}</option>`).join('')}
                 </optgroup>
               ` : ''}
             </select>
           </div>
-          <div class="grid3">
+          <div style="display:grid;grid-template-columns:140px 1.5fr 1fr 1fr;gap:10px;">
+            <div class="field">
+              <label>اللقب (اختياري)</label>
+              <select id="invCustTitle">
+                ${titleOptions}
+              </select>
+            </div>
             <div class="field"><label>اسم العميل / الشركة *</label><input id="invCustName" value="${inv.CustomerName||''}"></div>
             <div class="field"><label>رقم هاتف العميل</label><input id="invCustPhone" class="mono" value="${inv.CustomerPhone||''}"></div>
             <div class="field"><label>الرقم الضريبي</label><input id="invCustTax" class="mono" value="${inv.CustomerTaxNumber||''}"></div>
@@ -8795,17 +8918,24 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
     if(custSelect){
       custSelect.onchange = (e)=>{
         const val = e.target.value;
+        const titleInp = overlay.querySelector('#invCustTitle');
         const nameInp = overlay.querySelector('#invCustName');
         const phoneInp = overlay.querySelector('#invCustPhone');
         const taxInp = overlay.querySelector('#invCustTax');
         const addrInp = overlay.querySelector('#invCustAddr');
         if(val === '__WALKIN__'){
-          nameInp.value = 'عميل زائر'; phoneInp.value = '0000000000'; taxInp.value = ''; addrInp.value = '';
+          if(titleInp) titleInp.value = ''; nameInp.value = 'عميل زائر'; phoneInp.value = '0000000000'; taxInp.value = ''; addrInp.value = '';
         } else if(val === '__NEW__'){
-          nameInp.value = ''; phoneInp.value = ''; taxInp.value = ''; addrInp.value = ''; nameInp.focus();
+          if(titleInp) titleInp.value = ''; nameInp.value = ''; phoneInp.value = ''; taxInp.value = ''; addrInp.value = ''; nameInp.focus();
         } else if(val){
           const found = state.customers.find(c => c.name === val);
-          if(found){ nameInp.value = found.name; phoneInp.value = found.phone || ''; taxInp.value = found.taxNumber || ''; addrInp.value = found.address || ''; }
+          if(found){
+            if(titleInp) titleInp.value = found.title || '';
+            nameInp.value = found.name;
+            phoneInp.value = found.phone || '';
+            taxInp.value = found.taxNumber || '';
+            addrInp.value = found.address || '';
+          }
         }
       };
     }
@@ -8851,6 +8981,7 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
     overlay.querySelector('#invPaidInput').onblur = ()=>renderModal();
 
     function collectData(){
+      inv.CustomerTitle = (overlay.querySelector('#invCustTitle')?.value || '').trim();
       inv.CustomerName = overlay.querySelector('#invCustName').value.trim();
       inv.CustomerPhone = overlay.querySelector('#invCustPhone').value.trim();
       inv.CustomerTaxNumber = overlay.querySelector('#invCustTax').value.trim();
@@ -10203,8 +10334,14 @@ function renderQuotationBuilder(main){
     </div>
     <div class="card">
       <h3>👤 بيانات العميل / الشركة</h3>
-      <div class="grid2">
-        <div class="field"><label>اسم العميل / الشركة</label><input id="quoClientName"></div>
+      <div style="display:grid;grid-template-columns:140px 1.5fr 1fr;gap:10px;">
+        <div class="field">
+          <label>اللقب (اختياري)</label>
+          <select id="quoClientTitle">
+            ${[''].concat(CUSTOMER_TITLES).map(t=>`<option value="${escapeHtml(t)}">${t ? escapeHtml(t) : '-- بدون لقب --'}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label>اسم العميل / الشركة *</label><input id="quoClientName"></div>
         <div class="field"><label>رقم الهاتف</label><input id="quoClientPhone"></div>
       </div>
     </div>
@@ -10279,6 +10416,7 @@ function renderQuotationBuilder(main){
 
   const saveBtn = document.getElementById('saveQuoteBtn');
   if(saveBtn) saveBtn.onclick = async ()=>{
+    const clientTitle = extractCustomerTitle({ CustomerTitle: (document.getElementById('quoClientTitle')?.value || '') });
     const clientName = document.getElementById('quoClientName').value.trim();
     const clientPhone = document.getElementById('quoClientPhone').value.trim();
     if(!clientName){ showToast('اكتب اسم العميل أو الشركة', 'error'); return; }
@@ -10287,6 +10425,7 @@ function renderQuotationBuilder(main){
     const q = {
       ID: 'quo_' + Date.now(),
       Date: new Date().toISOString().slice(0,10),
+      ClientTitle: clientTitle,
       ClientName: clientName,
       ClientPhone: clientPhone,
       Items: JSON.parse(JSON.stringify(cart)),
@@ -12553,7 +12692,12 @@ function renderPosSell(main){
         </div>
 
         <!-- Customer Fields -->
-        <div class="grid2" style="margin-bottom:10px;gap:8px;">
+        <div style="display:grid;grid-template-columns:105px 1fr 1fr;margin-bottom:10px;gap:6px;">
+          <div class="field" style="margin:0;">
+            <select id="posCustTitle" style="padding:6px 6px;font-size:11.5px;">
+              ${[''].concat(CUSTOMER_TITLES).map(t=>`<option value="${escapeHtml(t)}" ${(ps.customerTitle||'')===t?'selected':''}>${t ? escapeHtml(t) : 'لقب'}</option>`).join('')}
+            </select>
+          </div>
           <div class="field" style="margin:0;">
             <input id="posCustName" placeholder="👤 اسم العميل" value="${escapeHtml(ps.customerName||'عميل زائر')}" style="padding:6px 10px;font-size:12px;">
           </div>
@@ -12826,6 +12970,8 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
   });
 
   // Customer info inputs
+  const cTitleSel = document.getElementById('posCustTitle');
+  if(cTitleSel) cTitleSel.onchange = (e)=>{ ps.customerTitle = extractCustomerTitle({ CustomerTitle: e.target.value }); };
   const cNameInp = document.getElementById('posCustName');
   if(cNameInp) cNameInp.oninput = (e)=>{ ps.customerName = e.target.value; };
   const cPhoneInp = document.getElementById('posCustPhone');
@@ -12869,14 +13015,21 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
   if(amtPaidInp){
     amtPaidInp.oninput = (e)=>{
       ps.amountPaid = e.target.value;
-      renderPosSell(main);
+      const num = Number(e.target.value) || 0;
+      const changeEl = main.querySelector('.pos-change-box .mono.font-bold');
+      if(changeEl){
+        const change = Math.max(0, num - grandTotal);
+        changeEl.textContent = `${change.toLocaleString()} ج.م`;
+        changeEl.style.color = change > 0 ? 'var(--green-text)' : 'var(--ink)';
+      }
     };
   }
 
   // Quick Cash Chips
   main.querySelectorAll('.pos-cash-preset-chip').forEach(chip => {
     chip.onclick = ()=>{
-      ps.amountPaid = Number(chip.dataset.cashamt);
+      const amt = Number(chip.dataset.cashamt);
+      ps.amountPaid = amt;
       renderPosSell(main);
     };
   });
@@ -12905,6 +13058,7 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
   async function processSale(isTaxInvoice){
     if(!cart.length){ showToast('السلة فارغة', 'error'); return; }
 
+    const customerTitle = (ps.customerTitle || '').trim();
     const customerName = (ps.customerName || 'عميل زائر').trim();
     const customerPhone = (ps.customerPhone || '').trim();
     const payMethodObj = (posSettings.paymentMethods||[]).find(p => p.id === ps.paymentMethod) || { name: 'نقدي' };
@@ -12925,7 +13079,8 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
       const itemsJson = JSON.stringify(cart.map(c => ({ name: c.name, qty: c.qty, price: c.price, itemId: c.itemId })));
       
       const paidAmount = ps.amountPaid !== '' ? Number(ps.amountPaid) : grandTotal;
-      const saleRes = await saveSaleRemote(itemsSummary, itemsJson, grandTotal, customerName, customerPhone, payMethodName, paidAmount);
+      const fullCustName = customerTitle ? `${customerTitle} / ${customerName}` : customerName;
+      const saleRes = await saveSaleRemote(itemsSummary, itemsJson, grandTotal, fullCustName, customerPhone, payMethodName, paidAmount);
       
       showToast('تمت عملية البيع بنجاح ✅', 'success');
 
@@ -12936,6 +13091,7 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
         Total: grandTotal,
         AmountPaid: paidAmount,
         PaymentMethod: payMethodName,
+        CustomerTitle: customerTitle,
         CustomerName: customerName,
         CustomerPhone: customerPhone
       };
@@ -13524,29 +13680,49 @@ function renderSuppliers(main){
     <div class="top-header"><div><h2 class="page-title">👥 إدارة الموردين</h2><div class="subtitle">${state.suppliers.length} مورد مسجل</div></div></div>
     <div class="card">
       <h3>➕ إضافة مورد جديد</h3>
-      <div class="grid3">
-        <div class="field"><label>اسم المورد / الشركة</label><input id="newSupName"></div>
-        <div class="field"><label>رقم الهاتف</label><input id="newSupPhone"></div>
-        <div class="field"><label>ملاحظات</label><input id="newSupNotes"></div>
+      <div style="display:grid;grid-template-columns:140px 1.5fr 1fr 1fr;gap:10px;">
+        <div class="field">
+          <label>اللقب (اختياري)</label>
+          <select id="newSupTitle">
+            ${[''].concat(CUSTOMER_TITLES).map(t=>`<option value="${escapeHtml(t)}">${t ? escapeHtml(t) : '-- بدون لقب --'}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label>اسم المورد / الشركة *</label><input id="newSupName" placeholder="الاسم ثلاثي أو اسم الشركة"></div>
+        <div class="field"><label>رقم الهاتف</label><input id="newSupPhone" class="mono" placeholder="01xxxxxxxxx"></div>
+        <div class="field"><label>ملاحظات</label><input id="newSupNotes" placeholder="مجال التوريد أو العنوان"></div>
       </div>
-      <button class="btn btn-primary btn-sm" id="addSupBtn">إضافة مورد</button>
+      <button class="btn btn-primary btn-sm" id="addSupBtn" style="margin-top:8px;">➕ إضافة مورد</button>
     </div>
     <div class="card">
       <h3>قائمة الموردين</h3>
       ${state.suppliers.length===0 ? '<div class="empty">لا يوجد موردون بعد.</div>' : `
-      <div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الهاتف</th><th>ملاحظات</th></tr></thead><tbody>
-        ${state.suppliers.map(s=>`<tr><td><b>${s.Name}</b></td><td class="mono">${s.Phone||'-'}</td><td>${s.Notes||'-'}</td></tr>`).join('')}
+      <div class="table-wrap"><table><thead><tr><th>اللقب والاسم</th><th>الهاتف</th><th>ملاحظات</th></tr></thead><tbody>
+        ${state.suppliers.map(s=>{
+          const sTitle = s.Title || s.title || '';
+          const sName = s.Name || s.name || '';
+          return `<tr>
+            <td>
+              <div style="display:flex;align-items:center;gap:6px;">
+                ${sTitle ? `<span class="badge" style="background:var(--paper2);color:var(--primary);font-size:11px;font-weight:700;border:1px solid var(--line);">${escapeHtml(sTitle)}</span>` : ''}
+                <b>${escapeHtml(sName)}</b>
+              </div>
+            </td>
+            <td class="mono">${escapeHtml(s.Phone||s.phone||'-')}</td>
+            <td>${escapeHtml(s.Notes||s.notes||'-')}</td>
+          </tr>`;
+        }).join('')}
       </tbody></table></div>`}
     </div>
   `;
   document.getElementById('addSupBtn').onclick = async ()=>{
+    const title = document.getElementById('newSupTitle').value.trim();
     const name = document.getElementById('newSupName').value.trim();
     const phone = document.getElementById('newSupPhone').value.trim();
     const notes = document.getElementById('newSupNotes').value.trim();
     if(!name){ showToast('اكتب اسم المورد', 'error'); return; }
     try{
-      const res = await saveSupplierRemote({ID:'', Name:name, Phone:phone, Notes:notes});
-      showToast('تمت إضافة المورد', 'success');
+      const res = await saveSupplierRemote({ID:'', Title:title, Name:name, Phone:phone, Notes:notes});
+      showToast('تمت إضافة المورد بنجاح ✅', 'success');
       renderSuppliers(main);
     }catch(e){ showToast('تمت الإضافة محلياً', 'info'); }
   };

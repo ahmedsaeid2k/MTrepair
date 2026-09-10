@@ -123,6 +123,56 @@
   --cyan-text: #67e8f9;
 }
 
+/* Custom Theme Presets */
+html[data-app-theme="odoo"] {
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+  --paper: #0f172a;
+  --paper2: #1e293b;
+  --paper3: #334155;
+  --line: rgba(255, 255, 255, 0.1);
+  --line-strong: rgba(255, 255, 255, 0.18);
+  --ink: #f8fafc;
+  --ink-secondary: #94a3b8;
+}
+
+html[data-app-theme="apple"] {
+  --primary: #007aff;
+  --primary-hover: #0062cc;
+  --paper: #f5f5f7;
+  --paper2: #ffffff;
+  --paper3: #e8e8ed;
+  --line: rgba(0, 0, 0, 0.08);
+  --line-strong: rgba(0, 0, 0, 0.16);
+  --ink: #1d1d1f;
+  --ink-secondary: #6e6e73;
+}
+
+html[data-app-theme="glass"] {
+  --primary: #0284c7;
+  --primary-hover: #0369a1;
+  --paper: #f0f9ff;
+  --paper2: rgba(255, 255, 255, 0.88);
+  --paper3: rgba(224, 242, 254, 0.6);
+  --line: rgba(2, 132, 199, 0.18);
+  --line-strong: rgba(2, 132, 199, 0.3);
+  --glass-bg: rgba(255, 255, 255, 0.8);
+  --ink: #0c4a6e;
+  --ink-secondary: #0369a1;
+}
+
+html[data-app-theme="win11"] {
+  --primary: #0078d7;
+  --primary-hover: #005a9e;
+  --paper: #f3f3f3;
+  --paper2: #ffffff;
+  --paper3: #e5e5e5;
+  --line: #d1d1d1;
+  --line-strong: #b0b0b0;
+  --ink: #1a1a1a;
+  --ink-secondary: #5c5c5c;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -2345,12 +2395,137 @@ function showToast(msg, type='info', duration=2800){
 /* ---- Customer Data Extraction, Titles & Phone Recovery Engine ---- */
 const CUSTOMER_TITLES = ['أستاذ', 'أستاذة', 'مهندس', 'مهندسة', 'دكتور', 'دكتورة', 'حاج', 'حاجة', 'شيخ', 'سيد', 'سيدة'];
 
+function cleanRestName(str){
+  return String(str || '').replace(/^[\/\:\-\\\.\s]+/, '').trim();
+}
+
+function parseCustomerTitleAndName(rawStr){
+  if(!rawStr || typeof rawStr !== 'string') return { title: '', name: '' };
+  let str = rawStr.replace(/["`]/g, '').trim();
+  if(!str) return { title: '', name: '' };
+
+  function isFemaleName(namePart){
+    const firstWord = (namePart.split(/\s+/)[0] || '').trim();
+    if(!firstWord) return false;
+    if(firstWord.length >= 4 && /[ةه]$/.test(firstWord)) return true;
+    const knownFemale = ['سلمى', 'سلمي', 'الاء', 'آلاء', 'مريم', 'منى', 'مني', 'هدى', 'هدي', 'لبنى', 'لبني', 'ضحى', 'ضحي', 'نهى', 'نهي', 'ياسمين', 'رنا', 'مي', 'دينا', 'سما', 'إيمان', 'ايمان', 'أمل', 'امل', 'هاجر', 'حنان', 'آية', 'اية', 'أسماء', 'اسماء', 'إسراء', 'اسراء', 'رحاب', 'جهاد', 'خلود', 'سعاد', 'زينب', 'عبير', 'ريهام', 'روان', 'شروق', 'نور', 'نورهان', 'مروة', 'سارة', 'شيماء', 'دعاء', 'سحر', 'سمر', 'وفاء', 'سناء', 'نجلاء', 'صفاء', 'هناء', 'جيهان', 'سوزان', 'نيفين', 'رشا', 'بسمة', 'بسمه', 'شيرين', 'أميرة', 'اميرة', 'إلهام', 'الهام', 'يارا', 'حبيبة', 'حبيبه', 'فريدة', 'فريده', 'ملك', 'جنى', 'جني', 'شمس', 'رضوى', 'رضوي'];
+    return knownFemale.includes(firstWord);
+  }
+
+  // 1. Doctor: دكتور / دكتورة / د. / د/ / د 
+  const docMatch = str.match(/^([أا]?د(?:كتور[ةه]?|[\.\/\:\-\\]|\s+))\s*(.+)$/i);
+  if(docMatch && docMatch[2] && docMatch[2].trim()){
+    const rawPfx = docMatch[1].trim();
+    const rest = cleanRestName(docMatch[2]);
+    const title = (/دكتور[ةه]/i.test(rawPfx) || isFemaleName(rest)) ? 'دكتورة' : 'دكتور';
+    return { title: title, name: rest };
+  }
+
+  // 2. Engineer: مهندس / مهندسة / م. / م/ / م 
+  const engMatch = str.match(/^(مهندس[ةه]?|م[\.\/\:\-\\]|م\s+)\s*(.+)$/i);
+  if(engMatch && engMatch[2] && engMatch[2].trim()){
+    const rawPfx = engMatch[1].trim();
+    const rest = cleanRestName(engMatch[2]);
+    const title = (/مهندس[ةه]/i.test(rawPfx) || isFemaleName(rest)) ? 'مهندسة' : 'مهندس';
+    return { title: title, name: rest };
+  }
+
+  // 3. Teacher / Mr / Ms: أستاذ / استاذ / أستاذة / استاذة / ا/ / أ/ / ا. / أ. / ا  / أ 
+  const ostazMatch = str.match(/^([أإا]ستاذ[ةه]?|[أإا][\.\/\:\-\\]|[أإا]\s+)\s*(.+)$/i);
+  if(ostazMatch && ostazMatch[2] && ostazMatch[2].trim()){
+    const rawPfx = ostazMatch[1].trim();
+    const rest = cleanRestName(ostazMatch[2]);
+    const title = (/[أإا]ستاذ[ةه]/i.test(rawPfx) || isFemaleName(rest)) ? 'أستاذة' : 'أستاذ';
+    return { title: title, name: rest };
+  }
+
+  // 4. Hajj: حاج / حاجة / الحاج / الحاجة
+  const hajjMatch = str.match(/^((?:ال)?حاج[ةه]?(?:\s*[\/\:\-\\\.]\s*|\s+))\s*(.+)$/i);
+  if(hajjMatch && hajjMatch[2] && hajjMatch[2].trim()){
+    const rawPfx = hajjMatch[1].trim();
+    const rest = cleanRestName(hajjMatch[2]);
+    const title = (/حاج[ةه]/i.test(rawPfx) || isFemaleName(rest)) ? 'حاجة' : 'حاج';
+    return { title: title, name: rest };
+  }
+
+  // 5. Sheikh: شيخ / الشيخ
+  const sheikhMatch = str.match(/^((?:ال)?شيخ(?:\s*[\/\:\-\\\.]\s*|\s+))\s*(.+)$/i);
+  if(sheikhMatch && sheikhMatch[2] && sheikhMatch[2].trim()){
+    return { title: 'شيخ', name: cleanRestName(sheikhMatch[2]) };
+  }
+
+  // 6. Madam / Mrs / Miss: مدام / سيدة / السيدة / آنسة / انسة
+  const madamMatch = str.match(/^(مدام|ال?سيد[ةه]|آنس[ةه]|انس[ةه])(?:\s*[\/\:\-\\\.]\s*|\s+)\s*(.+)$/i);
+  if(madamMatch && madamMatch[2] && madamMatch[2].trim()){
+    return { title: 'سيدة', name: cleanRestName(madamMatch[2]) };
+  }
+
+  // 7. Sayed / Mr: السيد / سيد (Only with delimiter or "السيد ")
+  const sayedMatch = str.match(/^(السيد[ةه]?(?:\s*[\/\:\-\\\.]\s*|\s+)|سيد[ةه]?\s*[\/\:\-\\\.]\s*)\s*(.+)$/i);
+  if(sayedMatch && sayedMatch[2] && sayedMatch[2].trim()){
+    const rawPfx = sayedMatch[1].trim();
+    const rest = cleanRestName(sayedMatch[2]);
+    const title = (/سيد[ةه]/i.test(rawPfx) || isFemaleName(rest)) ? 'سيدة' : 'سيد';
+    return { title: title, name: rest };
+  }
+
+  return { title: '', name: str };
+}
+
 function extractCustomerTitle(obj){
-  if(!obj || typeof obj !== 'object') return '';
-  const val = obj.CustomerTitle ?? obj.customerTitle ?? obj.Title ?? obj.title ??
-              obj['اللقب'] ?? obj['صفة'] ?? obj['صفة العميل'] ??
-              (obj.customer ? (obj.customer.title ?? obj.customer.Title ?? obj.customer.CustomerTitle) : '') ?? '';
-  return String(val).replace(/["']/g, '').trim();
+  if(!obj) return '';
+  if(typeof obj === 'string'){
+    const trimmed = obj.replace(/["`]/g, '').trim();
+    if(CUSTOMER_TITLES.includes(trimmed)) return trimmed;
+    const parsed = parseCustomerTitleAndName(trimmed);
+    return parsed.title || '';
+  }
+  if(typeof obj !== 'object') return '';
+
+  // 1. Explicit property on object
+  let val = obj.CustomerTitle ?? obj.customerTitle ?? obj.Title ?? obj.title ??
+            obj['اللقب'] ?? obj['صفة'] ?? obj['صفة العميل'] ??
+            (obj.customer ? (obj.customer.title ?? obj.customer.Title ?? obj.customer.CustomerTitle) : '') ?? '';
+  val = String(val).replace(/["`]/g, '').trim();
+  if(val && CUSTOMER_TITLES.includes(val)) return val;
+
+  // 2. Extract embedded prefix from customer name
+  const rawName = obj.CustomerName ?? obj.customerName ?? obj.Name ?? obj.name ?? obj.clientName ?? obj.ClientName ??
+                  obj['الاسم'] ?? obj['اسم العميل'] ?? obj['العميل'] ??
+                  (obj.customer ? (obj.customer.name ?? obj.customer.Name ?? obj.customer.CustomerName) : '') ?? '';
+  if(rawName && typeof rawName === 'string'){
+    const parsed = parseCustomerTitleAndName(rawName);
+    if(parsed.title) return parsed.title;
+  }
+
+  // 3. Fallback: Cross-reference with state.customers by phone or name
+  if(typeof state !== 'undefined' && state && Array.isArray(state.customers)){
+    const phone = extractCustomerPhone(obj);
+    if(phone && phone !== '0000000000'){
+      const matchByPhone = state.customers.find(c => {
+        const p = extractCustomerPhone(c);
+        return p === phone && (c.title || c.CustomerTitle || (c.customer && c.customer.title));
+      });
+      if(matchByPhone){
+        const t = (matchByPhone.title || matchByPhone.CustomerTitle || (matchByPhone.customer && matchByPhone.customer.title) || '').trim();
+        if(t && CUSTOMER_TITLES.includes(t)) return t;
+      }
+    }
+    const cleanName = (typeof rawName === 'string' ? rawName.trim() : '');
+    if(cleanName){
+      const parsedClean = parseCustomerTitleAndName(cleanName).name || cleanName;
+      const matchByName = state.customers.find(c => {
+        const cn = (c.name || c.CustomerName || (c.customer && c.customer.name) || '').trim().toLowerCase();
+        return cn && (cn === cleanName.toLowerCase() || cn === parsedClean.toLowerCase());
+      });
+      if(matchByName){
+        const t = (matchByName.title || matchByName.CustomerTitle || (matchByName.customer && matchByName.customer.title) || '').trim();
+        if(t && CUSTOMER_TITLES.includes(t)) return t;
+      }
+    }
+  }
+
+  return val;
 }
 
 function extractCustomerPhone(obj){
@@ -2366,17 +2541,23 @@ function extractCustomerPhone(obj){
 
 function extractCustomerName(obj){
   if(!obj) return '';
-  if(typeof obj !== 'object') return String(obj).trim();
+  if(typeof obj !== 'object'){
+    const parsed = parseCustomerTitleAndName(String(obj));
+    return parsed.name || String(obj).trim();
+  }
   const val = obj.CustomerName ?? obj.customerName ?? obj.Name ?? obj.name ?? obj.clientName ?? obj.ClientName ??
               obj['الاسم'] ?? obj['اسم العميل'] ?? obj['العميل'] ??
               (obj.customer ? (obj.customer.name ?? obj.customer.Name ?? obj.customer.CustomerName) : '') ?? '';
-  return String(val).replace(/["']/g, '').trim();
+  const str = String(val).replace(/["']/g, '').trim();
+  const parsed = parseCustomerTitleAndName(str);
+  return parsed.name || str;
 }
 
 function formatCustomerFullName(objOrName, optTitle){
   if(typeof objOrName === 'string'){
-    const name = objOrName.trim();
-    const title = (optTitle || '').trim();
+    const parsed = parseCustomerTitleAndName(objOrName);
+    const title = ((optTitle != null ? optTitle : parsed.title) || '').trim();
+    const name = (parsed.name || objOrName).trim();
     return title ? `${title} / ${name}` : name;
   }
   const name = extractCustomerName(objOrName) || 'عميل';
@@ -2476,15 +2657,26 @@ function recoverAndSyncAllCustomerPhones(verbose = false){
     }
   });
 
-  // 7. Cross-back populate missing phone numbers into receipts
+  // 7. Cross-back populate missing phone numbers, clean titles and names into receipts
   (state.receipts || []).forEach(r => {
     const name = extractCustomerName(r);
+    const title = extractCustomerTitle(r);
     const currentPhone = extractCustomerPhone(r);
+    if(!r.customer || typeof r.customer !== 'object'){
+      r.customer = { title: title || '', name: name || 'عميل', phone: currentPhone || '', email: extractCustomerEmail(r) };
+    } else {
+      if(title && !r.customer.title) r.customer.title = title;
+      if(name && (!r.customer.name || r.customer.name === 'عميل' || parseCustomerTitleAndName(r.customer.name).title)){
+        r.customer.name = name;
+      }
+    }
+    if(title) r.CustomerTitle = title;
+    if(name) r.CustomerName = name;
     if((!currentPhone || currentPhone === '0000000000') && name){
       const knownPhone = nameToPhoneMap.get(name.toLowerCase());
       if(knownPhone){
-        if(!r.customer) r.customer = { title: extractCustomerTitle(r), name, phone: knownPhone, email: '' };
-        else r.customer.phone = knownPhone;
+        r.customer.phone = knownPhone;
+        r.CustomerPhone = knownPhone;
         recoveredCount++;
       }
     }
@@ -2690,22 +2882,40 @@ function normalizeReceipt(r){
   r.createdAt = r.createdAt || r.CreatedAt || r.receivedAt || '';
 
   // Normalize Customer
+  const cTitle = extractCustomerTitle(r);
+  const cName = extractCustomerName(r) || 'عميل';
+  const cPhone = extractCustomerPhone(r);
+  const cEmail = extractCustomerEmail(r);
+
   if(!r.customer || typeof r.customer !== 'object'){
     r.customer = {
-      title: extractCustomerTitle(r) || '',
-      name: extractCustomerName(r) || 'عميل',
-      phone: extractCustomerPhone(r) || '',
-      email: extractCustomerEmail(r) || ''
+      title: cTitle || '',
+      name: cName,
+      phone: cPhone || '',
+      email: cEmail || ''
     };
   }
-  if(r.customer.title == null) r.customer.title = extractCustomerTitle(r) || '';
-  r.customer.title = String(r.customer.title);
-  if(r.customer.name == null) r.customer.name = extractCustomerName(r) || 'عميل';
-  r.customer.name = String(r.customer.name);
-  if(r.customer.phone == null) r.customer.phone = extractCustomerPhone(r) || '';
-  r.customer.phone = String(r.customer.phone);
-  if(r.customer.email == null) r.customer.email = extractCustomerEmail(r) || '';
-  r.customer.email = String(r.customer.email);
+  if(!r.customer.title || !CUSTOMER_TITLES.includes(r.customer.title)) {
+    r.customer.title = cTitle || r.customer.title || '';
+  }
+  r.customer.title = String(r.customer.title || '');
+  r.CustomerTitle = r.customer.title;
+
+  if(!r.customer.name || r.customer.name === 'عميل' || parseCustomerTitleAndName(r.customer.name).title){
+    r.customer.name = cName;
+  }
+  r.customer.name = String(r.customer.name || 'عميل');
+  r.CustomerName = r.customer.name;
+
+  if(!r.customer.phone || r.customer.phone === '0000000000'){
+    r.customer.phone = cPhone || '';
+  }
+  r.customer.phone = String(r.customer.phone || '');
+  r.CustomerPhone = r.customer.phone;
+
+  if(r.customer.email == null) r.customer.email = cEmail || '';
+  r.customer.email = String(r.customer.email || '');
+  r.CustomerEmail = r.customer.email;
 
   // Normalize Device
   const pass = String((r.device && r.device.password) || r.password || r.Password || '');
@@ -3356,21 +3566,25 @@ async function deleteReceiptRemote(id){
   setCache('receipts', state.receipts);
   return apiPost('deleteReceipt', {id, role: state.user.role, user: state.user.name});
 }
-async function saveCustomerRemote(c){
+async function saveCustomerRemote(c, oldName = null){
   if(!c || !c.name) return;
-  const cTitle = c.title || c.Title || '';
-  const exists = state.customers.find(x => (c.phone && x.phone===c.phone) || (x.name && x.name.trim().toLowerCase()===c.name.trim().toLowerCase()));
+  const cTitle = (c.title != null ? c.title : (c.Title != null ? c.Title : '')).trim();
+  const searchName = oldName || c.name;
+  const exists = state.customers.find(x => (oldName && x.name && x.name.trim().toLowerCase() === oldName.trim().toLowerCase()) ||
+                                           (c.phone && x.phone === c.phone) ||
+                                           (x.name && x.name.trim().toLowerCase() === searchName.trim().toLowerCase()));
   if(!exists){
     state.customers.push({ title: cTitle, name: c.name, phone: c.phone||'', email: c.email||'', taxNumber: c.taxNumber||'', address: c.address||'' });
   } else {
-    if(cTitle) exists.title = cTitle;
-    if(c.phone) exists.phone = c.phone;
-    if(c.email) exists.email = c.email;
-    if(c.taxNumber) exists.taxNumber = c.taxNumber;
-    if(c.address) exists.address = c.address;
+    exists.title = cTitle;
+    exists.name = c.name;
+    if(c.phone != null) exists.phone = c.phone;
+    if(c.email != null) exists.email = c.email;
+    if(c.taxNumber != null) exists.taxNumber = c.taxNumber;
+    if(c.address != null) exists.address = c.address;
   }
   setCache('customers', state.customers);
-  return apiPost('saveCustomer', {data: {Title:cTitle, Name:c.name, Phone:c.phone||'', Email:c.email||'', TaxNumber:c.taxNumber||'', Address:c.address||''}});
+  return apiPost('saveCustomer', {data: {Title:cTitle, Name:c.name, OldName:oldName||'', Phone:c.phone||'', Email:c.email||'', TaxNumber:c.taxNumber||'', Address:c.address||''}});
 }
 async function saveTechnicianRemote(name){
   if(!state.technicians.includes(name)) state.technicians.push(name);
@@ -4557,6 +4771,31 @@ function applyThemeAndAppearance(){
   document.documentElement.setAttribute('data-theme', t);
   localStorage.setItem('microerp_theme', t);
 
+  // Apply custom app theme (odoo, apple, glass, win11) via data-app-theme attribute
+  const appTheme = (state.settings && state.settings.appTheme) || 'light';
+  document.documentElement.setAttribute('data-app-theme', appTheme);
+
+  // Adjust primary color based on preset if not already set
+  if(state.settings && state.settings.appTheme){
+    switch(state.settings.appTheme){
+      case 'odoo':
+        state.settings.primaryColor = '#4f46e5';
+        break;
+      case 'apple':
+        state.settings.primaryColor = '#007aff';
+        break;
+      case 'glass':
+        state.settings.primaryColor = '#0284c7';
+        break;
+      case 'win11':
+        state.settings.primaryColor = '#0078d7';
+        break;
+      default:
+        // keep existing primaryColor
+        break;
+    }
+  }
+
   const primary = (state.settings && state.settings.primaryColor) || '#4f46e5';
   document.documentElement.style.setProperty('--primary', primary);
   document.documentElement.style.setProperty('--primary-hover', adjustColorBrightness(primary, -15));
@@ -4570,6 +4809,7 @@ function applyThemeAndAppearance(){
     document.documentElement.style.fontSize = '14px';
   }
 }
+
 
 function adjustColorBrightness(hex, percent) {
   let num = parseInt(hex.replace('#',''), 16),
@@ -5914,7 +6154,13 @@ function stepCustomer(body,d){
   document.getElementById('cName').onchange = (e)=>{
     const typed = e.target.value.trim();
     if(typed){
-      const found = state.customers.find(x=>x.name.toLowerCase()===typed.toLowerCase());
+      const parsed = parseCustomerTitleAndName(typed);
+      if(parsed.title && !document.getElementById('cTitle').value){
+        document.getElementById('cTitle').value = parsed.title;
+        document.getElementById('cName').value = parsed.name;
+      }
+      const cleanTyped = (parsed.name || typed).trim();
+      const found = state.customers.find(x=>(x.name||'').toLowerCase()===cleanTyped.toLowerCase() || (x.name||'').toLowerCase()===typed.toLowerCase());
       if(found){
         if(found.title && !document.getElementById('cTitle').value) document.getElementById('cTitle').value = found.title;
         if(found.phone && !document.getElementById('cPhone').value){
@@ -5941,8 +6187,10 @@ function stepCustomer(body,d){
     document.getElementById('cEmail').value = '';
   };
   currentStepCollector = ()=>{
-    d.customer.title = document.getElementById('cTitle').value.trim();
-    d.customer.name = document.getElementById('cName').value.trim();
+    const rawName = document.getElementById('cName').value.trim();
+    const parsed = parseCustomerTitleAndName(rawName);
+    d.customer.title = document.getElementById('cTitle').value.trim() || parsed.title || '';
+    d.customer.name = (parsed.title && !document.getElementById('cTitle').value.trim()) ? parsed.name : (parsed.name || rawName);
     d.customer.phone = document.getElementById('cPhone').value.trim();
     d.customer.email = document.getElementById('cEmail').value.trim();
   };
@@ -6610,9 +6858,9 @@ function archiveTable(list){
         </div>
       </td>
       <td>
-        <div style="display:flex;align-items:center;gap:5px;">
-          ${cTitle ? `<span class="badge" style="background:var(--paper2);color:var(--primary);font-size:10.5px;font-weight:700;border:1px solid var(--line);">${escapeHtml(cTitle)}</span>` : ''}
-          <b>${escapeHtml(cName)}</b>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          ${cTitle ? `<span class="badge" style="background:var(--paper2);color:var(--primary);font-size:10.5px;font-weight:700;border:1px solid var(--line);padding:1px 6px;border-radius:4px;white-space:nowrap;">${escapeHtml(cTitle)}</span>` : ''}
+          <b style="font-size:13px;color:var(--ink);">${escapeHtml(cName)}</b>
         </div>
         ${cPhone && cPhone !== '0000000000' ? `
           <div style="color:var(--ink-secondary);font-size:11.5px;display:flex;align-items:center;gap:4px;margin-top:2px;" class="mono">
@@ -6667,9 +6915,10 @@ function renderArchive(main){
     list = list.filter(r => {
       const rNum = String(r.receiptNumber||'').toLowerCase();
       const rName = extractCustomerName(r).toLowerCase();
+      const rTitle = extractCustomerTitle(r).toLowerCase();
       const rPhone = extractCustomerPhone(r);
       const rModel = String(r.device && r.device.model ? r.device.model : '').toLowerCase();
-      return rNum.includes(qTerm) || rName.includes(qTerm) || rPhone.includes(qTerm) || rModel.includes(qTerm);
+      return rNum.includes(qTerm) || rName.includes(qTerm) || rTitle.includes(qTerm) || rPhone.includes(qTerm) || rModel.includes(qTerm);
     });
   }
   if(f.status) list = list.filter(r=>r.status===f.status);
@@ -6797,9 +7046,9 @@ function renderCustomersPage(main){
           </thead>
           <tbody>
             ${filtered.map(c => {
-              const cTitle = c.title || '';
-              const cName = c.name || 'عميل';
-              const cPhone = c.phone || '';
+              const cTitle = extractCustomerTitle(c);
+              const cName = extractCustomerName(c) || 'عميل';
+              const cPhone = extractCustomerPhone(c);
               const clientReceipts = (state.receipts||[]).filter(r => {
                 const rName = extractCustomerName(r);
                 const rPhone = extractCustomerPhone(r);
@@ -6809,8 +7058,8 @@ function renderCustomersPage(main){
               return `
                 <tr>
                   <td>
-                    <div style="display:flex;align-items:center;gap:6px;">
-                      ${cTitle ? `<span class="badge" style="background:var(--paper2);color:var(--primary);font-size:11px;font-weight:700;border:1px solid var(--line);">${escapeHtml(cTitle)}</span>` : ''}
+                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                      ${cTitle ? `<span class="badge" style="background:var(--paper2);color:var(--primary);font-size:11px;font-weight:700;border:1px solid var(--line);padding:1px 6px;border-radius:4px;white-space:nowrap;">${escapeHtml(cTitle)}</span>` : ''}
                       <span style="font-weight:800;font-size:13.5px;color:var(--ink);">${escapeHtml(cName)}</span>
                     </div>
                   </td>
@@ -6988,7 +7237,7 @@ function openEditCustomerModal(c){
     if(!name){ showToast('يرجى إدخال اسم العميل', 'error'); return; }
 
     const oldName = c ? c.name : null;
-    await saveCustomerRemote({ title, name, phone, email });
+    await saveCustomerRemote({ title, name, phone, email }, oldName);
 
     // Update any receipts with this customer name
     (state.receipts || []).forEach(r => {
@@ -7001,28 +7250,33 @@ function openEditCustomerModal(c){
           r.customer.phone = phone;
           r.customer.email = email;
         }
+        r.CustomerName = name;
+        r.CustomerTitle = title;
+        r.CustomerPhone = phone;
+        r.CustomerEmail = email;
       }
     });
-      setCache('receipts', state.receipts);
-      // Update customers list with new data
-      if (oldName) {
-        const cust = (state.customers || []).find(c => c.name && c.name.toLowerCase() === oldName.toLowerCase());
-        if (cust) {
-          cust.title = title;
-          cust.name = name;
-          cust.phone = phone;
-          cust.email = email;
-        }
-      } else {
-        // New customer - add if not already present
-        if (!state.customers.find(c => c.name && c.name.toLowerCase() === name.toLowerCase())) {
-          state.customers.push({ title, name, phone, email });
-        }
+    setCache('receipts', state.receipts);
+
+    // Update customers list with new data
+    if (oldName) {
+      const cust = (state.customers || []).find(c => c.name && c.name.toLowerCase() === oldName.toLowerCase());
+      if (cust) {
+        cust.title = title;
+        cust.name = name;
+        cust.phone = phone;
+        cust.email = email;
       }
-      setCache('customers', state.customers);
-      recoverAndSyncAllCustomerPhones(false);
-      showToast('تم حفظ وتحديث بيانات العميل وألقابه بنجاح ✅', 'success');
-      overlay.remove();
+    } else {
+      // New customer - add if not already present
+      if (!state.customers.find(c => c.name && c.name.toLowerCase() === name.toLowerCase())) {
+        state.customers.push({ title, name, phone, email });
+      }
+    }
+    setCache('customers', state.customers);
+    recoverAndSyncAllCustomerPhones(false);
+    showToast('تم حفظ وتحديث بيانات العميل وألقابه بنجاح ✅', 'success');
+    overlay.remove();
 
       const main = document.getElementById('main');
       if (state.tab === 'customers') renderCustomersPage(main);
@@ -7825,7 +8079,8 @@ async function openReceiptDetail(rawR){
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
 
-    const curTitle = (r.customer && r.customer.title) || '';
+    const curTitle = extractCustomerTitle(r) || (r.customer && r.customer.title) || '';
+    const curName = extractCustomerName(r) || (r.customer && r.customer.name) || '';
     const titleOptions = [''].concat(CUSTOMER_TITLES).map(t=>`<option value="${escapeHtml(t)}" ${curTitle===t?'selected':''}>${t ? escapeHtml(t) : '-- بدون لقب --'}</option>`).join('');
 
     overlay.innerHTML = `
@@ -7867,7 +8122,7 @@ async function openReceiptDetail(rawR){
             ${titleOptions}
           </select>
         </div>
-        <div class="field"><label>اسم العميل</label><input id="eName" value="${escapeHtml(r.customer.name||'')}"></div>
+        <div class="field"><label>اسم العميل</label><input id="eName" value="${escapeHtml(curName)}"></div>
         <div class="field"><label>رقم هاتف العميل</label><input id="ePhone" value="${escapeHtml(r.customer.phone||'')}"></div>
       </div>
       <div class="grid4">
@@ -8102,9 +8357,15 @@ async function openReceiptDetail(rawR){
   if(closeModBtn) closeModBtn.onclick = ()=>overlay.remove();
 
   function collectEdits(){
-    r.customer.title = (overlay.querySelector('#eTitle')?.value || '').trim();
-    r.customer.name = overlay.querySelector('#eName').value.trim();
+    const selectedTitle = (overlay.querySelector('#eTitle')?.value || '').trim();
+    const rawNameVal = overlay.querySelector('#eName').value.trim();
+    const parsedName = parseCustomerTitleAndName(rawNameVal);
+    r.customer.title = selectedTitle || parsedName.title || '';
+    r.customer.name = (parsedName.title && !selectedTitle) ? parsedName.name : (parsedName.name || rawNameVal);
+    r.CustomerTitle = r.customer.title;
+    r.CustomerName = r.customer.name;
     r.customer.phone = overlay.querySelector('#ePhone').value.trim();
+    r.CustomerPhone = r.customer.phone;
     r.device.category = overlay.querySelector('#eCat').value.trim();
     r.device.brand = overlay.querySelector('#eBrand').value.trim();
     r.device.model = overlay.querySelector('#eModel').value.trim();
@@ -12971,9 +13232,16 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
 
   // Customer info inputs
   const cTitleSel = document.getElementById('posCustTitle');
-  if(cTitleSel) cTitleSel.onchange = (e)=>{ ps.customerTitle = extractCustomerTitle({ CustomerTitle: e.target.value }); };
+  if(cTitleSel) cTitleSel.onchange = (e)=>{ ps.customerTitle = extractCustomerTitle(e.target.value); };
   const cNameInp = document.getElementById('posCustName');
-  if(cNameInp) cNameInp.oninput = (e)=>{ ps.customerName = e.target.value; };
+  if(cNameInp) cNameInp.oninput = (e)=>{
+    ps.customerName = e.target.value;
+    const parsed = parseCustomerTitleAndName(e.target.value);
+    if(parsed.title && (!ps.customerTitle || ps.customerTitle === '')){
+      ps.customerTitle = parsed.title;
+      if(cTitleSel) cTitleSel.value = parsed.title;
+    }
+  };
   const cPhoneInp = document.getElementById('posCustPhone');
   if(cPhoneInp) cPhoneInp.oninput = (e)=>{ ps.customerPhone = e.target.value; };
 
@@ -15622,6 +15890,42 @@ function renderAppearanceSettings(main){
       </div>
     </div>
 
+    <!-- Theme Presets -->
+    <div class="card">
+      <h3 style="margin-top:0;font-size:15.5px;">✨ إعدادات مسبقة للثيم (Theme Presets)</h3>
+      <p style="font-size:12.5px;color:var(--ink-secondary);margin-bottom:14px;">اختر أحد الثيمات الجاهزة لتغيير الواجهة بسرعة:</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:14px;">
+        <div id="presetOdoo" style="cursor:pointer;border:2px solid ${state.settings && state.settings.appTheme==='odoo'?'var(--primary)':'var(--line)'};background:#1e293b;color:#f1f5f9;padding:16px;border-radius:var(--radius);box-shadow:var(--card-shadow);transition:all 0.2s ease;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <b style="font-size:14px;">🟣 Odoo (Dark)</b>
+            ${state.settings && state.settings.appTheme==='odoo'?'<span class="status-badge st-done">مفعل الآن ✓</span>':''}
+          </div>
+          <div style="font-size:11.5px;color:#c4b5fd;">ثيم أودو مع اللون البنفسجي المميز.</div>
+        </div>
+        <div id="presetApple" style="cursor:pointer;border:2px solid ${state.settings && state.settings.appTheme==='apple'?'var(--primary)':'var(--line)'};background:#f8fafc;color:#0f172a;padding:16px;border-radius:var(--radius);box-shadow:var(--card-shadow);transition:all 0.2s ease;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <b style="font-size:14px;">🍎 Apple (Light)</b>
+            ${state.settings && state.settings.appTheme==='apple'?'<span class="status-badge st-done">مفعل الآن ✓</span>':''}
+          </div>
+          <div style="font-size:11.5px;color:#007aff;">ثيم شفاف ونظيف يشبه نظام macOS.</div>
+        </div>
+        <div id="presetGlass" style="cursor:pointer;border:2px solid ${state.settings && state.settings.appTheme==='glass'?'var(--primary)':'var(--line)'};background:#e0f2fe;color:#0f172a;padding:16px;border-radius:var(--radius);box-shadow:var(--card-shadow);transition:all 0.2s ease;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <b style="font-size:14px;">🪟 Glass (Light)</b>
+            ${state.settings && state.settings.appTheme==='glass'?'<span class="status-badge st-done">مفعل الآن ✓</span>':''}
+          </div>
+          <div style="font-size:11.5px;color:#0284c7;">مظهر زجاجي مع خلفية شفافة خفيفة.</div>
+        </div>
+        <div id="presetWin11" style="cursor:pointer;border:2px solid ${state.settings && state.settings.appTheme==='win11'?'var(--primary)':'var(--line)'};background:#f1f5f9;color:#0f172a;padding:16px;border-radius:var(--radius);box-shadow:var(--card-shadow);transition:all 0.2s ease;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <b style="font-size:14px;">🪟 Windows 11 (Light)</b>
+            ${state.settings && state.settings.appTheme==='win11'?'<span class="status-badge st-done">مفعل الآن ✓</span>':''}
+          </div>
+          <div style="font-size:11.5px;color:#0078d7;">ثيم Windows 11 مع الألوان الرسمية.</div>
+        </div>
+      </div>
+    </div>
+
     <!-- Primary Accent Color Picker -->
     <div class="card">
       <h3 style="margin-top:0;font-size:15.5px;">🎨 لون النظام المميز (Primary Accent Color)</h3>
@@ -15674,15 +15978,43 @@ function renderAppearanceSettings(main){
   attachSettingsQuickTabEvents(main);
 
   document.getElementById('themeCardLight').onclick = ()=>{
+    if(state.settings) state.settings.appTheme = '';
     applyTheme('light');
     saveSettingRemote('theme', 'light');
     renderAppearanceSettings(main);
   };
   document.getElementById('themeCardDark').onclick = ()=>{
+    if(state.settings) state.settings.appTheme = '';
     applyTheme('dark');
     saveSettingRemote('theme', 'dark');
     renderAppearanceSettings(main);
   };
+
+  const applyPresetTheme = async (presetName, themeMode, primaryColor) => {
+    if(!state.settings) state.settings = {};
+    state.settings.appTheme = presetName;
+    state.theme = themeMode;
+    state.settings.primaryColor = primaryColor;
+    setCache('settings', state.settings);
+    applyThemeAndAppearance();
+    try { await saveSettingRemote('appTheme', presetName); } catch(e){}
+    try { await saveSettingRemote('primaryColor', primaryColor); } catch(e){}
+    try { await saveSettingRemote('theme', themeMode); } catch(e){}
+    showToast('تم تفعيل الثيم بنجاح ✨', 'success');
+    renderAppearanceSettings(main);
+  };
+
+  const pOdoo = document.getElementById('presetOdoo');
+  if(pOdoo) pOdoo.onclick = () => applyPresetTheme('odoo', 'dark', '#4f46e5');
+
+  const pApple = document.getElementById('presetApple');
+  if(pApple) pApple.onclick = () => applyPresetTheme('apple', 'light', '#007aff');
+
+  const pGlass = document.getElementById('presetGlass');
+  if(pGlass) pGlass.onclick = () => applyPresetTheme('glass', 'light', '#0284c7');
+
+  const pWin11 = document.getElementById('presetWin11');
+  if(pWin11) pWin11.onclick = () => applyPresetTheme('win11', 'light', '#0078d7');
 
   main.querySelectorAll('.accent-color-btn').forEach(btn => {
     btn.onclick = async ()=>{

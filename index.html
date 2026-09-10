@@ -1972,34 +1972,32 @@ tr:last-child td { border-bottom: none; }
     line-height: 1.2 !important;
   }
 
-  /* --- 2. Thermal Sticker Label (50mm x 30mm) --- */
+  /* --- 2. Thermal Sticker Label (Multi-Size Responsive) --- */
   body.printing-sticker {
-    width: 50mm !important;
-    height: 30mm !important;
-    max-height: 30mm !important;
-    overflow: hidden !important;
+    background: #ffffff !important;
+    overflow: visible !important;
   }
   body.printing-sticker #printMount {
-    width: 50mm !important;
-    height: 30mm !important;
-    max-height: 30mm !important;
     margin: 0 !important;
     padding: 0 !important;
   }
+  .thermal-sticker-page,
   #stickerPaper {
     position: static !important;
-    width: 50mm !important;
-    height: 30mm !important;
-    max-height: 30mm !important;
     box-shadow: none !important;
-    padding: 1.5mm 2mm !important;
-    font-size: 7.5px !important;
-    line-height: 1.15 !important;
     overflow: hidden !important;
-    display: flex !important;
-    flex-direction: column !important;
-    justify-content: space-between !important;
     box-sizing: border-box !important;
+    page-break-inside: avoid !important;
+    page-break-after: always !important;
+    break-inside: avoid !important;
+    break-after: page !important;
+    font-family: var(--font-main) !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  .thermal-sticker-page:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
   }
 
   /* --- 3. Barcode Studio A4 Sheet --- */
@@ -4567,9 +4565,9 @@ const DEFAULT_PRINTERS_SETTINGS = {
   // 2. طابعة ملصقات الباركود (Thermal Label / Barcode Sticker Printer)
   barcodePrinter: {
     name: 'Xprinter XP-365B (Thermal Barcode Label)',
-    defaultSize: '50x30', // '50x30', '40x25', '38x25', '60x40', 'custom'
-    customWidthMm: 50,
-    customHeightMm: 30,
+    defaultSize: '40x20', // '40x20', '40x10', '40x15', '50x25', '50x30', '38x25', '60x40', 'custom'
+    customWidthMm: 40,
+    customHeightMm: 20,
     barcodeType: 'CODE128',
     defaultCopies: 1,
     showPrice: true,
@@ -8779,53 +8777,663 @@ function openReceiptPrint(rawR, kind){
   }, 150);
 }
 
-/* ---------------- Print Thermal Barcode Sticker (50x30mm) ---------------- */
+/* ---------------- Thermal Barcode Sticker Engine (Multi-Size Responsive: 40x20, 40x10, 20x40, etc.) ---------------- */
+
+function getThermalStickerDimensions(sizeKey, customW, customH){
+  const map = {
+    '40x20': { w: 40, h: 20, name: '40×20 مم (4×2 سم ⭐ عريض)' },
+    '40x10': { w: 40, h: 10, name: '40×10 مم (4×1 سم ⚡ رفيع)' },
+    '20x40': { w: 20, h: 40, name: '20×40 مم (2×4 سم طولي)' },
+    '10x40': { w: 10, h: 40, name: '10×40 مم (1×4 سم طولي)' },
+    '40x15': { w: 40, h: 15, name: '40×15 مم (4×1.5 سم)' },
+    '50x25': { w: 50, h: 25, name: '50×25 مم (5×2.5 سم)' },
+    '50x30': { w: 50, h: 30, name: '50×30 مم (5×3 سم)' },
+    '38x25': { w: 38, h: 25, name: '38×25 مم' },
+    '60x40': { w: 60, h: 40, name: '60×40 مم' }
+  };
+  if(sizeKey === 'custom'){
+    const w = Math.max(10, Math.min(120, Number(customW) || 40));
+    const h = Math.max(10, Math.min(120, Number(customH) || 20));
+    return { w, h, name: `مخصص (${w}×${h} مم)` };
+  }
+  return map[sizeKey] || map['40x20'];
+}
+
+function renderStickerBarcodeSVG(target, barcodeVal, dim, format = 'CODE128'){
+  if(typeof JsBarcode === 'undefined') return;
+  const val = String(barcodeVal || '100000000000').trim();
+  if(!val) return;
+
+  const minDim = Math.min(dim.w, dim.h);
+  let bWidth = 1.0;
+  let bHeight = 18;
+
+  if(dim.w < dim.h){
+    // Portrait sticker (e.g. 20x40 mm)
+    bWidth = 0.85;
+    bHeight = 16;
+  } else if(minDim <= 12){
+    // Slim (e.g. 40x10 mm)
+    bWidth = 0.85;
+    bHeight = 12;
+  } else if(minDim <= 17){
+    // 40x15 mm
+    bWidth = 0.95;
+    bHeight = 15;
+  } else if(minDim <= 23){
+    // 40x20 mm
+    bWidth = 1.05;
+    bHeight = 18;
+  } else {
+    // 50x30 or larger
+    bWidth = 1.2;
+    bHeight = 24;
+  }
+
+  if(val.length > 14) bWidth = Math.max(0.7, bWidth * 0.8);
+  else if(val.length > 18) bWidth = Math.max(0.6, bWidth * 0.65);
+
+  try {
+    JsBarcode(target, val, {
+      format: format || 'CODE128',
+      width: bWidth,
+      height: bHeight,
+      displayValue: false,
+      margin: 0
+    });
+  } catch(err) {
+    try {
+      JsBarcode(target, val, {
+        width: bWidth,
+        height: bHeight,
+        displayValue: false,
+        margin: 0
+      });
+    } catch(e2){
+      console.warn('JsBarcode render fallback failed:', e2);
+    }
+  }
+}
+
+function generateProductStickerHTML(item, dim, svgId){
+  const shopName = (state.settings && state.settings.shopName) || 'صيانة ميكروتك';
+  const name = escapeHtml(item.Name || item.name || 'صنف');
+  const cat = escapeHtml(item.Category || item.category || 'إكسسوار');
+  const price = Number(item.SellPrice || item.PurchasePrice || item.price || 0).toLocaleString();
+  const barcodeVal = escapeHtml(String(item.Barcode || item.SKU || item.barcode || item.sku || item.ID || '1001'));
+
+  // Portrait layout (w < h, e.g. 20x40 mm or 10x40 mm)
+  if(dim.w < dim.h){
+    return `
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:1mm 0.8mm;box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif;color:#000;background:#fff;overflow:hidden;text-align:center;">
+      <div style="border-bottom:0.5px solid #000;padding-bottom:0.3mm;">
+        <div style="font-size:6.5px;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(shopName)}</div>
+        <div class="mono" style="font-size:6px;opacity:0.8;">${cat}</div>
+      </div>
+      <div style="font-size:7px;font-weight:bold;line-height:1.15;max-height:6mm;overflow:hidden;margin:0.4mm 0;">
+        ${name}
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;margin:0.4mm 0;">
+        <svg id="${svgId}" style="max-height:7.5mm;max-width:96%;display:block;"></svg>
+        <span class="mono" style="font-size:6.5px;font-weight:800;letter-spacing:0.2px;line-height:1;margin-top:0.3mm;">${barcodeVal}</span>
+      </div>
+      <div style="border-top:0.5px solid #000;padding-top:0.3mm;">
+        <div style="font-size:6px;">السعر:</div>
+        <b class="mono" style="font-size:8.5px;font-weight:900;">${price} ج</b>
+      </div>
+    </div>`;
+  }
+
+  // Landscape layouts (w >= h)
+  if(dim.h <= 12){
+    // 40x10 mm ultra-slim layout
+    return `
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:0.4mm 0.8mm;box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif;color:#000;background:#fff;overflow:hidden;">
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;gap:1mm;">
+        <span style="font-size:7px;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70%;">${name}</span>
+        <b class="mono" style="font-size:7.5px;font-weight:900;white-space:nowrap;">${price} ج</b>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;margin-top:0.2mm;">
+        <svg id="${svgId}" style="max-height:5.2mm;max-width:65%;display:block;"></svg>
+        <span class="mono" style="font-size:6.5px;font-weight:800;letter-spacing:0.3px;">${barcodeVal}</span>
+      </div>
+    </div>`;
+  } else if(dim.h <= 17){
+    // 40x15 mm layout
+    return `
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:0.6mm 0.8mm;box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif;color:#000;background:#fff;overflow:hidden;">
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-bottom:0.5px solid #000;padding-bottom:0.3mm;">
+        <span style="font-size:6.5px;font-weight:bold;">${escapeHtml(shopName)}</span>
+        <b class="mono" style="font-size:8px;font-weight:900;">${price} ج.م</b>
+      </div>
+      <div style="font-size:7.5px;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.1;margin:0.3mm 0;">
+        ${name}
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;">
+        <svg id="${svgId}" style="max-height:5.5mm;max-width:96%;display:block;"></svg>
+        <span class="mono" style="font-size:6.5px;font-weight:800;line-height:1;margin-top:0.3mm;">${barcodeVal}</span>
+      </div>
+    </div>`;
+  } else if(dim.h <= 23){
+    // 40x20 mm layout (⭐ Primary User Roll: 4x2 cm)
+    return `
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:0.6mm 1mm;box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif;color:#000;background:#fff;overflow:hidden;">
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-bottom:0.5px solid #000;padding-bottom:0.4mm;">
+        <span style="font-size:7px;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:65%;">${escapeHtml(shopName)}</span>
+        <span class="mono" style="font-size:6.5px;font-weight:bold;opacity:0.85;">${cat}</span>
+      </div>
+      <div style="font-size:8px;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.15;margin:0.4mm 0;">
+        ${name}
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;">
+        <svg id="${svgId}" style="max-height:6.2mm;max-width:96%;display:block;"></svg>
+        <span class="mono" style="font-size:7px;font-weight:800;letter-spacing:0.4px;line-height:1;margin-top:0.3mm;">${barcodeVal}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-top:0.5px solid #000;padding-top:0.4mm;">
+        <span style="font-size:7px;font-weight:bold;">السعر:</span>
+        <b class="mono" style="font-size:9.5px;font-weight:900;">${price} ج.م</b>
+      </div>
+    </div>`;
+  } else {
+    // 50x25, 50x30, 60x40 mm larger stickers
+    return `
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:1mm 1.2mm;box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif;color:#000;background:#fff;overflow:hidden;">
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-bottom:1px solid #000;padding-bottom:0.5mm;">
+        <span style="font-size:8px;font-weight:bold;">${escapeHtml(shopName)}</span>
+        <span class="mono" style="font-size:7.5px;font-weight:bold;">${cat}</span>
+      </div>
+      <div style="font-size:8.5px;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;margin:0.5mm 0;">
+        ${name}
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;">
+        <svg id="${svgId}" style="max-height:9mm;max-width:96%;display:block;"></svg>
+        <span class="mono" style="font-size:7.5px;font-weight:800;letter-spacing:0.5px;line-height:1;margin-top:0.4mm;">${barcodeVal}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-top:1px solid #000;padding-top:0.5mm;">
+        <span style="font-size:8px;font-weight:bold;">السعر:</span>
+        <b class="mono" style="font-size:11px;font-weight:900;">${price} ج.م</b>
+      </div>
+    </div>`;
+  }
+}
+
+function generateReceiptStickerHTML(r, dim, svgId){
+  const shopName = (state.settings && state.settings.shopName) || 'صيانة ميكروتك';
+  const fullCName = (typeof formatCustomerFullName === 'function') ? formatCustomerFullName(r) : ((r.customer && r.customer.name) || extractCustomerName(r) || 'عميل');
+  const cName = escapeHtml(fullCName.slice(0, 20));
+  const cPhone = escapeHtml((r.customer && r.customer.phone) || extractCustomerPhone(r) || '');
+  const dCat = escapeHtml((r.device && r.device.category) || 'جهاز');
+  const dBrand = escapeHtml(r.device ? (r.device.brand==='أخرى'?r.device.brandOther:r.device.brand) : '');
+  const dModel = escapeHtml((r.device && r.device.model) || '');
+  const pass = escapeHtml(((r.device && r.device.password) || r.password || '').slice(0, 14));
+  const firstFault = escapeHtml(((Array.isArray(r.faults) && r.faults.length ? r.faults[0] : (typeof r.faults === 'string' ? r.faults : '')) || r.faultNotes || '-').slice(0, 24));
+  const rNum = escapeHtml(String(r.receiptNumber || ''));
+  const intakeTime = (typeof formatReceiptTime === 'function' ? formatReceiptTime(r) : (r.time || ''));
+  const dateTimeStr = escapeHtml(`${cleanDate(r.date)}${intakeTime ? ' ' + intakeTime : ''}`);
+
+  if(dim.w < dim.h){
+    // Portrait layout (e.g. 20x40 mm)
+    return `
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:1mm 0.8mm;box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif;color:#000;background:#fff;overflow:hidden;text-align:center;">
+      <div style="border-bottom:0.5px solid #000;padding-bottom:0.3mm;">
+        <div style="font-size:6.5px;font-weight:bold;">${escapeHtml(shopName)}</div>
+        <b class="mono" style="font-size:7.5px;font-weight:900;">#${rNum}</b>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;margin:0.4mm 0;">
+        <svg id="${svgId}" style="max-height:7mm;max-width:96%;display:block;"></svg>
+        <span class="mono" style="font-size:6.5px;font-weight:800;line-height:1;margin-top:0.2mm;">${rNum}</span>
+      </div>
+      <div style="font-size:6px;line-height:1.15;text-align:right;overflow:hidden;">
+        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>العميل:</b> ${cName}</div>
+        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>الهاتف:</b> <span class="mono">${cPhone}</span></div>
+        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>الجهاز:</b> ${dCat} ${dBrand}</div>
+        ${pass ? `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>ب:</b> <span class="mono">${pass}</span></div>` : ''}
+      </div>
+    </div>`;
+  }
+
+  // Landscape layouts
+  if(dim.h <= 12){
+    // 40x10 mm slim
+    return `
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:0.4mm 0.6mm;box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif;color:#000;background:#fff;overflow:hidden;">
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;">
+        <b class="mono" style="font-size:8px;font-weight:900;">#${rNum}</b>
+        <span style="font-size:6.5px;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%;">${cName} ${cPhone}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;margin-top:0.2mm;">
+        <svg id="${svgId}" style="max-height:5.2mm;max-width:60%;display:block;"></svg>
+        <span style="font-size:6.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:38%;">${dCat} ${dBrand}</span>
+      </div>
+    </div>`;
+  } else if(dim.h <= 17){
+    // 40x15 mm
+    return `
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:0.5mm 0.8mm;box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif;color:#000;background:#fff;overflow:hidden;">
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-bottom:0.5px solid #000;padding-bottom:0.3mm;">
+        <span style="font-size:6.5px;font-weight:bold;">${escapeHtml(shopName)}</span>
+        <b class="mono" style="font-size:7.5px;font-weight:900;">#${rNum}</b>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;margin:0.3mm 0;">
+        <svg id="${svgId}" style="max-height:5.5mm;max-width:96%;display:block;"></svg>
+      </div>
+      <div style="font-size:6.5px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+        <b>${cName}</b> | ${cPhone} | ${dCat} ${dBrand}
+      </div>
+    </div>`;
+  } else if(dim.h <= 23){
+    // 40x20 mm (⭐ Primary User Roll: 4x2 cm)
+    return `
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:0.6mm 0.8mm;box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif;color:#000;background:#fff;overflow:hidden;">
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-bottom:0.5px solid #000;padding-bottom:0.4mm;">
+        <span style="font-size:7px;font-weight:bold;">${escapeHtml(shopName)}</span>
+        <b class="mono" style="font-size:8px;font-weight:900;">#${rNum}</b>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;margin:0.2mm 0;">
+        <svg id="${svgId}" style="max-height:5.5mm;max-width:96%;display:block;"></svg>
+        <span class="mono" style="font-size:6.5px;font-weight:800;line-height:1;margin-top:0.2mm;">${rNum}</span>
+      </div>
+      <div style="font-size:6.5px;line-height:1.15;overflow:hidden;">
+        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>العميل:</b> ${cName} | <span class="mono">${cPhone}</span></div>
+        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>الجهاز:</b> ${dCat} - ${dBrand} ${dModel}${pass ? ` | <b>ب:</b> <span class="mono">${pass}</span>` : ''}</div>
+        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>العطل:</b> ${firstFault}</div>
+      </div>
+    </div>`;
+  } else {
+    // 50x30 mm larger
+    return `
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:1mm 1.2mm;box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif;color:#000;background:#fff;overflow:hidden;">
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-bottom:1px solid #000;padding-bottom:0.5mm;">
+        <span style="font-size:8px;font-weight:bold;">${escapeHtml(shopName)}</span>
+        <b class="mono" style="font-size:9px;font-weight:900;">#${rNum}</b>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;margin:0.4mm 0;">
+        <svg id="${svgId}" style="max-height:8mm;max-width:96%;display:block;"></svg>
+        <span class="mono" style="font-size:7px;font-weight:800;line-height:1;margin-top:0.3mm;">${rNum}</span>
+      </div>
+      <div style="font-size:7px;line-height:1.2;overflow:hidden;">
+        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>الاستلام:</b> <span class="mono">${dateTimeStr}</span></div>
+        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>العميل:</b> ${cName} | <span class="mono">${cPhone}</span></div>
+        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>الجهاز:</b> ${dCat} - ${dBrand} ${dModel}${pass ? ` | <b>باسورد:</b> <span class="mono">${pass}</span>` : ''}</div>
+        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>العطل:</b> ${firstFault}</div>
+      </div>
+    </div>`;
+  }
+}
+
+function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0){
+  if(!cfg || !cfg.data) return;
+  copies = Math.max(1, parseInt(copies) || 1);
+  rotation = Number(rotation) || 0;
+
+  const oldMount = document.getElementById('printMount');
+  if(oldMount) oldMount.remove();
+  const oldStyle = document.getElementById('dynamicThermalStickerPrintStyle');
+  if(oldStyle) oldStyle.remove();
+
+  let rotCSS = '';
+  if(rotation === 90){
+    rotCSS = 'transform: rotate(90deg); transform-origin: center center;';
+  } else if(rotation === 180){
+    rotCSS = 'transform: rotate(180deg); transform-origin: center center;';
+  } else if(rotation === 270){
+    rotCSS = 'transform: rotate(270deg); transform-origin: center center;';
+  }
+
+  // Use 'size: auto !important;' to prevent Chrome from forcing landscape auto-rotation
+  const styleEl = document.createElement('style');
+  styleEl.id = 'dynamicThermalStickerPrintStyle';
+  styleEl.innerHTML = `
+    @media print {
+      @page {
+        size: auto;
+        margin: 0mm !important;
+      }
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+        width: auto !important;
+        height: auto !important;
+      }
+      body.printing-sticker {
+        background: #ffffff !important;
+      }
+      body.printing-sticker #printMount {
+        display: block !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+      }
+      .thermal-sticker-page {
+        width: ${dim.w}mm !important;
+        height: ${dim.h}mm !important;
+        max-width: ${dim.w}mm !important;
+        max-height: ${dim.h}mm !important;
+        box-sizing: border-box !important;
+        margin: 0 auto !important;
+        page-break-inside: avoid !important;
+        page-break-after: always !important;
+        break-inside: avoid !important;
+        break-after: page !important;
+        overflow: hidden !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+        ${rotCSS}
+      }
+      .thermal-sticker-page:last-child {
+        page-break-after: auto !important;
+        break-after: auto !important;
+      }
+    }
+  `;
+  document.head.appendChild(styleEl);
+
+  const mount = document.createElement('div');
+  mount.id = 'printMount';
+
+  const barcodeVal = (cfg.type === 'receipt')
+    ? cfg.data.receiptNumber
+    : (cfg.data.Barcode || cfg.data.SKU || cfg.data.barcode || cfg.data.sku || cfg.data.ID || '1001');
+
+  let pagesHtml = '';
+  for(let i = 0; i < copies; i++){
+    const svgId = `printStickerSvg_${i}`;
+    const innerHtml = (cfg.type === 'receipt')
+      ? generateReceiptStickerHTML(cfg.data, dim, svgId)
+      : generateProductStickerHTML(cfg.data, dim, svgId);
+    pagesHtml += `<div class="thermal-sticker-page">${innerHtml}</div>`;
+  }
+  mount.innerHTML = pagesHtml;
+  document.body.appendChild(mount);
+
+  for(let i = 0; i < copies; i++){
+    renderStickerBarcodeSVG(`#printStickerSvg_${i}`, barcodeVal, dim);
+  }
+
+  document.body.classList.add('printing-sticker');
+
+  const cleanup = () => {
+    if(mount && mount.parentNode) mount.remove();
+    if(styleEl && styleEl.parentNode) styleEl.remove();
+    document.body.classList.remove('printing-sticker');
+    window.removeEventListener('afterprint', cleanup);
+  };
+  window.addEventListener('afterprint', cleanup);
+
+  setTimeout(() => {
+    window.print();
+    setTimeout(cleanup, 1200);
+  }, 180);
+}
+
+function openStickerPrintModal(opts){
+  if(!opts || !opts.data) return;
+  const cfg = {
+    type: opts.type || 'product',
+    data: (opts.type === 'receipt' && typeof normalizeReceipt === 'function')
+      ? (normalizeReceipt(opts.data) || opts.data)
+      : opts.data
+  };
+
+  const savedSettings = (state.settings && state.settings.printers && state.settings.printers.barcodePrinter) || {};
+  let currentSizeKey = savedSettings.defaultSize || '40x20';
+  let customW = Number(savedSettings.customWidth) || 40;
+  let customH = Number(savedSettings.customHeight) || 20;
+  let currentRotation = Number(savedSettings.rotation) || 0;
+  let copies = Math.max(1, Number(opts.copies) || 1);
+
+  const existing = document.getElementById('stickerPrintModalOverlay');
+  if(existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'stickerPrintModalOverlay';
+  overlay.className = 'modal-overlay';
+  overlay.style.cssText = 'z-index: 10050; display:flex; align-items:center; justify-content:center; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(4px);';
+
+  const titleText = (cfg.type === 'receipt')
+    ? `ملصق إيصال الصيانة (#${escapeHtml(cfg.data.receiptNumber)})`
+    : `ملصق باركود الصنف (${escapeHtml((cfg.data.Name||cfg.data.name||'صنف').slice(0, 22))})`;
+
+  overlay.innerHTML = `
+    <div class="modal-card" style="max-width: 500px; width: 95%; background: var(--bg-card, #fff); border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--border-color, #e2e8f0);">
+      <!-- Header -->
+      <div style="padding: 14px 18px; background: linear-gradient(135deg, #1e293b, #0f172a); color: #fff; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display:flex; align-items:center; gap: 10px;">
+          <div style="width: 34px; height: 34px; border-radius: 8px; background: rgba(59, 130, 246, 0.2); display:flex; align-items:center; justify-content:center; font-size: 18px; border: 1px solid rgba(59, 130, 246, 0.3);">🏷️</div>
+          <div>
+            <h3 style="margin: 0; font-size: 14px; font-weight: 800; color: #fff;">طباعة ملصق الباركود الحراري</h3>
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">${titleText}</div>
+          </div>
+        </div>
+        <button id="spmCloseBtn" style="background: rgba(255,255,255,0.1); border: none; color: #cbd5e1; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;">✕</button>
+      </div>
+
+      <!-- Body -->
+      <div style="padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; max-height: 80vh;">
+        <!-- Size Selector -->
+        <div>
+          <label style="display:block; font-size: 11.5px; font-weight: 700; color: var(--text-muted, #64748b); margin-bottom: 6px;">
+            📏 مقاس رول الملصقات الحراري:
+          </label>
+          <div id="spmSizeChips" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;">
+            <button type="button" class="spm-chip-btn" data-size="40x20" style="padding: 6px 2px; font-size: 10px; font-weight: 700; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #f8fafc; cursor: pointer; text-align: center; transition: all 0.15s;">
+              40×20 مم ⭐<br><span style="font-size: 8.5px; opacity: 0.8; font-weight: normal;">(4×2 عريض)</span>
+            </button>
+            <button type="button" class="spm-chip-btn" data-size="20x40" style="padding: 6px 2px; font-size: 10px; font-weight: 700; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #f8fafc; cursor: pointer; text-align: center; transition: all 0.15s;">
+              20×40 مم 📄<br><span style="font-size: 8.5px; opacity: 0.8; font-weight: normal;">(2×4 طولي)</span>
+            </button>
+            <button type="button" class="spm-chip-btn" data-size="40x10" style="padding: 6px 2px; font-size: 10px; font-weight: 700; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #f8fafc; cursor: pointer; text-align: center; transition: all 0.15s;">
+              40×10 مم ⚡<br><span style="font-size: 8.5px; opacity: 0.8; font-weight: normal;">(4×1 رفيع)</span>
+            </button>
+            <button type="button" class="spm-chip-btn" data-size="10x40" style="padding: 6px 2px; font-size: 10px; font-weight: 700; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #f8fafc; cursor: pointer; text-align: center; transition: all 0.15s;">
+              10×40 مم 📏<br><span style="font-size: 8.5px; opacity: 0.8; font-weight: normal;">(1×4 طولي)</span>
+            </button>
+            <button type="button" class="spm-chip-btn" data-size="40x15" style="padding: 6px 2px; font-size: 10px; font-weight: 700; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #f8fafc; cursor: pointer; text-align: center; transition: all 0.15s;">
+              40×15 مم
+            </button>
+            <button type="button" class="spm-chip-btn" data-size="50x25" style="padding: 6px 2px; font-size: 10px; font-weight: 700; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #f8fafc; cursor: pointer; text-align: center; transition: all 0.15s;">
+              50×25 مم
+            </button>
+            <button type="button" class="spm-chip-btn" data-size="50x30" style="padding: 6px 2px; font-size: 10px; font-weight: 700; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #f8fafc; cursor: pointer; text-align: center; transition: all 0.15s;">
+              50×30 مم
+            </button>
+            <button type="button" class="spm-chip-btn" data-size="custom" style="padding: 6px 2px; font-size: 10px; font-weight: 700; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #f8fafc; cursor: pointer; text-align: center; transition: all 0.15s;">
+              تخصيص ⚙️
+            </button>
+          </div>
+          <!-- Custom Size Inputs -->
+          <div id="spmCustomBox" style="display: none; margin-top: 6px; padding: 6px 12px; background: #f1f5f9; border-radius: 8px; align-items: center; justify-content: space-between; gap: 8px;">
+            <div style="display:flex; align-items:center; gap: 4px; font-size: 11px; font-weight: 700;">
+              <span>العرض:</span>
+              <input id="spmCustomW" type="number" min="10" max="120" value="${customW}" style="width: 55px; padding: 3px; text-align: center; border: 1px solid #cbd5e1; border-radius: 6px;" />
+              <span>مم</span>
+            </div>
+            <div style="display:flex; align-items:center; gap: 4px; font-size: 11px; font-weight: 700;">
+              <span>الارتفاع:</span>
+              <input id="spmCustomH" type="number" min="10" max="120" value="${customH}" style="width: 55px; padding: 3px; text-align: center; border: 1px solid #cbd5e1; border-radius: 6px;" />
+              <span>مم</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Rotation Selector -->
+        <div style="display:flex; align-items:center; justify-content:space-between; padding: 6px 10px; background: #f1f5f9; border-radius: 8px;">
+          <div style="font-size: 11.5px; font-weight: 700; color: #334155; display:flex; align-items:center; gap: 4px;">
+            <span>🔄 تدوير اتجاه الطباعة:</span>
+          </div>
+          <div id="spmRotBtns" style="display:flex; gap: 4px;">
+            <button type="button" class="spm-rot-btn" data-rot="0" style="padding: 4px 8px; font-size: 10.5px; font-weight: 700; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; cursor: pointer;">0° طبيعي</button>
+            <button type="button" class="spm-rot-btn" data-rot="90" style="padding: 4px 8px; font-size: 10.5px; font-weight: 700; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; cursor: pointer;">90°</button>
+            <button type="button" class="spm-rot-btn" data-rot="180" style="padding: 4px 8px; font-size: 10.5px; font-weight: 700; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; cursor: pointer;">180°</button>
+            <button type="button" class="spm-rot-btn" data-rot="270" style="padding: 4px 8px; font-size: 10.5px; font-weight: 700; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; cursor: pointer;">270°</button>
+          </div>
+        </div>
+
+        <!-- Live Preview Stage -->
+        <div>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 5px;">
+            <label style="font-size: 11.5px; font-weight: 700; color: var(--text-muted, #64748b);">
+              👁️ معاينة شكل الملصق مباشرة:
+            </label>
+            <span id="spmDimBadge" style="font-size: 10.5px; font-weight: 700; color: #2563eb; background: #eff6ff; padding: 2px 8px; border-radius: 999px; border: 1px solid #bfdbfe;">40×20 مم</span>
+          </div>
+          <div style="background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 10px; padding: 14px; display: flex; align-items: center; justify-content: center; min-height: 120px; overflow: hidden; position: relative;">
+            <div id="spmScaleWrapper" style="display: flex; align-items: center; justify-content: center; transition: all 0.2s;">
+              <div id="spmPreviewBox" style="background: #fff; box-shadow: 0 4px 14px rgba(0,0,0,0.12); border: 1px solid #000; border-radius: 2px; overflow: hidden; transition: all 0.2s;">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Copies and Info -->
+        <div style="display: flex; align-items: center; justify-content: space-between; padding-top: 2px;">
+          <div style="display:flex; align-items:center; gap: 8px;">
+            <label style="font-size: 11.5px; font-weight: 700; color: var(--text-muted, #64748b);">عدد النسخ:</label>
+            <div style="display:flex; align-items:center; border: 1.5px solid #cbd5e1; border-radius: 8px; overflow: hidden; background: #fff;">
+              <button id="spmCopyDec" type="button" style="width: 28px; height: 28px; border: none; background: #f1f5f9; cursor: pointer; font-weight: 900;">-</button>
+              <input id="spmCopiesInput" type="number" min="1" max="99" value="${copies}" style="width: 38px; height: 28px; border: none; text-align: center; font-weight: 800; font-size: 13px;" />
+              <button id="spmCopyInc" type="button" style="width: 28px; height: 28px; border: none; background: #f1f5f9; cursor: pointer; font-weight: 900;">+</button>
+            </div>
+          </div>
+          <div style="font-size: 10px; color: #059669; font-weight: 700; display:flex; align-items:center; gap: 4px;">
+            <span>✓ تم إلغاء تدوير المتصفح الإجباري</span>
+          </div>
+        </div>
+
+        <!-- Hint -->
+        <div style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 7px 10px; font-size: 10px; color: #b45309; line-height: 1.4;">
+          💡 <b>نصيحة هامة:</b> في نافذة الطباعة تأكد من اختيار <b>الهوامش: بلا (None)</b>. وإذا كان الرول مطبوعاً بشكل معكوس، يمكنك الضغط على زر <b>تدوير 90°</b> بالأعلى للتعديل الفوري!
+        </div>
+      </div>
+
+      <!-- Footer Buttons -->
+      <div style="padding: 10px 18px; background: #f8fafc; border-top: 1px solid var(--border-color, #e2e8f0); display: flex; align-items: center; justify-content: flex-end; gap: 8px;">
+        <button id="spmCancelBtn" type="button" class="btn btn-secondary" style="padding: 7px 14px; font-size: 11.5px; font-weight: 700; border-radius: 8px;">إلغاء</button>
+        <button id="spmPrintBtn" type="button" class="btn btn-primary" style="padding: 7px 20px; font-size: 11.5px; font-weight: 800; border-radius: 8px; background: linear-gradient(135deg, #2563eb, #1d4ed8); display:flex; align-items:center; gap: 6px; box-shadow: 0 4px 10px rgba(37, 99, 235, 0.3);">
+          <span>طباعة الملصق الآن</span> 🖨️
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const updatePreview = () => {
+    const dim = getThermalStickerDimensions(currentSizeKey, customW, customH);
+    const previewBox = overlay.querySelector('#spmPreviewBox');
+    const dimBadge = overlay.querySelector('#spmDimBadge');
+    if(dimBadge) dimBadge.textContent = `${dim.w}×${dim.h} مم (${currentRotation}°)`;
+
+    // Screen pixel conversion: 3.78px per mm
+    const baseW = dim.w * 3.78;
+    const baseH = dim.h * 3.78;
+    const maxBoxW = 240;
+    const maxBoxH = 120;
+    const scaleFactor = Math.min(maxBoxW / baseW, maxBoxH / baseH, 2.0);
+    const boxW = Math.round(baseW * scaleFactor);
+    const boxH = Math.round(baseH * scaleFactor);
+
+    previewBox.style.width = `${boxW}px`;
+    previewBox.style.height = `${boxH}px`;
+    previewBox.style.transform = currentRotation ? `rotate(${currentRotation}deg)` : 'none';
+
+    const svgId = 'stickerLivePreviewSvg';
+    const contentHtml = (cfg.type === 'receipt')
+      ? generateReceiptStickerHTML(cfg.data, dim, svgId)
+      : generateProductStickerHTML(cfg.data, dim, svgId);
+
+    previewBox.innerHTML = contentHtml;
+    previewBox.style.fontSize = `${scaleFactor}em`;
+
+    const barcodeVal = (cfg.type === 'receipt')
+      ? cfg.data.receiptNumber
+      : (cfg.data.Barcode || cfg.data.SKU || cfg.data.barcode || cfg.data.sku || cfg.data.ID || '1001');
+
+    setTimeout(() => {
+      renderStickerBarcodeSVG('#' + svgId, barcodeVal, dim);
+    }, 15);
+
+    overlay.querySelectorAll('.spm-chip-btn').forEach(btn => {
+      const isSel = btn.dataset.size === currentSizeKey;
+      btn.style.borderColor = isSel ? '#2563eb' : '#cbd5e1';
+      btn.style.background = isSel ? '#eff6ff' : '#f8fafc';
+      btn.style.color = isSel ? '#1d4ed8' : '#334155';
+    });
+
+    overlay.querySelectorAll('.spm-rot-btn').forEach(btn => {
+      const isSel = Number(btn.dataset.rot) === currentRotation;
+      btn.style.borderColor = isSel ? '#2563eb' : '#cbd5e1';
+      btn.style.background = isSel ? '#eff6ff' : '#ffffff';
+      btn.style.color = isSel ? '#1d4ed8' : '#334155';
+    });
+
+    const customBox = overlay.querySelector('#spmCustomBox');
+    if(customBox) customBox.style.display = (currentSizeKey === 'custom') ? 'flex' : 'none';
+  };
+
+  overlay.querySelector('#spmCloseBtn').onclick = () => overlay.remove();
+  overlay.querySelector('#spmCancelBtn').onclick = () => overlay.remove();
+
+  overlay.querySelectorAll('.spm-chip-btn').forEach(btn => {
+    btn.onclick = () => {
+      currentSizeKey = btn.dataset.size;
+      updatePreview();
+    };
+  });
+
+  overlay.querySelectorAll('.spm-rot-btn').forEach(btn => {
+    btn.onclick = () => {
+      currentRotation = Number(btn.dataset.rot) || 0;
+      updatePreview();
+    };
+  });
+
+  const customWInput = overlay.querySelector('#spmCustomW');
+  const customHInput = overlay.querySelector('#spmCustomH');
+  if(customWInput) customWInput.oninput = (e) => { customW = Number(e.target.value) || 40; updatePreview(); };
+  if(customHInput) customHInput.oninput = (e) => { customH = Number(e.target.value) || 20; updatePreview(); };
+
+  const copiesInput = overlay.querySelector('#spmCopiesInput');
+  overlay.querySelector('#spmCopyDec').onclick = () => {
+    copies = Math.max(1, copies - 1);
+    copiesInput.value = copies;
+  };
+  overlay.querySelector('#spmCopyInc').onclick = () => {
+    copies = Math.min(99, copies + 1);
+    copiesInput.value = copies;
+  };
+  copiesInput.onchange = (e) => {
+    copies = Math.max(1, Math.min(99, Number(e.target.value) || 1));
+    copiesInput.value = copies;
+  };
+
+  overlay.querySelector('#spmPrintBtn').onclick = () => {
+    const dim = getThermalStickerDimensions(currentSizeKey, customW, customH);
+    
+    if(!state.settings.printers) state.settings.printers = {};
+    if(!state.settings.printers.barcodePrinter) state.settings.printers.barcodePrinter = {};
+    state.settings.printers.barcodePrinter.defaultSize = currentSizeKey;
+    state.settings.printers.barcodePrinter.rotation = currentRotation;
+    if(currentSizeKey === 'custom'){
+      state.settings.printers.barcodePrinter.customWidth = customW;
+      state.settings.printers.barcodePrinter.customHeight = customH;
+    }
+    try {
+      localStorage.setItem('microerp_printers_settings', JSON.stringify(state.settings.printers));
+      setCache('settings', state.settings);
+    } catch(e){}
+
+    overlay.remove();
+    executeDirectStickerPrint(cfg, dim, copies, currentRotation);
+  };
+
+  updatePreview();
+}
+
 function openStickerPrint(rawR){
   if(!rawR) return;
-  const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
-  document.body.classList.add('printing-sticker');
-  const old = document.getElementById('printMount');
-  if(old) old.remove();
-  const mount = document.createElement('div');
-  mount.id='printMount';
-
-  const fullCName = (typeof formatCustomerFullName === 'function') ? formatCustomerFullName(r) : ((r.customer && r.customer.name) || extractCustomerName(r) || 'عميل');
-  const cName = fullCName.slice(0, 22);
-  const cPhone = (r.customer && r.customer.phone) || extractCustomerPhone(r) || '';
-  const dCat = (r.device && r.device.category) || 'جهاز';
-  const dBrand = r.device ? (r.device.brand==='أخرى'?r.device.brandOther:r.device.brand) : '';
-  const dModel = (r.device && r.device.model) || '';
-  const pass = ((r.device && r.device.password) || r.password || '').slice(0, 16);
-  const firstFault = ((Array.isArray(r.faults) && r.faults.length ? r.faults[0] : (typeof r.faults === 'string' ? r.faults : '')) || r.faultNotes || '-').slice(0, 25);
-  const shopName = (state.settings && state.settings.shopName) || 'صيانة ميكروتك';
-  const intakeTime = (typeof formatReceiptTime === 'function' ? formatReceiptTime(r) : (r.time || ''));
-  const dateTimeStr = `${cleanDate(r.date)}${intakeTime ? ' ' + intakeTime : ''}`;
-
-  mount.innerHTML = `
-  <div id="stickerPaper">
-    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #000;padding-bottom:1px;">
-      <b style="font-size:8px;">${escapeHtml(shopName)}</b>
-      <span class="mono" style="font-size:8px;font-weight:900;">${escapeHtml(r.receiptNumber)}</span>
-    </div>
-    <div style="text-align:center;margin:1px 0;">
-      <svg id="stickerBarcode"></svg>
-    </div>
-    <div style="font-size:7px;line-height:1.15;">
-      <div><b>الاستلام:</b> <span class="mono">${escapeHtml(dateTimeStr)}</span></div>
-      <div><b>العميل:</b> ${escapeHtml(cName)} | <span class="mono">${escapeHtml(cPhone)}</span></div>
-      <div><b>الجهاز:</b> ${escapeHtml(dCat)} - ${escapeHtml(dBrand)} ${escapeHtml(dModel)}${pass ? ` | <b>باسورد:</b> <span class="mono">${escapeHtml(pass)}</span>` : ''}</div>
-      <div><b>العطل:</b> ${escapeHtml(firstFault)}</div>
-    </div>
-  </div>`;
-  document.body.appendChild(mount);
-  if(typeof JsBarcode !== 'undefined'){
-    try{ JsBarcode('#stickerBarcode', r.receiptNumber, {format:'CODE128', width:1.1, height:16, displayValue:false, margin:0}); }catch(e){}
-  }
-  setTimeout(()=>{
-    window.print();
-    mount.remove();
-    document.body.classList.remove('printing-sticker');
-  }, 200);
+  openStickerPrintModal({ type: 'receipt', data: rawR });
 }
 
 /* ---------------- Excel Export Utility ---------------- */
@@ -12237,53 +12845,10 @@ function openInventoryItemModal(editItem, cloneMode=false, defaultCategory='صي
   renderModalHTML();
 }
 
-/* ---------------- Print Product Barcode Sticker (50mm x 30mm) ---------------- */
+/* ---------------- Print Product Barcode Sticker (Multi-Size Responsive) ---------------- */
 function openProductBarcodeSticker(item){
-  document.body.classList.add('printing-sticker');
-  const old = document.getElementById('printMount');
-  if(old) old.remove();
-  const mount = document.createElement('div');
-  mount.id='printMount';
-
-  const barcodeVal = item.Barcode || item.SKU || item.ID;
-
-  mount.innerHTML = `
-  <div id="stickerPaper">
-    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #000;padding-bottom:1px;">
-      <b style="font-size:7.5px;">${state.settings.shopName || 'ميكروERP'}</b>
-      <span class="mono" style="font-size:7.5px;font-weight:800;">${item.Category||'صيانة'}</span>
-    </div>
-    <div style="font-size:7.5px;font-weight:900;margin:1px 0;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-      ${item.Name}
-    </div>
-    <div style="text-align:center;margin:1px 0;">
-      <svg id="productStickerBarcode"></svg>
-    </div>
-    <div style="display:flex;justify-content:space-between;align-items:center;font-size:8px;font-weight:900;border-top:1px solid #000;padding-top:1px;">
-      <span>السعر:</span>
-      <span class="mono" style="font-size:10px;">${Number(item.SellPrice||item.PurchasePrice||0).toLocaleString()} ج.م</span>
-    </div>
-  </div>`;
-
-  document.body.appendChild(mount);
-  if(typeof JsBarcode !== 'undefined'){
-    try{
-      JsBarcode('#productStickerBarcode', barcodeVal, {
-        format:'CODE128',
-        width: 1.15,
-        height: 16,
-        displayValue: true,
-        fontSize: 8,
-        margin: 0
-      });
-    }catch(e){}
-  }
-
-  setTimeout(()=>{
-    window.print();
-    mount.remove();
-    document.body.classList.remove('printing-sticker');
-  }, 200);
+  if(!item) return;
+  openStickerPrintModal({ type: 'product', data: item });
 }
 
 /* ---------------- Bulk Inventory Import Modal (استيراد جماعي من Excel/CSV) ---------------- */
@@ -16354,10 +16919,14 @@ function renderPrintersSettings(main){
         <div class="field">
           <label>المقاس الافتراضي لملصقات الباركود (Default Label Size)</label>
           <select id="prnBarcodeDefaultSize">
-            <option value="50x30" ${b.defaultSize==='50x30'?'selected':''}>50 مم × 30 مم (المقاس القياسي للأصناف والأجهزة) ✨</option>
-            <option value="40x25" ${b.defaultSize==='40x25'?'selected':''}>40 مم × 25 مم (مقاس مدمج للموبايل والإكسسوارات)</option>
-            <option value="38x25" ${b.defaultSize==='38x25'?'selected':''}>38 مم × 25 مم (مقاس سريع)</option>
+            <option value="40x20" ${b.defaultSize==='40x20'?'selected':''}>40 مم × 20 مم (أربعة في اثنين 4×2 سم - الأكثر استخداماً في السوق) ✨</option>
+            <option value="40x10" ${b.defaultSize==='40x10'?'selected':''}>40 مم × 10 مم (أربعة في واحد 4×1 سم - شريط رفيع للإكسسوارات والموبايل)</option>
+            <option value="40x15" ${b.defaultSize==='40x15'?'selected':''}>40 مم × 15 مم (4×1.5 سم - مدمج)</option>
+            <option value="50x25" ${b.defaultSize==='50x25'?'selected':''}>50 مم × 25 مم (5×2.5 سم)</option>
+            <option value="50x30" ${b.defaultSize==='50x30'?'selected':''}>50 مم × 30 مم (5×3 سم - قياسي للأجهزة والطرود)</option>
+            <option value="38x25" ${b.defaultSize==='38x25'?'selected':''}>38 مم × 25 مم (مقاس تجاري)</option>
             <option value="60x40" ${b.defaultSize==='60x40'?'selected':''}>60 مم × 40 مم (مقاس كبير للطرود والأجهزة الكبيرة)</option>
+            <option value="custom" ${b.defaultSize==='custom'?'selected':''}>مقاس مخصص يدوي بالمليمتر...</option>
           </select>
         </div>
       </div>
@@ -17816,12 +18385,14 @@ function renderBarcodeStudioContent(main){
           <div class="field" style="margin-bottom:12px;">
             <label>📐 مقاس الورق ونوع الطابعة</label>
             <select id="bsPresetSelect">
-              <optgroup label="🖨️ طابعات ملصقات حرارية فردية (Thermal Rolls)">
-                <option value="thermal_50x30" ${bs.preset==='thermal_50x30'?'selected':''}>50mm × 30mm (قياسي للأجهزة والمخازن)</option>
-                <option value="thermal_40x25" ${bs.preset==='thermal_40x25'?'selected':''}>40mm × 25mm (مدمج للإكسسوارات والموبايل)</option>
+                <option value="thermal_40x20" ${bs.preset==='thermal_40x20'?'selected':''}>40mm × 20mm (أربعة في اثنين 4×2 سم - الأكثر شيوعاً) ✨</option>
+                <option value="thermal_40x10" ${bs.preset==='thermal_40x10'?'selected':''}>40mm × 10mm (أربعة في واحد 4×1 سم - شريط رفيع للإكسسوارات والموبايل)</option>
+                <option value="thermal_40x15" ${bs.preset==='thermal_40x15'?'selected':''}>40mm × 15mm (4×1.5 سم - مدمج)</option>
+                <option value="thermal_50x25" ${bs.preset==='thermal_50x25'?'selected':''}>50mm × 25mm (5×2.5 سم)</option>
+                <option value="thermal_50x30" ${bs.preset==='thermal_50x30'?'selected':''}>50mm × 30mm (5×3 سم - قياسي للأجهزة والطرود)</option>
+                <option value="thermal_40x25" ${bs.preset==='thermal_40x25'?'selected':''}>40mm × 25mm (مدمج للموبايل)</option>
                 <option value="thermal_38x25" ${bs.preset==='thermal_38x25'?'selected':''}>38mm × 25mm (مقاس تجاري شائع)</option>
                 <option value="thermal_60x40" ${bs.preset==='thermal_60x40'?'selected':''}>60mm × 40mm (كبير للمعدات والطرود)</option>
-              </optgroup>
               <optgroup label="📄 صفحات A4 مقسمة (A4 Sheet Labels)">
                 <option value="a4_24" ${bs.preset==='a4_24'?'selected':''}>ورق A4 — 24 ملصق (3 أعمدة × 8 صفوف)</option>
                 <option value="a4_30" ${bs.preset==='a4_30'?'selected':''}>ورق A4 — 30 ملصق (3 أعمدة × 10 صفوف)</option>
@@ -17938,16 +18509,20 @@ function renderBarcodeStudioContent(main){
   renderBarcodeLivePreview();
 }
 
-function getBarcodePaperDimensions(preset, customW=50, customH=30){
-  if(preset === 'thermal_50x30') return { w: 50, h: 30, isSheet: false, label: '50mm × 30mm (حراري قياسي)' };
-  if(preset === 'thermal_40x25') return { w: 40, h: 25, isSheet: false, label: '40mm × 25mm (حراري مدمج)' };
-  if(preset === 'thermal_38x25') return { w: 38, h: 25, isSheet: false, label: '38mm × 25mm (حراري تجاري)' };
-  if(preset === 'thermal_60x40') return { w: 60, h: 40, isSheet: false, label: '60mm × 40mm (حراري كبير)' };
+function getBarcodePaperDimensions(preset, customW=40, customH=20){
+  if(preset === 'thermal_40x10' || preset === '40x10') return { w: 40, h: 10, isSheet: false, label: '40mm × 10mm (حراري 4×1 سم)' };
+  if(preset === 'thermal_40x15' || preset === '40x15') return { w: 40, h: 15, isSheet: false, label: '40mm × 15mm (حراري 4×1.5 سم)' };
+  if(preset === 'thermal_40x20' || preset === '40x20') return { w: 40, h: 20, isSheet: false, label: '40mm × 20mm (حراري 4×2 سم قياسي)' };
+  if(preset === 'thermal_50x25' || preset === '50x25') return { w: 50, h: 25, isSheet: false, label: '50mm × 25mm (حراري 5×2.5 سم)' };
+  if(preset === 'thermal_50x30' || preset === '50x30') return { w: 50, h: 30, isSheet: false, label: '50mm × 30mm (حراري 5×3 سم)' };
+  if(preset === 'thermal_40x25' || preset === '40x25') return { w: 40, h: 25, isSheet: false, label: '40mm × 25mm (حراري مدمج)' };
+  if(preset === 'thermal_38x25' || preset === '38x25') return { w: 38, h: 25, isSheet: false, label: '38mm × 25mm (حراري تجاري)' };
+  if(preset === 'thermal_60x40' || preset === '60x40') return { w: 60, h: 40, isSheet: false, label: '60mm × 40mm (حراري كبير)' };
   if(preset === 'a4_24') return { w: 64, h: 33.8, isSheet: true, cols: 3, rows: 8, total: 24, label: 'ورق A4 مقسم (24 ملصق: 3×8)' };
   if(preset === 'a4_30') return { w: 64, h: 27, isSheet: true, cols: 3, rows: 10, total: 30, label: 'ورق A4 مقسم (30 ملصق: 3×10)' };
   if(preset === 'a4_40') return { w: 48.5, h: 25.4, isSheet: true, cols: 4, rows: 10, total: 40, label: 'ورق A4 مقسم (40 ملصق: 4×10)' };
   if(preset === 'a4_65') return { w: 38, h: 21.2, isSheet: true, cols: 5, rows: 13, total: 65, label: 'ورق A4 مقسم (65 ملصق: 5×13)' };
-  return { w: Number(customW)||50, h: Number(customH)||30, isSheet: false, label: `مخصص (${customW}mm × ${customH}mm)` };
+  return { w: Number(customW)||40, h: Number(customH)||20, isSheet: false, label: `مخصص (${customW||40}mm × ${customH||20}mm)` };
 }
 
 function generateSingleLabelMarkup(bs, dim, svgId='labelBarcodeSvg', scale=1){

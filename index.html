@@ -6766,11 +6766,13 @@ window.openQuickStatusModalDirect = function(receiptId, receiptNum){
   }
 };
 
-window.openStickerPrintDirect = function(receiptId, receiptNum){
+window.openStickerPrintDirect = function(receiptId, receiptNum, evt){
   try{
     const r = findReceiptByIdOrNum(receiptId, receiptNum);
     if(!r){ showToast('لم يتم العثور على الإيصال المطلوب', 'error'); return; }
-    openStickerPrint(r);
+    const ev = evt || (typeof window !== 'undefined' ? window.event : null);
+    const forceModal = ev ? (ev.shiftKey || ev.altKey) : false;
+    openStickerPrint(r, forceModal);
   }catch(err){
     console.error('Error in openStickerPrintDirect:', err);
     showToast('حدث خطأ أثناء فتح طباعة الملصق: ' + (err.message || err), 'error');
@@ -6886,7 +6888,7 @@ function archiveTable(list){
         <button class="btn btn-xs btn-blue" onclick="convertReceiptToInvoiceDirect(this.dataset.id, this.dataset.num)" data-act="invoice" data-id="${safeTargetId}" data-num="${rNum}" title="تحويل لفاتورة ضريبية رسمية">📄 فاتورة</button>
         <button class="btn btn-xs btn-ghost" onclick="openReceiptDetailModal(this.dataset.id, this.dataset.num)" data-act="view" data-id="${safeTargetId}" data-num="${rNum}" title="تعديل وعرض تفاصيل الإيصال">تعديل</button>
         <button class="btn btn-xs btn-status-quick" style="background:var(--green-bg);color:var(--green-text);" onclick="openQuickStatusModalDirect(this.dataset.id, this.dataset.num)" data-quickstatus="${safeTargetId}" data-id="${safeTargetId}" data-num="${rNum}">⚡ الحالة</button>
-        <button class="btn btn-xs btn-amber" onclick="openStickerPrintDirect(this.dataset.id, this.dataset.num)" data-act="sticker" data-id="${safeTargetId}" data-num="${rNum}">🏷️ ملصق</button>
+        <button class="btn btn-xs btn-amber" onclick="openStickerPrintDirect(this.dataset.id, this.dataset.num, event)" data-act="sticker" data-id="${safeTargetId}" data-num="${rNum}" title="طباعة ملصق الباركود فوراً (انقر للكيوسك، أو اضغط Shift مع النقر لتعديل الخيارات)">🏷️ ملصق</button>
         <button class="btn btn-xs btn-whatsapp" onclick="openWhatsappDirect(this.dataset.id, this.dataset.num)" data-act="wa" data-id="${safeTargetId}" data-num="${rNum}">${WA_ICON} واتساب</button>
         <button class="btn btn-xs btn-green" onclick="openReceiptPrintDirect(this.dataset.id, this.dataset.num, 'receipt')" data-act="print" data-id="${safeTargetId}" data-num="${rNum}">طباعة A5</button>
         <button class="btn btn-xs btn-red" onclick="deleteReceiptDirect(this.dataset.id, this.dataset.num)" data-act="del" data-id="${safeTargetId}" data-num="${rNum}" title="${(state.user && state.user.role==='admin')?'حذف الإيصال':'طلب تصريح حذف من الإدارة'}">${(state.user && state.user.role==='admin')?'حذف':'🔒 طلب حذف'}</button>
@@ -7313,7 +7315,7 @@ function attachRowActions(root){
         else if(act==='view') openReceiptDetailModal(targetId, targetNum);
         else if(act==='wa') openWhatsappDirect(targetId, targetNum);
         else if(act==='print') openReceiptPrintDirect(targetId, targetNum, 'receipt');
-        else if(act==='sticker') openStickerPrintDirect(targetId, targetNum);
+        else if(act==='sticker') openStickerPrintDirect(targetId, targetNum, e);
         else if(act==='del') deleteReceiptDirect(targetId, targetNum);
       }catch(err){
         console.error('Error executing row action:', act, err);
@@ -8208,7 +8210,10 @@ async function openReceiptDetail(rawR){
         <button class="btn btn-amber btn-xs" id="reIntakeDeviceDetailBtn" title="إعادة إدخال نفس الجهاز للصيانة بدورة جديدة">🔄 إعادة صيانة الجهاز</button>
         <button class="btn btn-blue btn-xs" id="convertReceiptToInvoiceBtn" title="إصدار فاتورة ضريبية رسمية للعميل">📄 تحويل لفاتورة رسمية</button>
         ${!r.paid ? `<button class="btn btn-green btn-xs" id="payBtn">✅ سداد المتبقي</button>` : `<button class="btn btn-blue btn-xs" id="invBtn">🖨️ طباعة إيصال نهائي</button>`}
-        <button class="btn btn-amber btn-xs" id="detailStickerBtn">🏷️ ملصق باركود</button>
+        <div style="display:inline-flex;border-radius:6px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,0.05);align-items:stretch;">
+          <button class="btn btn-amber btn-xs" id="detailStickerBtn" title="طباعة ملصق الصيانة فوراً (وضع الكيوسك)">🏷️ ملصق باركود</button>
+          <button class="btn btn-amber btn-xs" id="detailStickerOptsBtn" style="padding:2px 6px;border-right:1px solid rgba(255,255,255,0.35);" title="تعديل خيارات ومعاينة الملصق">⚙️</button>
+        </div>
         <button class="btn btn-ghost btn-xs" id="workOrderBtn">أمر شغل</button>
       </div>
       <div style="display:flex;gap:6px;">
@@ -8542,6 +8547,9 @@ async function openReceiptDetail(rawR){
   const detStickerBtn = overlay.querySelector('#detailStickerBtn');
   if(detStickerBtn) detStickerBtn.onclick = ()=>{ overlay.remove(); openStickerPrint(r); };
 
+  const detStickerOptsBtn = overlay.querySelector('#detailStickerOptsBtn');
+  if(detStickerOptsBtn) detStickerOptsBtn.onclick = ()=>{ overlay.remove(); openStickerPrint(r, true); };
+
   const reIntakeBtn = overlay.querySelector('#reIntakeDeviceDetailBtn');
   if(reIntakeBtn) reIntakeBtn.onclick = ()=>{ overlay.remove(); openReIntakeDeviceModal(r); };
 
@@ -8782,6 +8790,8 @@ function openReceiptPrint(rawR, kind){
 function getThermalStickerDimensions(sizeKey, customW, customH){
   const map = {
     '40x20': { w: 40, h: 20, name: '40×20 مم (4×2 سم ⭐ عريض)' },
+    '40x25': { w: 40, h: 25, name: '40×25 مم (4×2.5 سم)' },
+    '40x30': { w: 40, h: 30, name: '40×30 مم (4×3 سم)' },
     '40x10': { w: 40, h: 10, name: '40×10 مم (4×1 سم ⚡ رفيع)' },
     '20x40': { w: 20, h: 40, name: '20×40 مم (2×4 سم طولي)' },
     '10x40': { w: 10, h: 40, name: '10×40 مم (1×4 سم طولي)' },
@@ -8805,7 +8815,7 @@ function renderStickerBarcodeSVG(target, barcodeVal, dim, format = 'CODE128'){
   if(!val) return;
 
   const minDim = Math.min(dim.w, dim.h);
-  let bWidth = 1.0;
+  let bWidth = 0.95;
   let bHeight = 18;
 
   if(dim.w < dim.h){
@@ -8814,24 +8824,24 @@ function renderStickerBarcodeSVG(target, barcodeVal, dim, format = 'CODE128'){
     bHeight = 16;
   } else if(minDim <= 12){
     // Slim (e.g. 40x10 mm)
-    bWidth = 0.85;
+    bWidth = 0.8;
     bHeight = 12;
   } else if(minDim <= 17){
     // 40x15 mm
-    bWidth = 0.95;
+    bWidth = 0.88;
     bHeight = 15;
-  } else if(minDim <= 23){
-    // 40x20 mm
-    bWidth = 1.05;
+  } else if(minDim <= 24){
+    // 40x20 mm & 40x25 mm
+    bWidth = 0.92;
     bHeight = 18;
   } else {
     // 50x30 or larger
-    bWidth = 1.2;
+    bWidth = 1.1;
     bHeight = 24;
   }
 
-  if(val.length > 14) bWidth = Math.max(0.7, bWidth * 0.8);
-  else if(val.length > 18) bWidth = Math.max(0.6, bWidth * 0.65);
+  if(val.length > 10) bWidth = Math.max(0.78, bWidth * 0.88);
+  if(val.length > 15) bWidth = Math.max(0.68, bWidth * 0.78);
 
   try {
     JsBarcode(target, val, {
@@ -8856,7 +8866,8 @@ function renderStickerBarcodeSVG(target, barcodeVal, dim, format = 'CODE128'){
 }
 
 function generateProductStickerHTML(item, dim, svgId){
-  const shopName = (state.settings && state.settings.shopName) || 'صيانة ميكروتك';
+  const rawShopName = (state.settings && state.settings.shopName) || 'صيانة ميكروتك';
+  const shopName = escapeHtml(rawShopName.length > 20 ? (rawShopName.slice(0, 18) + '..') : rawShopName);
   const name = escapeHtml(item.Name || item.name || 'صنف');
   const cat = escapeHtml(item.Category || item.category || 'إكسسوار');
   const price = Number(item.SellPrice || item.PurchasePrice || item.price || 0).toLocaleString();
@@ -8865,21 +8876,21 @@ function generateProductStickerHTML(item, dim, svgId){
   // Portrait layout (w < h, e.g. 20x40 mm or 10x40 mm)
   if(dim.w < dim.h){
     return `
-    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:1mm 0.8mm;box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif;color:#000;background:#fff;overflow:hidden;text-align:center;">
-      <div style="border-bottom:0.5px solid #000;padding-bottom:0.3mm;">
-        <div style="font-size:6.5px;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(shopName)}</div>
-        <div class="mono" style="font-size:6px;opacity:0.8;">${cat}</div>
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:1mm 0.8mm;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:900;color:#000;background:#fff;overflow:hidden;text-align:center;direction:rtl;">
+      <div style="border-bottom:1px solid #000;padding-bottom:0.4mm;">
+        <div style="font-size:7px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${shopName}</div>
+        <div class="mono" style="font-size:6.5px;font-weight:800;">${cat}</div>
       </div>
-      <div style="font-size:7px;font-weight:bold;line-height:1.15;max-height:6mm;overflow:hidden;margin:0.4mm 0;">
+      <div style="font-size:7.5px;font-weight:900;line-height:1.2;max-height:6.5mm;overflow:hidden;margin:0.4mm 0;">
         ${name}
       </div>
       <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;margin:0.4mm 0;">
-        <svg id="${svgId}" style="max-height:7.5mm;max-width:96%;display:block;"></svg>
-        <span class="mono" style="font-size:6.5px;font-weight:800;letter-spacing:0.2px;line-height:1;margin-top:0.3mm;">${barcodeVal}</span>
+        <svg id="${svgId}" style="max-height:7.5mm;max-width:96%;display:block;margin:0 auto;"></svg>
+        <span class="mono" style="font-size:7px;font-weight:900;letter-spacing:0.3px;line-height:1;margin-top:0.3mm;">${barcodeVal}</span>
       </div>
-      <div style="border-top:0.5px solid #000;padding-top:0.3mm;">
-        <div style="font-size:6px;">السعر:</div>
-        <b class="mono" style="font-size:8.5px;font-weight:900;">${price} ج</b>
+      <div style="border-top:1px solid #000;padding-top:0.4mm;">
+        <div style="font-size:6.5px;font-weight:800;">السعر:</div>
+        <b class="mono" style="font-size:9.5px;font-weight:900;">${price} ج</b>
       </div>
     </div>`;
   }
@@ -8888,85 +8899,88 @@ function generateProductStickerHTML(item, dim, svgId){
   if(dim.h <= 12){
     // 40x10 mm ultra-slim layout
     return `
-    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:0.4mm 0.8mm;box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif;color:#000;background:#fff;overflow:hidden;">
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:0.4mm 0.8mm;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:900;color:#000;background:#fff;overflow:hidden;direction:rtl;">
       <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;gap:1mm;">
-        <span style="font-size:7px;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70%;">${name}</span>
-        <b class="mono" style="font-size:7.5px;font-weight:900;white-space:nowrap;">${price} ج</b>
+        <span style="font-size:7.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:68%;">${name}</span>
+        <b class="mono" style="font-size:8px;font-weight:900;white-space:nowrap;">${price} ج</b>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;margin-top:0.2mm;">
-        <svg id="${svgId}" style="max-height:5.2mm;max-width:65%;display:block;"></svg>
-        <span class="mono" style="font-size:6.5px;font-weight:800;letter-spacing:0.3px;">${barcodeVal}</span>
+        <svg id="${svgId}" style="max-height:5.2mm;max-width:62%;display:block;"></svg>
+        <span class="mono" style="font-size:7px;font-weight:900;letter-spacing:0.3px;">${barcodeVal}</span>
       </div>
     </div>`;
   } else if(dim.h <= 17){
     // 40x15 mm layout
     return `
-    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:0.6mm 0.8mm;box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif;color:#000;background:#fff;overflow:hidden;">
-      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-bottom:0.5px solid #000;padding-bottom:0.3mm;">
-        <span style="font-size:6.5px;font-weight:bold;">${escapeHtml(shopName)}</span>
-        <b class="mono" style="font-size:8px;font-weight:900;">${price} ج.م</b>
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:0.6mm 1mm;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:900;color:#000;background:#fff;overflow:hidden;direction:rtl;">
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-bottom:1px solid #000;padding-bottom:0.4mm;">
+        <span style="font-size:7px;font-weight:900;">${shopName}</span>
+        <b class="mono" style="font-size:8.5px;font-weight:900;">${price} ج.م</b>
       </div>
-      <div style="font-size:7.5px;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.1;margin:0.3mm 0;">
+      <div style="font-size:8px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.15;margin:0.3mm 0;">
         ${name}
       </div>
       <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;">
-        <svg id="${svgId}" style="max-height:5.5mm;max-width:96%;display:block;"></svg>
-        <span class="mono" style="font-size:6.5px;font-weight:800;line-height:1;margin-top:0.3mm;">${barcodeVal}</span>
+        <svg id="${svgId}" style="max-height:5.5mm;max-width:94%;display:block;margin:0 auto;"></svg>
+        <span class="mono" style="font-size:7px;font-weight:900;line-height:1;margin-top:0.3mm;">${barcodeVal}</span>
       </div>
     </div>`;
-  } else if(dim.h <= 23){
-    // 40x20 mm layout (⭐ Primary User Roll: 4x2 cm)
+  } else if(dim.h <= 24){
+    // 40x20 mm & 40x25 mm layout (⭐ Primary User Roll: 4x2 cm)
     return `
-    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:0.6mm 1mm;box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif;color:#000;background:#fff;overflow:hidden;">
-      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-bottom:0.5px solid #000;padding-bottom:0.4mm;">
-        <span style="font-size:7px;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:65%;">${escapeHtml(shopName)}</span>
-        <span class="mono" style="font-size:6.5px;font-weight:bold;opacity:0.85;">${cat}</span>
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:0.8mm 1.5mm;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:900;color:#000;background:#fff;overflow:hidden;direction:rtl;">
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-bottom:1px solid #000;padding-bottom:0.5mm;">
+        <span style="font-size:7.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:62%;">${shopName}</span>
+        <span class="mono" style="font-size:7px;font-weight:900;">${cat}</span>
       </div>
-      <div style="font-size:8px;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.15;margin:0.4mm 0;">
+      <div style="font-size:8.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;margin:0.4mm 0;">
         ${name}
       </div>
       <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;">
-        <svg id="${svgId}" style="max-height:6.2mm;max-width:96%;display:block;"></svg>
-        <span class="mono" style="font-size:7px;font-weight:800;letter-spacing:0.4px;line-height:1;margin-top:0.3mm;">${barcodeVal}</span>
+        <svg id="${svgId}" style="max-height:6.2mm;max-width:94%;display:block;margin:0 auto;"></svg>
+        <span class="mono" style="font-size:7.5px;font-weight:900;letter-spacing:0.5px;line-height:1;margin-top:0.3mm;">${barcodeVal}</span>
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-top:0.5px solid #000;padding-top:0.4mm;">
-        <span style="font-size:7px;font-weight:bold;">السعر:</span>
-        <b class="mono" style="font-size:9.5px;font-weight:900;">${price} ج.م</b>
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-top:1px solid #000;padding-top:0.5mm;">
+        <span style="font-size:7.5px;font-weight:900;">السعر:</span>
+        <b class="mono" style="font-size:10px;font-weight:900;">${price} ج.م</b>
       </div>
     </div>`;
   } else {
     // 50x25, 50x30, 60x40 mm larger stickers
     return `
-    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:1mm 1.2mm;box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif;color:#000;background:#fff;overflow:hidden;">
-      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-bottom:1px solid #000;padding-bottom:0.5mm;">
-        <span style="font-size:8px;font-weight:bold;">${escapeHtml(shopName)}</span>
-        <span class="mono" style="font-size:7.5px;font-weight:bold;">${cat}</span>
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:1mm 1.5mm;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:900;color:#000;background:#fff;overflow:hidden;direction:rtl;">
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-bottom:1.5px solid #000;padding-bottom:0.6mm;">
+        <span style="font-size:8.5px;font-weight:900;">${shopName}</span>
+        <span class="mono" style="font-size:8px;font-weight:900;">${cat}</span>
       </div>
-      <div style="font-size:8.5px;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;margin:0.5mm 0;">
+      <div style="font-size:9px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;margin:0.5mm 0;">
         ${name}
       </div>
       <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;">
-        <svg id="${svgId}" style="max-height:9mm;max-width:96%;display:block;"></svg>
-        <span class="mono" style="font-size:7.5px;font-weight:800;letter-spacing:0.5px;line-height:1;margin-top:0.4mm;">${barcodeVal}</span>
+        <svg id="${svgId}" style="max-height:9mm;max-width:94%;display:block;margin:0 auto;"></svg>
+        <span class="mono" style="font-size:8px;font-weight:900;letter-spacing:0.5px;line-height:1;margin-top:0.4mm;">${barcodeVal}</span>
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-top:1px solid #000;padding-top:0.5mm;">
-        <span style="font-size:8px;font-weight:bold;">السعر:</span>
-        <b class="mono" style="font-size:11px;font-weight:900;">${price} ج.م</b>
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-top:1.5px solid #000;padding-top:0.6mm;">
+        <span style="font-size:8.5px;font-weight:900;">السعر:</span>
+        <b class="mono" style="font-size:12px;font-weight:900;">${price} ج.م</b>
       </div>
     </div>`;
   }
 }
 
 function generateReceiptStickerHTML(r, dim, svgId){
-  const shopName = (state.settings && state.settings.shopName) || 'صيانة ميكروتك';
+  const rawShopName = (state.settings && state.settings.shopName) || 'صيانة ميكروتك';
+  const shopName = escapeHtml(rawShopName.length > 20 ? (rawShopName.slice(0, 18) + '..') : rawShopName);
+  
   const fullCName = (typeof formatCustomerFullName === 'function') ? formatCustomerFullName(r) : ((r.customer && r.customer.name) || extractCustomerName(r) || 'عميل');
   const cName = escapeHtml(fullCName.slice(0, 20));
-  const cPhone = escapeHtml((r.customer && r.customer.phone) || extractCustomerPhone(r) || '');
+  const rawPhone = (r.customer && r.customer.phone) || extractCustomerPhone(r) || '';
+  const cPhone = escapeHtml(rawPhone);
   const dCat = escapeHtml((r.device && r.device.category) || 'جهاز');
   const dBrand = escapeHtml(r.device ? (r.device.brand==='أخرى'?r.device.brandOther:r.device.brand) : '');
   const dModel = escapeHtml((r.device && r.device.model) || '');
-  const pass = escapeHtml(((r.device && r.device.password) || r.password || '').slice(0, 14));
-  const firstFault = escapeHtml(((Array.isArray(r.faults) && r.faults.length ? r.faults[0] : (typeof r.faults === 'string' ? r.faults : '')) || r.faultNotes || '-').slice(0, 24));
+  const pass = escapeHtml(((r.device && r.device.password) || r.password || '').slice(0, 12));
+  const firstFault = escapeHtml(((Array.isArray(r.faults) && r.faults.length ? r.faults[0] : (typeof r.faults === 'string' ? r.faults : '')) || r.faultNotes || '-').slice(0, 26));
   const rNum = escapeHtml(String(r.receiptNumber || ''));
   const intakeTime = (typeof formatReceiptTime === 'function' ? formatReceiptTime(r) : (r.time || ''));
   const dateTimeStr = escapeHtml(`${cleanDate(r.date)}${intakeTime ? ' ' + intakeTime : ''}`);
@@ -8974,18 +8988,18 @@ function generateReceiptStickerHTML(r, dim, svgId){
   if(dim.w < dim.h){
     // Portrait layout (e.g. 20x40 mm)
     return `
-    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:1mm 0.8mm;box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif;color:#000;background:#fff;overflow:hidden;text-align:center;">
-      <div style="border-bottom:0.5px solid #000;padding-bottom:0.3mm;">
-        <div style="font-size:6.5px;font-weight:bold;">${escapeHtml(shopName)}</div>
-        <b class="mono" style="font-size:7.5px;font-weight:900;">#${rNum}</b>
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:1mm 0.8mm;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:800;color:#000;background:#fff;overflow:hidden;text-align:center;direction:rtl;">
+      <div style="border-bottom:1px solid #000;padding-bottom:0.4mm;">
+        <div style="font-size:7px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${shopName}</div>
+        <b class="mono" style="font-size:8px;font-weight:900;direction:ltr;display:inline-block;">#${rNum}</b>
       </div>
       <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;margin:0.4mm 0;">
-        <svg id="${svgId}" style="max-height:7mm;max-width:96%;display:block;"></svg>
-        <span class="mono" style="font-size:6.5px;font-weight:800;line-height:1;margin-top:0.2mm;">${rNum}</span>
+        <svg id="${svgId}" style="max-height:7.5mm;max-width:96%;display:block;margin:0 auto;"></svg>
+        <span class="mono" style="font-size:7px;font-weight:900;letter-spacing:0.3px;line-height:1;margin-top:0.3mm;">${rNum}</span>
       </div>
-      <div style="font-size:6px;line-height:1.15;text-align:right;overflow:hidden;">
+      <div style="font-size:6.5px;line-height:1.2;text-align:right;overflow:hidden;">
         <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>العميل:</b> ${cName}</div>
-        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>الهاتف:</b> <span class="mono">${cPhone}</span></div>
+        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>الهاتف:</b> <span class="mono" style="direction:ltr;display:inline-block;">${cPhone}</span></div>
         <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>الجهاز:</b> ${dCat} ${dBrand}</div>
         ${pass ? `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>ب:</b> <span class="mono">${pass}</span></div>` : ''}
       </div>
@@ -8994,68 +9008,90 @@ function generateReceiptStickerHTML(r, dim, svgId){
 
   // Landscape layouts
   if(dim.h <= 12){
-    // 40x10 mm slim
+    // 40x10 mm ultra-slim
     return `
-    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:0.4mm 0.6mm;box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif;color:#000;background:#fff;overflow:hidden;">
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:0.4mm 0.8mm;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:800;color:#000;background:#fff;overflow:hidden;direction:rtl;">
       <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;">
-        <b class="mono" style="font-size:8px;font-weight:900;">#${rNum}</b>
-        <span style="font-size:6.5px;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%;">${cName} ${cPhone}</span>
+        <b class="mono" style="font-size:8px;font-weight:900;direction:ltr;white-space:nowrap;">#${rNum}</b>
+        <span style="font-size:7px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:58%;">${cName} ${cPhone}</span>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;margin-top:0.2mm;">
         <svg id="${svgId}" style="max-height:5.2mm;max-width:60%;display:block;"></svg>
-        <span style="font-size:6.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:38%;">${dCat} ${dBrand}</span>
+        <span style="font-size:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:38%;"><b>${dCat}</b> ${dBrand}</span>
       </div>
     </div>`;
   } else if(dim.h <= 17){
     // 40x15 mm
     return `
-    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:0.5mm 0.8mm;box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif;color:#000;background:#fff;overflow:hidden;">
-      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-bottom:0.5px solid #000;padding-bottom:0.3mm;">
-        <span style="font-size:6.5px;font-weight:bold;">${escapeHtml(shopName)}</span>
-        <b class="mono" style="font-size:7.5px;font-weight:900;">#${rNum}</b>
-      </div>
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;margin:0.3mm 0;">
-        <svg id="${svgId}" style="max-height:5.5mm;max-width:96%;display:block;"></svg>
-      </div>
-      <div style="font-size:6.5px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-        <b>${cName}</b> | ${cPhone} | ${dCat} ${dBrand}
-      </div>
-    </div>`;
-  } else if(dim.h <= 23){
-    // 40x20 mm (⭐ Primary User Roll: 4x2 cm)
-    return `
-    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:0.6mm 0.8mm;box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif;color:#000;background:#fff;overflow:hidden;">
-      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-bottom:0.5px solid #000;padding-bottom:0.4mm;">
-        <span style="font-size:7px;font-weight:bold;">${escapeHtml(shopName)}</span>
-        <b class="mono" style="font-size:8px;font-weight:900;">#${rNum}</b>
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:0.5mm 1mm;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:800;color:#000;background:#fff;overflow:hidden;direction:rtl;">
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-bottom:1px solid #000;padding-bottom:0.3mm;">
+        <b style="font-size:7.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:58%;">${shopName}</b>
+        <b class="mono" style="font-size:8px;font-weight:900;direction:ltr;white-space:nowrap;">#${rNum}</b>
       </div>
       <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;margin:0.2mm 0;">
-        <svg id="${svgId}" style="max-height:5.5mm;max-width:96%;display:block;"></svg>
-        <span class="mono" style="font-size:6.5px;font-weight:800;line-height:1;margin-top:0.2mm;">${rNum}</span>
+        <svg id="${svgId}" style="max-height:5.5mm;max-width:94%;display:block;margin:0 auto;"></svg>
       </div>
-      <div style="font-size:6.5px;line-height:1.15;overflow:hidden;">
-        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>العميل:</b> ${cName} | <span class="mono">${cPhone}</span></div>
-        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>الجهاز:</b> ${dCat} - ${dBrand} ${dModel}${pass ? ` | <b>ب:</b> <span class="mono">${pass}</span>` : ''}</div>
-        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>العطل:</b> ${firstFault}</div>
+      <div style="font-size:7px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+        <b>${cName}</b> | <span class="mono" style="direction:ltr;">${cPhone}</span> | ${dCat} ${dBrand}
+      </div>
+    </div>`;
+  } else if(dim.h <= 24){
+    // 40x20 mm & 40x25 mm (⭐ Primary User Roll: 4x2 cm)
+    return `
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:0.8mm 1.5mm;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:800;color:#000;background:#fff;overflow:hidden;direction:rtl;">
+      <!-- Row 1: Header -->
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-bottom:1px solid #000;padding-bottom:0.5mm;">
+        <b style="font-size:8px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:58%;letter-spacing:-0.2px;">${shopName}</b>
+        <span class="mono" style="font-size:8.5px;font-weight:900;direction:ltr;display:inline-block;white-space:nowrap;letter-spacing:0.3px;">#${rNum}</span>
+      </div>
+      <!-- Row 2: Barcode -->
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;margin:0.4mm 0 0.2mm 0;">
+        <svg id="${svgId}" style="max-height:5.8mm;max-width:94%;display:block;margin:0 auto;"></svg>
+        <span class="mono" style="font-size:7.5px;font-weight:900;letter-spacing:0.5px;line-height:1;margin-top:0.3mm;">${rNum}</span>
+      </div>
+      <!-- Row 3: Details -->
+      <div style="font-size:7.5px;line-height:1.2;font-weight:800;overflow:hidden;">
+        <div style="display:flex;justify-content:space-between;align-items:center;white-space:nowrap;overflow:hidden;gap:1mm;">
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:62%;"><b>العميل:</b> ${cName}</span>
+          <span class="mono" style="direction:ltr;white-space:nowrap;font-weight:900;font-size:7.5px;">${cPhone}</span>
+        </div>
+        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+          <b>الجهاز:</b> ${dCat} - ${dBrand} ${dModel}${pass ? ` | <b>ب:</b> <span class="mono">${pass}</span>` : ''}
+        </div>
+        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+          <b>العطل:</b> ${firstFault}
+        </div>
       </div>
     </div>`;
   } else {
-    // 50x30 mm larger
+    // 50x25, 50x30, 40x30, 60x40 mm larger stickers
     return `
-    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:1mm 1.2mm;box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif;color:#000;background:#fff;overflow:hidden;">
-      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-bottom:1px solid #000;padding-bottom:0.5mm;">
-        <span style="font-size:8px;font-weight:bold;">${escapeHtml(shopName)}</span>
-        <b class="mono" style="font-size:9px;font-weight:900;">#${rNum}</b>
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:1mm 1.5mm;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:800;color:#000;background:#fff;overflow:hidden;direction:rtl;">
+      <!-- Header -->
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-bottom:1.5px solid #000;padding-bottom:0.6mm;">
+        <b style="font-size:9px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%;">${shopName}</b>
+        <span class="mono" style="font-size:9.5px;font-weight:900;direction:ltr;display:inline-block;white-space:nowrap;">#${rNum}</span>
       </div>
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;margin:0.4mm 0;">
-        <svg id="${svgId}" style="max-height:8mm;max-width:96%;display:block;"></svg>
-        <span class="mono" style="font-size:7px;font-weight:800;line-height:1;margin-top:0.3mm;">${rNum}</span>
+      <!-- Barcode -->
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;margin:0.5mm 0 0.3mm 0;">
+        <svg id="${svgId}" style="max-height:8mm;max-width:94%;display:block;margin:0 auto;"></svg>
+        <span class="mono" style="font-size:8px;font-weight:900;letter-spacing:0.5px;line-height:1;margin-top:0.4mm;">${rNum}</span>
       </div>
-      <div style="font-size:7px;line-height:1.2;overflow:hidden;">
-        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>الاستلام:</b> <span class="mono">${dateTimeStr}</span></div>
-        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>العميل:</b> ${cName} | <span class="mono">${cPhone}</span></div>
-        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>الجهاز:</b> ${dCat} - ${dBrand} ${dModel}${pass ? ` | <b>باسورد:</b> <span class="mono">${pass}</span>` : ''}</div>
-        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>العطل:</b> ${firstFault}</div>
+      <!-- Details -->
+      <div style="font-size:8px;line-height:1.25;font-weight:800;overflow:hidden;">
+        <div style="display:flex;justify-content:space-between;align-items:center;white-space:nowrap;overflow:hidden;gap:1mm;">
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%;"><b>العميل:</b> ${cName}</span>
+          <span class="mono" style="direction:ltr;white-space:nowrap;font-weight:900;font-size:8px;">${cPhone}</span>
+        </div>
+        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+          <b>الجهاز:</b> ${dCat} - ${dBrand} ${dModel}${pass ? ` | <b>باسورد:</b> <span class="mono">${pass}</span>` : ''}
+        </div>
+        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+          <b>العطل:</b> ${firstFault}
+        </div>
+        <div style="font-size:7px;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+          <b>الاستلام:</b> <span class="mono">${dateTimeStr}</span>
+        </div>
       </div>
     </div>`;
   }
@@ -9095,13 +9131,18 @@ function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0){
         background: #ffffff !important;
         width: auto !important;
         height: auto !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
       }
       body.printing-sticker {
         background: #ffffff !important;
       }
       body.printing-sticker #printMount {
-        display: block !important;
-        margin: 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        margin: 0 auto !important;
         padding: 0 !important;
         width: 100% !important;
       }
@@ -9112,6 +9153,7 @@ function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0){
         max-height: ${dim.h}mm !important;
         box-sizing: border-box !important;
         margin: 0 auto !important;
+        padding: ${dim.h <= 12 ? '0.4mm 0.8mm' : '0.8mm 1.5mm'} !important;
         page-break-inside: avoid !important;
         page-break-after: always !important;
         break-inside: avoid !important;
@@ -9119,7 +9161,14 @@ function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0){
         overflow: hidden !important;
         background: #ffffff !important;
         color: #000000 !important;
+        -webkit-font-smoothing: none !important;
+        text-rendering: geometricPrecision !important;
         ${rotCSS}
+      }
+      .thermal-sticker-page * {
+        color: #000000 !important;
+        font-family: Arial, Tahoma, 'Segoe UI', sans-serif !important;
+        box-sizing: border-box !important;
       }
       .thermal-sticker-page:last-child {
         page-break-after: auto !important;
@@ -9211,6 +9260,18 @@ function openStickerPrintModal(opts){
 
       <!-- Body -->
       <div style="padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; max-height: 80vh;">
+        <!-- Kiosk Mode Quick Switch Banner -->
+        <label style="display:flex; align-items:center; justify-content:space-between; background:#f0fdf4; border:1.5px solid #86efac; border-radius:10px; padding:8px 12px; cursor:pointer;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:18px;">⚡</span>
+            <div>
+              <b style="font-size:12px; color:#166534;">وضع الكيوسك (Kiosk Mode):</b>
+              <div style="font-size:10.5px; color:#15803d;">طباعة فورية بنقرة واحدة من الجدول دون إظهار نافذة المعاينة</div>
+            </div>
+          </div>
+          <input type="checkbox" id="spmKioskModeCheck" ${savedSettings.kioskMode !== false ? 'checked' : ''} style="width:18px; height:18px; cursor:pointer;">
+        </label>
+
         <!-- Size Selector -->
         <div>
           <label style="display:block; font-size: 11.5px; font-weight: 700; color: var(--text-muted, #64748b); margin-bottom: 6px;">
@@ -9220,23 +9281,23 @@ function openStickerPrintModal(opts){
             <button type="button" class="spm-chip-btn" data-size="40x20" style="padding: 6px 2px; font-size: 10px; font-weight: 700; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #f8fafc; cursor: pointer; text-align: center; transition: all 0.15s;">
               40×20 مم ⭐<br><span style="font-size: 8.5px; opacity: 0.8; font-weight: normal;">(4×2 عريض)</span>
             </button>
-            <button type="button" class="spm-chip-btn" data-size="20x40" style="padding: 6px 2px; font-size: 10px; font-weight: 700; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #f8fafc; cursor: pointer; text-align: center; transition: all 0.15s;">
-              20×40 مم 📄<br><span style="font-size: 8.5px; opacity: 0.8; font-weight: normal;">(2×4 طولي)</span>
+            <button type="button" class="spm-chip-btn" data-size="40x25" style="padding: 6px 2px; font-size: 10px; font-weight: 700; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #f8fafc; cursor: pointer; text-align: center; transition: all 0.15s;">
+              40×25 مم<br><span style="font-size: 8.5px; opacity: 0.8; font-weight: normal;">(4×2.5 سم)</span>
+            </button>
+            <button type="button" class="spm-chip-btn" data-size="40x30" style="padding: 6px 2px; font-size: 10px; font-weight: 700; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #f8fafc; cursor: pointer; text-align: center; transition: all 0.15s;">
+              40×30 مم<br><span style="font-size: 8.5px; opacity: 0.8; font-weight: normal;">(4×3 سم)</span>
             </button>
             <button type="button" class="spm-chip-btn" data-size="40x10" style="padding: 6px 2px; font-size: 10px; font-weight: 700; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #f8fafc; cursor: pointer; text-align: center; transition: all 0.15s;">
               40×10 مم ⚡<br><span style="font-size: 8.5px; opacity: 0.8; font-weight: normal;">(4×1 رفيع)</span>
             </button>
-            <button type="button" class="spm-chip-btn" data-size="10x40" style="padding: 6px 2px; font-size: 10px; font-weight: 700; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #f8fafc; cursor: pointer; text-align: center; transition: all 0.15s;">
-              10×40 مم 📏<br><span style="font-size: 8.5px; opacity: 0.8; font-weight: normal;">(1×4 طولي)</span>
-            </button>
-            <button type="button" class="spm-chip-btn" data-size="40x15" style="padding: 6px 2px; font-size: 10px; font-weight: 700; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #f8fafc; cursor: pointer; text-align: center; transition: all 0.15s;">
-              40×15 مم
+            <button type="button" class="spm-chip-btn" data-size="20x40" style="padding: 6px 2px; font-size: 10px; font-weight: 700; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #f8fafc; cursor: pointer; text-align: center; transition: all 0.15s;">
+              20×40 مم 📄<br><span style="font-size: 8.5px; opacity: 0.8; font-weight: normal;">(2×4 طولي)</span>
             </button>
             <button type="button" class="spm-chip-btn" data-size="50x25" style="padding: 6px 2px; font-size: 10px; font-weight: 700; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #f8fafc; cursor: pointer; text-align: center; transition: all 0.15s;">
-              50×25 مم
+              50×25 مم<br><span style="font-size: 8.5px; opacity: 0.8; font-weight: normal;">(5×2.5 سم)</span>
             </button>
             <button type="button" class="spm-chip-btn" data-size="50x30" style="padding: 6px 2px; font-size: 10px; font-weight: 700; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #f8fafc; cursor: pointer; text-align: center; transition: all 0.15s;">
-              50×30 مم
+              50×30 مم<br><span style="font-size: 8.5px; opacity: 0.8; font-weight: normal;">(5×3 سم)</span>
             </button>
             <button type="button" class="spm-chip-btn" data-size="custom" style="padding: 6px 2px; font-size: 10px; font-weight: 700; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #f8fafc; cursor: pointer; text-align: center; transition: all 0.15s;">
               تخصيص ⚙️
@@ -9274,7 +9335,7 @@ function openStickerPrintModal(opts){
         <div>
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 5px;">
             <label style="font-size: 11.5px; font-weight: 700; color: var(--text-muted, #64748b);">
-              👁️ معاينة شكل الملصق مباشرة:
+              👁️ معاينة شكل الملصق مباشرة (حقيقي 100%):
             </label>
             <span id="spmDimBadge" style="font-size: 10.5px; font-weight: 700; color: #2563eb; background: #eff6ff; padding: 2px 8px; border-radius: 999px; border: 1px solid #bfdbfe;">40×20 مم</span>
           </div>
@@ -9296,14 +9357,14 @@ function openStickerPrintModal(opts){
               <button id="spmCopyInc" type="button" style="width: 28px; height: 28px; border: none; background: #f1f5f9; cursor: pointer; font-weight: 900;">+</button>
             </div>
           </div>
-          <div style="font-size: 10px; color: #059669; font-weight: 700; display:flex; align-items:center; gap: 4px;">
-            <span>✓ تم إلغاء تدوير المتصفح الإجباري</span>
+          <div style="font-size: 10.5px; color: #059669; font-weight: 800; display:flex; align-items:center; gap: 4px;">
+            <span>✓ خط حراري عالي التباين وواضح</span>
           </div>
         </div>
 
         <!-- Hint -->
         <div style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 7px 10px; font-size: 10px; color: #b45309; line-height: 1.4;">
-          💡 <b>نصيحة هامة:</b> في نافذة الطباعة تأكد من اختيار <b>الهوامش: بلا (None)</b>. وإذا كان الرول مطبوعاً بشكل معكوس، يمكنك الضغط على زر <b>تدوير 90°</b> بالأعلى للتعديل الفوري!
+          💡 <b>نصيحة الكيوسك:</b> تأكد في نافذة الطباعة من اختيار <b>الهوامش: بلا (None)</b>. لتشغيل كروم في وضع الكيوسك الصامت تماماً بدون نافذة، راجع إعدادات الطابعات.
         </div>
       </div>
 
@@ -9410,11 +9471,13 @@ function openStickerPrintModal(opts){
 
   overlay.querySelector('#spmPrintBtn').onclick = () => {
     const dim = getThermalStickerDimensions(currentSizeKey, customW, customH);
+    const isKioskChecked = overlay.querySelector('#spmKioskModeCheck') ? overlay.querySelector('#spmKioskModeCheck').checked : true;
     
     if(!state.settings.printers) state.settings.printers = {};
     if(!state.settings.printers.barcodePrinter) state.settings.printers.barcodePrinter = {};
     state.settings.printers.barcodePrinter.defaultSize = currentSizeKey;
     state.settings.printers.barcodePrinter.rotation = currentRotation;
+    state.settings.printers.barcodePrinter.kioskMode = isKioskChecked;
     if(currentSizeKey === 'custom'){
       state.settings.printers.barcodePrinter.customWidth = customW;
       state.settings.printers.barcodePrinter.customHeight = customH;
@@ -9431,8 +9494,18 @@ function openStickerPrintModal(opts){
   updatePreview();
 }
 
-function openStickerPrint(rawR){
+function openStickerPrint(rawR, forceModal = false){
   if(!rawR) return;
+  const prnSettings = (state.settings && state.settings.printers && state.settings.printers.barcodePrinter) || {};
+  const isKiosk = !forceModal && (prnSettings.kioskMode !== false);
+  if(isKiosk){
+    const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
+    const dim = getThermalStickerDimensions(prnSettings.defaultSize || '40x20', prnSettings.customWidth, prnSettings.customHeight);
+    const rot = Number(prnSettings.rotation) || 0;
+    showToast('🏷️ جاري طباعة ملصق الصيانة فوراً (وضع الكيوسك ⚡)', 'info');
+    executeDirectStickerPrint({ type: 'receipt', data: r }, dim, 1, rot);
+    return;
+  }
   openStickerPrintModal({ type: 'receipt', data: rawR });
 }
 
@@ -16920,6 +16993,8 @@ function renderPrintersSettings(main){
           <label>المقاس الافتراضي لملصقات الباركود (Default Label Size)</label>
           <select id="prnBarcodeDefaultSize">
             <option value="40x20" ${b.defaultSize==='40x20'?'selected':''}>40 مم × 20 مم (أربعة في اثنين 4×2 سم - الأكثر استخداماً في السوق) ✨</option>
+            <option value="40x25" ${b.defaultSize==='40x25'?'selected':''}>40 مم × 25 مم (4×2.5 سم - ملصق أطول للبيانات الواسعة)</option>
+            <option value="40x30" ${b.defaultSize==='40x30'?'selected':''}>40 مم × 30 مم (4×3 سم - واسع جداً ومريح للصيانة)</option>
             <option value="40x10" ${b.defaultSize==='40x10'?'selected':''}>40 مم × 10 مم (أربعة في واحد 4×1 سم - شريط رفيع للإكسسوارات والموبايل)</option>
             <option value="40x15" ${b.defaultSize==='40x15'?'selected':''}>40 مم × 15 مم (4×1.5 سم - مدمج)</option>
             <option value="50x25" ${b.defaultSize==='50x25'?'selected':''}>50 مم × 25 مم (5×2.5 سم)</option>
@@ -16947,6 +17022,10 @@ function renderPrintersSettings(main){
       </div>
 
       <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;">
+        <label class="checkbox-row" style="font-size:12.5px;grid-column:1/-1;background:rgba(124,58,237,0.06);padding:6px 10px;border-radius:6px;border:1px solid rgba(124,58,237,0.15);font-weight:700;color:var(--purple);">
+          <input type="checkbox" id="prnBarcodeKioskMode" ${b.kioskMode!==false?'checked':''}>
+          <span>⚡ تفعيل وضع الكيوسك المباشر لملصقات الباركود (طباعة فورية بنقرة واحدة بدون فتح نوافذ تأكيد)</span>
+        </label>
         <label class="checkbox-row" style="font-size:12.5px;">
           <input type="checkbox" id="prnBarcodeShowPrice" ${b.showPrice!==false?'checked':''}>
           <span>💵 إظهار سعر البيع على الملصق</span>
@@ -17215,6 +17294,7 @@ function attachPrintersSettingsEvents(main){
     prn.barcodePrinter.showPrice = document.getElementById('prnBarcodeShowPrice').checked;
     prn.barcodePrinter.showShopName = document.getElementById('prnBarcodeShowShopName').checked;
     prn.barcodePrinter.showDate = document.getElementById('prnBarcodeShowDate').checked;
+    prn.barcodePrinter.kioskMode = document.getElementById('prnBarcodeKioskMode') ? document.getElementById('prnBarcodeKioskMode').checked : true;
 
     // 3. Laser
     prn.laserPrinter.name = getChosenPrinterName('Laser', 'laser');

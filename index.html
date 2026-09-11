@@ -9171,24 +9171,31 @@ function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0, offsetX =
 <style>
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   @page { margin: 0mm; }
-  html, body { margin: 0; padding: 0; background: #fff; }
+  html, body { margin: 0; padding: 0; background: #fff; width: 100%; height: 100%; }
   .sticker-page {
     width: 100%;
-    height: ${dim.h}mm;
-    max-height: ${dim.h}mm;
+    height: 100vh;
     overflow: hidden;
     background: #fff;
     color: #000;
     font-family: Arial, Tahoma, 'Segoe UI', sans-serif;
+    page-break-inside: avoid;
+    break-inside: avoid;
     ${offsetCss}
   }
   .sticker-page:not(:last-child) {
     page-break-after: always;
     break-after: page;
   }
+  .sticker-page:last-child {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
   .sticker-page > div {
     width: 100% !important;
     height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
   }
   .sticker-page * {
     color: #000 !important;

@@ -9139,25 +9139,35 @@ function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0, offsetX =
   const oldStyle = document.getElementById('dynamicThermalStickerPrintStyle');
   if(oldStyle) oldStyle.remove();
 
-  let transformStr = '';
-  if(offsetX || offsetY){
-    transformStr += `translate(${offsetX}mm, ${offsetY}mm) `;
-  }
-  if(rotation === 90){
-    transformStr += 'rotate(90deg) ';
-  } else if(rotation === 180){
-    transformStr += 'rotate(180deg) ';
-  } else if(rotation === 270){
-    transformStr += 'rotate(270deg) ';
-  }
-  const transformCSS = transformStr ? `transform: ${transformStr.trim()}; transform-origin: center center;` : '';
+  // When rotating 90° or 270°, the page dimensions swap:
+  // Label is 40x20mm (landscape), but XP-246B feeds it as 20mm wide × 40mm tall (portrait)
+  // So we must tell the printer: page = 20x40mm (portrait), then rotate content inside
+  const needsSwap = (rotation === 90 || rotation === 270);
+  const pageW = needsSwap ? dim.h : dim.w;  // e.g. 20mm for 90° rotated 40x20
+  const pageH = needsSwap ? dim.w : dim.h;  // e.g. 40mm for 90° rotated 40x20
+
+  // For 90° rotation: content div is dim.w × dim.h (40×20mm)
+  // positioned so its center matches page center (10mm, 20mm on a 20×40mm page)
+  // center of content: (dim.w/2, dim.h/2) = (20mm, 10mm)
+  // page center: (pageW/2, pageH/2) = (10mm, 20mm)
+  // absolute position: left = pageW/2 - dim.w/2, top = pageH/2 - dim.h/2
+  // e.g. left = 10-20 = -10mm, top = 20-10 = 10mm
+  const contentLeft = (pageW - dim.w) / 2;  // -10mm for 40x20→90°
+  const contentTop  = (pageH - dim.h) / 2;  // +10mm for 40x20→90°
+
+  let rotateTransform = '';
+  if(rotation === 90)  rotateTransform = 'rotate(90deg)';
+  if(rotation === 180) rotateTransform = 'rotate(180deg)';
+  if(rotation === 270) rotateTransform = 'rotate(270deg)';
+
+  const offsetTransform = (offsetX || offsetY) ? `translate(${offsetX}mm, ${offsetY}mm)` : '';
 
   const styleEl = document.createElement('style');
   styleEl.id = 'dynamicThermalStickerPrintStyle';
   styleEl.innerHTML = `
     @media print {
       @page {
-        size: ${dim.w}mm ${dim.h}mm;
+        size: ${pageW}mm ${pageH}mm;
         margin: 0mm !important;
       }
       *, *::before, *::after {
@@ -9165,54 +9175,46 @@ function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0, offsetX =
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
       }
-      html {
+      html, body {
         margin: 0 !important;
         padding: 0 !important;
-        width: ${dim.w}mm !important;
-        height: ${dim.h}mm !important;
+        width: ${pageW}mm !important;
+        height: ${pageH}mm !important;
         overflow: hidden !important;
-      }
-      body {
-        margin: 0 !important;
-        padding: 0 !important;
         background: #ffffff !important;
-        width: ${dim.w}mm !important;
-        min-height: ${dim.h}mm !important;
-        overflow: hidden !important;
       }
       body.printing-sticker #printMount {
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: center !important;
-        justify-content: flex-start !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        width: ${dim.w}mm !important;
+        position: relative !important;
+        width: ${pageW}mm !important;
+        height: ${pageH}mm !important;
         overflow: hidden !important;
         background: #ffffff !important;
       }
       .thermal-sticker-page {
-        display: flex !important;
-        flex-direction: column !important;
+        position: absolute !important;
+        left: ${contentLeft}mm !important;
+        top: ${contentTop}mm !important;
         width: ${dim.w}mm !important;
         height: ${dim.h}mm !important;
-        min-height: ${dim.h}mm !important;
-        max-height: ${dim.h}mm !important;
         box-sizing: border-box !important;
-        margin: 0 auto !important;
         padding: ${dim.h <= 12 ? '0.5mm 1mm' : '1mm 1.5mm'} !important;
-        page-break-inside: avoid !important;
-        break-inside: avoid !important;
         overflow: hidden !important;
         background: #ffffff !important;
         color: #000000 !important;
         -webkit-font-smoothing: none !important;
         text-rendering: geometricPrecision !important;
-        ${transformCSS}
+        transform-origin: center center !important;
+        transform: ${[rotateTransform, offsetTransform].filter(Boolean).join(' ')} !important;
       }
       .thermal-sticker-page:not(:last-child) {
         page-break-after: always !important;
         break-after: page !important;
+      }
+      .thermal-sticker-page > div {
+        display: flex !important;
+        flex-direction: column !important;
+        width: 100% !important;
+        height: 100% !important;
       }
       .thermal-sticker-page * {
         color: #000000 !important;
@@ -9221,7 +9223,6 @@ function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0, offsetX =
       }
       svg {
         display: block !important;
-        margin: 0 auto !important;
       }
     }
   `;
@@ -9261,8 +9262,8 @@ function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0, offsetX =
 
   setTimeout(() => {
     window.print();
-    setTimeout(cleanup, 1200);
-  }, 180);
+    setTimeout(cleanup, 1500);
+  }, 220);
 }
 
 function openStickerPrintModal(opts){
@@ -9278,7 +9279,8 @@ function openStickerPrintModal(opts){
   let currentSizeKey = savedSettings.defaultSize || '40x20';
   let customW = Number(savedSettings.customWidth) || 40;
   let customH = Number(savedSettings.customHeight) || 20;
-  let currentRotation = Number(savedSettings.rotation) || 0;
+  // XP-246B يحتاج 90° افتراضياً لطباعة ليبل 40x20 أفقي بشكل صحيح
+  let currentRotation = (savedSettings.rotation !== undefined && savedSettings.rotation !== null) ? Number(savedSettings.rotation) : 90;
   let currentOffsetX = Number(savedSettings.offsetX) || 0;
   let currentOffsetY = Number(savedSettings.offsetY) || 0;
   let copies = Math.max(1, Number(opts.copies) || 1);
@@ -9618,7 +9620,7 @@ function openStickerPrint(rawR, forceModal = false){
   if(isKiosk){
     const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
     const dim = getThermalStickerDimensions(prnSettings.defaultSize || '40x20', prnSettings.customWidth, prnSettings.customHeight);
-    const rot = Number(prnSettings.rotation) || 0;
+    const rot = (prnSettings.rotation !== undefined && prnSettings.rotation !== null) ? Number(prnSettings.rotation) : 90;
     const offX = Number(prnSettings.offsetX) || 0;
     const offY = Number(prnSettings.offsetY) || 0;
     showToast('🏷️ جاري طباعة ملصق الصيانة فوراً (وضع الكيوسك ⚡)', 'info');

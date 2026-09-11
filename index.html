@@ -9127,144 +9127,118 @@ function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0, offsetX =
   rotation = Number(rotation) || 0;
 
   const savedSettings = (state.settings && state.settings.printers && state.settings.printers.barcodePrinter) || {};
-  if(offsetX === null || offsetX === undefined){
-    offsetX = Number(savedSettings.offsetX) || 0;
-  }
-  if(offsetY === null || offsetY === undefined){
-    offsetY = Number(savedSettings.offsetY) || 0;
-  }
-
-  const oldMount = document.getElementById('printMount');
-  if(oldMount) oldMount.remove();
-  const oldStyle = document.getElementById('dynamicThermalStickerPrintStyle');
-  if(oldStyle) oldStyle.remove();
-
-  // When rotating 90° or 270°, the page dimensions swap:
-  // Label is 40x20mm (landscape), but XP-246B feeds it as 20mm wide × 40mm tall (portrait)
-  // So we must tell the printer: page = 20x40mm (portrait), then rotate content inside
-  const needsSwap = (rotation === 90 || rotation === 270);
-  const pageW = needsSwap ? dim.h : dim.w;  // e.g. 20mm for 90° rotated 40x20
-  const pageH = needsSwap ? dim.w : dim.h;  // e.g. 40mm for 90° rotated 40x20
-
-  // For 90° rotation: content div is dim.w × dim.h (40×20mm)
-  // positioned so its center matches page center (10mm, 20mm on a 20×40mm page)
-  // center of content: (dim.w/2, dim.h/2) = (20mm, 10mm)
-  // page center: (pageW/2, pageH/2) = (10mm, 20mm)
-  // absolute position: left = pageW/2 - dim.w/2, top = pageH/2 - dim.h/2
-  // e.g. left = 10-20 = -10mm, top = 20-10 = 10mm
-  const contentLeft = (pageW - dim.w) / 2;  // -10mm for 40x20→90°
-  const contentTop  = (pageH - dim.h) / 2;  // +10mm for 40x20→90°
-
-  let rotateTransform = '';
-  if(rotation === 90)  rotateTransform = 'rotate(90deg)';
-  if(rotation === 180) rotateTransform = 'rotate(180deg)';
-  if(rotation === 270) rotateTransform = 'rotate(270deg)';
-
-  const offsetTransform = (offsetX || offsetY) ? `translate(${offsetX}mm, ${offsetY}mm)` : '';
-
-  const styleEl = document.createElement('style');
-  styleEl.id = 'dynamicThermalStickerPrintStyle';
-  styleEl.innerHTML = `
-    @media print {
-      @page {
-        size: ${pageW}mm ${pageH}mm;
-        margin: 0mm !important;
-      }
-      *, *::before, *::after {
-        box-sizing: border-box !important;
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-      }
-      html, body {
-        margin: 0 !important;
-        padding: 0 !important;
-        width: ${pageW}mm !important;
-        height: ${pageH}mm !important;
-        overflow: hidden !important;
-        background: #ffffff !important;
-      }
-      body.printing-sticker #printMount {
-        position: relative !important;
-        width: ${pageW}mm !important;
-        height: ${pageH}mm !important;
-        overflow: hidden !important;
-        background: #ffffff !important;
-      }
-      .thermal-sticker-page {
-        position: absolute !important;
-        left: ${contentLeft}mm !important;
-        top: ${contentTop}mm !important;
-        width: ${dim.w}mm !important;
-        height: ${dim.h}mm !important;
-        box-sizing: border-box !important;
-        padding: ${dim.h <= 12 ? '0.5mm 1mm' : '1mm 1.5mm'} !important;
-        overflow: hidden !important;
-        background: #ffffff !important;
-        color: #000000 !important;
-        -webkit-font-smoothing: none !important;
-        text-rendering: geometricPrecision !important;
-        transform-origin: center center !important;
-        transform: ${[rotateTransform, offsetTransform].filter(Boolean).join(' ')} !important;
-      }
-      .thermal-sticker-page:not(:last-child) {
-        page-break-after: always !important;
-        break-after: page !important;
-      }
-      .thermal-sticker-page > div {
-        display: flex !important;
-        flex-direction: column !important;
-        width: 100% !important;
-        height: 100% !important;
-      }
-      .thermal-sticker-page * {
-        color: #000000 !important;
-        font-family: Arial, Tahoma, 'Segoe UI', sans-serif !important;
-        box-sizing: border-box !important;
-      }
-      svg {
-        display: block !important;
-      }
-    }
-  `;
-  document.head.appendChild(styleEl);
-
-  const mount = document.createElement('div');
-  mount.id = 'printMount';
+  if(offsetX === null || offsetX === undefined) offsetX = Number(savedSettings.offsetX) || 0;
+  if(offsetY === null || offsetY === undefined) offsetY = Number(savedSettings.offsetY) || 0;
 
   const barcodeVal = (cfg.type === 'receipt')
     ? cfg.data.receiptNumber
     : (cfg.data.Barcode || cfg.data.SKU || cfg.data.barcode || cfg.data.sku || cfg.data.ID || '1001');
 
+  // ── Step 1: render barcode SVGs off-screen in main document first ──
+  const tempContainer = document.createElement('div');
+  tempContainer.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:40mm;visibility:hidden;';
+  document.body.appendChild(tempContainer);
+
+  const svgElements = [];
+  for(let i = 0; i < copies; i++){
+    const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svgEl.id = `tmpBcSvg_${i}`;
+    tempContainer.appendChild(svgEl);
+    renderStickerBarcodeSVG(`#tmpBcSvg_${i}`, barcodeVal, dim);
+    svgElements.push(svgEl.outerHTML);
+  }
+  tempContainer.remove();
+
+  // ── Step 2: build sticker page HTML for each copy ──
   let pagesHtml = '';
   for(let i = 0; i < copies; i++){
-    const svgId = `printStickerSvg_${i}`;
     const innerHtml = (cfg.type === 'receipt')
-      ? generateReceiptStickerHTML(cfg.data, dim, svgId)
-      : generateProductStickerHTML(cfg.data, dim, svgId);
-    pagesHtml += `<div class="thermal-sticker-page">${innerHtml}</div>`;
+      ? generateReceiptStickerHTML(cfg.data, dim, `bcSvg_${i}`)
+      : generateProductStickerHTML(cfg.data, dim, `bcSvg_${i}`);
+    pagesHtml += `<div class="sticker-page">${innerHtml}</div>`;
   }
-  mount.innerHTML = pagesHtml;
-  document.body.appendChild(mount);
 
+  // ── Step 3: build offsetTransform (optional, for fine calibration) ──
+  const offsetCss = (offsetX || offsetY) ? `transform: translate(${offsetX}mm, ${offsetY}mm);` : '';
+
+  // ── Step 4: build full iframe HTML ──
+  // NOTE: no @page{size:...} — let the XP-246B driver use its configured paper size.
+  // width:100% ensures content fills whatever width the driver provides.
+  const iframeHtml = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  @page { margin: 0mm; }
+  html, body { margin: 0; padding: 0; background: #fff; }
+  .sticker-page {
+    width: 100%;
+    height: ${dim.h}mm;
+    max-height: ${dim.h}mm;
+    overflow: hidden;
+    background: #fff;
+    color: #000;
+    font-family: Arial, Tahoma, 'Segoe UI', sans-serif;
+    ${offsetCss}
+  }
+  .sticker-page:not(:last-child) {
+    page-break-after: always;
+    break-after: page;
+  }
+  .sticker-page > div {
+    width: 100% !important;
+    height: 100% !important;
+  }
+  .sticker-page * {
+    color: #000 !important;
+    font-family: Arial, Tahoma, 'Segoe UI', sans-serif !important;
+  }
+  svg { display: block; }
+</style>
+</head>
+<body>${pagesHtml}</body>
+</html>`;
+
+  // ── Step 5: create hidden iframe, write HTML, inject SVGs, print ──
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;border:none;visibility:hidden;';
+  document.body.appendChild(iframe);
+
+  const iDoc = iframe.contentDocument || iframe.contentWindow.document;
+  iDoc.open();
+  iDoc.write(iframeHtml);
+  iDoc.close();
+
+  // Replace SVG placeholders with the pre-rendered barcode SVGs
   for(let i = 0; i < copies; i++){
-    renderStickerBarcodeSVG(`#printStickerSvg_${i}`, barcodeVal, dim);
+    const svgPlaceholder = iDoc.getElementById(`bcSvg_${i}`);
+    if(svgPlaceholder && svgElements[i]){
+      const parser = new DOMParser();
+      const parsed = parser.parseFromString(svgElements[i], 'image/svg+xml');
+      const realSvg = parsed.documentElement;
+      // Copy all attributes and content to placeholder
+      realSvg.removeAttribute('id');
+      realSvg.style.cssText = 'display:block;width:100%;max-height:' + (dim.h <= 12 ? '6mm' : dim.h <= 22 ? '8mm' : '11mm') + ';';
+      svgPlaceholder.parentNode.replaceChild(realSvg, svgPlaceholder);
+    }
   }
 
-  document.body.classList.add('printing-sticker');
-
-  const cleanup = () => {
-    if(mount && mount.parentNode) mount.remove();
-    if(styleEl && styleEl.parentNode) styleEl.remove();
-    document.body.classList.remove('printing-sticker');
-    window.removeEventListener('afterprint', cleanup);
-  };
-  window.addEventListener('afterprint', cleanup);
-
+  // ── Step 6: print and cleanup ──
   setTimeout(() => {
-    window.print();
-    setTimeout(cleanup, 1500);
-  }, 220);
+    try {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    } catch(e) {
+      console.warn('iframe print failed, falling back to window.print()', e);
+      window.print();
+    }
+    setTimeout(() => {
+      if(iframe && iframe.parentNode) iframe.remove();
+    }, 2000);
+  }, 300);
 }
+
 
 function openStickerPrintModal(opts){
   if(!opts || !opts.data) return;

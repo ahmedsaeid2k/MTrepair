@@ -8815,33 +8815,33 @@ function renderStickerBarcodeSVG(target, barcodeVal, dim, format = 'CODE128'){
   if(!val) return;
 
   const minDim = Math.min(dim.w, dim.h);
-  let bWidth = 0.95;
-  let bHeight = 18;
+  let bWidth = 1.2;
+  let bHeight = 20;
 
   if(dim.w < dim.h){
     // Portrait sticker (e.g. 20x40 mm)
-    bWidth = 0.85;
-    bHeight = 16;
+    bWidth = 1.0;
+    bHeight = 18;
   } else if(minDim <= 12){
     // Slim (e.g. 40x10 mm)
-    bWidth = 0.8;
+    bWidth = 0.9;
     bHeight = 12;
   } else if(minDim <= 17){
     // 40x15 mm
-    bWidth = 0.88;
+    bWidth = 1.0;
     bHeight = 15;
   } else if(minDim <= 24){
-    // 40x20 mm & 40x25 mm
-    bWidth = 0.92;
-    bHeight = 18;
+    // 40x20 mm & 40x25 mm — بارود واضح وعريض
+    bWidth = 1.15;
+    bHeight = 22;
   } else {
     // 50x30 or larger
-    bWidth = 1.1;
-    bHeight = 24;
+    bWidth = 1.4;
+    bHeight = 28;
   }
 
-  if(val.length > 10) bWidth = Math.max(0.78, bWidth * 0.88);
-  if(val.length > 15) bWidth = Math.max(0.68, bWidth * 0.78);
+  if(val.length > 10) bWidth = Math.max(0.9, bWidth * 0.88);
+  if(val.length > 15) bWidth = Math.max(0.8, bWidth * 0.82);
 
   try {
     JsBarcode(target, val, {
@@ -8928,21 +8928,21 @@ function generateProductStickerHTML(item, dim, svgId){
   } else if(dim.h <= 24){
     // 40x20 mm & 40x25 mm layout (⭐ Primary User Roll: 4x2 cm)
     return `
-    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:0.8mm 1.5mm;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:900;color:#000;background:#fff;overflow:hidden;direction:rtl;">
-      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-bottom:1px solid #000;padding-bottom:0.5mm;">
-        <span style="font-size:7.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:62%;">${shopName}</span>
-        <span class="mono" style="font-size:7px;font-weight:900;">${cat}</span>
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:1mm 1.5mm;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:900;color:#000;background:#fff;overflow:hidden;direction:rtl;">
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-bottom:1px solid #000;padding-bottom:0.5mm;flex-shrink:0;">
+        <span style="font-size:7px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:62%;">${shopName}</span>
+        <span class="mono" style="font-size:6.5px;font-weight:900;">${cat}</span>
       </div>
-      <div style="font-size:8.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;margin:0.4mm 0;">
+      <div style="font-size:8px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;margin:0.3mm 0;flex-shrink:0;">
         ${name}
       </div>
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;">
-        <svg id="${svgId}" style="max-height:6.2mm;max-width:94%;display:block;margin:0 auto;"></svg>
-        <span class="mono" style="font-size:7.5px;font-weight:900;letter-spacing:0.5px;line-height:1;margin-top:0.3mm;">${barcodeVal}</span>
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;flex:1;">
+        <svg id="${svgId}" style="width:100%;max-height:7mm;display:block;margin:0 auto;"></svg>
+        <span class="mono" style="font-size:7px;font-weight:900;letter-spacing:0.8px;line-height:1;margin-top:0.3mm;text-align:center;">${barcodeVal}</span>
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-top:1px solid #000;padding-top:0.5mm;">
-        <span style="font-size:7.5px;font-weight:900;">السعر:</span>
-        <b class="mono" style="font-size:10px;font-weight:900;">${price} ج.م</b>
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-top:1px solid #000;padding-top:0.5mm;flex-shrink:0;">
+        <span style="font-size:7px;font-weight:900;">السعر:</span>
+        <b class="mono" style="font-size:9.5px;font-weight:900;">${price} ج.م</b>
       </div>
     </div>`;
   } else {
@@ -9038,24 +9038,24 @@ function generateReceiptStickerHTML(r, dim, svgId){
   } else if(dim.h <= 23){
     // 40x20 mm (Standard 4x2 cm roll - strict height budget <= 18mm so NOTHING cuts off)
     return `
-    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:0.8mm 1.5mm;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:900;color:#000;background:#fff;overflow:hidden;direction:rtl;">
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:1mm 1.5mm;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:900;color:#000;background:#fff;overflow:hidden;direction:rtl;">
       <!-- Row 1: Header (Shop name + Receipt #) -->
-      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-bottom:1.5px solid #000;padding-bottom:0.4mm;">
-        <span style="font-size:9px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:55%;letter-spacing:-0.2px;">${shopName}</span>
-        <span class="mono" style="font-size:9.5px;font-weight:900;direction:ltr;display:inline-block;white-space:nowrap;">#${rNum}</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-bottom:1.5px solid #000;padding-bottom:0.5mm;flex-shrink:0;">
+        <span style="font-size:8.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:56%;letter-spacing:-0.3px;">${shopName}</span>
+        <span class="mono" style="font-size:9px;font-weight:900;direction:ltr;display:inline-block;white-space:nowrap;">#${rNum}</span>
       </div>
-      <!-- Row 2: Barcode + Number -->
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;margin:0.2mm 0;">
-        <svg id="${svgId}" style="max-height:5.2mm;max-width:96%;display:block;margin:0 auto;"></svg>
-        <span class="mono" style="font-size:8.5px;font-weight:900;letter-spacing:0.5px;line-height:1;margin-top:0.3mm;">${rNum}</span>
+      <!-- Row 2: Barcode -->
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;flex:1;margin:0.3mm 0;">
+        <svg id="${svgId}" style="width:100%;max-height:8mm;display:block;margin:0 auto;"></svg>
+        <span class="mono" style="font-size:8px;font-weight:900;letter-spacing:0.8px;line-height:1;margin-top:0.3mm;text-align:center;">${rNum}</span>
       </div>
       <!-- Row 3: Customer & Phone (Balanced single row) -->
-      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1.2;font-size:8.5px;font-weight:900;white-space:nowrap;overflow:hidden;gap:1.5mm;">
-        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:58%;"><b>العميل:</b> ${cName}</span>
-        <span class="mono" style="direction:ltr;white-space:nowrap;font-weight:900;font-size:8.5px;">${cPhone}</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1.1;font-size:7.5px;font-weight:900;white-space:nowrap;overflow:hidden;gap:1mm;flex-shrink:0;">
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:56%;"><b>العميل:</b> ${cName}</span>
+        <span class="mono" style="direction:ltr;white-space:nowrap;font-weight:900;font-size:7.5px;">${cPhone}</span>
       </div>
       <!-- Row 4: Device & Model & Password -->
-      <div style="font-size:8.5px;line-height:1.2;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+      <div style="font-size:7.5px;line-height:1.1;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;">
         <b>الجهاز:</b> ${dCat} - ${dBrand} ${dModel}${pass ? ` | <b>ب:</b> <span class="mono">${pass}</span>` : ''}
       </div>
     </div>`;
@@ -9165,41 +9165,44 @@ function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0, offsetX =
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
       }
-      html, body {
+      html {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: ${dim.w}mm !important;
+        height: ${dim.h}mm !important;
+        overflow: hidden !important;
+      }
+      body {
         margin: 0 !important;
         padding: 0 !important;
         background: #ffffff !important;
         width: ${dim.w}mm !important;
-        height: ${dim.h}mm !important;
-        max-width: ${dim.w}mm !important;
-        max-height: ${dim.h}mm !important;
+        min-height: ${dim.h}mm !important;
         overflow: hidden !important;
-      }
-      body.printing-sticker {
-        background: #ffffff !important;
       }
       body.printing-sticker #printMount {
-        display: block !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
         margin: 0 !important;
         padding: 0 !important;
         width: ${dim.w}mm !important;
-        height: ${dim.h}mm !important;
-        max-width: ${dim.w}mm !important;
-        max-height: ${dim.h}mm !important;
         overflow: hidden !important;
+        background: #ffffff !important;
       }
       .thermal-sticker-page {
+        display: flex !important;
+        flex-direction: column !important;
         width: ${dim.w}mm !important;
         height: ${dim.h}mm !important;
-        max-width: ${dim.w}mm !important;
+        min-height: ${dim.h}mm !important;
         max-height: ${dim.h}mm !important;
         box-sizing: border-box !important;
-        margin: 0 !important;
-        padding: ${dim.h <= 12 ? '0.4mm 0.8mm' : '0.8mm 1.5mm'} !important;
+        margin: 0 auto !important;
+        padding: ${dim.h <= 12 ? '0.5mm 1mm' : '1mm 1.5mm'} !important;
         page-break-inside: avoid !important;
         break-inside: avoid !important;
-        page-break-after: avoid !important;
-        break-after: avoid !important;
         overflow: hidden !important;
         background: #ffffff !important;
         color: #000000 !important;
@@ -9215,6 +9218,10 @@ function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0, offsetX =
         color: #000000 !important;
         font-family: Arial, Tahoma, 'Segoe UI', sans-serif !important;
         box-sizing: border-box !important;
+      }
+      svg {
+        display: block !important;
+        margin: 0 auto !important;
       }
     }
   `;

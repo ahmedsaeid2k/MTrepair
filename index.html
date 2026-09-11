@@ -9035,53 +9035,77 @@ function generateReceiptStickerHTML(r, dim, svgId){
         <b>${cName}</b> | <span class="mono" style="direction:ltr;">${cPhone}</span> | ${dCat} ${dBrand}
       </div>
     </div>`;
-  } else if(dim.h <= 24){
-    // 40x20 mm & 40x25 mm (⭐ Primary User Roll: 4x2 cm)
+  } else if(dim.h <= 23){
+    // 40x20 mm (Standard 4x2 cm roll - strict height budget <= 18mm so NOTHING cuts off)
     return `
-    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:0.8mm 1.5mm;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:800;color:#000;background:#fff;overflow:hidden;direction:rtl;">
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:0.8mm 1.5mm;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:900;color:#000;background:#fff;overflow:hidden;direction:rtl;">
+      <!-- Row 1: Header (Shop name + Receipt #) -->
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-bottom:1.5px solid #000;padding-bottom:0.4mm;">
+        <span style="font-size:9px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:55%;letter-spacing:-0.2px;">${shopName}</span>
+        <span class="mono" style="font-size:9.5px;font-weight:900;direction:ltr;display:inline-block;white-space:nowrap;">#${rNum}</span>
+      </div>
+      <!-- Row 2: Barcode + Number -->
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;margin:0.2mm 0;">
+        <svg id="${svgId}" style="max-height:5.2mm;max-width:96%;display:block;margin:0 auto;"></svg>
+        <span class="mono" style="font-size:8.5px;font-weight:900;letter-spacing:0.5px;line-height:1;margin-top:0.3mm;">${rNum}</span>
+      </div>
+      <!-- Row 3: Customer & Phone (Balanced single row) -->
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1.2;font-size:8.5px;font-weight:900;white-space:nowrap;overflow:hidden;gap:1.5mm;">
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:58%;"><b>العميل:</b> ${cName}</span>
+        <span class="mono" style="direction:ltr;white-space:nowrap;font-weight:900;font-size:8.5px;">${cPhone}</span>
+      </div>
+      <!-- Row 4: Device & Model & Password -->
+      <div style="font-size:8.5px;line-height:1.2;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+        <b>الجهاز:</b> ${dCat} - ${dBrand} ${dModel}${pass ? ` | <b>ب:</b> <span class="mono">${pass}</span>` : ''}
+      </div>
+    </div>`;
+  } else if(dim.h <= 27){
+    // 40x25 & 50x25 mm (taller label - includes Fault)
+    return `
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:1mm 1.5mm;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:900;color:#000;background:#fff;overflow:hidden;direction:rtl;">
       <!-- Row 1: Header -->
-      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-bottom:1px solid #000;padding-bottom:0.5mm;">
-        <b style="font-size:8px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:58%;letter-spacing:-0.2px;">${shopName}</b>
-        <span class="mono" style="font-size:8.5px;font-weight:900;direction:ltr;display:inline-block;white-space:nowrap;letter-spacing:0.3px;">#${rNum}</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-bottom:1.5px solid #000;padding-bottom:0.5mm;">
+        <span style="font-size:9.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:58%;">${shopName}</span>
+        <span class="mono" style="font-size:10px;font-weight:900;direction:ltr;display:inline-block;white-space:nowrap;">#${rNum}</span>
       </div>
       <!-- Row 2: Barcode -->
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;margin:0.4mm 0 0.2mm 0;">
-        <svg id="${svgId}" style="max-height:5.8mm;max-width:94%;display:block;margin:0 auto;"></svg>
-        <span class="mono" style="font-size:7.5px;font-weight:900;letter-spacing:0.5px;line-height:1;margin-top:0.3mm;">${rNum}</span>
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;margin:0.3mm 0;">
+        <svg id="${svgId}" style="max-height:6mm;max-width:96%;display:block;margin:0 auto;"></svg>
+        <span class="mono" style="font-size:8.5px;font-weight:900;letter-spacing:0.5px;line-height:1;margin-top:0.3mm;">${rNum}</span>
       </div>
-      <!-- Row 3: Details -->
-      <div style="font-size:7.5px;line-height:1.2;font-weight:800;overflow:hidden;">
-        <div style="display:flex;justify-content:space-between;align-items:center;white-space:nowrap;overflow:hidden;gap:1mm;">
-          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:62%;"><b>العميل:</b> ${cName}</span>
-          <span class="mono" style="direction:ltr;white-space:nowrap;font-weight:900;font-size:7.5px;">${cPhone}</span>
-        </div>
-        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-          <b>الجهاز:</b> ${dCat} - ${dBrand} ${dModel}${pass ? ` | <b>ب:</b> <span class="mono">${pass}</span>` : ''}
-        </div>
-        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-          <b>العطل:</b> ${firstFault}
-        </div>
+      <!-- Row 3: Customer & Phone -->
+      <div style="display:flex;justify-content:space-between;align-items:center;line-height:1.2;font-size:8.5px;font-weight:900;white-space:nowrap;overflow:hidden;gap:1.5mm;">
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:58%;"><b>العميل:</b> ${cName}</span>
+        <span class="mono" style="direction:ltr;white-space:nowrap;font-weight:900;font-size:8.5px;">${cPhone}</span>
+      </div>
+      <!-- Row 4: Device & Model -->
+      <div style="font-size:8.5px;line-height:1.2;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+        <b>الجهاز:</b> ${dCat} - ${dBrand} ${dModel}${pass ? ` | <b>ب:</b> <span class="mono">${pass}</span>` : ''}
+      </div>
+      <!-- Row 5: Fault -->
+      <div style="font-size:8px;line-height:1.2;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+        <b>العطل:</b> ${firstFault}
       </div>
     </div>`;
   } else {
-    // 50x25, 50x30, 40x30, 60x40 mm larger stickers
+    // 40x30, 50x30, 60x40 mm larger stickers
     return `
-    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:1mm 1.5mm;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:800;color:#000;background:#fff;overflow:hidden;direction:rtl;">
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:1mm 1.5mm;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:900;color:#000;background:#fff;overflow:hidden;direction:rtl;">
       <!-- Header -->
       <div style="display:flex;justify-content:space-between;align-items:center;line-height:1;border-bottom:1.5px solid #000;padding-bottom:0.6mm;">
-        <b style="font-size:9px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%;">${shopName}</b>
-        <span class="mono" style="font-size:9.5px;font-weight:900;direction:ltr;display:inline-block;white-space:nowrap;">#${rNum}</span>
+        <b style="font-size:9.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%;">${shopName}</b>
+        <span class="mono" style="font-size:10px;font-weight:900;direction:ltr;display:inline-block;white-space:nowrap;">#${rNum}</span>
       </div>
       <!-- Barcode -->
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;margin:0.5mm 0 0.3mm 0;">
-        <svg id="${svgId}" style="max-height:8mm;max-width:94%;display:block;margin:0 auto;"></svg>
-        <span class="mono" style="font-size:8px;font-weight:900;letter-spacing:0.5px;line-height:1;margin-top:0.4mm;">${rNum}</span>
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;margin:0.4mm 0;">
+        <svg id="${svgId}" style="max-height:7.5mm;max-width:96%;display:block;margin:0 auto;"></svg>
+        <span class="mono" style="font-size:8.5px;font-weight:900;letter-spacing:0.5px;line-height:1;margin-top:0.3mm;">${rNum}</span>
       </div>
       <!-- Details -->
-      <div style="font-size:8px;line-height:1.25;font-weight:800;overflow:hidden;">
-        <div style="display:flex;justify-content:space-between;align-items:center;white-space:nowrap;overflow:hidden;gap:1mm;">
-          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%;"><b>العميل:</b> ${cName}</span>
-          <span class="mono" style="direction:ltr;white-space:nowrap;font-weight:900;font-size:8px;">${cPhone}</span>
+      <div style="font-size:8.5px;line-height:1.25;font-weight:900;overflow:hidden;">
+        <div style="display:flex;justify-content:space-between;align-items:center;white-space:nowrap;overflow:hidden;gap:1.5mm;">
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:58%;"><b>العميل:</b> ${cName}</span>
+          <span class="mono" style="direction:ltr;white-space:nowrap;font-weight:900;font-size:8.5px;">${cPhone}</span>
         </div>
         <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
           <b>الجهاز:</b> ${dCat} - ${dBrand} ${dModel}${pass ? ` | <b>باسورد:</b> <span class="mono">${pass}</span>` : ''}
@@ -9089,7 +9113,7 @@ function generateReceiptStickerHTML(r, dim, svgId){
         <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
           <b>العطل:</b> ${firstFault}
         </div>
-        <div style="font-size:7px;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+        <div style="font-size:7.5px;color:#000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
           <b>الاستلام:</b> <span class="mono">${dateTimeStr}</span>
         </div>
       </div>
@@ -9097,54 +9121,72 @@ function generateReceiptStickerHTML(r, dim, svgId){
   }
 }
 
-function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0){
+function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0, offsetX = null, offsetY = null){
   if(!cfg || !cfg.data) return;
   copies = Math.max(1, parseInt(copies) || 1);
   rotation = Number(rotation) || 0;
+
+  const savedSettings = (state.settings && state.settings.printers && state.settings.printers.barcodePrinter) || {};
+  if(offsetX === null || offsetX === undefined){
+    offsetX = Number(savedSettings.offsetX) || 0;
+  }
+  if(offsetY === null || offsetY === undefined){
+    offsetY = Number(savedSettings.offsetY) || 0;
+  }
 
   const oldMount = document.getElementById('printMount');
   if(oldMount) oldMount.remove();
   const oldStyle = document.getElementById('dynamicThermalStickerPrintStyle');
   if(oldStyle) oldStyle.remove();
 
-  let rotCSS = '';
-  if(rotation === 90){
-    rotCSS = 'transform: rotate(90deg); transform-origin: center center;';
-  } else if(rotation === 180){
-    rotCSS = 'transform: rotate(180deg); transform-origin: center center;';
-  } else if(rotation === 270){
-    rotCSS = 'transform: rotate(270deg); transform-origin: center center;';
+  let transformStr = '';
+  if(offsetX || offsetY){
+    transformStr += `translate(${offsetX}mm, ${offsetY}mm) `;
   }
+  if(rotation === 90){
+    transformStr += 'rotate(90deg) ';
+  } else if(rotation === 180){
+    transformStr += 'rotate(180deg) ';
+  } else if(rotation === 270){
+    transformStr += 'rotate(270deg) ';
+  }
+  const transformCSS = transformStr ? `transform: ${transformStr.trim()}; transform-origin: center center;` : '';
 
-  // Use 'size: auto !important;' to prevent Chrome from forcing landscape auto-rotation
   const styleEl = document.createElement('style');
   styleEl.id = 'dynamicThermalStickerPrintStyle';
   styleEl.innerHTML = `
     @media print {
       @page {
-        size: auto;
+        size: ${dim.w}mm ${dim.h}mm;
         margin: 0mm !important;
+      }
+      *, *::before, *::after {
+        box-sizing: border-box !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
       }
       html, body {
         margin: 0 !important;
         padding: 0 !important;
         background: #ffffff !important;
-        width: auto !important;
-        height: auto !important;
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
+        width: ${dim.w}mm !important;
+        height: ${dim.h}mm !important;
+        max-width: ${dim.w}mm !important;
+        max-height: ${dim.h}mm !important;
+        overflow: hidden !important;
       }
       body.printing-sticker {
         background: #ffffff !important;
       }
       body.printing-sticker #printMount {
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: center !important;
-        justify-content: flex-start !important;
-        margin: 0 auto !important;
+        display: block !important;
+        margin: 0 !important;
         padding: 0 !important;
-        width: 100% !important;
+        width: ${dim.w}mm !important;
+        height: ${dim.h}mm !important;
+        max-width: ${dim.w}mm !important;
+        max-height: ${dim.h}mm !important;
+        overflow: hidden !important;
       }
       .thermal-sticker-page {
         width: ${dim.w}mm !important;
@@ -9152,27 +9194,27 @@ function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0){
         max-width: ${dim.w}mm !important;
         max-height: ${dim.h}mm !important;
         box-sizing: border-box !important;
-        margin: 0 auto !important;
+        margin: 0 !important;
         padding: ${dim.h <= 12 ? '0.4mm 0.8mm' : '0.8mm 1.5mm'} !important;
         page-break-inside: avoid !important;
-        page-break-after: always !important;
         break-inside: avoid !important;
-        break-after: page !important;
+        page-break-after: avoid !important;
+        break-after: avoid !important;
         overflow: hidden !important;
         background: #ffffff !important;
         color: #000000 !important;
         -webkit-font-smoothing: none !important;
         text-rendering: geometricPrecision !important;
-        ${rotCSS}
+        ${transformCSS}
+      }
+      .thermal-sticker-page:not(:last-child) {
+        page-break-after: always !important;
+        break-after: page !important;
       }
       .thermal-sticker-page * {
         color: #000000 !important;
         font-family: Arial, Tahoma, 'Segoe UI', sans-serif !important;
         box-sizing: border-box !important;
-      }
-      .thermal-sticker-page:last-child {
-        page-break-after: auto !important;
-        break-after: auto !important;
       }
     }
   `;
@@ -9230,6 +9272,8 @@ function openStickerPrintModal(opts){
   let customW = Number(savedSettings.customWidth) || 40;
   let customH = Number(savedSettings.customHeight) || 20;
   let currentRotation = Number(savedSettings.rotation) || 0;
+  let currentOffsetX = Number(savedSettings.offsetX) || 0;
+  let currentOffsetY = Number(savedSettings.offsetY) || 0;
   let copies = Math.max(1, Number(opts.copies) || 1);
 
   const existing = document.getElementById('stickerPrintModalOverlay');
@@ -9331,11 +9375,43 @@ function openStickerPrintModal(opts){
           </div>
         </div>
 
+        <!-- Hardware Offset & Centering Calibration -->
+        <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 8px 12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
+            <label style="font-size: 11.5px; font-weight: 700; color: #1e293b; display:flex; align-items:center; gap:4px;">
+              <span>🎯 سنترة ومعايرة مكان الطباعة (Offsets):</span>
+            </label>
+            <button type="button" id="spmResetOffsets" style="font-size:10px; color:#2563eb; background:none; border:none; cursor:pointer; font-weight:700;">إعادة ضبط للوسط (0,0)</button>
+          </div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; background:#fff; padding:4px 8px; border-radius:6px; border:1px solid #cbd5e1;">
+              <span style="font-size:10px; font-weight:700; color:#475569;">أفقي (X يمين/يسار):</span>
+              <div style="display:flex; align-items:center; gap:3px;">
+                <input id="spmOffsetX" type="number" step="0.5" min="-25" max="25" value="${currentOffsetX}" style="width:48px; text-align:center; font-weight:800; font-size:11px; border:1px solid #cbd5e1; border-radius:4px; padding:2px;" />
+                <span style="font-size:9.5px;">مم</span>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; background:#fff; padding:4px 8px; border-radius:6px; border:1px solid #cbd5e1;">
+              <span style="font-size:10px; font-weight:700; color:#475569;">رأسي (Y فوق/تحت):</span>
+              <div style="display:flex; align-items:center; gap:3px;">
+                <input id="spmOffsetY" type="number" step="0.5" min="-25" max="25" value="${currentOffsetY}" style="width:48px; text-align:center; font-weight:800; font-size:11px; border:1px solid #cbd5e1; border-radius:4px; padding:2px;" />
+                <span style="font-size:9.5px;">مم</span>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex; gap:4px; margin-top:6px; justify-content:center; flex-wrap:wrap;">
+            <button type="button" class="btn btn-ghost btn-xs spm-quick-off" data-ox="-2" data-oy="0" style="font-size:9.5px; padding:2px 6px;">⬅️ يسار 2مم</button>
+            <button type="button" class="btn btn-ghost btn-xs spm-quick-off" data-ox="2" data-oy="0" style="font-size:9.5px; padding:2px 6px;">➡️ يمين 2مم</button>
+            <button type="button" class="btn btn-ghost btn-xs spm-quick-off" data-ox="4" data-oy="0" style="font-size:9.5px; padding:2px 6px;">➡️ يمين 4مم</button>
+            <button type="button" class="btn btn-ghost btn-xs spm-quick-off" data-ox="0" data-oy="2" style="font-size:9.5px; padding:2px 6px;">⬇️ أسفل 2مم</button>
+          </div>
+        </div>
+
         <!-- Live Preview Stage -->
         <div>
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 5px;">
             <label style="font-size: 11.5px; font-weight: 700; color: var(--text-muted, #64748b);">
-              👁️ معاينة شكل الملصق مباشرة (حقيقي 100%):
+              👁️ معاينة شكل الملصق وسنترته (حقيقي 100%):
             </label>
             <span id="spmDimBadge" style="font-size: 10.5px; font-weight: 700; color: #2563eb; background: #eff6ff; padding: 2px 8px; border-radius: 999px; border: 1px solid #bfdbfe;">40×20 مم</span>
           </div>
@@ -9384,7 +9460,7 @@ function openStickerPrintModal(opts){
     const dim = getThermalStickerDimensions(currentSizeKey, customW, customH);
     const previewBox = overlay.querySelector('#spmPreviewBox');
     const dimBadge = overlay.querySelector('#spmDimBadge');
-    if(dimBadge) dimBadge.textContent = `${dim.w}×${dim.h} مم (${currentRotation}°)`;
+    if(dimBadge) dimBadge.textContent = `${dim.w}×${dim.h} مم (${currentRotation}°) X:${currentOffsetX} Y:${currentOffsetY}`;
 
     // Screen pixel conversion: 3.78px per mm
     const baseW = dim.w * 3.78;
@@ -9397,7 +9473,15 @@ function openStickerPrintModal(opts){
 
     previewBox.style.width = `${boxW}px`;
     previewBox.style.height = `${boxH}px`;
-    previewBox.style.transform = currentRotation ? `rotate(${currentRotation}deg)` : 'none';
+    
+    let prevTransform = '';
+    if(currentOffsetX || currentOffsetY){
+      prevTransform += `translate(${currentOffsetX * scaleFactor}px, ${currentOffsetY * scaleFactor}px) `;
+    }
+    if(currentRotation){
+      prevTransform += `rotate(${currentRotation}deg) `;
+    }
+    previewBox.style.transform = prevTransform.trim() || 'none';
 
     const svgId = 'stickerLivePreviewSvg';
     const contentHtml = (cfg.type === 'receipt')
@@ -9455,6 +9539,30 @@ function openStickerPrintModal(opts){
   if(customWInput) customWInput.oninput = (e) => { customW = Number(e.target.value) || 40; updatePreview(); };
   if(customHInput) customHInput.oninput = (e) => { customH = Number(e.target.value) || 20; updatePreview(); };
 
+  const offXInput = overlay.querySelector('#spmOffsetX');
+  const offYInput = overlay.querySelector('#spmOffsetY');
+  if(offXInput) offXInput.oninput = (e) => { currentOffsetX = Number(e.target.value) || 0; updatePreview(); };
+  if(offYInput) offYInput.oninput = (e) => { currentOffsetY = Number(e.target.value) || 0; updatePreview(); };
+
+  overlay.querySelectorAll('.spm-quick-off').forEach(btn => {
+    btn.onclick = () => {
+      currentOffsetX = Number(btn.dataset.ox) || 0;
+      currentOffsetY = Number(btn.dataset.oy) || 0;
+      if(offXInput) offXInput.value = currentOffsetX;
+      if(offYInput) offYInput.value = currentOffsetY;
+      updatePreview();
+    };
+  });
+
+  const resetOffBtn = overlay.querySelector('#spmResetOffsets');
+  if(resetOffBtn) resetOffBtn.onclick = () => {
+    currentOffsetX = 0;
+    currentOffsetY = 0;
+    if(offXInput) offXInput.value = 0;
+    if(offYInput) offYInput.value = 0;
+    updatePreview();
+  };
+
   const copiesInput = overlay.querySelector('#spmCopiesInput');
   overlay.querySelector('#spmCopyDec').onclick = () => {
     copies = Math.max(1, copies - 1);
@@ -9477,6 +9585,8 @@ function openStickerPrintModal(opts){
     if(!state.settings.printers.barcodePrinter) state.settings.printers.barcodePrinter = {};
     state.settings.printers.barcodePrinter.defaultSize = currentSizeKey;
     state.settings.printers.barcodePrinter.rotation = currentRotation;
+    state.settings.printers.barcodePrinter.offsetX = currentOffsetX;
+    state.settings.printers.barcodePrinter.offsetY = currentOffsetY;
     state.settings.printers.barcodePrinter.kioskMode = isKioskChecked;
     if(currentSizeKey === 'custom'){
       state.settings.printers.barcodePrinter.customWidth = customW;
@@ -9488,7 +9598,7 @@ function openStickerPrintModal(opts){
     } catch(e){}
 
     overlay.remove();
-    executeDirectStickerPrint(cfg, dim, copies, currentRotation);
+    executeDirectStickerPrint(cfg, dim, copies, currentRotation, currentOffsetX, currentOffsetY);
   };
 
   updatePreview();
@@ -9502,8 +9612,10 @@ function openStickerPrint(rawR, forceModal = false){
     const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
     const dim = getThermalStickerDimensions(prnSettings.defaultSize || '40x20', prnSettings.customWidth, prnSettings.customHeight);
     const rot = Number(prnSettings.rotation) || 0;
+    const offX = Number(prnSettings.offsetX) || 0;
+    const offY = Number(prnSettings.offsetY) || 0;
     showToast('🏷️ جاري طباعة ملصق الصيانة فوراً (وضع الكيوسك ⚡)', 'info');
-    executeDirectStickerPrint({ type: 'receipt', data: r }, dim, 1, rot);
+    executeDirectStickerPrint({ type: 'receipt', data: r }, dim, 1, rot, offX, offY);
     return;
   }
   openStickerPrintModal({ type: 'receipt', data: rawR });
@@ -17039,6 +17151,17 @@ function renderPrintersSettings(main){
           <span>📅 إظهار تاريخ الطباعة على الملصق</span>
         </label>
       </div>
+
+      <div class="grid2" style="margin-top:12px;background:rgba(124,58,237,0.04);padding:10px;border-radius:8px;border:1px solid rgba(124,58,237,0.15);">
+        <div class="field">
+          <label style="font-weight:700;font-size:12px;">🎯 إزاحة أفقية لسنترة الملصق (X Offset مم):</label>
+          <input type="number" step="0.5" id="prnBarcodeOffsetX" value="${b.offsetX||0}" class="mono font-bold" placeholder="0 (يمين موجب / يسار سالب)">
+        </div>
+        <div class="field">
+          <label style="font-weight:700;font-size:12px;">🎯 إزاحة رأسية لسنترة الملصق (Y Offset مم):</label>
+          <input type="number" step="0.5" id="prnBarcodeOffsetY" value="${b.offsetY||0}" class="mono font-bold" placeholder="0 (أسفل موجب / أعلى سالب)">
+        </div>
+      </div>
     </div>
 
     <!-- 3. Laser / Standard Office Printer Detailed Config -->
@@ -17295,6 +17418,8 @@ function attachPrintersSettingsEvents(main){
     prn.barcodePrinter.showShopName = document.getElementById('prnBarcodeShowShopName').checked;
     prn.barcodePrinter.showDate = document.getElementById('prnBarcodeShowDate').checked;
     prn.barcodePrinter.kioskMode = document.getElementById('prnBarcodeKioskMode') ? document.getElementById('prnBarcodeKioskMode').checked : true;
+    prn.barcodePrinter.offsetX = Number(document.getElementById('prnBarcodeOffsetX') ? document.getElementById('prnBarcodeOffsetX').value : 0) || 0;
+    prn.barcodePrinter.offsetY = Number(document.getElementById('prnBarcodeOffsetY') ? document.getElementById('prnBarcodeOffsetY').value : 0) || 0;
 
     // 3. Laser
     prn.laserPrinter.name = getChosenPrinterName('Laser', 'laser');

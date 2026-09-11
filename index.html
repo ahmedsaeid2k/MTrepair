@@ -10326,6 +10326,7 @@ function renderInvoicesPage(main){
                   </td>
                   <td class="row-actions">
                     <button class="btn btn-xs btn-blue" data-invact="print" data-invid="${inv.ID}" title="طباعة فاتورة ضريبية رسمية">🖨️ فاتورة</button>
+                    <button class="btn btn-xs btn-purple" data-invact="barcode" data-invid="${inv.ID}" title="طباعة ملصقات باركود لأصناف الفاتورة">🏷️ باركود</button>
                     <button class="btn btn-xs btn-ghost" data-invact="printquote" data-invid="${inv.ID}" title="طباعة بيان سعر وعرض أسعار رسمي">📑 بيان سعر</button>
                     <button class="btn btn-xs btn-whatsapp" data-invact="wa" data-invid="${inv.ID}" title="إرسال الفاتورة عبر واتساب">${WA_ICON}</button>
                     <button class="btn btn-xs btn-red" data-invact="del" data-invid="${inv.ID}" title="${state.user.role==='admin'?'حذف الفاتورة':'طلب تصريح حذف من المدير'}">${state.user.role==='admin'?'🗑️':'🔒 طلب حذف'}</button>
@@ -10356,6 +10357,9 @@ function renderInvoicesPage(main){
       const inv = state.invoices.find(x=>x.ID===btn.dataset.invid);
       if(!inv) return;
       const act = btn.dataset.invact;
+      if(act==='barcode'){
+        openInvoiceBarcodePrintModal('invoice', inv.ID);
+      }
       if(act==='print'){
         openInvoicePrint(inv, 'invoice');
       }
@@ -14695,18 +14699,48 @@ function renderSuppliers(main){
 
 function renderPurchases(main){
   main.innerHTML = `
-    <div class="top-header"><div><h2 class="page-title">📥 فواتير الشراء من الموردين</h2><div class="subtitle">${state.purchases.length} فاتورة مسجلة</div></div></div>
+    <div class="top-header">
+      <div>
+        <h2 class="page-title">📥 فواتير الشراء من الموردين</h2>
+        <div class="subtitle">${state.purchases.length} فاتورة مسجلة</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-purple btn-sm" id="btnPurchasesBatchBarcode">🏷️ طباعة باركود من فاتورة</button>
+      </div>
+    </div>
     <div class="card">
       <h3>آخر فواتير الشراء</h3>
       ${state.purchases.length===0 ? '<div class="empty">لا توجد فواتير شراء بعد.</div>' : `
-      <div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>المورد</th><th>الأصناف</th><th>الإجمالي</th><th>المدفوع</th></tr></thead><tbody>
-        ${state.purchases.slice().reverse().map(p=>`<tr>
-          <td>${cleanDate(p.Date)}</td><td><b>${p.Supplier}</b></td><td>${p.ItemsSummary}</td>
-          <td class="mono font-bold">${p.Total} ج.م</td><td class="mono">${p.AmountPaid!=null?p.AmountPaid:p.Total} ج.م</td>
-        </tr>`).join('')}
-      </tbody></table></div>`}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>التاريخ</th>
+              <th>المورد</th>
+              <th>الأصناف</th>
+              <th>الإجمالي</th>
+              <th>المدفوع</th>
+              <th>الإجراءات</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${state.purchases.slice().reverse().map(p=>`<tr>
+              <td>${cleanDate(p.Date)}</td>
+              <td><b>${escapeHtml(p.Supplier||'')}</b></td>
+              <td>${escapeHtml(p.ItemsSummary||'')}</td>
+              <td class="mono font-bold">${Number(p.Total||0).toLocaleString()} ج.م</td>
+              <td class="mono">${Number(p.AmountPaid!=null?p.AmountPaid:p.Total||0).toLocaleString()} ج.م</td>
+              <td>
+                <button class="btn btn-xs btn-purple" onclick="openInvoiceBarcodePrintModal('purchase', '${escapeHtml(String(p.ID||''))}')" title="طباعة ملصقات الباركود لأصناف هذه الفاتورة">🏷️ طباعة الباركود</button>
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`}
     </div>
   `;
+  const btnBatch = document.getElementById('btnPurchasesBatchBarcode');
+  if(btnBatch) btnBatch.onclick = () => openInvoiceBarcodePrintModal('purchase');
 }
 
 /* ---------------- Finance Section ---------------- */
@@ -18369,6 +18403,9 @@ function renderBarcodeStudioApp(app){
         <div class="nav-item ${state.barcodeTab==='inventory'?'active':''}" data-barcodetab="inventory">
           <span class="nav-item-icon">📦</span><span>أصناف المخزن العام</span>
         </div>
+        <div class="nav-item ${state.barcodeTab==='invoice'?'active':''}" data-barcodetab="invoice">
+          <span class="nav-item-icon">🧾</span><span>فواتير الشراء والمخزن</span>
+        </div>
         <div class="nav-item ${state.barcodeTab==='maintenance'?'active':''}" data-barcodetab="maintenance">
           <span class="nav-item-icon">🛠️</span><span>ملصقات أجهزة الصيانة</span>
         </div>
@@ -18423,6 +18460,12 @@ function renderBarcodeStudioApp(app){
 function renderBarcodeStudioContent(main){
   const bs = state.barcodeStudio;
   const mode = state.barcodeTab || 'inventory';
+
+  // Dedicated Invoice Batch Barcode Printing Workspace
+  if(mode === 'invoice'){
+    return renderBarcodeStudioInvoiceView(main);
+  }
+
   const shopName = (state.settings && state.settings.shopName) || 'صيانة ميكروتك';
   const invList = state.inventory || [];
   const recList = state.receipts || [];
@@ -18934,192 +18977,749 @@ function attachBarcodeStudioEvents(main){
   if(print2) print2.onclick = executeBarcodePrint;
 }
 
-/* ---------------- Barcode Print Execution Engine ---------------- */
-function executeBarcodePrint(){
-  const bs = state.barcodeStudio;
-  const dim = getBarcodePaperDimensions(bs.preset, bs.customWidth, bs.customHeight);
-  const copies = Math.max(1, Number(bs.copies)||1);
+/* ---------------- Universal Invoice & Batch Barcode Engine ---------------- */
+
+function getInvoicePrintableItems(inv, type = 'purchase'){
+  if(!inv) return [];
+  let rawItems = [];
+
+  if(type === 'purchase' || inv.Supplier){
+    if(Array.isArray(inv.Items) && inv.Items.length > 0){
+      rawItems = inv.Items;
+    } else if(inv.ItemsJSON){
+      try {
+        const parsed = JSON.parse(inv.ItemsJSON);
+        if(Array.isArray(parsed)) rawItems = parsed;
+      } catch(e){}
+    }
+    if(rawItems.length === 0 && inv.ItemsSummary){
+      const parts = String(inv.ItemsSummary).split(/[\+\n،,]/).map(s => s.trim()).filter(Boolean);
+      rawItems = parts.map(part => {
+        const m = part.match(/^(.+?)\s*[\(\[]\s*(\d+)\s*[\)\]]$/);
+        if(m){
+          return { Name: m[1].trim(), Quantity: parseInt(m[2]) || 1 };
+        }
+        return { Name: part, Quantity: 1 };
+      });
+    }
+  } else {
+    rawItems = Array.isArray(inv.Items) ? inv.Items : [];
+    if(rawItems.length === 0 && inv.ItemsJSON){
+      try {
+        const parsed = JSON.parse(inv.ItemsJSON);
+        if(Array.isArray(parsed)) rawItems = parsed;
+      } catch(e){}
+    }
+    if(rawItems.length === 0 && inv.ItemsSummary){
+      const parts = String(inv.ItemsSummary).split(/[\+\n،,]/).map(s => s.trim()).filter(Boolean);
+      rawItems = parts.map(part => ({ Name: part, Quantity: 1 }));
+    }
+  }
+
+  const invList = state.inventory || [];
+  return rawItems.map((item, idx) => {
+    const itmName = (item.Name || item.name || item.Title || item.title || 'صنف بدون اسم').trim();
+    const qty = Math.max(1, parseInt(item.Quantity || item.quantity || item.Qty || item.qty || 1) || 1);
+    const matched = invList.find(x => (x.Name || x.name || '').trim().toLowerCase() === itmName.toLowerCase());
+
+    const barcode = String(item.Barcode || item.barcode || (matched ? (matched.Barcode || matched.barcode) : '') || ('ITM-' + (matched ? (matched.id || matched.ID) : (Date.now() + idx))));
+    const price = Number(item.Price || item.price || item.SellPrice || (matched ? (matched.SellPrice || matched.Price) : 0) || 0);
+    const category = item.Category || item.category || (matched ? (matched.Category || matched.category) : '') || '';
+
+    return {
+      id: 'inv_itm_' + idx + '_' + Math.random().toString(36).substr(2, 4),
+      Name: itmName,
+      Quantity: qty,
+      printCopies: qty,
+      Price: price,
+      Barcode: barcode,
+      Category: category,
+      selected: true,
+      inInventory: !!matched
+    };
+  });
+}
+
+function executeBatchInvoiceBarcodePrint(itemsToPrint, presetKey = 'thermal_40x20'){
+  if(!itemsToPrint || itemsToPrint.length === 0){
+    showToast('لا توجد أصناف محددة للطباعة', 'warning');
+    return;
+  }
+
+  const dim = getBarcodePaperDimensions(presetKey);
+  const bs = state.barcodeStudio || {};
   const shopName = (state.settings && state.settings.shopName) || 'صيانة ميكروتك';
   const todayStr = cleanDate(new Date());
 
-  const mount = document.getElementById('printMount');
-  if(!mount) return;
+  const flattenedList = [];
+  itemsToPrint.forEach(item => {
+    const copies = Math.max(0, parseInt(item.printCopies) || 0);
+    for(let c = 0; c < copies; c++){
+      flattenedList.push({
+        ...item,
+        copyIndex: c
+      });
+    }
+  });
 
-  // Injected dynamic print style tag
-  let styleTag = document.getElementById('dynamicBarcodePrintStyle');
-  if(!styleTag){
-    styleTag = document.createElement('style');
-    styleTag.id = 'dynamicBarcodePrintStyle';
-    document.head.appendChild(styleTag);
+  if(flattenedList.length === 0){
+    showToast('إجمالي عدد النسخ المطلوبة للطباعة هو صفر (0)', 'warning');
+    return;
   }
 
   if(dim.isSheet){
-    // Sheet Mode (@page A4)
-    styleTag.innerHTML = `
-      @media print {
-        @page {
-          size: A4 portrait !important;
-          margin: 6mm 6mm !important;
-        }
-        body.printing-barcode-studio {
-          background: #fff !important;
-          width: 100% !important;
-          height: auto !important;
-          margin: 0 !important;
-          padding: 0 !important;
-        }
-        .barcode-print-sheet-grid {
-          display: grid !important;
-          grid-template-columns: repeat(${dim.cols}, 1fr) !important;
-          gap: 2.5mm 3.5mm !important;
-          width: 198mm !important;
-          box-sizing: border-box !important;
-        }
-        .barcode-print-cell {
-          width: 100% !important;
-          height: ${dim.h}mm !important;
-          box-sizing: border-box !important;
-          border: 0.2px dashed #e2e8f0 !important;
-          padding: 1.5mm 2.5mm !important;
-          display: flex !important;
-          flex-direction: column !important;
-          justify-content: space-between !important;
-          text-align: center !important;
-          overflow: hidden !important;
-          font-family: var(--font-main) !important;
-          color: #000 !important;
-          background: #fff !important;
-        }
-      }
-    `;
-
     let cellsHtml = '';
-    for(let i=0; i<copies; i++){
+    const svgIds = [];
+    flattenedList.forEach((it, idx) => {
+      const svgId = `batchSheetSvg_${idx}`;
+      svgIds.push({ id: svgId, barcode: it.Barcode });
+      const name = escapeHtml(it.Name);
+      const cat = escapeHtml(it.Category || '');
+      const price = Number(it.Price || 0).toLocaleString();
+      const barcodeVal = escapeHtml(String(it.Barcode || '1001'));
+
       cellsHtml += `
-        <div class="barcode-print-cell">
-          ${bs.showShopName ? `<div style="font-size:7.5px;font-weight:800;border-bottom:0.5px solid #ccc;padding-bottom:1px;white-space:nowrap;overflow:hidden;">${escapeHtml(shopName)}</div>` : ''}
+        <div class="barcode-print-cell" style="width:100% !important;height:${dim.h}mm !important;box-sizing:border-box !important;border:0.2px dashed #cbd5e1 !important;padding:1.5mm 2.5mm !important;display:flex !important;flex-direction:column !important;justify-content:space-between !important;text-align:center !important;overflow:hidden !important;font-family:Arial,Tahoma,sans-serif !important;color:#000 !important;background:#fff !important;">
+          ${bs.showShopName !== false ? `<div style="font-size:7.5px;font-weight:800;border-bottom:0.5px solid #ccc;padding-bottom:1px;white-space:nowrap;overflow:hidden;">${escapeHtml(shopName)}</div>` : ''}
           <div>
-            ${bs.showItemName ? `<div style="font-size:9px;font-weight:900;line-height:1.1;white-space:nowrap;overflow:hidden;">${escapeHtml(bs.customTitle||'')}</div>` : ''}
-            ${bs.customSubtitle ? `<div style="font-size:7px;color:#444;white-space:nowrap;overflow:hidden;">${escapeHtml(bs.customSubtitle)}</div>` : ''}
+            ${bs.showItemName !== false ? `<div style="font-size:9px;font-weight:900;line-height:1.1;white-space:nowrap;overflow:hidden;">${name}</div>` : ''}
+            ${cat ? `<div style="font-size:7px;color:#444;white-space:nowrap;overflow:hidden;">${cat}</div>` : ''}
           </div>
           <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;">
-            ${bs.barcodeType==='QR' ? `
-              <div style="display:flex;align-items:center;justify-content:center;padding:1px;">${QRCodeGenerator.toSvg(bs.customBarcode||'1001', 65)}</div>
-            ` : `
-              <svg id="printSheetSvg_${i}" style="max-width:96%;height:auto;max-height:${Math.round(dim.h*0.38)}mm;"></svg>
-            `}
-            ${bs.showBarcodeText && bs.barcodeType!=='QR' ? `<div class="mono" style="font-size:7.5px;font-weight:700;color:#000;">${escapeHtml(bs.customBarcode||'')}</div>` : ''}
+            <svg id="${svgId}" style="max-width:96%;height:auto;max-height:${Math.round(dim.h*0.38)}mm;"></svg>
+            ${bs.showBarcodeText !== false ? `<div class="mono" style="font-size:7.5px;font-weight:700;color:#000;">${barcodeVal}</div>` : ''}
           </div>
           <div style="display:flex;justify-content:space-between;align-items:center;font-size:7.5px;font-weight:800;border-top:0.5px solid #ccc;padding-top:1px;">
-            ${bs.showPrice && bs.customPrice ? `<div class="mono" style="font-size:9.5px;font-weight:900;">${Number(bs.customPrice).toLocaleString()} ج.م</div>` : '<div></div>'}
+            ${bs.showPrice !== false && price !== '0' ? `<div class="mono" style="font-size:9.5px;font-weight:900;">${price} ج.م</div>` : '<div></div>'}
             ${bs.showDate ? `<div>${todayStr}</div>` : ''}
           </div>
         </div>
       `;
-    }
+    });
 
-    mount.innerHTML = `<div class="barcode-print-sheet-grid">${cellsHtml}</div>`;
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;border:none;visibility:hidden;';
+    document.body.appendChild(iframe);
 
-    if(bs.barcodeType !== 'QR' && typeof JsBarcode !== 'undefined'){
-      for(let i=0; i<copies; i++){
+    const iDoc = iframe.contentDocument || iframe.contentWindow.document;
+    iDoc.open();
+    iDoc.write(`<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  @page { size: A4 portrait !important; margin: 6mm 6mm !important; }
+  html, body { margin: 0; padding: 0; background: #fff; width: 100%; height: 100%; }
+  .barcode-print-sheet-grid {
+    display: grid !important;
+    grid-template-columns: repeat(${dim.cols}, 1fr) !important;
+    gap: 2.5mm 3.5mm !important;
+    width: 198mm !important;
+    box-sizing: border-box !important;
+  }
+</style>
+</head>
+<body><div class="barcode-print-sheet-grid">${cellsHtml}</div></body>
+</html>`);
+    iDoc.close();
+
+    if(typeof JsBarcode !== 'undefined'){
+      svgIds.forEach(item => {
         try {
-          JsBarcode(`#printSheetSvg_${i}`, String(bs.customBarcode||'1001'), {
-            format: bs.barcodeType,
-            width: 1.1,
-            height: Math.round(dim.h * 1.1),
-            displayValue: false,
-            margin: 0
-          });
+          const el = iDoc.getElementById(item.id);
+          if(el){
+            JsBarcode(el, String(item.barcode||'1001'), {
+              format: 'CODE128',
+              width: 1.1,
+              height: Math.round(dim.h * 1.1),
+              displayValue: false,
+              margin: 0
+            });
+          }
         } catch(e){}
-      }
+      });
     }
+
+    setTimeout(() => {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+        showToast(`جاري طباعة ${flattenedList.length} ملصق على ورق مقسم A4... ✅`, 'success');
+      } catch(e) { window.print(); }
+      setTimeout(() => iframe.remove(), 1200);
+    }, 250);
+
   } else {
-    // Thermal Single Label Mode
-    styleTag.innerHTML = `
-      @media print {
-        @page {
-          size: ${dim.w}mm ${dim.h}mm !important;
-          margin: 0 !important;
-        }
-        body.printing-barcode-studio {
-          background: #fff !important;
-          width: ${dim.w}mm !important;
-          height: auto !important;
-          margin: 0 !important;
-          padding: 0 !important;
-        }
-        .barcode-print-thermal-sticker {
-          width: ${dim.w}mm !important;
-          height: ${dim.h}mm !important;
-          max-height: ${dim.h}mm !important;
-          box-sizing: border-box !important;
-          padding: 1.5mm 2.5mm !important;
-          display: flex !important;
-          flex-direction: column !important;
-          justify-content: space-between !important;
-          text-align: center !important;
-          overflow: hidden !important;
-          font-family: var(--font-main) !important;
-          color: #000 !important;
-          background: #fff !important;
-          page-break-inside: avoid !important;
-          page-break-after: always !important;
-          break-inside: avoid !important;
-          break-after: page !important;
-        }
-      }
-    `;
+    // Thermal Roll Sticker (Single unified continuous print job for XP-246B)
+    const tempContainer = document.createElement('div');
+    tempContainer.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:40mm;visibility:hidden;';
+    document.body.appendChild(tempContainer);
 
-    let stickersHtml = '';
-    for(let i=0; i<copies; i++){
-      stickersHtml += `
-        <div class="barcode-print-thermal-sticker">
-          ${bs.showShopName ? `<div style="font-size:7.5px;font-weight:800;border-bottom:0.5px solid #ccc;padding-bottom:1px;white-space:nowrap;overflow:hidden;">${escapeHtml(shopName)}</div>` : ''}
-          <div>
-            ${bs.showItemName ? `<div style="font-size:9.5px;font-weight:900;line-height:1.15;white-space:nowrap;overflow:hidden;">${escapeHtml(bs.customTitle||'')}</div>` : ''}
-            ${bs.customSubtitle ? `<div style="font-size:7.5px;color:#444;white-space:nowrap;overflow:hidden;">${escapeHtml(bs.customSubtitle)}</div>` : ''}
-          </div>
-          <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;">
-            ${bs.barcodeType==='QR' ? `
-              <div style="display:flex;align-items:center;justify-content:center;padding:1px;">${QRCodeGenerator.toSvg(bs.customBarcode||'1001', 60)}</div>
-            ` : `
-              <svg id="printThermalSvg_${i}" style="max-width:96%;height:auto;max-height:${Math.round(dim.h*0.38)}mm;"></svg>
-            `}
-            ${bs.showBarcodeText && bs.barcodeType!=='QR' ? `<div class="mono" style="font-size:8px;font-weight:700;color:#000;">${escapeHtml(bs.customBarcode||'')}</div>` : ''}
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;font-size:8px;font-weight:800;border-top:0.5px solid #ccc;padding-top:1px;">
-            ${bs.showPrice && bs.customPrice ? `<div class="mono" style="font-size:10px;font-weight:900;">${Number(bs.customPrice).toLocaleString()} ج.م</div>` : '<div></div>'}
-            ${bs.showDate ? `<div>${todayStr}</div>` : ''}
-          </div>
-        </div>
-      `;
+    const svgElements = [];
+    flattenedList.forEach((it, idx) => {
+      const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svgEl.id = `batchTmpSvg_${idx}`;
+      tempContainer.appendChild(svgEl);
+      renderStickerBarcodeSVG(`#batchTmpSvg_${idx}`, it.Barcode || '1001', dim);
+      svgElements.push(svgEl.outerHTML);
+    });
+    tempContainer.remove();
+
+    let pagesHtml = '';
+    flattenedList.forEach((it, idx) => {
+      const innerHtml = generateProductStickerHTML(it, dim, `batchBcSvg_${idx}`);
+      pagesHtml += `<div class="sticker-page">${innerHtml}</div>`;
+    });
+
+    const iframeHtml = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  @page { margin: 0mm; }
+  html, body { margin: 0; padding: 0; background: #fff; width: 100%; height: 100%; }
+  .sticker-page {
+    width: 100%;
+    height: 100vh;
+    overflow: hidden;
+    background: #fff;
+    color: #000;
+    font-family: Arial, Tahoma, 'Segoe UI', sans-serif;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .sticker-page:not(:last-child) {
+    page-break-after: always;
+    break-after: page;
+  }
+  .sticker-page:last-child {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+  .sticker-page > div {
+    width: 100% !important;
+    height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  .sticker-page * {
+    color: #000 !important;
+    font-family: Arial, Tahoma, 'Segoe UI', sans-serif !important;
+  }
+  svg { display: block; }
+</style>
+</head>
+<body>${pagesHtml}</body>
+</html>`;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;border:none;visibility:hidden;';
+    document.body.appendChild(iframe);
+
+    const iDoc = iframe.contentDocument || iframe.contentWindow.document;
+    iDoc.open();
+    iDoc.write(iframeHtml);
+    iDoc.close();
+
+    flattenedList.forEach((it, idx) => {
+      const svgPlaceholder = iDoc.getElementById(`batchBcSvg_${idx}`);
+      if(svgPlaceholder && svgElements[idx]){
+        const parser = new DOMParser();
+        const parsed = parser.parseFromString(svgElements[idx], 'image/svg+xml');
+        const realSvg = parsed.documentElement;
+        realSvg.removeAttribute('id');
+        realSvg.style.cssText = 'display:block;width:100%;max-height:' + (dim.h <= 12 ? '5.2mm' : dim.h <= 22 ? '7.5mm' : '10mm') + ';';
+        svgPlaceholder.parentNode.replaceChild(realSvg, svgPlaceholder);
+      }
+    });
+
+    setTimeout(() => {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+        showToast(`جاري إرسال ${flattenedList.length} ملصق إلى طابعة الباركود... ✅`, 'success');
+      } catch(e) {
+        console.warn('iframe batch print failed, falling back', e);
+        window.print();
+      }
+      setTimeout(() => iframe.remove(), 1200);
+    }, 250);
+  }
+}
+
+function executeBarcodePrint(){
+  const bs = state.barcodeStudio || {};
+  const dim = getBarcodePaperDimensions(bs.preset, bs.customWidth, bs.customHeight);
+  const copies = Math.max(1, Number(bs.copies)||1);
+  const todayStr = cleanDate(new Date());
+
+  if(dim.isSheet){
+    const itemData = {
+      Name: bs.customTitle || 'صنف',
+      Category: bs.customSubtitle || '',
+      Price: bs.customPrice || '',
+      Barcode: bs.customBarcode || '1001',
+      date: todayStr
+    };
+    executeBatchInvoiceBarcodePrint([{ ...itemData, printCopies: copies, selected: true }], bs.preset);
+  } else {
+    if(bs.mode === 'maintenance'){
+      const rec = (state.receipts || []).find(r => r.id === bs.selectedReceiptId || r.receiptNumber === bs.customBarcode);
+      if(rec){
+        executeDirectStickerPrint({ type: 'receipt', data: rec }, dim, copies);
+      } else {
+        const dummyRec = {
+          receiptNumber: bs.customBarcode || 'MT-2026-0001',
+          customer: { name: bs.customTitle || 'عميل صيانة', phone: '' },
+          device: { brand: bs.customSubtitle || '', category: 'جهاز صيانة', model: '' },
+          faults: [bs.customSubtitle || 'فحص وصيانة'],
+          cost: bs.customPrice || 0,
+          date: todayStr
+        };
+        executeDirectStickerPrint({ type: 'receipt', data: dummyRec }, dim, copies);
+      }
+    } else {
+      const itemData = {
+        Name: bs.customTitle || 'صنف',
+        Category: bs.customSubtitle || '',
+        Price: bs.customPrice || '',
+        Barcode: bs.customBarcode || '1001',
+        date: todayStr
+      };
+      executeDirectStickerPrint({ type: 'product', data: itemData }, dim, copies);
     }
+  }
+}
 
-    mount.innerHTML = stickersHtml;
+/* ---------------- Invoice Barcode Batch Workspace (View & Modal) ---------------- */
 
-    if(bs.barcodeType !== 'QR' && typeof JsBarcode !== 'undefined'){
-      for(let i=0; i<copies; i++){
-        try {
-          JsBarcode(`#printThermalSvg_${i}`, String(bs.customBarcode||'1001'), {
-            format: bs.barcodeType,
-            width: 1.3,
-            height: Math.round(dim.h * 1.3),
-            displayValue: false,
-            margin: 0
-          });
-        } catch(e){}
-      }
+function createInvoiceBarcodeWorkspace(opts){
+  const container = opts.container;
+  const isModal = Boolean(opts.isModal);
+  const purchases = state.purchases || [];
+  const invoices = state.invoices || [];
+
+  // Determine initial selection
+  let selectedType = opts.preselectedType || (purchases.length > 0 ? 'purchase' : (invoices.length > 0 ? 'invoice' : 'purchase'));
+  let selectedId = opts.preselectedId || '';
+
+  if(!selectedId){
+    if(selectedType === 'purchase' && purchases.length > 0){
+      selectedId = purchases[purchases.length - 1].ID || '';
+    } else if(selectedType === 'invoice' && invoices.length > 0){
+      selectedId = invoices[invoices.length - 1].ID || '';
     }
   }
 
-  // Trigger Native Print Dialog
-  document.body.classList.add('printing-barcode-studio');
-  setTimeout(()=>{
-    window.print();
-    setTimeout(()=>{
-      document.body.classList.remove('printing-barcode-studio');
-    }, 500);
-  }, 120);
+  let selectedPreset = (state.barcodeStudio && state.barcodeStudio.preset) || 'thermal_40x20';
+  let items = [];
+
+  function loadCurrentItems(){
+    let targetInv = null;
+    if(selectedType === 'purchase'){
+      targetInv = purchases.find(p => String(p.ID) === String(selectedId)) || purchases[purchases.length - 1];
+    } else {
+      targetInv = invoices.find(inv => String(inv.ID) === String(selectedId)) || invoices[invoices.length - 1];
+    }
+    if(targetInv){
+      selectedId = targetInv.ID;
+      items = getInvoicePrintableItems(targetInv, selectedType);
+    } else {
+      items = [];
+    }
+  }
+
+  loadCurrentItems();
+
+  function renderView(){
+    const totalSelected = items.filter(i => i.selected).length;
+    const totalCopies = items.filter(i => i.selected).reduce((s, i) => s + Math.max(0, parseInt(i.printCopies) || 0), 0);
+
+    const bs = state.barcodeStudio || {};
+
+    container.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:14px;direction:rtl;">
+        ${!isModal ? `
+          <div class="top-header" style="margin-bottom:6px;">
+            <div>
+              <h2 class="page-title">🧾 طباعة ملصقات الباركود من فواتير الشراء والمخزن</h2>
+              <div class="subtitle">استخراج أصناف الفاتورة وطباعة الملصقات بالعدد الفعلي كما بالفاتورة أو بأعداد مخصصة</div>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;">
+              <button class="btn btn-primary" id="btnDoBatchPrintTop" style="font-weight:900;padding:9px 18px;font-size:14px;box-shadow:0 4px 14px rgba(79,70,229,0.35);">
+                🖨️ طباعة الملصقات المحددة (${totalCopies} ملصق)
+              </button>
+            </div>
+          </div>
+        ` : ''}
+
+        <!-- Top Controls Box -->
+        <div class="card" style="padding:14px 18px;margin:0;border:1px solid var(--line);background:var(--bg-card,#fff);">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:12px;align-items:flex-end;">
+            
+            <div class="field" style="margin:0;">
+              <label style="font-weight:800;">📄 اختر الفاتورة المطلوبة</label>
+              <select id="wksInvoiceSelect" style="font-weight:700;">
+                <optgroup label="📥 فواتير الشراء والتوريد من الموردين (${purchases.length})">
+                  ${purchases.slice().reverse().map(p => `
+                    <option value="purchase:${p.ID}" ${(selectedType==='purchase'&&String(selectedId)===String(p.ID))?'selected':''}>
+                      شراء: ${escapeHtml(p.Supplier||'مورد')} — ${cleanDate(p.Date)} (${Number(p.Total||0).toLocaleString()} ج.م)
+                    </option>
+                  `).join('')}
+                </optgroup>
+                <optgroup label="📄 الفواتير الرسمية والمبيعات (${invoices.length})">
+                  ${invoices.slice().reverse().map(inv => `
+                    <option value="invoice:${inv.ID}" ${(selectedType==='invoice'&&String(selectedId)===String(inv.ID))?'selected':''}>
+                      فاتورة #${escapeHtml(inv.InvoiceNumber||'')}: ${escapeHtml(inv.CustomerName||'عميل')} — ${cleanDate(inv.Date)} (${Number(inv.Total||0).toLocaleString()} ج.م)
+                    </option>
+                  `).join('')}
+                </optgroup>
+              </select>
+            </div>
+
+            <div class="field" style="margin:0;">
+              <label style="font-weight:800;">📐 مقاس الملصق ونوع الطابعة</label>
+              <select id="wksPresetSelect" style="font-weight:700;">
+                <option value="thermal_40x20" ${selectedPreset==='thermal_40x20'?'selected':''}>40mm × 20mm (حراري 4×2 سم قياسي - XP-246B) ⭐</option>
+                <option value="thermal_40x10" ${selectedPreset==='thermal_40x10'?'selected':''}>40mm × 10mm (حراري 4×1 سم شريط رفيع للبضائع)</option>
+                <option value="thermal_40x15" ${selectedPreset==='thermal_40x15'?'selected':''}>40mm × 15mm (حراري 4×1.5 سم)</option>
+                <option value="thermal_50x25" ${selectedPreset==='thermal_50x25'?'selected':''}>50mm × 25mm (حراري 5×2.5 سم)</option>
+                <option value="thermal_50x30" ${selectedPreset==='thermal_50x30'?'selected':''}>50mm × 30mm (حراري 5×3 سم)</option>
+                <option value="thermal_60x40" ${selectedPreset==='thermal_60x40'?'selected':''}>60mm × 40mm (حراري كبير)</option>
+                <optgroup label="📄 صفحات A4 مقسمة">
+                  <option value="a4_24" ${selectedPreset==='a4_24'?'selected':''}>ورق A4 مقسم (24 ملصق)</option>
+                  <option value="a4_30" ${selectedPreset==='a4_30'?'selected':''}>ورق A4 مقسم (30 ملصق)</option>
+                  <option value="a4_40" ${selectedPreset==='a4_40'?'selected':''}>ورق A4 مقسم (40 ملصق)</option>
+                  <option value="a4_65" ${selectedPreset==='a4_65'?'selected':''}>ورق A4 مقسم (65 ملصق)</option>
+                </optgroup>
+              </select>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:10px;justify-content:flex-end;">
+              <div style="text-align:center;padding:6px 14px;background:var(--paper3,#f1f5f9);border-radius:10px;border:1px solid var(--line);">
+                <div style="font-size:11px;color:var(--ink-secondary);">إجمالي الملصقات</div>
+                <div class="mono font-bold" style="font-size:18px;color:var(--primary);">${totalCopies}</div>
+              </div>
+              <button class="btn btn-primary" id="btnDoBatchPrint" style="font-weight:900;padding:10px 20px;font-size:14px;height:44px;box-shadow:0 4px 14px rgba(79,70,229,0.3);">
+                🖨️ طباعة الملصقات الآن
+              </button>
+            </div>
+
+          </div>
+
+          <!-- Quick Quantity & Selection Bar -->
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-top:14px;padding-top:12px;border-top:1px dashed var(--line);">
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button class="btn btn-ghost btn-xs" id="wksBtnSelectAll">☑️ تحديد الكل</button>
+              <button class="btn btn-ghost btn-xs" id="wksBtnDeselectAll">⬜ إلغاء التحديد</button>
+              <button class="btn btn-ghost btn-xs" id="wksBtnResetInvoiceQty">🔄 استعادة كميات الفاتورة</button>
+              <button class="btn btn-ghost btn-xs" id="wksBtnSetOneQty">1️⃣ ملصق واحد لكل صنف</button>
+              <button class="btn btn-ghost btn-xs" id="wksBtnSetZeroQty">0️⃣ تصفير الكميات</button>
+            </div>
+            
+            <!-- Quick visibility toggles -->
+            <div style="display:flex;gap:12px;font-size:11.5px;align-items:center;flex-wrap:wrap;">
+              <span style="color:var(--ink-secondary);font-weight:700;">عناصر الملصق:</span>
+              <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+                <input type="checkbox" id="wksToggleShopName" ${bs.showShopName!==false?'checked':''}>
+                <span>المحل</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+                <input type="checkbox" id="wksTogglePrice" ${bs.showPrice!==false?'checked':''}>
+                <span>السعر</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+                <input type="checkbox" id="wksToggleBarcode" ${bs.showBarcodeText!==false?'checked':''}>
+                <span>الكود</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+                <input type="checkbox" id="wksToggleDate" ${bs.showDate?'checked':''}>
+                <span>التاريخ</span>
+              </label>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Items Table Card -->
+        <div class="card" style="padding:0;overflow:hidden;border:1px solid var(--line);margin:0;">
+          <div style="padding:10px 16px;background:var(--paper2,#f8fafc);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;">
+            <b style="font-size:13px;">📋 جدول أصناف الفاتورة المحددة (${items.length} صنف مسجل)</b>
+            <span class="status-badge st-check" style="font-size:11px;">المحدد للطباعة: ${totalSelected} صنف • ${totalCopies} ملصق</span>
+          </div>
+
+          ${items.length === 0 ? `
+            <div class="empty" style="padding:40px 20px;">
+              <div style="font-size:32px;margin-bottom:10px;">📦</div>
+              <b>لا توجد أصناف مسجلة في هذه الفاتورة أو تعذر قراءة بنودها.</b>
+              <div style="font-size:12px;color:var(--ink-secondary);margin-top:4px;">يمكنك اختيار فاتورة أخرى من القائمة بالأعلى.</div>
+            </div>
+          ` : `
+            <div class="table-wrap" style="max-height:460px;overflow-y:auto;">
+              <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+                <thead style="position:sticky;top:0;background:var(--paper2,#f8fafc);z-index:2;border-bottom:1.5px solid var(--line);">
+                  <tr>
+                    <th style="width:40px;text-align:center;">
+                      <input type="checkbox" id="wksMasterCheck" ${totalSelected===items.length?'checked':''}>
+                    </th>
+                    <th>اسم الصنف</th>
+                    <th>كود الباركود</th>
+                    <th>سعر البيع</th>
+                    <th style="text-align:center;">كمية الفاتورة</th>
+                    <th style="text-align:center;width:150px;">عدد ملصقات الطباعة</th>
+                    <th style="text-align:center;">الحالة</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${items.map((it, idx) => `
+                    <tr style="background:${it.selected?'transparent':'rgba(0,0,0,0.02)'};opacity:${it.selected?1:0.6};transition:background 0.2s;">
+                      <td style="text-align:center;">
+                        <input type="checkbox" class="wks-item-check" data-idx="${idx}" ${it.selected?'checked':''}>
+                      </td>
+                      <td>
+                        <div style="font-weight:800;color:var(--ink);">${escapeHtml(it.Name)}</div>
+                        ${it.Category ? `<span style="font-size:11px;color:var(--ink-secondary);">${escapeHtml(it.Category)}</span>` : ''}
+                      </td>
+                      <td>
+                        <input type="text" class="mono font-bold wks-item-barcode" data-idx="${idx}" value="${escapeHtml(it.Barcode)}" style="font-size:11.5px;padding:4px 8px;width:130px;border:1px solid var(--line);border-radius:6px;">
+                      </td>
+                      <td>
+                        <div class="mono font-bold" style="color:var(--green);">${Number(it.Price||0).toLocaleString()} ج.م</div>
+                      </td>
+                      <td style="text-align:center;">
+                        <span class="mono font-bold status-badge" style="font-size:12px;">${it.Quantity}</span>
+                      </td>
+                      <td style="text-align:center;">
+                        <div style="display:inline-flex;align-items:center;gap:4px;background:var(--paper3,#f1f5f9);padding:2px 6px;border-radius:8px;border:1px solid var(--line);">
+                          <button class="btn btn-ghost btn-xs wks-btn-dec" data-idx="${idx}" style="width:26px;height:26px;padding:0;font-weight:900;font-size:14px;border-radius:6px;">-</button>
+                          <input type="number" class="mono font-bold wks-item-copies" data-idx="${idx}" value="${it.printCopies}" min="0" max="500" style="width:48px;text-align:center;padding:3px;border:1px solid var(--line);border-radius:6px;background:#fff;">
+                          <button class="btn btn-ghost btn-xs wks-btn-inc" data-idx="${idx}" style="width:26px;height:26px;padding:0;font-weight:900;font-size:14px;border-radius:6px;">+</button>
+                        </div>
+                      </td>
+                      <td style="text-align:center;">
+                        ${it.inInventory ? `
+                          <span class="status-badge st-done" style="font-size:10px;">بالمخزن ✅</span>
+                        ` : `
+                          <span class="status-badge st-pending" style="font-size:10px;">فاتورة 📄</span>
+                        `}
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          `}
+        </div>
+
+        ${isModal ? `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding-top:10px;border-top:1px solid var(--line);">
+            <button class="btn btn-ghost btn-sm" id="wksNavToStudioBtn">🖥️ فتح كامل في استوديو الباركود ➔</button>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-ghost btn-sm" id="wksModalCancelBtn">إلغاء وإغلاق</button>
+              <button class="btn btn-primary btn-sm" id="wksModalSubmitBtn" style="font-weight:900;padding:8px 18px;">
+                🖨️ طباعة (${totalCopies} ملصق)
+              </button>
+            </div>
+          </div>
+        ` : ''}
+
+      </div>
+    `;
+
+    // Attach Event Handlers
+    const selInv = container.querySelector('#wksInvoiceSelect');
+    if(selInv){
+      selInv.onchange = (e) => {
+        const val = e.target.value;
+        const [type, id] = val.split(':');
+        selectedType = type;
+        selectedId = id;
+        loadCurrentItems();
+        renderView();
+      };
+    }
+
+    const selPreset = container.querySelector('#wksPresetSelect');
+    if(selPreset){
+      selPreset.onchange = (e) => {
+        selectedPreset = e.target.value;
+        if(state.barcodeStudio) state.barcodeStudio.preset = selectedPreset;
+      };
+    }
+
+    // Toggles
+    const tShop = container.querySelector('#wksToggleShopName');
+    if(tShop) tShop.onchange = (e) => { if(!state.barcodeStudio) state.barcodeStudio={}; state.barcodeStudio.showShopName = e.target.checked; };
+    const tPrice = container.querySelector('#wksTogglePrice');
+    if(tPrice) tPrice.onchange = (e) => { if(!state.barcodeStudio) state.barcodeStudio={}; state.barcodeStudio.showPrice = e.target.checked; };
+    const tBarcode = container.querySelector('#wksToggleBarcode');
+    if(tBarcode) tBarcode.onchange = (e) => { if(!state.barcodeStudio) state.barcodeStudio={}; state.barcodeStudio.showBarcodeText = e.target.checked; };
+    const tDate = container.querySelector('#wksToggleDate');
+    if(tDate) tDate.onchange = (e) => { if(!state.barcodeStudio) state.barcodeStudio={}; state.barcodeStudio.showDate = e.target.checked; };
+
+    // Master Checkbox
+    const masterCheck = container.querySelector('#wksMasterCheck');
+    if(masterCheck){
+      masterCheck.onchange = (e) => {
+        const checked = e.target.checked;
+        items.forEach(it => it.selected = checked);
+        renderView();
+      };
+    }
+
+    // Item Checkboxes
+    container.querySelectorAll('.wks-item-check').forEach(chk => {
+      chk.onchange = (e) => {
+        const idx = Number(e.target.dataset.idx);
+        if(items[idx]){
+          items[idx].selected = e.target.checked;
+          renderView();
+        }
+      };
+    });
+
+    // Barcode text input
+    container.querySelectorAll('.wks-item-barcode').forEach(inp => {
+      inp.onchange = (e) => {
+        const idx = Number(e.target.dataset.idx);
+        if(items[idx]) items[idx].Barcode = e.target.value.trim();
+      };
+    });
+
+    // Copies inputs & +/- buttons
+    container.querySelectorAll('.wks-btn-dec').forEach(btn => {
+      btn.onclick = () => {
+        const idx = Number(btn.dataset.idx);
+        if(items[idx]){
+          items[idx].printCopies = Math.max(0, (parseInt(items[idx].printCopies) || 0) - 1);
+          renderView();
+        }
+      };
+    });
+
+    container.querySelectorAll('.wks-btn-inc').forEach(btn => {
+      btn.onclick = () => {
+        const idx = Number(btn.dataset.idx);
+        if(items[idx]){
+          items[idx].printCopies = (parseInt(items[idx].printCopies) || 0) + 1;
+          items[idx].selected = true;
+          renderView();
+        }
+      };
+    });
+
+    container.querySelectorAll('.wks-item-copies').forEach(inp => {
+      inp.onchange = (e) => {
+        const idx = Number(e.target.dataset.idx);
+        if(items[idx]){
+          const val = Math.max(0, parseInt(e.target.value) || 0);
+          items[idx].printCopies = val;
+          if(val > 0) items[idx].selected = true;
+          renderView();
+        }
+      };
+    });
+
+    // Quick Action Buttons
+    const btnSelAll = container.querySelector('#wksBtnSelectAll');
+    if(btnSelAll) btnSelAll.onclick = () => { items.forEach(it => it.selected = true); renderView(); };
+
+    const btnDeselAll = container.querySelector('#wksBtnDeselectAll');
+    if(btnDeselAll) btnDeselAll.onclick = () => { items.forEach(it => it.selected = false); renderView(); };
+
+    const btnResetQty = container.querySelector('#wksBtnResetInvoiceQty');
+    if(btnResetQty) btnResetQty.onclick = () => { items.forEach(it => { it.printCopies = it.Quantity; it.selected = true; }); renderView(); };
+
+    const btnSetOne = container.querySelector('#wksBtnSetOneQty');
+    if(btnSetOne) btnSetOne.onclick = () => { items.forEach(it => { it.printCopies = 1; it.selected = true; }); renderView(); };
+
+    const btnSetZero = container.querySelector('#wksBtnSetZeroQty');
+    if(btnSetZero) btnSetZero.onclick = () => { items.forEach(it => it.printCopies = 0); renderView(); };
+
+    // Print Triggers
+    const doPrint = () => {
+      const printable = items.filter(it => it.selected && Number(it.printCopies) > 0);
+      if(printable.length === 0){
+        showToast('يرجى اختيار صنف واحد على الأقل وتحديد عدد ملصقات أكبر من صفر', 'warning');
+        return;
+      }
+      executeBatchInvoiceBarcodePrint(printable, selectedPreset);
+    };
+
+    const btnPrint1 = container.querySelector('#btnDoBatchPrint');
+    if(btnPrint1) btnPrint1.onclick = doPrint;
+    const btnPrintTop = container.querySelector('#btnDoBatchPrintTop');
+    if(btnPrintTop) btnPrintTop.onclick = doPrint;
+    const btnModalSubmit = container.querySelector('#wksModalSubmitBtn');
+    if(btnModalSubmit) btnModalSubmit.onclick = doPrint;
+
+    // Modal navigation
+    const btnCancel = container.querySelector('#wksModalCancelBtn');
+    if(btnCancel && opts.onClose) btnCancel.onclick = opts.onClose;
+
+    const btnNavStudio = container.querySelector('#wksNavToStudioBtn');
+    if(btnNavStudio){
+      btnNavStudio.onclick = () => {
+        if(opts.onClose) opts.onClose();
+        state.currentSection = 'barcodeStudio';
+        state.barcodeTab = 'invoice';
+        render();
+      };
+    }
+  }
+
+  renderView();
+}
+
+function renderBarcodeStudioInvoiceView(main){
+  createInvoiceBarcodeWorkspace({
+    container: main,
+    isModal: false
+  });
+}
+
+function openInvoiceBarcodePrintModal(type = 'purchase', targetId = ''){
+  const existing = document.getElementById('invoiceBarcodePrintModalOverlay');
+  if(existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'invoiceBarcodePrintModalOverlay';
+  overlay.className = 'modal-overlay';
+  overlay.style.cssText = 'z-index: 10050; display:flex; align-items:center; justify-content:center; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(4px);';
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-card';
+  modal.style.cssText = 'max-width: 900px; width: 95%; max-height: 90vh; background: var(--bg-card, #fff); border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35); overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--line, #e2e8f0);';
+
+  modal.innerHTML = `
+    <div style="padding: 14px 20px; background: linear-gradient(135deg, #1e293b, #0f172a); color: #fff; display: flex; align-items: center; justify-content: space-between;">
+      <div style="display:flex; align-items:center; gap: 10px;">
+        <div style="width: 36px; height: 36px; border-radius: 8px; background: rgba(124, 58, 237, 0.25); display:flex; align-items:center; justify-content:center; font-size: 19px; border: 1px solid rgba(124, 58, 237, 0.4);">🧾</div>
+        <div>
+          <h3 style="margin: 0; font-size: 15px; font-weight: 900; color: #fff;">طباعة ملصقات الباركود من الفاتورة</h3>
+          <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">تحديد الأصناف والكميات المطلوب طباعتها لطابعة الباركود</div>
+        </div>
+      </div>
+      <button id="closeInvoiceBarcodeModalBtn" style="background: rgba(255,255,255,0.1); border: none; color: #cbd5e1; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;">✕</button>
+    </div>
+    <div id="invoiceBarcodeWorkspaceMount" style="padding: 16px 20px; overflow-y: auto; max-height: calc(90vh - 65px);"></div>
+  `;
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  const closeFn = () => overlay.remove();
+  overlay.querySelector('#closeInvoiceBarcodeModalBtn').onclick = closeFn;
+
+  createInvoiceBarcodeWorkspace({
+    container: modal.querySelector('#invoiceBarcodeWorkspaceMount'),
+    isModal: true,
+    preselectedType: type,
+    preselectedId: targetId,
+    onClose: closeFn
+  });
 }
 
 /* ---------------- Login Screen ---------------- */

@@ -604,6 +604,116 @@ main {
   border-color: var(--primary);
 }
 
+/* View Mode Switcher (Table vs Cards) */
+.view-mode-toggle {
+  display: inline-flex;
+  background: var(--paper2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  gap: 2px;
+  user-select: none;
+}
+.view-mode-btn {
+  border: none;
+  background: transparent;
+  color: var(--ink-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.15s ease;
+}
+.view-mode-btn:hover {
+  color: var(--ink);
+  background: var(--paper3);
+}
+.view-mode-btn.active {
+  background: var(--primary);
+  color: #fff !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+/* Smart Receipts Grid & Cards */
+.smart-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 16px;
+  margin-top: 10px;
+}
+.smart-receipt-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  transition: all 0.2s ease;
+  position: relative;
+  box-shadow: var(--card-shadow);
+}
+.smart-receipt-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+  border-color: var(--line-strong, var(--primary));
+}
+.smart-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+}
+.smart-card-device {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.smart-card-customer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+.smart-card-finance-bar {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  background: var(--paper2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  text-align: center;
+  gap: 6px;
+}
+.smart-card-finance-item .lbl {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ink-secondary);
+  display: block;
+  margin-bottom: 2px;
+}
+.smart-card-finance-item .val {
+  font-size: 13px;
+  font-weight: 800;
+}
+.smart-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  justify-content: flex-end;
+}
+
 /* Cards */
 .card {
   background: var(--paper2);
@@ -6010,6 +6120,7 @@ let state = {
   invoices: getCache('invoices', []),
   formStep: 0,
   draft: null,
+  maintenanceViewMode: localStorage.getItem('microerp_maint_view_mode') || 'table',
   archiveFilter: {q:'', status:'', tech:'', group:'all'},
   settings: getCache('settings', {
     shopName: 'صيانة ميكروتك',
@@ -7781,13 +7892,32 @@ function renderDashboard(main){
     </div>` : ''}
 
     <div class="card">
-      <div class="card-header">
-        <h3>⚡ آخر الأجهزة المستلمة</h3>
+      <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <h3>⚡ آخر الأجهزة المستلمة</h3>
+          <div class="view-mode-toggle">
+            <button type="button" class="view-mode-btn ${state.maintenanceViewMode!=='cards'?'active':''}" id="dashViewTableBtn" title="عرض جدول تفصيلي">📋 جدول</button>
+            <button type="button" class="view-mode-btn ${state.maintenanceViewMode==='cards'?'active':''}" id="dashViewCardsBtn" title="عرض بطاقات ذكية">🗂️ بطاقات ذكية</button>
+          </div>
+        </div>
         <button class="btn btn-ghost btn-sm" id="dashViewAllBtn">عرض كل الأرشيف (${r.length})</button>
       </div>
-      ${r.length===0 ? '<div class="empty">لا توجد أجهزة مسجلة بعد. ابدأ باستلام جهاز جديد.</div>' : archiveTable(r.slice(-6).reverse())}
+      ${r.length===0 ? '<div class="empty">لا توجد أجهزة مسجلة بعد. ابدأ باستلام جهاز جديد.</div>' : renderMaintenanceView(r.slice(-6).reverse())}
     </div>
   `;
+
+  const btnTable = document.getElementById('dashViewTableBtn');
+  const btnCards = document.getElementById('dashViewCardsBtn');
+  if(btnTable) btnTable.onclick = ()=>{
+    state.maintenanceViewMode = 'table';
+    try{ localStorage.setItem('microerp_maint_view_mode', 'table'); }catch(e){}
+    renderMain();
+  };
+  if(btnCards) btnCards.onclick = ()=>{
+    state.maintenanceViewMode = 'cards';
+    try{ localStorage.setItem('microerp_maint_view_mode', 'cards'); }catch(e){}
+    renderMain();
+  };
 
   updateSyncStatusPill();
   document.getElementById('dashNewReceiptBtn').onclick = ()=>{
@@ -8665,7 +8795,7 @@ window.deleteReceiptDirect = function(receiptId, receiptNum){
 
 function archiveTable(list){
   return `<div class="table-wrap"><table><thead><tr>
-    <th>رقم الإيصال</th><th>العميل</th><th>الجهاز</th><th>الفني</th><th>الحالة (تغيير سريع)</th><th>المتبقي</th><th>الإجراءات</th>
+    <th>رقم الإيصال</th><th>العميل</th><th>الجهاز</th><th>الفني</th><th>الحالة (تغيير سريع)</th><th>التكلفة</th><th>المدفوع</th><th>المتبقي</th><th>الإجراءات</th>
   </tr></thead><tbody>
   ${list.map(rawR=>{
     const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
@@ -8673,7 +8803,8 @@ function archiveTable(list){
     const st = STATUSES.find(s=>s.v===r.status) || STATUSES[0];
     const otherAmt = Number(r.otherAccountAmount || 0);
     const totalDue = Number(r.cost||0) + Number(r.partsCost||0) + otherAmt;
-    const remaining = Math.max(0, totalDue - Number(r.deposit||0) + Number(r.refunded||0));
+    const deposit = Number(r.deposit||0);
+    const remaining = Math.max(0, totalDue - deposit + Number(r.refunded||0));
     const isOverdue = r.status==='مكتمل' && (Date.now()-new Date(r.updatedAt||r.date).getTime())/86400000 > 7;
     const cTitle = extractCustomerTitle(r);
     const cName = extractCustomerName(r) || 'عميل';
@@ -8687,11 +8818,11 @@ function archiveTable(list){
 
     return `<tr style="${isOverdue?'background:rgba(245,158,11,0.08);':''}">
       <td>
-        <span class="mono" style="font-weight:800;font-size:13px;color:var(--primary);">${rNum}</span>
-        ${r.previousReceiptNumber ? `<div style="font-size:10px;color:#b45309;font-weight:700;margin-top:1px;">🔄 صيانة راجعة (#${escapeHtml(r.previousReceiptNumber)})</div>` : ''}
+        <span class="mono" style="font-weight:800;font-size:13px;color:var(--primary);direction:ltr;unicode-bidi:isolate;display:inline-block;">${rNum}</span>
+        ${r.previousReceiptNumber ? `<div style="font-size:10px;color:#b45309;font-weight:700;margin-top:1px;direction:ltr;unicode-bidi:isolate;">🔄 صيانة راجعة (#${escapeHtml(r.previousReceiptNumber)})</div>` : ''}
         <div style="color:var(--ink-secondary);font-size:11px;display:flex;align-items:center;gap:4px;margin-top:2px;">
           <span>📅 ${cleanDate(r.date)}</span>
-          ${(formatReceiptTime(r) || r.time) ? `<span class="mono" style="color:var(--primary);font-size:10px;font-weight:600;">⏰ ${formatReceiptTime(r) || r.time}</span>` : ''}
+          ${(formatReceiptTime(r) || r.time) ? `<span class="mono" style="color:var(--primary);font-size:10px;font-weight:600;direction:ltr;unicode-bidi:isolate;">⏰ ${formatReceiptTime(r) || r.time}</span>` : ''}
         </div>
       </td>
       <td>
@@ -8716,9 +8847,15 @@ function archiveTable(list){
           <span style="font-size:9.5px;color:var(--slate-400);">⚡</span>
         </button>
       </td>
-      <td class="mono" style="font-weight:800;${remaining>0?'color:var(--red);':'color:var(--green);'}">
-        ${remaining} ج.م
+      <td class="mono" style="font-weight:700;color:var(--ink);">
+        ${totalDue.toLocaleString()} ج.م
         ${otherAmt>0 ? `<div style="font-size:9.5px;color:var(--amber-text);font-weight:700;">(+${otherAmt} إضافي)</div>` : ''}
+      </td>
+      <td class="mono" style="font-weight:700;color:var(--green);">
+        ${deposit.toLocaleString()} ج.م
+      </td>
+      <td class="mono" style="font-weight:800;${remaining>0?'color:var(--red);':'color:var(--green);'}">
+        ${remaining.toLocaleString()} ج.م
       </td>
       <td class="row-actions">
         <button class="btn btn-xs btn-amber" onclick="openReIntakeModalDirect(this.dataset.id, this.dataset.num)" data-act="reintake" data-id="${safeTargetId}" data-num="${rNum}" title="إعادة إدخال نفس الجهاز للصيانة (صيانة راجعة أو عطل جديد)">🔄 إعادة صيانة</button>
@@ -8733,6 +8870,105 @@ function archiveTable(list){
     </tr>`;
   }).join('')}
   </tbody></table></div>`;
+}
+
+function archiveCards(list){
+  return `<div class="smart-cards-grid">
+  ${list.map(rawR=>{
+    const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
+    if(!r) return '';
+    const st = STATUSES.find(s=>s.v===r.status) || STATUSES[0];
+    const otherAmt = Number(r.otherAccountAmount || 0);
+    const totalDue = Number(r.cost||0) + Number(r.partsCost||0) + otherAmt;
+    const deposit = Number(r.deposit||0);
+    const remaining = Math.max(0, totalDue - deposit + Number(r.refunded||0));
+    const isOverdue = r.status==='مكتمل' && (Date.now()-new Date(r.updatedAt||r.date).getTime())/86400000 > 7;
+    const cTitle = extractCustomerTitle(r);
+    const cName = extractCustomerName(r) || 'عميل';
+    const cPhone = extractCustomerPhone(r);
+    const dCat = escapeHtml((r.device && r.device.category) || 'جهاز');
+    const dBrand = escapeHtml(r.device ? (r.device.brand==='أخرى' ? r.device.brandOther : r.device.brand) : '');
+    const dModel = escapeHtml((r.device && r.device.model) || '');
+    const rId = escapeHtml(String(r.id != null ? r.id : (r.ID != null ? r.ID : '')));
+    const rNum = escapeHtml(String(r.receiptNumber || r.ReceiptNumber || ''));
+    const safeTargetId = rId || rNum;
+
+    return `<div class="smart-receipt-card" style="${isOverdue?'border-right: 4px solid var(--amber);background:rgba(245,158,11,0.03);':''}">
+      <div>
+        <div class="smart-card-header">
+          <div>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span class="badge" style="background:var(--paper2);color:var(--primary);font-size:11.5px;font-weight:800;border:1px solid var(--line);padding:2px 8px;border-radius:4px;">
+                إيصال <span class="mono" style="direction:ltr;unicode-bidi:isolate;display:inline-block;font-size:12.5px;">${rNum}</span>
+              </span>
+              ${r.previousReceiptNumber ? `<span class="badge" style="background:#fef3c7;color:#b45309;font-size:10px;font-weight:700;">🔄 صيانة راجعة (<span class="mono" style="direction:ltr;unicode-bidi:isolate;display:inline-block;">${escapeHtml(r.previousReceiptNumber)}</span>)</span>` : ''}
+            </div>
+            <div style="color:var(--ink-secondary);font-size:11px;display:flex;align-items:center;gap:6px;margin-top:3px;">
+              <span>📅 ${cleanDate(r.date)}</span>
+              ${(formatReceiptTime(r) || r.time) ? `<span class="mono" style="color:var(--primary);font-size:10.5px;font-weight:600;">⏰ ${formatReceiptTime(r) || r.time}</span>` : ''}
+            </div>
+          </div>
+          <button class="btn-status-quick" onclick="openQuickStatusModalDirect(this.dataset.quickstatus, this.dataset.num)" data-quickstatus="${safeTargetId}" data-num="${rNum}" title="اضغط لتغيير حالة الجهاز فوراً" style="margin:0;">
+            <span class="status-badge ${st.cls}">${st.icon} ${escapeHtml(r.status)}</span>
+            <span style="font-size:9.5px;color:var(--slate-400);">⚡</span>
+          </button>
+        </div>
+
+        <div style="margin-top:10px;">
+          <div class="smart-card-device">📱 ${dCat} - ${dBrand} <span style="color:var(--ink-secondary);font-weight:500;">${dModel}</span></div>
+          <div class="smart-card-customer">
+            ${cTitle ? `<span class="badge" style="background:var(--paper2);color:var(--primary);font-size:10px;font-weight:700;border:1px solid var(--line);padding:1px 5px;border-radius:4px;">${escapeHtml(cTitle)}</span>` : ''}
+            <b style="color:var(--ink);">${escapeHtml(cName)}</b>
+            ${cPhone && cPhone !== '0000000000' ? `
+              <span class="mono" style="color:var(--ink-secondary);font-size:11.5px;display:inline-flex;align-items:center;gap:3px;margin-right:auto;">
+                <span>${escapeHtml(cPhone)}</span>
+                <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" style="color:#22c55e;text-decoration:none;font-size:13px;" title="واتساب">💬</a>
+              </span>
+            ` : `
+              <span style="color:var(--amber-text);font-size:10.5px;font-weight:700;cursor:pointer;margin-right:auto;" onclick="openQuickAddPhoneModal('${escapeHtml(cName)}', '${escapeHtml(cTitle)}')">⚠️ هاتف غير مسجل</span>
+            `}
+          </div>
+          <div style="font-size:11px;color:var(--ink-secondary);margin-top:5px;display:flex;align-items:center;gap:4px;">
+            <span>👨‍🔧 الفني المسؤول:</span>
+            <b>${r.technician ? escapeHtml(r.technician) : '<span style="color:var(--slate-400);font-weight:normal;">غير محدد</span>'}</b>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="smart-card-finance-bar">
+          <div class="smart-card-finance-item">
+            <span class="lbl">التكلفة الإجمالية</span>
+            <span class="val mono" style="color:var(--ink);">${totalDue.toLocaleString()} <small style="font-size:9.5px;">ج.م</small></span>
+          </div>
+          <div class="smart-card-finance-item" style="border-right:1px solid var(--line);border-left:1px solid var(--line);">
+            <span class="lbl">المدفوع / المسدد</span>
+            <span class="val mono" style="color:var(--green);">${deposit.toLocaleString()} <small style="font-size:9.5px;">ج.م</small></span>
+          </div>
+          <div class="smart-card-finance-item">
+            <span class="lbl">المتبقي</span>
+            <span class="val mono" style="${remaining>0?'color:var(--red);':'color:var(--green);'}">${remaining.toLocaleString()} <small style="font-size:9.5px;">ج.م</small></span>
+          </div>
+        </div>
+
+        <div class="smart-card-actions">
+          <button class="btn btn-xs btn-amber" onclick="openReIntakeModalDirect(this.dataset.id, this.dataset.num)" data-act="reintake" data-id="${safeTargetId}" data-num="${rNum}" title="إعادة إدخال الجهاز للصيانة">🔄 إعادة صيانة</button>
+          <button class="btn btn-xs btn-blue" onclick="convertReceiptToInvoiceDirect(this.dataset.id, this.dataset.num)" data-act="invoice" data-id="${safeTargetId}" data-num="${rNum}" title="تحويل لفاتورة">📄 فاتورة</button>
+          <button class="btn btn-xs btn-ghost" onclick="openReceiptDetailModal(this.dataset.id, this.dataset.num)" data-act="view" data-id="${safeTargetId}" data-num="${rNum}" title="تعديل وعرض الإيصال">تعديل</button>
+          <button class="btn btn-xs btn-amber" onclick="openStickerPrintDirect(this.dataset.id, this.dataset.num, event)" data-act="sticker" data-id="${safeTargetId}" data-num="${rNum}" title="طباعة ملصق">🏷️ ملصق</button>
+          <button class="btn btn-xs btn-whatsapp" onclick="openWhatsappDirect(this.dataset.id, this.dataset.num)" data-act="wa" data-id="${safeTargetId}" data-num="${rNum}">${WA_ICON} واتساب</button>
+          <button class="btn btn-xs btn-green" onclick="openReceiptPrintDirect(this.dataset.id, this.dataset.num, 'receipt')" data-act="print" data-id="${safeTargetId}" data-num="${rNum}">طباعة A5</button>
+          <button class="btn btn-xs btn-red" onclick="deleteReceiptDirect(this.dataset.id, this.dataset.num)" data-act="del" data-id="${safeTargetId}" data-num="${rNum}" title="${(state.user && state.user.role==='admin')?'حذف الإيصال':'طلب تصريح حذف من الإدارة'}">${(state.user && state.user.role==='admin')?'حذف':'🔒 طلب حذف'}</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('')}
+  </div>`;
+}
+
+function renderMaintenanceView(list){
+  const mode = state.maintenanceViewMode || 'table';
+  return mode === 'cards' ? archiveCards(list) : archiveTable(list);
 }
 
 function renderArchive(main){
@@ -8767,7 +9003,11 @@ function renderArchive(main){
         <h2 class="page-title">📁 أرشيف إيصالات الصيانة</h2>
         <div class="subtitle mono" style="font-size:12px;color:var(--ink-secondary);">${list.length} إيصال مطابق</div>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <div class="view-mode-toggle" style="margin-left:4px;">
+          <button type="button" class="view-mode-btn ${state.maintenanceViewMode!=='cards'?'active':''}" id="archViewTableBtn" title="عرض جدول">📋 جدول</button>
+          <button type="button" class="view-mode-btn ${state.maintenanceViewMode==='cards'?'active':''}" id="archViewCardsBtn" title="عرض بطاقات ذكية">🗂️ بطاقات ذكية</button>
+        </div>
         <button class="btn btn-ghost btn-sm" id="archRecoverPhonesBtn" style="color:var(--primary);font-weight:800;" title="فحص كافة السجلات واسترداد أرقام الهواتف التائهة">🔄 استرداد الهواتف</button>
         <button class="btn btn-ghost btn-sm" id="archGotoCustBtn">👥 دليل العملاء</button>
         <button class="btn btn-ghost btn-sm" id="exportArchiveExcelBtn">📥 تصدير Excel</button>
@@ -8786,8 +9026,21 @@ function renderArchive(main){
       ${(f.q||f.status||f.tech||f.group!=='all') ? `<button class="btn btn-ghost btn-sm" id="clearFiltersBtn">مسح الفلاتر</button>` : ''}
     </div>
 
-    ${list.length===0 ? '<div class="empty">لا توجد نتائج مطابقة لخيارات البحث.</div>' : archiveTable(list.slice().reverse())}
+    ${list.length===0 ? '<div class="empty">لا توجد نتائج مطابقة لخيارات البحث.</div>' : renderMaintenanceView(list.slice().reverse())}
   `;
+
+  const btnTable = document.getElementById('archViewTableBtn');
+  const btnCards = document.getElementById('archViewCardsBtn');
+  if(btnTable) btnTable.onclick = ()=>{
+    state.maintenanceViewMode = 'table';
+    try{ localStorage.setItem('microerp_maint_view_mode', 'table'); }catch(e){}
+    renderArchive(main);
+  };
+  if(btnCards) btnCards.onclick = ()=>{
+    state.maintenanceViewMode = 'cards';
+    try{ localStorage.setItem('microerp_maint_view_mode', 'cards'); }catch(e){}
+    renderArchive(main);
+  };
 
   document.getElementById('archNewReceiptBtn').onclick = ()=>{ state.tab='new'; startNewDraft(); };
   document.getElementById('exportArchiveExcelBtn').onclick = ()=>exportReceiptsToExcel(list);
@@ -22635,6 +22888,72 @@ function attachLogin(){
       }
     }
   }catch(e){}
+})();
+
+/* ---------------- Universal English Digits Converter ---------------- */
+/**
+ * تحويل فوري لأي أرقام عربية مشرقية (٠-٩) أو فارسية (۰-۹) إلى أرقام إنجليزية (0-9)
+ * في أي خانة إدخال بالبرنامج بالكامل تلقائياً
+ */
+window.toEnglishDigits = function(str){
+  if(str == null) return '';
+  const arabicDigits = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'];
+  const persianDigits = ['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'];
+  return String(str)
+    .replace(/[٠-٩]/g, d => String(arabicDigits.indexOf(d)))
+    .replace(/[۰-۹]/g, d => String(persianDigits.indexOf(d)));
+};
+
+// Global real-time listener on document for input and paste events
+(function setupUniversalEnglishDigitsListener(){
+  function handleDigitInput(e){
+    const target = e.target;
+    if(!target || (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA')) return;
+    
+    // Ignore passwords and file inputs
+    if(target.type === 'password' || target.type === 'file' || target.type === 'checkbox' || target.type === 'radio') return;
+
+    const val = target.value;
+    if(!val) return;
+
+    // Check if contains any eastern Arabic or Persian digits
+    if(/[٠-٩۰-۹]/.test(val)){
+      const converted = window.toEnglishDigits(val);
+      if(converted !== val){
+        // Preserve selection / cursor position if supported
+        let start = null;
+        let end = null;
+        try {
+          start = target.selectionStart;
+          end = target.selectionEnd;
+        } catch(selErr){}
+
+        target.value = converted;
+
+        if(start !== null && end !== null){
+          try {
+            target.setSelectionRange(start, end);
+          } catch(rangeErr){}
+        }
+
+        // Trigger input event to update any reactive bindings if needed
+        try {
+          target.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+        } catch(evErr){}
+      }
+    }
+  }
+
+  // Use capture phase to intercept before component handlers
+  document.addEventListener('input', handleDigitInput, true);
+  document.addEventListener('paste', function(e){
+    // Short delay to allow paste to populate input, then sanitize
+    setTimeout(() => {
+      if(e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')){
+        handleDigitInput(e);
+      }
+    }, 10);
+  }, true);
 })();
 
 init();

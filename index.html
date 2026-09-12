@@ -3469,6 +3469,212 @@ tr:last-child td { border-bottom: none; }
   padding-top: 12px;
   border-top: 1px solid rgba(226, 232, 240, 0.6);
 }
+
+/* ==========================================================================
+   UNIFIED SELECTION & ACTION SYSTEM (العمارة الموحدة للأزرار والاختيار)
+   ========================================================================== */
+tr.selectable-row {
+  cursor: pointer;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+tr.selectable-row:hover {
+  background: rgba(5, 150, 105, 0.04) !important;
+}
+[data-theme="dark"] tr.selectable-row:hover {
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+tr.selected-row {
+  background: rgba(5, 150, 105, 0.12) !important;
+  box-shadow: inset 3.5px 0 0 #059669;
+}
+[data-theme="dark"] tr.selected-row {
+  background: rgba(5, 150, 105, 0.22) !important;
+  box-shadow: inset 3.5px 0 0 #10b981;
+}
+
+.smart-receipt-card {
+  cursor: pointer;
+  transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+.smart-receipt-card:hover {
+  border-color: rgba(5, 150, 105, 0.45);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+}
+.smart-receipt-card.selected-card {
+  border-color: #059669 !important;
+  box-shadow: 0 0 0 2px #059669, 0 12px 28px -6px rgba(5, 150, 105, 0.28) !important;
+  transform: translateY(-2px);
+  background: rgba(5, 150, 105, 0.025);
+}
+[data-theme="dark"] .smart-receipt-card.selected-card {
+  border-color: #10b981 !important;
+  box-shadow: 0 0 0 2px #10b981, 0 12px 28px -6px rgba(16, 185, 129, 0.35) !important;
+  background: rgba(16, 185, 129, 0.06);
+}
+
+.selected-badge-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #059669;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  margin-right: 4px;
+}
+
+/* Floating Docked Unified Selection Bar */
+.unified-selection-bar {
+  position: fixed;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%) translateY(140%);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #ffffff;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  box-shadow: 0 20px 40px -6px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.08);
+  border: 1.5px solid #059669;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
+  opacity: 0;
+  pointer-events: none;
+  max-width: calc(100vw - 32px);
+  flex-wrap: wrap;
+}
+.unified-selection-bar.active {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+[data-theme="dark"] .unified-selection-bar {
+  background: #1e293b;
+  border-color: #10b981;
+  box-shadow: 0 20px 40px -6px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+.unified-bar-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+  border-left: 1.5px solid var(--line);
+}
+[data-theme="dark"] .unified-bar-info {
+  border-left-color: rgba(255, 255, 255, 0.12);
+}
+.unified-bar-badge {
+  background: #ecfdf5;
+  color: #059669;
+  font-weight: 800;
+  font-size: 11.5px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+[data-theme="dark"] .unified-bar-badge {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+.unified-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.unified-bar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  font-size: 11.5px;
+  font-weight: 700;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.unified-bar-btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+}
+.unified-bar-btn-close {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink-secondary);
+  border-radius: 9999px;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 12px;
+  margin-right: 2px;
+  transition: all 0.15s;
+}
+.unified-bar-btn-close:hover {
+  background: #fee2e2;
+  color: #dc2626;
+  border-color: #fca5a5;
+}
+
+/* Action Sheet Modal Grid */
+.action-sheet-section-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ink-secondary);
+  margin: 10px 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.action-sheet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.action-sheet-card-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 6px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--paper2);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  text-align: center;
+  gap: 4px;
+}
+.action-sheet-card-btn:hover {
+  transform: translateY(-2px);
+  border-color: var(--primary);
+  background: var(--paper);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+.action-sheet-card-btn .act-icon {
+  font-size: 20px;
+}
+.action-sheet-card-btn .act-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.action-sheet-card-btn .act-desc {
+  font-size: 9.5px;
+  color: var(--ink-secondary);
+}
 </style>
 </head>
 <body>
@@ -7768,6 +7974,7 @@ function renderMaintenanceApp(app){
   document.querySelectorAll('.nav-item[data-tab]').forEach(el=>{
     el.onclick = ()=>{
       state.tab = el.dataset.tab;
+      updateSidebarNav();
       if(state.tab==='new' && !state.draft){ startNewDraft(); }
       else { renderMain(); }
     };
@@ -7789,14 +7996,35 @@ function navItem(tab, icon, label){
   </div>`;
 }
 
+function updateSidebarNav(){
+  try{
+    const navs = document.querySelectorAll('.sidebar .nav-item[data-tab]');
+    navs.forEach(el => {
+      if(el.dataset.tab === state.tab){
+        el.classList.add('active');
+      } else {
+        el.classList.remove('active');
+      }
+    });
+  }catch(e){
+    console.error('Error in updateSidebarNav:', e);
+  }
+}
+
 /* ---------------- Main Router ---------------- */
 function renderMain(){
   const main = document.getElementById('main');
+  if(!main) return;
   if(state.tab==='settings' && !canUserAccessSection('settings')){ state.tab='dashboard'; }
   if(state.tab==='users' && !canUserAccessSection('users')){ state.tab='dashboard'; }
   if(state.tab==='audit' && !canUserAccessSection('audit')){ state.tab='dashboard'; }
   if(state.tab==='invoices' && !canUserAccessSection('invoices')){ state.tab='dashboard'; }
   if(state.tab==='inventory' && !canUserAccessSection('inventory')){ state.tab='dashboard'; }
+
+  updateSidebarNav();
+  if(typeof hideUnifiedSelectionBar === 'function' && state.tab !== 'archive' && state.tab !== 'customers'){
+    hideUnifiedSelectionBar();
+  }
 
   if(state.tab==='dashboard') return renderDashboard(main);
   if(state.tab==='new') return renderForm(main);
@@ -8018,6 +8246,8 @@ function renderMaintenanceAnalytics(main){
 
 /* ---------------- New Receipt Form ---------------- */
 function startNewDraft(){
+  state.tab = 'new';
+  updateSidebarNav();
   state.draft = newDraft();
   state.formStep = 0;
   nextReceiptNumber()
@@ -8793,9 +9023,454 @@ window.deleteReceiptDirect = function(receiptId, receiptNum){
   }
 };
 
+/* ==========================================================================
+   UNIFIED ACTIONS & SELECTION ENGINE (المحرك الموحد للاختيار وإجراءات البرنامج)
+   ========================================================================== */
+
+function getOrCreateUnifiedSelectionBar(){
+  let bar = document.getElementById('unifiedSelectionBar');
+  if(!bar){
+    bar = document.createElement('div');
+    bar.id = 'unifiedSelectionBar';
+    bar.className = 'unified-selection-bar';
+    document.body.appendChild(bar);
+  }
+  return bar;
+}
+
+window.hideUnifiedSelectionBar = function(){
+  const bar = document.getElementById('unifiedSelectionBar');
+  if(bar){
+    bar.classList.remove('active');
+    bar.innerHTML = '';
+  }
+  state.selectedReceiptId = null;
+  state.selectedReceiptNum = null;
+  state.selectedCustomerId = null;
+  document.querySelectorAll('.selected-row').forEach(el => el.classList.remove('selected-row'));
+  document.querySelectorAll('.selected-card').forEach(el => el.classList.remove('selected-card'));
+  document.querySelectorAll('.selected-badge-indicator').forEach(el => el.remove());
+};
+
+window.deselectCurrentSelection = function(){
+  window.hideUnifiedSelectionBar();
+};
+
+window.selectReceipt = function(receiptId, receiptNum){
+  const r = findReceiptByIdOrNum(receiptId, receiptNum);
+  if(!r) return;
+
+  const safeTargetId = String(r.id != null ? r.id : (r.ID != null ? r.ID : r.receiptNumber));
+  const rNum = String(r.receiptNumber || r.ReceiptNumber || receiptNum || '');
+
+  state.selectedReceiptId = safeTargetId;
+  state.selectedReceiptNum = rNum;
+  state.selectedCustomerId = null;
+
+  // Update DOM highlights
+  document.querySelectorAll('.selected-row').forEach(el => el.classList.remove('selected-row'));
+  document.querySelectorAll('.selected-card').forEach(el => el.classList.remove('selected-card'));
+
+  const matchingRows = document.querySelectorAll(`tr[data-receipt-id="${safeTargetId}"]`);
+  matchingRows.forEach(el => el.classList.add('selected-row'));
+
+  const matchingCards = document.querySelectorAll(`.smart-receipt-card[data-receipt-id="${safeTargetId}"]`);
+  matchingCards.forEach(el => el.classList.add('selected-card'));
+
+  // Calculate totals
+  const otherAmt = Number(r.otherAccountAmount || 0);
+  const totalDue = Number(r.cost || 0) + Number(r.partsCost || 0) + otherAmt;
+  const deposit = Number(r.deposit || 0);
+  const remaining = Math.max(0, totalDue - deposit + Number(r.refunded || 0));
+  const cName = extractCustomerName(r) || 'عميل';
+  const dCat = (r.device && r.device.category) || 'جهاز';
+  const dBrand = (r.device ? (r.device.brand === 'أخرى' ? r.device.brandOther : r.device.brand) : '') || '';
+
+  const bar = getOrCreateUnifiedSelectionBar();
+  bar.innerHTML = `
+    <div class="unified-bar-info">
+      <div class="unified-bar-badge">
+        <span>✓ إيصال مختار</span>
+        <b class="mono" style="direction:ltr;unicode-bidi:isolate;">#${escapeHtml(rNum)}</b>
+      </div>
+      <div style="font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <span style="font-weight:700;color:var(--ink);">${escapeHtml(cName)}</span>
+        <span style="color:var(--ink-secondary);font-size:11px;">(${escapeHtml(dCat)} ${escapeHtml(dBrand)})</span>
+        <span class="mono" style="font-size:11.5px;font-weight:800;${remaining > 0 ? 'color:var(--red);' : 'color:var(--green);'}">
+          ${remaining > 0 ? `متبقي: ${remaining.toLocaleString()} ج.م` : 'خالص المسدد'}
+        </span>
+      </div>
+    </div>
+
+    <div class="unified-bar-actions">
+      <button class="unified-bar-btn btn-status-quick" style="background:var(--green-bg);color:var(--green-text);border-color:rgba(5,150,105,0.25);" onclick="openQuickStatusModalDirect('${safeTargetId}', '${rNum}')" title="تغيير سريع لحالة الجهاز">
+        ⚡ الحالة
+      </button>
+      <button class="unified-bar-btn btn-whatsapp" onclick="openWhatsappDirect('${safeTargetId}', '${rNum}')" title="محادثة واتساب">
+        ${WA_ICON} واتساب
+      </button>
+      <button class="unified-bar-btn btn-green" onclick="openReceiptPrintDirect('${safeTargetId}', '${rNum}', 'receipt')" title="طباعة إيصال استلام A5">
+        🖨️ طباعة A5
+      </button>
+      <button class="unified-bar-btn btn-amber" onclick="openStickerPrintDirect('${safeTargetId}', '${rNum}', event)" title="طباعة ملصق الباركود">
+        🏷️ ملصق
+      </button>
+      <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="openReceiptDetailModal('${safeTargetId}', '${rNum}')" title="تعديل وعرض تفاصيل الإيصال">
+        ✏️ تعديل
+      </button>
+      <button class="unified-bar-btn btn-amber" style="background:#fef3c7;color:#b45309;" onclick="openReIntakeModalDirect('${safeTargetId}', '${rNum}')" title="صيانة راجعة أو عطل جديد">
+        🔄 صيانة راجعة
+      </button>
+      <button class="unified-bar-btn btn-blue" onclick="convertReceiptToInvoiceDirect('${safeTargetId}', '${rNum}')" title="تحويل لفاتورة ضريبية">
+        📄 فاتورة
+      </button>
+      <button class="unified-bar-btn btn-red" onclick="deleteReceiptDirect('${safeTargetId}', '${rNum}')" title="${(state.user && state.user.role === 'admin') ? 'حذف الإيصال' : 'طلب تصريح حذف'}">
+        ${(state.user && state.user.role === 'admin') ? '🗑️ حذف' : '🔒 طلب حذف'}
+      </button>
+      <button class="unified-bar-btn-close" onclick="deselectCurrentSelection()" title="إلغاء التحديد">
+        ✕
+      </button>
+    </div>
+  `;
+  bar.classList.add('active');
+};
+
+window.toggleReceiptSelection = function(receiptId, receiptNum){
+  const safeId = String(receiptId);
+  if(state.selectedReceiptId === safeId){
+    deselectCurrentSelection();
+  } else {
+    selectReceipt(receiptId, receiptNum);
+  }
+};
+
+window.handleReceiptRowClick = function(receiptId, receiptNum, evt){
+  if(evt && evt.target && evt.target.closest('button, a, input, select')){
+    return;
+  }
+  toggleReceiptSelection(receiptId, receiptNum);
+};
+
+window.handleReceiptCardClick = function(receiptId, receiptNum, evt){
+  if(evt && evt.target && evt.target.closest('button, a, input, select')){
+    return;
+  }
+  toggleReceiptSelection(receiptId, receiptNum);
+};
+
+window.openReceiptActionSheet = function(receiptId, receiptNum){
+  const r = findReceiptByIdOrNum(receiptId, receiptNum);
+  if(!r){ showToast('لم يتم العثور على الإيصال المطلوب', 'error'); return; }
+
+  const safeTargetId = String(r.id != null ? r.id : (r.ID != null ? r.ID : r.receiptNumber));
+  const rNum = String(r.receiptNumber || r.ReceiptNumber || receiptNum || '');
+  selectReceipt(safeTargetId, rNum);
+
+  const cTitle = extractCustomerTitle(r);
+  const cName = extractCustomerName(r) || 'عميل';
+  const cPhone = extractCustomerPhone(r);
+  const dCat = (r.device && r.device.category) || 'جهاز';
+  const dBrand = (r.device ? (r.device.brand === 'أخرى' ? r.device.brandOther : r.device.brand) : '') || '';
+  const dModel = (r.device && r.device.model) || '';
+  const otherAmt = Number(r.otherAccountAmount || 0);
+  const totalDue = Number(r.cost || 0) + Number(r.partsCost || 0) + otherAmt;
+  const deposit = Number(r.deposit || 0);
+  const remaining = Math.max(0, totalDue - deposit + Number(r.refunded || 0));
+  const st = STATUSES.find(s => s.v === r.status) || STATUSES[0];
+
+  const prevModal = document.getElementById('receiptActionSheetModal');
+  if(prevModal) prevModal.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'receiptActionSheetModal';
+  overlay.style.zIndex = '11000';
+  overlay.innerHTML = `
+    <div class="modal-content" style="max-width:580px;padding:22px;border-radius:20px;box-shadow:0 24px 60px rgba(0,0,0,0.28);">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:16px;">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="badge" style="background:var(--primary);color:#fff;font-weight:800;font-size:12px;padding:3px 8px;border-radius:6px;">⚡ إجراءات موحدة</span>
+            <h3 style="margin:0;font-size:17px;color:var(--ink);">إيصال صيانة <span class="mono" style="direction:ltr;unicode-bidi:isolate;color:var(--primary);">#${escapeHtml(rNum)}</span></h3>
+          </div>
+          <div style="font-size:12px;color:var(--ink-secondary);margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span>👤 <b>${escapeHtml(cName)}</b></span>
+            <span>📱 <b>${escapeHtml(dCat)} - ${escapeHtml(dBrand)} ${escapeHtml(dModel)}</b></span>
+            <span class="status-badge ${st.cls}" style="font-size:10.5px;">${st.icon} ${escapeHtml(r.status)}</span>
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('receiptActionSheetModal').remove()" style="font-size:14px;border-radius:50%;width:32px;height:32px;padding:0;display:flex;align-items:center;justify-content:center;">✕</button>
+      </div>
+
+      <!-- Financial Mini-Summary -->
+      <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:8px;background:var(--paper2);padding:10px 12px;border-radius:12px;border:1px solid var(--line);margin-bottom:16px;text-align:center;">
+        <div>
+          <div style="font-size:10.5px;color:var(--ink-secondary);font-weight:700;">التكلفة الإجمالية</div>
+          <div class="mono font-bold" style="font-size:14px;color:var(--ink);">${totalDue.toLocaleString()} ج.م</div>
+        </div>
+        <div style="border-right:1px solid var(--line);border-left:1px solid var(--line);">
+          <div style="font-size:10.5px;color:var(--ink-secondary);font-weight:700;">المدفوع</div>
+          <div class="mono font-bold" style="font-size:14px;color:var(--green);">${deposit.toLocaleString()} ج.م</div>
+        </div>
+        <div>
+          <div style="font-size:10.5px;color:var(--ink-secondary);font-weight:700;">المتبقي</div>
+          <div class="mono font-bold" style="font-size:14px;${remaining > 0 ? 'color:var(--red);' : 'color:var(--green);'}">${remaining.toLocaleString()} ج.م</div>
+        </div>
+      </div>
+
+      <!-- Actions Grid -->
+      <div class="action-sheet-section-title">🛠️ إجراءات وخدمات الصيانة</div>
+      <div class="action-sheet-grid">
+        <div class="action-sheet-card-btn" onclick="document.getElementById('receiptActionSheetModal').remove(); openQuickStatusModalDirect('${safeTargetId}', '${rNum}');">
+          <div class="act-icon">⚡</div>
+          <div class="act-label">تغيير الحالة</div>
+          <div class="act-desc">تحديث فوري لموقف الجهاز</div>
+        </div>
+        <div class="action-sheet-card-btn" onclick="document.getElementById('receiptActionSheetModal').remove(); openReceiptDetailModal('${safeTargetId}', '${rNum}');">
+          <div class="act-icon">✏️</div>
+          <div class="act-label">تعديل الإيصال</div>
+          <div class="act-desc">تعديل الأعطال والمبالغ</div>
+        </div>
+        <div class="action-sheet-card-btn" onclick="document.getElementById('receiptActionSheetModal').remove(); openReIntakeModalDirect('${safeTargetId}', '${rNum}');">
+          <div class="act-icon">🔄</div>
+          <div class="act-label">صيانة راجعة</div>
+          <div class="act-desc">إعادة إدخال نفس الجهاز</div>
+        </div>
+      </div>
+
+      <div class="action-sheet-section-title">📄 الطباعة والمستندات الرسمية</div>
+      <div class="action-sheet-grid">
+        <div class="action-sheet-card-btn" onclick="document.getElementById('receiptActionSheetModal').remove(); openReceiptPrintDirect('${safeTargetId}', '${rNum}', 'receipt');">
+          <div class="act-icon">🖨️</div>
+          <div class="act-label">طباعة A5</div>
+          <div class="act-desc">إيصال استلام رسمي</div>
+        </div>
+        <div class="action-sheet-card-btn" onclick="document.getElementById('receiptActionSheetModal').remove(); openStickerPrintDirect('${safeTargetId}', '${rNum}', event);">
+          <div class="act-icon">🏷️</div>
+          <div class="act-label">ملصق الباركود</div>
+          <div class="act-desc">طباعة لاصق باركود للجهاز</div>
+        </div>
+        <div class="action-sheet-card-btn" onclick="document.getElementById('receiptActionSheetModal').remove(); convertReceiptToInvoiceDirect('${safeTargetId}', '${rNum}');">
+          <div class="act-icon">📄</div>
+          <div class="act-label">تحويل لفاتورة</div>
+          <div class="act-desc">فاتورة ضريبية رسمية</div>
+        </div>
+      </div>
+
+      <div class="action-sheet-section-title">💬 التواصل والعمليات</div>
+      <div class="action-sheet-grid">
+        <div class="action-sheet-card-btn" onclick="document.getElementById('receiptActionSheetModal').remove(); openWhatsappDirect('${safeTargetId}', '${rNum}');">
+          <div class="act-icon" style="color:#22c55e;">💬</div>
+          <div class="act-label">محادثة واتساب</div>
+          <div class="act-desc">إرسال التحديث للعميل</div>
+        </div>
+        ${cPhone && cPhone !== '0000000000' ? `
+          <a href="tel:${cPhone}" class="action-sheet-card-btn" style="text-decoration:none;" onclick="document.getElementById('receiptActionSheetModal').remove();">
+            <div class="act-icon" style="color:var(--blue);">📞</div>
+            <div class="act-label">اتصال بالعميل</div>
+            <div class="act-desc mono">${escapeHtml(cPhone)}</div>
+          </a>
+        ` : `
+          <div class="action-sheet-card-btn" onclick="document.getElementById('receiptActionSheetModal').remove(); openQuickAddPhoneModal('${escapeHtml(cName)}', '${escapeHtml(cTitle)}');">
+            <div class="act-icon" style="color:var(--amber);">⚠️</div>
+            <div class="act-label">تسجيل هاتف</div>
+            <div class="act-desc">إضافة رقم للعميل</div>
+          </div>
+        `}
+        <div class="action-sheet-card-btn" style="border-color:rgba(239,68,68,0.3);background:rgba(239,68,68,0.03);" onclick="document.getElementById('receiptActionSheetModal').remove(); deleteReceiptDirect('${safeTargetId}', '${rNum}');">
+          <div class="act-icon" style="color:var(--red);">🗑️</div>
+          <div class="act-label" style="color:var(--red);">${(state.user && state.user.role === 'admin') ? 'حذف الإيصال' : '🔒 طلب حذف'}</div>
+          <div class="act-desc">${(state.user && state.user.role === 'admin') ? 'حذف نهائي' : 'طلب تصريح إداري'}</div>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;margin-top:14px;border-top:1px solid var(--line);padding-top:12px;">
+        <button class="btn btn-ghost" onclick="document.getElementById('receiptActionSheetModal').remove()">إغلاق</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+};
+
+/* ---------------- Customer Selection & Action Architecture ---------------- */
+
+window.selectCustomer = function(custName, custPhone){
+  if(!custName) return;
+  state.selectedCustomerId = custName;
+  state.selectedReceiptId = null;
+  state.selectedReceiptNum = null;
+
+  document.querySelectorAll('.selected-row').forEach(el => el.classList.remove('selected-row'));
+  document.querySelectorAll('.selected-card').forEach(el => el.classList.remove('selected-card'));
+
+  document.querySelectorAll('tr[data-cust-name]').forEach(el => {
+    if(el.dataset.custName === custName){
+      el.classList.add('selected-row');
+    }
+  });
+
+  const cPhone = custPhone || '';
+  const clientReceipts = (state.receipts || []).filter(r => {
+    const rName = extractCustomerName(r);
+    const rPhone = extractCustomerPhone(r);
+    return (rName && rName.toLowerCase() === custName.toLowerCase()) || (cPhone && rPhone === cPhone);
+  });
+
+  const bar = getOrCreateUnifiedSelectionBar();
+  bar.innerHTML = `
+    <div class="unified-bar-info">
+      <div class="unified-bar-badge" style="background:#eff6ff;color:#2563eb;">
+        <span>👤 عميل مختار</span>
+      </div>
+      <div style="font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <span style="font-weight:800;color:var(--ink);">${escapeHtml(custName)}</span>
+        ${cPhone && cPhone !== '0000000000' ? `<span class="mono" style="color:var(--ink-secondary);font-size:11.5px;direction:ltr;">${escapeHtml(cPhone)}</span>` : ''}
+        <span class="badge badge-blue" style="font-size:10.5px;">🛠️ ${clientReceipts.length} جهاز مسجل</span>
+      </div>
+    </div>
+
+    <div class="unified-bar-actions">
+      <button class="unified-bar-btn btn-primary" onclick="openCustomerActionSheet('${escapeHtml(custName)}', '${escapeHtml(cPhone)}');" title="فتح لوحة إجراءات العميل الموحدة">
+        ⚡ خيارات العميل
+      </button>
+      <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="document.querySelector('tr.selected-row .edit-cust-btn')?.click();" title="تعديل بيانات العميل">
+        ✏️ تعديل
+      </button>
+      <button class="unified-bar-btn btn-blue" onclick="document.querySelector('tr.selected-row .cust-new-receipt-btn')?.click();" title="إنشاء إيصال صيانة جديد لهذا العميل">
+        ➕ إيصال صيانة
+      </button>
+      <button class="unified-bar-btn btn-ghost" style="background:#faf5ff;color:#7c3aed;border:1px solid #ddd6fe;" onclick="document.querySelector('tr.selected-row .cust-new-inv-btn')?.click();" title="إنشاء فاتورة جديدة">
+        🧾 فاتورة
+      </button>
+      ${clientReceipts.length > 0 ? `
+        <button class="unified-bar-btn btn-ghost" style="color:var(--primary);font-weight:800;border:1px solid var(--line);" onclick="document.querySelector('tr.selected-row .view-cust-receipts-btn')?.click();" title="استعراض أجهزة العميل بالأرشيف">
+          📁 أجهزة العميل (${clientReceipts.length})
+        </button>
+      ` : ''}
+      ${cPhone && cPhone !== '0000000000' ? `
+        <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" class="unified-bar-btn btn-whatsapp" style="text-decoration:none;">
+          ${WA_ICON} واتساب
+        </a>
+        <a href="tel:${cPhone}" class="unified-bar-btn btn-ghost" style="text-decoration:none;border:1px solid var(--line);" title="اتصال هاتفي">
+          📞 اتصال
+        </a>
+      ` : `
+        <button class="unified-bar-btn btn-amber" onclick="openQuickAddPhoneModal('${escapeHtml(custName)}', '')">
+          ⚠️ إضافة هاتف
+        </button>
+      `}
+      <button class="unified-bar-btn-close" onclick="deselectCurrentSelection()" title="إلغاء التحديد">
+        ✕
+      </button>
+    </div>
+  `;
+  bar.classList.add('active');
+};
+
+window.handleCustomerRowClick = function(custName, custPhone, evt){
+  if(evt && evt.target && evt.target.closest('button, a, input, select')){
+    return;
+  }
+  if(state.selectedCustomerId === custName){
+    deselectCurrentSelection();
+  } else {
+    selectCustomer(custName, custPhone);
+  }
+};
+
+window.openCustomerActionSheet = function(custName, custPhone, custTitle, custEmail){
+  selectCustomer(custName, custPhone);
+  const clientReceipts = (state.receipts || []).filter(r => {
+    const rName = extractCustomerName(r);
+    const rPhone = extractCustomerPhone(r);
+    return (rName && rName.toLowerCase() === custName.toLowerCase()) || (custPhone && rPhone === custPhone);
+  });
+
+  const prevModal = document.getElementById('customerActionSheetModal');
+  if(prevModal) prevModal.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'customerActionSheetModal';
+  overlay.style.zIndex = '11000';
+  overlay.innerHTML = `
+    <div class="modal-content" style="max-width:520px;padding:22px;border-radius:20px;box-shadow:0 24px 60px rgba(0,0,0,0.28);">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:16px;">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="badge" style="background:#2563eb;color:#fff;font-weight:800;font-size:12px;padding:3px 8px;border-radius:6px;">👤 خيارات العميل الموحدة</span>
+            <h3 style="margin:0;font-size:17px;color:var(--ink);">${escapeHtml(custName)}</h3>
+          </div>
+          <div style="font-size:12px;color:var(--ink-secondary);margin-top:6px;display:flex;align-items:center;gap:8px;">
+            ${custTitle ? `<span class="badge badge-gray">${escapeHtml(custTitle)}</span>` : ''}
+            ${custPhone ? `<span class="mono">📱 ${escapeHtml(custPhone)}</span>` : '<span style="color:var(--amber);">⚠️ بدون هاتف</span>'}
+            <span class="badge badge-blue">🛠️ ${clientReceipts.length} جهاز مسجل</span>
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('customerActionSheetModal').remove()" style="font-size:14px;border-radius:50%;width:32px;height:32px;padding:0;display:flex;align-items:center;justify-content:center;">✕</button>
+      </div>
+
+      <div class="action-sheet-section-title">⚡ العمليات والمعاملات المباشرة</div>
+      <div class="action-sheet-grid">
+        <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); document.querySelector('tr.selected-row .cust-new-receipt-btn')?.click();">
+          <div class="act-icon">➕</div>
+          <div class="act-label">إيصال صيانة جديد</div>
+          <div class="act-desc">استلام جهاز للعميل</div>
+        </div>
+        <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); document.querySelector('tr.selected-row .cust-new-inv-btn')?.click();">
+          <div class="act-icon">🧾</div>
+          <div class="act-label">فاتورة جديدة</div>
+          <div class="act-desc">إصدار فاتورة بيع/خدمة</div>
+        </div>
+        <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); document.querySelector('tr.selected-row .edit-cust-btn')?.click();">
+          <div class="act-icon">✏️</div>
+          <div class="act-label">تعديل البيانات</div>
+          <div class="act-desc">تحديث الهاتف والاسم</div>
+        </div>
+      </div>
+
+      <div class="action-sheet-section-title">💬 الاتصال والتواصل والأرشيف</div>
+      <div class="action-sheet-grid">
+        ${custPhone && custPhone !== '0000000000' ? `
+          <a href="https://wa.me/${normalizePhoneForWa(custPhone)}" target="_blank" class="action-sheet-card-btn" style="text-decoration:none;" onclick="document.getElementById('customerActionSheetModal').remove();">
+            <div class="act-icon" style="color:#22c55e;">💬</div>
+            <div class="act-label">واتساب</div>
+            <div class="act-desc">محادثة فورية</div>
+          </a>
+          <a href="tel:${custPhone}" class="action-sheet-card-btn" style="text-decoration:none;" onclick="document.getElementById('customerActionSheetModal').remove();">
+            <div class="act-icon" style="color:var(--blue);">📞</div>
+            <div class="act-label">اتصال مباشر</div>
+            <div class="act-desc mono">${escapeHtml(custPhone)}</div>
+          </a>
+        ` : `
+          <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); openQuickAddPhoneModal('${escapeHtml(custName)}', '${escapeHtml(custTitle||'')}');">
+            <div class="act-icon" style="color:var(--amber);">⚠️</div>
+            <div class="act-label">إضافة هاتف</div>
+            <div class="act-desc">تسجيل رقم للتواصل</div>
+          </div>
+        `}
+        ${clientReceipts.length > 0 ? `
+          <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); document.querySelector('tr.selected-row .view-cust-receipts-btn')?.click();">
+            <div class="act-icon" style="color:var(--primary);">📁</div>
+            <div class="act-label">سجل أجهزة العميل</div>
+            <div class="act-desc">${clientReceipts.length} جهاز في الأرشيف</div>
+          </div>
+        ` : ''}
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;margin-top:14px;border-top:1px solid var(--line);padding-top:12px;">
+        <button class="btn btn-ghost" onclick="document.getElementById('customerActionSheetModal').remove()">إغلاق</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+};
+
+/* ---------------- Table & Cards Views with Unified Actions ---------------- */
+
 function archiveTable(list){
   return `<div class="table-wrap"><table><thead><tr>
-    <th>رقم الإيصال</th><th>العميل</th><th>الجهاز</th><th>الفني</th><th>الحالة (تغيير سريع)</th><th>التكلفة</th><th>المدفوع</th><th>المتبقي</th><th>الإجراءات</th>
+    <th>رقم الإيصال</th><th>العميل</th><th>الجهاز</th><th>الفني</th><th>الحالة</th><th>التكلفة</th><th>المدفوع</th><th>المتبقي</th><th>الإجراءات الموحدة</th>
   </tr></thead><tbody>
   ${list.map(rawR=>{
     const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
@@ -8815,10 +9490,14 @@ function archiveTable(list){
     const rId = escapeHtml(String(r.id != null ? r.id : (r.ID != null ? r.ID : '')));
     const rNum = escapeHtml(String(r.receiptNumber || r.ReceiptNumber || ''));
     const safeTargetId = rId || rNum;
+    const isSelected = String(safeTargetId) === String(state.selectedReceiptId);
 
-    return `<tr style="${isOverdue?'background:rgba(245,158,11,0.08);':''}">
+    return `<tr class="selectable-row ${isSelected ? 'selected-row' : ''}" data-receipt-id="${safeTargetId}" data-receipt-num="${rNum}" onclick="handleReceiptRowClick('${safeTargetId}', '${rNum}', event)" style="${isOverdue?'background:rgba(245,158,11,0.08);':''}">
       <td>
-        <span class="mono" style="font-weight:800;font-size:13px;color:var(--primary);direction:ltr;unicode-bidi:isolate;display:inline-block;">${rNum}</span>
+        <div style="display:flex;align-items:center;gap:4px;">
+          ${isSelected ? '<span class="selected-badge-indicator" title="إيصال محدد">✓</span>' : ''}
+          <span class="mono" style="font-weight:800;font-size:13px;color:var(--primary);direction:ltr;unicode-bidi:isolate;display:inline-block;">${rNum}</span>
+        </div>
         ${r.previousReceiptNumber ? `<div style="font-size:10px;color:#b45309;font-weight:700;margin-top:1px;direction:ltr;unicode-bidi:isolate;">🔄 صيانة راجعة (#${escapeHtml(r.previousReceiptNumber)})</div>` : ''}
         <div style="color:var(--ink-secondary);font-size:11px;display:flex;align-items:center;gap:4px;margin-top:2px;">
           <span>📅 ${cleanDate(r.date)}</span>
@@ -8842,7 +9521,7 @@ function archiveTable(list){
       <td>${dCat} - ${dBrand} <span style="color:var(--ink-secondary);">${dModel}</span></td>
       <td>${r.technician ? `<span style="font-weight:600;">${escapeHtml(r.technician)}</span>` : '<span style="color:var(--slate-400);">-</span>'}</td>
       <td>
-        <button class="btn-status-quick" onclick="openQuickStatusModalDirect(this.dataset.quickstatus, this.dataset.num)" data-quickstatus="${safeTargetId}" data-num="${rNum}" title="اضغط لتغيير حالة الجهاز فورًا">
+        <button class="btn-status-quick" onclick="openQuickStatusModalDirect('${safeTargetId}', '${rNum}'); event.stopPropagation();" title="اضغط لتغيير حالة الجهاز فورًا">
           <span class="status-badge ${st.cls}">${st.icon} ${escapeHtml(r.status)}</span>
           <span style="font-size:9.5px;color:var(--slate-400);">⚡</span>
         </button>
@@ -8857,15 +9536,16 @@ function archiveTable(list){
       <td class="mono" style="font-weight:800;${remaining>0?'color:var(--red);':'color:var(--green);'}">
         ${remaining.toLocaleString()} ج.م
       </td>
-      <td class="row-actions">
-        <button class="btn btn-xs btn-amber" onclick="openReIntakeModalDirect(this.dataset.id, this.dataset.num)" data-act="reintake" data-id="${safeTargetId}" data-num="${rNum}" title="إعادة إدخال نفس الجهاز للصيانة (صيانة راجعة أو عطل جديد)">🔄 إعادة صيانة</button>
-        <button class="btn btn-xs btn-blue" onclick="convertReceiptToInvoiceDirect(this.dataset.id, this.dataset.num)" data-act="invoice" data-id="${safeTargetId}" data-num="${rNum}" title="تحويل لفاتورة ضريبية رسمية">📄 فاتورة</button>
-        <button class="btn btn-xs btn-ghost" onclick="openReceiptDetailModal(this.dataset.id, this.dataset.num)" data-act="view" data-id="${safeTargetId}" data-num="${rNum}" title="تعديل وعرض تفاصيل الإيصال">تعديل</button>
-        <button class="btn btn-xs btn-status-quick" style="background:var(--green-bg);color:var(--green-text);" onclick="openQuickStatusModalDirect(this.dataset.id, this.dataset.num)" data-quickstatus="${safeTargetId}" data-id="${safeTargetId}" data-num="${rNum}">⚡ الحالة</button>
-        <button class="btn btn-xs btn-amber" onclick="openStickerPrintDirect(this.dataset.id, this.dataset.num, event)" data-act="sticker" data-id="${safeTargetId}" data-num="${rNum}" title="طباعة ملصق الباركود فوراً (انقر للكيوسك، أو اضغط Shift مع النقر لتعديل الخيارات)">🏷️ ملصق</button>
-        <button class="btn btn-xs btn-whatsapp" onclick="openWhatsappDirect(this.dataset.id, this.dataset.num)" data-act="wa" data-id="${safeTargetId}" data-num="${rNum}">${WA_ICON} واتساب</button>
-        <button class="btn btn-xs btn-green" onclick="openReceiptPrintDirect(this.dataset.id, this.dataset.num, 'receipt')" data-act="print" data-id="${safeTargetId}" data-num="${rNum}">طباعة A5</button>
-        <button class="btn btn-xs btn-red" onclick="deleteReceiptDirect(this.dataset.id, this.dataset.num)" data-act="del" data-id="${safeTargetId}" data-num="${rNum}" title="${(state.user && state.user.role==='admin')?'حذف الإيصال':'طلب تصريح حذف من الإدارة'}">${(state.user && state.user.role==='admin')?'حذف':'🔒 طلب حذف'}</button>
+      <td class="row-actions" onclick="event.stopPropagation()">
+        <button class="btn btn-xs btn-primary font-bold" onclick="openReceiptActionSheet('${safeTargetId}', '${rNum}'); event.stopPropagation();" title="عرض خيارات وإجراءات الإيصال الموحدة">
+          ⚡ خيارات الإيصال
+        </button>
+        <button class="btn btn-xs btn-status-quick" style="background:var(--green-bg);color:var(--green-text);" onclick="openQuickStatusModalDirect('${safeTargetId}', '${rNum}'); event.stopPropagation();" title="تغيير سريع لحالة الجهاز">
+          ⚡ الحالة
+        </button>
+        <button class="btn btn-xs btn-whatsapp" onclick="openWhatsappDirect('${safeTargetId}', '${rNum}'); event.stopPropagation();" title="محادثة واتساب">
+          ${WA_ICON}
+        </button>
       </td>
     </tr>`;
   }).join('')}
@@ -8892,12 +9572,14 @@ function archiveCards(list){
     const rId = escapeHtml(String(r.id != null ? r.id : (r.ID != null ? r.ID : '')));
     const rNum = escapeHtml(String(r.receiptNumber || r.ReceiptNumber || ''));
     const safeTargetId = rId || rNum;
+    const isSelected = String(safeTargetId) === String(state.selectedReceiptId);
 
-    return `<div class="smart-receipt-card" style="${isOverdue?'border-right: 4px solid var(--amber);background:rgba(245,158,11,0.03);':''}">
+    return `<div class="smart-receipt-card ${isSelected ? 'selected-card' : ''}" data-receipt-id="${safeTargetId}" data-receipt-num="${rNum}" onclick="handleReceiptCardClick('${safeTargetId}', '${rNum}', event)" style="${isOverdue?'border-right: 4px solid var(--amber);background:rgba(245,158,11,0.03);':''}">
       <div>
         <div class="smart-card-header">
           <div>
             <div style="display:flex;align-items:center;gap:6px;">
+              ${isSelected ? '<span class="selected-badge-indicator">✓ محدد</span>' : ''}
               <span class="badge" style="background:var(--paper2);color:var(--primary);font-size:11.5px;font-weight:800;border:1px solid var(--line);padding:2px 8px;border-radius:4px;">
                 إيصال <span class="mono" style="direction:ltr;unicode-bidi:isolate;display:inline-block;font-size:12.5px;">${rNum}</span>
               </span>
@@ -8908,7 +9590,7 @@ function archiveCards(list){
               ${(formatReceiptTime(r) || r.time) ? `<span class="mono" style="color:var(--primary);font-size:10.5px;font-weight:600;">⏰ ${formatReceiptTime(r) || r.time}</span>` : ''}
             </div>
           </div>
-          <button class="btn-status-quick" onclick="openQuickStatusModalDirect(this.dataset.quickstatus, this.dataset.num)" data-quickstatus="${safeTargetId}" data-num="${rNum}" title="اضغط لتغيير حالة الجهاز فوراً" style="margin:0;">
+          <button class="btn-status-quick" onclick="openQuickStatusModalDirect('${safeTargetId}', '${rNum}'); event.stopPropagation();" title="اضغط لتغيير حالة الجهاز فوراً" style="margin:0;">
             <span class="status-badge ${st.cls}">${st.icon} ${escapeHtml(r.status)}</span>
             <span style="font-size:9.5px;color:var(--slate-400);">⚡</span>
           </button>
@@ -8951,14 +9633,16 @@ function archiveCards(list){
           </div>
         </div>
 
-        <div class="smart-card-actions">
-          <button class="btn btn-xs btn-amber" onclick="openReIntakeModalDirect(this.dataset.id, this.dataset.num)" data-act="reintake" data-id="${safeTargetId}" data-num="${rNum}" title="إعادة إدخال الجهاز للصيانة">🔄 إعادة صيانة</button>
-          <button class="btn btn-xs btn-blue" onclick="convertReceiptToInvoiceDirect(this.dataset.id, this.dataset.num)" data-act="invoice" data-id="${safeTargetId}" data-num="${rNum}" title="تحويل لفاتورة">📄 فاتورة</button>
-          <button class="btn btn-xs btn-ghost" onclick="openReceiptDetailModal(this.dataset.id, this.dataset.num)" data-act="view" data-id="${safeTargetId}" data-num="${rNum}" title="تعديل وعرض الإيصال">تعديل</button>
-          <button class="btn btn-xs btn-amber" onclick="openStickerPrintDirect(this.dataset.id, this.dataset.num, event)" data-act="sticker" data-id="${safeTargetId}" data-num="${rNum}" title="طباعة ملصق">🏷️ ملصق</button>
-          <button class="btn btn-xs btn-whatsapp" onclick="openWhatsappDirect(this.dataset.id, this.dataset.num)" data-act="wa" data-id="${safeTargetId}" data-num="${rNum}">${WA_ICON} واتساب</button>
-          <button class="btn btn-xs btn-green" onclick="openReceiptPrintDirect(this.dataset.id, this.dataset.num, 'receipt')" data-act="print" data-id="${safeTargetId}" data-num="${rNum}">طباعة A5</button>
-          <button class="btn btn-xs btn-red" onclick="deleteReceiptDirect(this.dataset.id, this.dataset.num)" data-act="del" data-id="${safeTargetId}" data-num="${rNum}" title="${(state.user && state.user.role==='admin')?'حذف الإيصال':'طلب تصريح حذف من الإدارة'}">${(state.user && state.user.role==='admin')?'حذف':'🔒 طلب حذف'}</button>
+        <div class="smart-card-actions" onclick="event.stopPropagation()">
+          <button class="btn btn-xs btn-primary font-bold" onclick="openReceiptActionSheet('${safeTargetId}', '${rNum}'); event.stopPropagation();" style="flex:2;" title="فتح لوحة الإجراءات الموحدة للوصل">
+            ⚡ خيارات وإجراءات الإيصال
+          </button>
+          <button class="btn btn-xs btn-status-quick" style="background:var(--green-bg);color:var(--green-text);flex:1;" onclick="openQuickStatusModalDirect('${safeTargetId}', '${rNum}'); event.stopPropagation();" title="تغيير سريع للحالة">
+            ⚡ الحالة
+          </button>
+          <button class="btn btn-xs btn-whatsapp" onclick="openWhatsappDirect('${safeTargetId}', '${rNum}'); event.stopPropagation();" style="flex:1;" title="محادثة واتساب">
+            ${WA_ICON} واتساب
+          </button>
         </div>
       </div>
     </div>`;
@@ -9144,11 +9828,13 @@ function renderCustomersPage(main){
                 const rPhone = extractCustomerPhone(r);
                 return (rName && rName.toLowerCase() === cName.toLowerCase()) || (cPhone && rPhone === cPhone);
               });
+              const isSelectedCust = String(cName) === String(state.selectedCustomerId);
 
               return `
-                <tr>
+                <tr class="selectable-row ${isSelectedCust ? 'selected-row' : ''}" data-cust-name="${escapeHtml(cName)}" data-cust-phone="${escapeHtml(cPhone||'')}" onclick="handleCustomerRowClick('${escapeHtml(cName)}', '${escapeHtml(cPhone||'')}', event)">
                   <td>
                     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                      ${isSelectedCust ? '<span class="selected-badge-indicator">✓</span>' : ''}
                       ${cTitle ? `<span class="badge" style="background:var(--paper2);color:var(--primary);font-size:11px;font-weight:700;border:1px solid var(--line);padding:1px 6px;border-radius:4px;white-space:nowrap;">${escapeHtml(cTitle)}</span>` : ''}
                       <span style="font-weight:800;font-size:13.5px;color:var(--ink);">${escapeHtml(cName)}</span>
                     </div>
@@ -9157,18 +9843,18 @@ function renderCustomersPage(main){
                     ${cPhone && cPhone !== '0000000000' ? `
                       <div style="display:inline-flex;align-items:center;gap:6px;">
                         <span class="mono font-bold" style="font-size:13px;direction:ltr;">${escapeHtml(cPhone)}</span>
-                        <a href="tel:${cPhone}" class="btn btn-ghost btn-xs" style="padding:2px 6px;" title="اتصال هاتفي">📞</a>
-                        <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" class="btn btn-ghost btn-xs" style="padding:2px 6px;color:#22c55e;" title="محادثة واتساب">💬</a>
+                        <a href="tel:${cPhone}" class="btn btn-ghost btn-xs" style="padding:2px 6px;" title="اتصال هاتفي" onclick="event.stopPropagation();">📞</a>
+                        <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" class="btn btn-ghost btn-xs" style="padding:2px 6px;color:#22c55e;" title="محادثة واتساب" onclick="event.stopPropagation();">💬</a>
                       </div>
                     ` : `
-                      <button class="btn btn-ghost btn-xs edit-cust-quick-phone-btn" data-custtitle="${escapeHtml(cTitle)}" data-custname="${escapeHtml(cName)}" style="color:var(--amber-text);border-color:var(--amber);font-weight:700;">
+                      <button class="btn btn-ghost btn-xs edit-cust-quick-phone-btn" data-custtitle="${escapeHtml(cTitle)}" data-custname="${escapeHtml(cName)}" style="color:var(--amber-text);border-color:var(--amber);font-weight:700;" onclick="event.stopPropagation();">
                         ⚠️ إضافة رقم الهاتف
                       </button>
                     `}
                   </td>
                   <td style="text-align:center;">
                     ${clientReceipts.length > 0 ? `
-                      <button class="btn btn-ghost btn-xs view-cust-receipts-btn" data-custname="${escapeHtml(cName)}" style="font-weight:800;color:var(--primary);">
+                      <button class="btn btn-ghost btn-xs view-cust-receipts-btn" data-custname="${escapeHtml(cName)}" style="font-weight:800;color:var(--primary);" onclick="event.stopPropagation();">
                         🛠️ ${clientReceipts.length} جهاز
                       </button>
                     ` : `<span style="color:var(--ink-secondary);font-size:11px;">-</span>`}
@@ -9176,15 +9862,18 @@ function renderCustomersPage(main){
                   <td style="font-size:11.5px;color:var(--ink-secondary);">
                     ${escapeHtml(c.email || c.address || '-')}
                   </td>
-                  <td style="text-align:center;">
+                  <td style="text-align:center;" onclick="event.stopPropagation();">
                     <div style="display:inline-flex;gap:4px;flex-wrap:wrap;justify-content:center;">
-                      <button class="btn btn-ghost btn-xs edit-cust-btn" data-custtitle="${escapeHtml(cTitle)}" data-custname="${escapeHtml(cName)}" data-custphone="${escapeHtml(cPhone)}" data-custemail="${escapeHtml(c.email||'')}">
+                      <button class="btn btn-primary btn-xs font-bold" onclick="openCustomerActionSheet('${escapeHtml(cName)}', '${escapeHtml(cPhone||'')}', '${escapeHtml(cTitle)}', '${escapeHtml(c.email||'')}'); event.stopPropagation();" title="فتح لوحة الإجراءات الموحدة للعميل">
+                        ⚡ خيارات العميل
+                      </button>
+                      <button class="btn btn-ghost btn-xs edit-cust-btn" data-custtitle="${escapeHtml(cTitle)}" data-custname="${escapeHtml(cName)}" data-custphone="${escapeHtml(cPhone||'')}" data-custemail="${escapeHtml(c.email||'')}">
                         ✏️ تعديل
                       </button>
-                      <button class="btn btn-ghost btn-xs cust-new-receipt-btn" data-custtitle="${escapeHtml(cTitle)}" data-custname="${escapeHtml(cName)}" data-custphone="${escapeHtml(cPhone)}" style="color:var(--blue-text);">
+                      <button class="btn btn-ghost btn-xs cust-new-receipt-btn" data-custtitle="${escapeHtml(cTitle)}" data-custname="${escapeHtml(cName)}" data-custphone="${escapeHtml(cPhone||'')}" style="color:var(--blue-text);">
                         ➕ صيانة
                       </button>
-                      <button class="btn btn-ghost btn-xs cust-new-inv-btn" data-custtitle="${escapeHtml(cTitle)}" data-custname="${escapeHtml(cName)}" data-custphone="${escapeHtml(cPhone)}" style="color:var(--purple);">
+                      <button class="btn btn-ghost btn-xs cust-new-inv-btn" data-custtitle="${escapeHtml(cTitle)}" data-custname="${escapeHtml(cName)}" data-custphone="${escapeHtml(cPhone||'')}" style="color:var(--purple);">
                         🧾 فاتورة
                       </button>
                     </div>

@@ -3527,36 +3527,46 @@ tr.selected-row {
   margin-right: 4px;
 }
 
-/* Floating Docked Unified Selection Bar */
+/* Unified Top Selection Bar */
+#unifiedSelectionTopSlot {
+  width: 100%;
+  position: sticky;
+  top: 12px;
+  z-index: 1050;
+}
 .unified-selection-bar {
-  position: fixed;
-  bottom: 22px;
-  left: 50%;
-  transform: translateX(-50%) translateY(140%);
-  z-index: 9999;
-  display: flex;
+  position: relative;
+  z-index: 1050;
+  display: none;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
   background: #ffffff;
-  padding: 8px 16px;
-  border-radius: 9999px;
-  box-shadow: 0 20px 40px -6px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.08);
-  border: 1.5px solid #059669;
-  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
-  opacity: 0;
-  pointer-events: none;
-  max-width: calc(100vw - 32px);
+  padding: 10px 18px;
+  border-radius: 16px;
+  box-shadow: 0 10px 28px -6px rgba(5, 150, 105, 0.2), 0 0 0 1.5px #059669;
+  border: 1px solid rgba(5, 150, 105, 0.25);
+  margin-bottom: 16px;
+  animation: slideDownFade 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   flex-wrap: wrap;
 }
+@keyframes slideDownFade {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 .unified-selection-bar.active {
-  transform: translateX(-50%) translateY(0);
-  opacity: 1;
-  pointer-events: auto;
+  display: flex !important;
 }
 [data-theme="dark"] .unified-selection-bar {
   background: #1e293b;
   border-color: #10b981;
-  box-shadow: 0 20px 40px -6px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 28px -6px rgba(16, 185, 129, 0.3), 0 0 0 1.5px #10b981;
 }
 .unified-bar-info {
   display: flex;
@@ -8022,7 +8032,7 @@ function renderMain(){
   if(state.tab==='inventory' && !canUserAccessSection('inventory')){ state.tab='dashboard'; }
 
   updateSidebarNav();
-  if(typeof hideUnifiedSelectionBar === 'function' && state.tab !== 'archive' && state.tab !== 'customers'){
+  if(typeof hideUnifiedSelectionBar === 'function' && state.tab !== 'archive' && state.tab !== 'customers' && state.tab !== 'dashboard'){
     hideUnifiedSelectionBar();
   }
 
@@ -8118,6 +8128,8 @@ function renderDashboard(main){
         <button class="btn btn-amber btn-sm" id="viewOverdueBtn">عرض الأجهزة وإرسال تذكير</button>
       </div>
     </div>` : ''}
+
+    <div id="unifiedSelectionTopSlot"></div>
 
     <div class="card">
       <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
@@ -9033,7 +9045,16 @@ function getOrCreateUnifiedSelectionBar(){
     bar = document.createElement('div');
     bar.id = 'unifiedSelectionBar';
     bar.className = 'unified-selection-bar';
-    document.body.appendChild(bar);
+  }
+  const topSlot = document.getElementById('unifiedSelectionTopSlot');
+  if(topSlot){
+    if(bar.parentElement !== topSlot){
+      topSlot.appendChild(bar);
+    }
+  } else {
+    if(!bar.parentElement){
+      document.body.appendChild(bar);
+    }
   }
   return bar;
 }
@@ -9710,6 +9731,8 @@ function renderArchive(main){
       ${(f.q||f.status||f.tech||f.group!=='all') ? `<button class="btn btn-ghost btn-sm" id="clearFiltersBtn">مسح الفلاتر</button>` : ''}
     </div>
 
+    <div id="unifiedSelectionTopSlot"></div>
+
     ${list.length===0 ? '<div class="empty">لا توجد نتائج مطابقة لخيارات البحث.</div>' : renderMaintenanceView(list.slice().reverse())}
   `;
 
@@ -9804,6 +9827,8 @@ function renderCustomersPage(main){
         ${state.custSearch ? `<button class="btn btn-ghost btn-sm" id="resetCustSearchBtn">✕ مسح البحث</button>` : ''}
       </div>
     </div>
+
+    <div id="unifiedSelectionTopSlot"></div>
 
     <!-- Customers Table -->
     ${filtered.length === 0 ? '<div class="card empty" style="padding:30px;text-align:center;">لا يوجد عملاء مطابقين لمعايير البحث.</div>' : `

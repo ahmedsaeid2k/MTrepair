@@ -9046,6 +9046,17 @@ window.openStickerPrintDirect = function(receiptId, receiptNum, evt){
   }
 };
 
+window.openStickerOptionsDirect = function(receiptId, receiptNum){
+  try{
+    const r = findReceiptByIdOrNum(receiptId, receiptNum);
+    if(!r){ showToast('لم يتم العثور على الإيصال المطلوب', 'error'); return; }
+    openStickerPrint(r, true);
+  }catch(err){
+    console.error('Error in openStickerOptionsDirect:', err);
+    showToast('حدث خطأ أثناء فتح إعدادات الملصق: ' + (err.message || err), 'error');
+  }
+};
+
 window.openWhatsappDirect = function(receiptId, receiptNum){
   try{
     const r = findReceiptByIdOrNum(receiptId, receiptNum);
@@ -9327,7 +9338,12 @@ window.openReceiptActionSheet = function(receiptId, receiptNum){
         <div class="action-sheet-card-btn" onclick="document.getElementById('receiptActionSheetModal').remove(); openStickerPrintDirect('${safeTargetId}', '${rNum}', event);">
           <div class="act-icon">🏷️</div>
           <div class="act-label">ملصق الباركود</div>
-          <div class="act-desc">طباعة لاصق باركود للجهاز</div>
+          <div class="act-desc">طباعة لاصق للجهاز فوراً</div>
+        </div>
+        <div class="action-sheet-card-btn" onclick="document.getElementById('receiptActionSheetModal').remove(); openStickerOptionsDirect('${safeTargetId}', '${rNum}');">
+          <div class="act-icon">⚙️</div>
+          <div class="act-label">مقاس وضبط الملصق</div>
+          <div class="act-desc">تغيير مقاس الرول (40×20 / 50×25)</div>
         </div>
         <div class="action-sheet-card-btn" onclick="document.getElementById('receiptActionSheetModal').remove(); convertReceiptToInvoiceDirect('${safeTargetId}', '${rNum}');">
           <div class="act-icon">📄</div>
@@ -11870,35 +11886,35 @@ function generateReceiptStickerHTML(r, dim, svgId){
     </div>`;
   }
 
-  // 40x20 mm (Standard 4x2 cm roll - ⭐ عرض 4 سم × ارتفاع 2 سم بهامش 2 مم من كل اتجاه وبدون باركود)
+  // 40x20 mm (Standard 4x2 cm roll - ⭐ عرض 4 سم × ارتفاع 2 سم بهامش آمن وبدون باركود)
   if(dim.h <= 23){
     return `
-    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:2mm !important;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:900;color:#000;background:#fff;overflow:hidden;direction:rtl;line-height:1.15;">
+    <div style="width:100%;height:100%;max-height:${dim.h}mm;display:flex;flex-direction:column;justify-content:space-between;padding:1mm 1.5mm !important;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:900;color:#000;background:#fff;overflow:hidden;direction:rtl;line-height:1.15;">
       <!-- Row 1: Header (Shop Name + Prominent Receipt Number) -->
-      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #000;padding-bottom:0.4mm;flex-shrink:0;">
-        <span style="font-size:9.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:52%;color:#000;letter-spacing:-0.2px;">${shopName}</span>
-        <b class="mono" style="font-size:11px;font-weight:900;direction:ltr;display:inline-block;white-space:nowrap;color:#000;letter-spacing:0.3px;">#${rNum}</b>
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #000;padding-bottom:0.2mm;flex-shrink:0;">
+        <span style="font-size:9px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:52%;color:#000;letter-spacing:-0.2px;">${shopName}</span>
+        <b class="mono" style="font-size:10.5px;font-weight:900;direction:ltr;display:inline-block;white-space:nowrap;color:#000;letter-spacing:0.3px;">#${rNum}</b>
       </div>
 
       <!-- Row 2: Customer Name (Prominent Bold) -->
-      <div style="font-size:10px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#000;margin-top:0.2mm;flex-shrink:0;">
-        <span style="font-size:9px;font-weight:800;color:#000;">العميل:</span> <b style="font-size:10.5px;font-weight:900;color:#000;">${cName}</b>
+      <div style="font-size:9.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#000;flex-shrink:0;">
+        <span style="font-size:8.5px;font-weight:800;color:#000;">العميل:</span> <b style="font-size:9.5px;font-weight:900;color:#000;">${cName}</b>
       </div>
 
       <!-- Row 3: Phone (Prominent Bold) -->
-      <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;font-weight:900;white-space:nowrap;overflow:hidden;color:#000;flex-shrink:0;">
-        <span style="font-size:9px;font-weight:800;color:#000;">الهاتف:</span>
-        <b class="mono" style="font-size:10.5px;font-weight:900;direction:ltr;display:inline-block;letter-spacing:0.5px;color:#000;">${cPhone}</b>
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:9.5px;font-weight:900;white-space:nowrap;overflow:hidden;color:#000;flex-shrink:0;">
+        <span style="font-size:8.5px;font-weight:800;color:#000;">الهاتف:</span>
+        <b class="mono" style="font-size:10px;font-weight:900;direction:ltr;display:inline-block;letter-spacing:0.5px;color:#000;">${cPhone}</b>
       </div>
 
       <!-- Row 4: Device & Model & Password -->
-      <div style="font-size:9px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#000;flex-shrink:0;">
-        <span style="font-size:8.5px;font-weight:800;color:#000;">الجهاز:</span> <b style="color:#000;">${dCat} ${dBrand} ${dModel}</b>${pass ? ` | <span style="font-size:8px;">ب:</span><b class="mono" style="font-size:8.5px;color:#000;">${pass}</b>` : ''}
+      <div style="font-size:8.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#000;flex-shrink:0;">
+        <span style="font-size:8px;font-weight:800;color:#000;">الجهاز:</span> <b style="color:#000;">${dCat} ${dBrand} ${dModel}</b>${pass ? ` | <span style="font-size:7.5px;">ب:</span><b class="mono" style="font-size:8px;color:#000;">${pass}</b>` : ''}
       </div>
 
       <!-- Row 5: Fault (Clear text) -->
-      <div style="font-size:8.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#000;border-top:1px dashed #000;padding-top:0.3mm;flex-shrink:0;">
-        <span style="font-size:8px;font-weight:800;color:#000;">العطل:</span> <span style="font-weight:900;color:#000;">${firstFault}</span>
+      <div style="font-size:8px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#000;border-top:1px dashed #000;padding-top:0.2mm;flex-shrink:0;">
+        <span style="font-size:7.5px;font-weight:800;color:#000;">العطل:</span> <span style="font-weight:900;color:#000;">${firstFault}</span>
       </div>
     </div>`;
   }
@@ -11980,40 +11996,55 @@ function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0, offsetX =
   const offsetCss = (offsetX || offsetY) ? `transform: translate(${offsetX}mm, ${offsetY}mm);` : '';
 
   // ── Step 4: build full iframe HTML ──
-  // NOTE: no @page{size:...} — let the XP-246B driver use its configured paper size.
-  // width:100% ensures content fills whatever width the driver provides.
+  // Enforce EXACT physical millimeter dimensions in @page and container
+  // This prevents Chrome from expanding to 210mm paper height and ensures single-label precision.
   const iframeHtml = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
 <style>
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  @page { margin: 0mm; }
-  html, body { margin: 0; padding: 0; background: #fff; width: 100%; height: 100%; }
+  @page {
+    size: ${dim.w}mm ${dim.h}mm !important;
+    margin: 0mm !important;
+  }
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    width: ${dim.w}mm !important;
+    height: ${dim.h}mm !important;
+    max-width: ${dim.w}mm !important;
+    max-height: ${dim.h}mm !important;
+    overflow: hidden !important;
+  }
   .sticker-page {
-    width: 100%;
-    height: 100vh;
-    overflow: hidden;
-    background: #fff;
-    color: #000;
+    width: ${dim.w}mm !important;
+    height: ${dim.h}mm !important;
+    max-width: ${dim.w}mm !important;
+    max-height: ${dim.h}mm !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    background: #fff !important;
+    color: #000 !important;
     font-family: Arial, Tahoma, 'Segoe UI', sans-serif;
-    page-break-inside: avoid;
-    break-inside: avoid;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    position: relative !important;
     ${offsetCss}
   }
-  .sticker-page:not(:last-child) {
-    page-break-after: always;
-    break-after: page;
-  }
   .sticker-page:last-child {
-    page-break-after: avoid;
-    break-after: avoid;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
   }
   .sticker-page > div {
     width: 100% !important;
     height: 100% !important;
-    display: flex !important;
-    flex-direction: column !important;
+    max-height: ${dim.h}mm !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
   }
   .sticker-page * {
     color: #000 !important;
@@ -22741,31 +22772,45 @@ function executeBatchInvoiceBarcodePrint(itemsToPrint, presetKey = 'thermal_40x2
 <meta charset="UTF-8">
 <style>
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  @page { margin: 0mm; }
-  html, body { margin: 0; padding: 0; background: #fff; width: 100%; height: 100%; }
-  .sticker-page {
-    width: 100%;
-    height: 100vh;
-    overflow: hidden;
-    background: #fff;
-    color: #000;
-    font-family: Arial, Tahoma, 'Segoe UI', sans-serif;
-    page-break-inside: avoid;
-    break-inside: avoid;
+  @page {
+    size: ${dim.w}mm ${dim.h}mm !important;
+    margin: 0mm !important;
   }
-  .sticker-page:not(:last-child) {
-    page-break-after: always;
-    break-after: page;
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    width: ${dim.w}mm !important;
+    height: ${dim.h}mm !important;
+    max-width: ${dim.w}mm !important;
+    max-height: ${dim.h}mm !important;
+    overflow: hidden !important;
+  }
+  .sticker-page {
+    width: ${dim.w}mm !important;
+    height: ${dim.h}mm !important;
+    max-width: ${dim.w}mm !important;
+    max-height: ${dim.h}mm !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    background: #fff !important;
+    color: #000 !important;
+    font-family: Arial, Tahoma, 'Segoe UI', sans-serif;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: always !important;
+    break-after: page !important;
   }
   .sticker-page:last-child {
-    page-break-after: avoid;
-    break-after: avoid;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
   }
   .sticker-page > div {
     width: 100% !important;
     height: 100% !important;
-    display: flex !important;
-    flex-direction: column !important;
+    max-height: ${dim.h}mm !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
   }
   .sticker-page * {
     color: #000 !important;

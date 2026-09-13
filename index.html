@@ -3708,15 +3708,17 @@ function toEngDigits(str){
     .replace(/[٩۹]/g, '9')
     .replace(/٫/g, '.');
 }
+window.toEnglishDigits = toEngDigits;
 
-// Global Real-time Auto-converter for All Inputs & Textareas
-document.addEventListener('input', function(e) {
-  const target = e.target;
-  if (!target || (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA')) return;
-  const val = target.value;
-  if (!val) return;
+// Global Real-time Auto-converter for All Inputs & Textareas across all screens
+(function initGlobalDigitEnforcer(){
+  function enforceDigits(target){
+    if (!target || (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA')) return;
+    if (target.type === 'password' || target.type === 'file' || target.type === 'checkbox' || target.type === 'radio') return;
 
-  if (/[٠-٩۰-۹٫]/.test(val)) {
+    const val = target.value;
+    if (!val || !/[٠-٩۰-۹٫]/.test(val)) return;
+
     const isPhone = target.type === 'tel' || 
                     (target.id && /phone|tel|mobile|هاتف|جوال/i.test(target.id)) ||
                     (target.name && /phone|tel|mobile|هاتف|جوال/i.test(target.name)) ||
@@ -3731,12 +3733,49 @@ document.addEventListener('input', function(e) {
     }
 
     if (val !== converted) {
-      const cursor = target.selectionStart;
+      let cursor = null;
+      try { cursor = target.selectionStart; } catch(e){}
       target.value = converted;
-      try { target.setSelectionRange(cursor, cursor); } catch(err){}
+      if (cursor !== null) {
+        try { target.setSelectionRange(cursor, cursor); } catch(err){}
+      }
     }
   }
-}, true);
+
+  // Intercept before input is committed (especially critical for input[type=number] where Arabic digits make target.value empty)
+  document.addEventListener('beforeinput', function(e) {
+    const target = e.target;
+    if (!target || (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA')) return;
+    if (target.type === 'password' || target.type === 'file') return;
+    if (e.data && /[٠-٩۰-۹٫]/.test(e.data)) {
+      e.preventDefault();
+      const cleanData = toEngDigits(e.data);
+      if (typeof document.execCommand === 'function') {
+        const ok = document.execCommand('insertText', false, cleanData);
+        if (ok) return;
+      }
+      // Fallback
+      const s = target.selectionStart || 0;
+      const end = target.selectionEnd || 0;
+      const cur = target.value || '';
+      target.value = cur.slice(0, s) + cleanData + cur.slice(end);
+      try { target.setSelectionRange(s + cleanData.length, s + cleanData.length); } catch(err){}
+      target.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }, true);
+
+  document.addEventListener('input', function(e) {
+    enforceDigits(e.target);
+  }, true);
+
+  document.addEventListener('change', function(e) {
+    enforceDigits(e.target);
+  }, true);
+
+  document.addEventListener('paste', function(e) {
+    setTimeout(() => enforceDigits(e.target), 10);
+  }, true);
+})();
 
 // Override Number.prototype.toLocaleString to guarantee English numbers everywhere
 const _origNumberToLocaleString = Number.prototype.toLocaleString;
@@ -8620,7 +8659,7 @@ function stepFinance(body,d){
         </div>
         <div class="field" style="margin-bottom:0;">
           <label>المبلغ الإضافي المستحق (ج.م)</label>
-          <input id="finOtherAmount" type="number" value="${d.otherAccountAmount||0}" min="0" placeholder="0">
+          <input id="finOtherAmount" type="text" inputmode="decimal" value="${d.otherAccountAmount||0}" placeholder="0" class="mono" style="direction:ltr;text-align:right;">
         </div>
       </div>
     </div>
@@ -8628,10 +8667,10 @@ function stepFinance(body,d){
     <div class="card">
       <h3>💰 التكلفة الإجمالية والجانب المالي</h3>
       <div class="grid4" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:8px;">
-        <div class="field"><label>تكلفة الصيانة (ج.م)</label><input id="finCost" type="number" value="${d.cost||0}" placeholder="0"></div>
-        <div class="field"><label>حساب إضافي (ج.م)</label><input id="finOtherDisplay" type="number" value="${d.otherAccountAmount||0}" disabled style="background:var(--paper3);"></div>
-        <div class="field"><label>قطع الغيار (ج.م)</label><input id="finParts" type="number" value="${d.partsCost||0}" disabled style="background:var(--paper3);"></div>
-        <div class="field"><label>الدفعة المقدمة (ج.م)</label><input id="finDep" type="number" value="${d.deposit||0}" placeholder="0"></div>
+        <div class="field"><label>تكلفة الصيانة (ج.م)</label><input id="finCost" type="text" inputmode="decimal" value="${d.cost||0}" placeholder="0" class="mono" style="direction:ltr;text-align:right;"></div>
+        <div class="field"><label>حساب إضافي (ج.م)</label><input id="finOtherDisplay" type="text" value="${d.otherAccountAmount||0}" disabled style="background:var(--paper3);direction:ltr;text-align:right;" class="mono"></div>
+        <div class="field"><label>قطع الغيار (ج.م)</label><input id="finParts" type="text" value="${d.partsCost||0}" disabled style="background:var(--paper3);direction:ltr;text-align:right;" class="mono"></div>
+        <div class="field"><label>الدفعة المقدمة (ج.م)</label><input id="finDep" type="text" inputmode="decimal" value="${d.deposit||0}" placeholder="0" class="mono" style="direction:ltr;text-align:right;"></div>
       </div>
       <div style="margin-top:10px;padding:8px 12px;background:var(--paper3);border-radius:var(--radius-sm);display:flex;justify-content:space-between;align-items:center;">
         <span style="font-weight:700;font-size:13px;">المبلغ المتبقي المطلوب تقديريًا:</span>
@@ -8673,11 +8712,11 @@ function stepFinance(body,d){
       listEl.innerHTML = '<div style="font-size:12px;color:var(--ink-secondary);padding:6px 0;">لا توجد بنود صيانة منفصلة مضافة. يمكنك إضافة بنود وتحديد سعر كل بند على حدة، أو كتابة التكلفة الإجمالية مباشرة أدناه.</div>';
     } else {
       listEl.innerHTML = d.serviceItems.map((it, idx) => `
-        <div style="display:flex;gap:8px;align-items:center;background:var(--paper2);padding:6px 8px;border-radius:4px;border:1px solid var(--line);" data-sidx="${idx}">
+        <div class="draft-s-item-row" style="display:flex;gap:8px;align-items:center;background:var(--paper2);padding:6px 8px;border-radius:4px;border:1px solid var(--line);" data-sidx="${idx}">
           <span class="mono" style="font-size:12px;font-weight:700;color:var(--slate-400);width:20px;">#${idx+1}</span>
           <input type="text" class="draft-s-desc" value="${escapeHtml(it.desc||'')}" placeholder="اسم بند الصيانة (مثال: تغيير شاشة، باور...)" style="flex:2;padding:6px 8px;font-size:12.5px;">
           <div style="display:flex;align-items:center;gap:4px;flex:1;">
-            <input type="number" class="draft-s-price" value="${it.price||0}" min="0" placeholder="0" style="width:100%;padding:6px 8px;font-size:12.5px;">
+            <input type="text" inputmode="decimal" class="draft-s-price mono" value="${it.price||0}" placeholder="0" style="width:100%;padding:6px 8px;font-size:12.5px;direction:ltr;text-align:right;">
             <span style="font-size:11.5px;color:var(--ink-secondary);">ج.م</span>
           </div>
           <button type="button" class="btn btn-ghost btn-xs draft-del-s-item" data-sidx="${idx}" style="color:var(--red);padding:4px 8px;" title="حذف هذا البند">🗑️</button>
@@ -8691,20 +8730,26 @@ function stepFinance(body,d){
   function attachDraftItemListeners(){
     document.querySelectorAll('#draftServiceItemsList .draft-s-desc').forEach(inp => {
       inp.oninput = (e) => {
-        const idx = Number(e.target.closest('[data-sidx]').dataset.sidx);
+        const row = e.target.closest('.draft-s-item-row');
+        if(!row) return;
+        const idx = Number(row.dataset.sidx);
         if(d.serviceItems[idx]) d.serviceItems[idx].desc = e.target.value;
       };
     });
     document.querySelectorAll('#draftServiceItemsList .draft-s-price').forEach(inp => {
       inp.oninput = (e) => {
-        const idx = Number(e.target.closest('[data-sidx]').dataset.sidx);
-        if(d.serviceItems[idx]) d.serviceItems[idx].price = Number(e.target.value || 0);
+        const row = e.target.closest('.draft-s-item-row');
+        if(!row) return;
+        const idx = Number(row.dataset.sidx);
+        const parsedP = parseFloat(toEngDigits(e.target.value)) || 0;
+        if(d.serviceItems[idx]) d.serviceItems[idx].price = parsedP;
         recalcDraftFinances();
       };
     });
     document.querySelectorAll('#draftServiceItemsList .draft-del-s-item').forEach(btn => {
       btn.onclick = (e) => {
-        const idx = Number(btn.dataset.sidx);
+        const row = btn.closest('.draft-s-item-row');
+        const idx = row ? Number(row.dataset.sidx) : Number(btn.dataset.sidx);
         d.serviceItems.splice(idx, 1);
         renderDraftServiceItems();
       };
@@ -8713,8 +8758,9 @@ function stepFinance(body,d){
 
   function recalcDraftFinances(){
     let sTotal = 0;
-    document.querySelectorAll('#draftServiceItemsList [data-sidx]').forEach(row => {
-      const p = Number(row.querySelector('.draft-s-price').value || 0);
+    document.querySelectorAll('#draftServiceItemsList .draft-s-item-row').forEach(row => {
+      const pInp = row.querySelector('.draft-s-price');
+      const p = pInp ? (parseFloat(toEngDigits(pInp.value)) || 0) : 0;
       sTotal += p;
     });
     const sTotalEl = document.getElementById('draftServiceItemsTotal');
@@ -8725,13 +8771,16 @@ function stepFinance(body,d){
       if(finCostInp) finCostInp.value = sTotal;
     }
 
-    const otherAmt = Number(document.getElementById('finOtherAmount') ? document.getElementById('finOtherAmount').value : (d.otherAccountAmount || 0));
+    const otherInp = document.getElementById('finOtherAmount');
+    const otherAmt = otherInp ? (parseFloat(toEngDigits(otherInp.value)) || 0) : Number(d.otherAccountAmount || 0);
     const otherDisp = document.getElementById('finOtherDisplay');
     if(otherDisp) otherDisp.value = otherAmt;
 
-    const cost = Number(document.getElementById('finCost') ? document.getElementById('finCost').value : (d.cost || 0));
+    const costInp = document.getElementById('finCost');
+    const cost = costInp ? (parseFloat(toEngDigits(costInp.value)) || 0) : Number(d.cost || 0);
     const parts = Number(d.partsCost || 0);
-    const dep = Number(document.getElementById('finDep') ? document.getElementById('finDep').value : (d.deposit || 0));
+    const depInp = document.getElementById('finDep');
+    const dep = depInp ? (parseFloat(toEngDigits(depInp.value)) || 0) : Number(d.deposit || 0);
     const totalDue = cost + parts + otherAmt;
     const rem = Math.max(0, totalDue - dep);
 
@@ -8744,7 +8793,7 @@ function stepFinance(body,d){
     addBtn.onclick = () => {
       d.serviceItems.push({ desc: '', price: 0 });
       renderDraftServiceItems();
-      const lastRow = document.querySelector('#draftServiceItemsList [data-sidx="' + (d.serviceItems.length - 1) + '"] input');
+      const lastRow = document.querySelector('#draftServiceItemsList .draft-s-item-row:last-child input');
       if(lastRow) lastRow.focus();
     };
   }
@@ -8767,7 +8816,8 @@ function stepFinance(body,d){
   });
   document.getElementById('draftUsePartBtn').onclick = async ()=>{
     const itemId = document.getElementById('draftInvPickItem').value;
-    const qty = Number(document.getElementById('draftInvPickQty').value);
+    const qtyInp = document.getElementById('draftInvPickQty');
+    const qty = parseFloat(toEngDigits(qtyInp ? qtyInp.value : '1')) || 0;
     if(!itemId){ showToast('اختر صنف من المخزن أولاً', 'error'); return; }
     if(!qty || qty<=0){ showToast('أدخل كمية صحيحة', 'error'); return; }
     const item = state.inventory.find(x=>x.ID===itemId);
@@ -8789,19 +8839,26 @@ function stepFinance(body,d){
   };
   currentStepCollector = ()=>{
     const collectedItems = [];
-    document.querySelectorAll('#draftServiceItemsList [data-sidx]').forEach(row => {
-      const desc = row.querySelector('.draft-s-desc').value.trim();
-      const price = Number(row.querySelector('.draft-s-price').value || 0);
+    document.querySelectorAll('#draftServiceItemsList .draft-s-item-row').forEach(row => {
+      const descInp = row.querySelector('.draft-s-desc');
+      const priceInp = row.querySelector('.draft-s-price');
+      const desc = descInp ? descInp.value.trim() : '';
+      const price = priceInp ? (parseFloat(toEngDigits(priceInp.value)) || 0) : 0;
       if(desc || price > 0){
         collectedItems.push({ desc: desc || 'صيانة', price });
       }
     });
     d.serviceItems = collectedItems;
-    d.otherAccountDesc = document.getElementById('finOtherDesc').value.trim();
-    d.otherAccountAmount = Number(document.getElementById('finOtherAmount').value || 0);
-    d.cost = Number(document.getElementById('finCost').value || 0);
-    d.deposit = Number(document.getElementById('finDep').value || 0);
-    d.deliveryDate = document.getElementById('finDate').value;
+    const finOtherDescEl = document.getElementById('finOtherDesc');
+    d.otherAccountDesc = finOtherDescEl ? finOtherDescEl.value.trim() : '';
+    const finOtherAmtEl = document.getElementById('finOtherAmount');
+    d.otherAccountAmount = finOtherAmtEl ? (parseFloat(toEngDigits(finOtherAmtEl.value)) || 0) : 0;
+    const finCostEl = document.getElementById('finCost');
+    d.cost = finCostEl ? (parseFloat(toEngDigits(finCostEl.value)) || 0) : 0;
+    const finDepEl = document.getElementById('finDep');
+    d.deposit = finDepEl ? (parseFloat(toEngDigits(finDepEl.value)) || 0) : 0;
+    const finDateEl = document.getElementById('finDate');
+    d.deliveryDate = finDateEl ? finDateEl.value : '';
   };
   stepNav(body, true, ()=>{
     currentStepCollector();
@@ -8817,7 +8874,8 @@ function stepFinance(body,d){
     }
     if(total > 0 && dep > total){
       showToast(`عفواً: مبلغ العربون (${dep.toLocaleString()} ج.م) أكبر من إجمالي تكلفة الجهاز والمستحق (${total.toLocaleString()} ج.م)`, 'error');
-      document.getElementById('finDep').focus();
+      const depInp = document.getElementById('finDep');
+      if(depInp) depInp.focus();
       return;
     }
 
@@ -23604,71 +23662,7 @@ function attachLogin(){
   }catch(e){}
 })();
 
-/* ---------------- Universal English Digits Converter ---------------- */
-/**
- * تحويل فوري لأي أرقام عربية مشرقية (٠-٩) أو فارسية (۰-۹) إلى أرقام إنجليزية (0-9)
- * في أي خانة إدخال بالبرنامج بالكامل تلقائياً
- */
-window.toEnglishDigits = function(str){
-  if(str == null) return '';
-  const arabicDigits = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'];
-  const persianDigits = ['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'];
-  return String(str)
-    .replace(/[٠-٩]/g, d => String(arabicDigits.indexOf(d)))
-    .replace(/[۰-۹]/g, d => String(persianDigits.indexOf(d)));
-};
 
-// Global real-time listener on document for input and paste events
-(function setupUniversalEnglishDigitsListener(){
-  function handleDigitInput(e){
-    const target = e.target;
-    if(!target || (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA')) return;
-    
-    // Ignore passwords and file inputs
-    if(target.type === 'password' || target.type === 'file' || target.type === 'checkbox' || target.type === 'radio') return;
-
-    const val = target.value;
-    if(!val) return;
-
-    // Check if contains any eastern Arabic or Persian digits
-    if(/[٠-٩۰-۹]/.test(val)){
-      const converted = window.toEnglishDigits(val);
-      if(converted !== val){
-        // Preserve selection / cursor position if supported
-        let start = null;
-        let end = null;
-        try {
-          start = target.selectionStart;
-          end = target.selectionEnd;
-        } catch(selErr){}
-
-        target.value = converted;
-
-        if(start !== null && end !== null){
-          try {
-            target.setSelectionRange(start, end);
-          } catch(rangeErr){}
-        }
-
-        // Trigger input event to update any reactive bindings if needed
-        try {
-          target.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-        } catch(evErr){}
-      }
-    }
-  }
-
-  // Use capture phase to intercept before component handlers
-  document.addEventListener('input', handleDigitInput, true);
-  document.addEventListener('paste', function(e){
-    // Short delay to allow paste to populate input, then sanitize
-    setTimeout(() => {
-      if(e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')){
-        handleDigitInput(e);
-      }
-    }, 10);
-  }, true);
-})();
 
 init();
 </script>

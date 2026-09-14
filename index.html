@@ -4090,6 +4090,79 @@ function parseCustomerTitleAndName(rawStr){
   return { title: '', name: str };
 }
 
+function extractCustomerName(obj){
+  if(!obj) return '';
+  if(typeof obj !== 'object'){
+    const parsed = parseCustomerTitleAndName(String(obj));
+    return parsed.name || String(obj).trim();
+  }
+  const val = obj.CustomerName ?? obj.customerName ?? obj.Name ?? obj.name ?? obj.clientName ?? obj.ClientName ??
+              obj['الاسم'] ?? obj['اسم العميل'] ?? obj['العميل'] ??
+              (obj.customer ? (obj.customer.name ?? obj.customer.Name ?? obj.customer.CustomerName) : '') ?? '';
+  const str = String(val).replace(/["']/g, '').trim();
+  const parsed = parseCustomerTitleAndName(str);
+  return parsed.name || str;
+}
+
+function normalizeCustomerSearchName(str){
+  if(!str) return '';
+  let s = String(str).trim().toLowerCase();
+  s = s.replace(/[\u064B-\u065F]/g, ''); // Remove Arabic diacritics
+  s = s.replace(/[أإآ]/g, 'ا');
+  s = s.replace(/ة/g, 'ه');
+  s = s.replace(/ى/g, 'ي');
+  // Strip common titles
+  s = s.replace(/^(دكتور|دكتورة|د\.|أستاذ|استاذ|أستاذة|استاذة|أ\.|ا\.|مهندس|مهندسة|م\.|سيدة|مدام|الحاج|حاج|شيخ|سيد)\s*[\/:-]?\s*/g, '');
+  // Normalize punctuation and spacing
+  s = s.replace(/[ـ\-_/\\.,:;]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return s;
+}
+
+function findCustomerInDirectory(rawName){
+  if(!rawName || typeof rawName !== 'string') return null;
+  if(typeof state === 'undefined' || !state || !Array.isArray(state.customers) || !state.customers.length) return null;
+
+  const clean = normalizeCustomerSearchName(rawName);
+  if(!clean || clean === 'عميل' || clean === 'زبون') return null;
+
+  const list = state.customers;
+
+  // 1. Exact match on raw trimmed name
+  const rawTrimmed = rawName.trim().toLowerCase();
+  let match = list.find(c => {
+    const cn = (c.name || c.CustomerName || '').trim().toLowerCase();
+    return cn && cn === rawTrimmed;
+  });
+  if(match) return match;
+
+  // 2. Exact match on normalized text
+  match = list.find(c => {
+    const cNorm = normalizeCustomerSearchName(c.name || c.CustomerName || '');
+    return cNorm && cNorm === clean;
+  });
+  if(match) return match;
+
+  // 3. Match customer name + title (e.g. if c has title 'دكتور' and name 'جون')
+  match = list.find(c => {
+    const cTitle = (c.title || c.CustomerTitle || '').trim();
+    const cName = (c.name || c.CustomerName || '').trim();
+    const combinedNorm = normalizeCustomerSearchName((cTitle ? cTitle + ' ' : '') + cName);
+    return combinedNorm && combinedNorm === clean;
+  });
+  if(match) return match;
+
+  // 4. Common typo / transposition tolerance (e.g. سايمه vs ساميه)
+  match = list.find(c => {
+    const cNorm = normalizeCustomerSearchName(c.name || c.CustomerName || '');
+    if(!cNorm) return false;
+    if(cNorm.replace('سايمه', 'ساميه') === clean.replace('سايمه', 'ساميه')) return true;
+    return false;
+  });
+  if(match) return match;
+
+  return null;
+}
+
 function extractCustomerTitle(obj){
   if(!obj) return '';
   if(typeof obj === 'string'){
@@ -4116,30 +4189,12 @@ function extractCustomerTitle(obj){
     if(parsed.title) return parsed.title;
   }
 
-  // 3. Fallback: Cross-reference with state.customers by phone or name
-  if(typeof state !== 'undefined' && state && Array.isArray(state.customers)){
-    const phone = extractCustomerPhone(obj);
-    if(phone && phone !== '0000000000'){
-      const matchByPhone = state.customers.find(c => {
-        const p = extractCustomerPhone(c);
-        return p === phone && (c.title || c.CustomerTitle || (c.customer && c.customer.title));
-      });
-      if(matchByPhone){
-        const t = (matchByPhone.title || matchByPhone.CustomerTitle || (matchByPhone.customer && matchByPhone.customer.title) || '').trim();
-        if(t && CUSTOMER_TITLES.includes(t)) return t;
-      }
-    }
-    const cleanName = (typeof rawName === 'string' ? rawName.trim() : '');
-    if(cleanName){
-      const parsedClean = parseCustomerTitleAndName(cleanName).name || cleanName;
-      const matchByName = state.customers.find(c => {
-        const cn = (c.name || c.CustomerName || (c.customer && c.customer.name) || '').trim().toLowerCase();
-        return cn && (cn === cleanName.toLowerCase() || cn === parsedClean.toLowerCase());
-      });
-      if(matchByName){
-        const t = (matchByName.title || matchByName.CustomerTitle || (matchByName.customer && matchByName.customer.title) || '').trim();
-        if(t && CUSTOMER_TITLES.includes(t)) return t;
-      }
+  // 3. Fallback: Cross-reference with state.customers directory
+  if(typeof findCustomerInDirectory === 'function' && rawName){
+    const matched = findCustomerInDirectory(rawName);
+    if(matched){
+      const t = (matched.title || matched.CustomerTitle || (matched.customer && matched.customer.title) || '').trim();
+      if(t && CUSTOMER_TITLES.includes(t)) return t;
     }
   }
 
@@ -4148,27 +4203,41 @@ function extractCustomerTitle(obj){
 
 function extractCustomerPhone(obj){
   if(!obj) return '';
-  if(typeof obj === 'string' && /^\+?[\d\s-]{4,}$/.test(obj.trim())) return obj.trim();
-  if(typeof obj !== 'object') return '';
-  const val = obj.CustomerPhone ?? obj.customerPhone ?? obj.Phone ?? obj.phone ?? obj.mobile ?? obj.Mobile ??
-              obj['الهاتف'] ?? obj['رقم الهاتف'] ?? obj['هاتف'] ?? obj['الموبايل'] ?? obj['موبايل'] ??
-              obj['تليفون'] ?? obj['رقم التليفون'] ?? obj.Tel ?? obj.tel ?? obj.ClientPhone ?? obj.clientPhone ??
-              (obj.customer ? (obj.customer.phone ?? obj.customer.Phone ?? obj.customer.CustomerPhone) : '') ?? '';
-  return String(val).replace(/["']/g, '').trim();
-}
-
-function extractCustomerName(obj){
-  if(!obj) return '';
-  if(typeof obj !== 'object'){
-    const parsed = parseCustomerTitleAndName(String(obj));
-    return parsed.name || String(obj).trim();
+  if(typeof obj === 'string'){
+    let s = (typeof toEngDigits === 'function' ? toEngDigits(obj) : String(obj)).replace(/["']/g, '').trim();
+    if(s.length === 10 && /^[1][0125]\d{8}$/.test(s)) s = '0' + s;
+    return s;
   }
-  const val = obj.CustomerName ?? obj.customerName ?? obj.Name ?? obj.name ?? obj.clientName ?? obj.ClientName ??
-              obj['الاسم'] ?? obj['اسم العميل'] ?? obj['العميل'] ??
-              (obj.customer ? (obj.customer.name ?? obj.customer.Name ?? obj.customer.CustomerName) : '') ?? '';
-  const str = String(val).replace(/["']/g, '').trim();
-  const parsed = parseCustomerTitleAndName(str);
-  return parsed.name || str;
+  if(typeof obj !== 'object') return '';
+  let val = obj.CustomerPhone ?? obj.customerPhone ?? obj.Phone ?? obj.phone ?? obj.mobile ?? obj.Mobile ??
+            obj['الهاتف'] ?? obj['رقم الهاتف'] ?? obj['هاتف'] ?? obj['الموبايل'] ?? obj['موبايل'] ??
+            obj['تليفون'] ?? obj['رقم التليفون'] ?? obj.Tel ?? obj.tel ?? obj.ClientPhone ?? obj.clientPhone ??
+            (obj.customer ? (obj.customer.phone ?? obj.customer.Phone ?? obj.customer.CustomerPhone) : '') ?? '';
+  let str = (typeof toEngDigits === 'function' ? toEngDigits(val) : String(val)).replace(/["']/g, '').trim();
+  if(str.length === 10 && /^[1][0125]\d{8}$/.test(str)) str = '0' + str;
+
+  if(str && str !== '0000000000' && str !== '00000' && str !== 'undefined' && str !== 'null'){
+    return str;
+  }
+
+  // Fallback: Cross-reference with state.customers directory by customer name
+  const rawName = obj.CustomerName ?? obj.customerName ?? obj.Name ?? obj.name ?? obj.clientName ?? obj.ClientName ??
+                  obj['الاسم'] ?? obj['اسم العميل'] ?? obj['العميل'] ??
+                  (obj.customer ? (obj.customer.name ?? obj.customer.Name ?? obj.customer.CustomerName) : '') ?? '';
+  if(rawName && typeof findCustomerInDirectory === 'function'){
+    const matched = findCustomerInDirectory(rawName);
+    if(matched){
+      let p = (typeof toEngDigits === 'function' ? toEngDigits(matched.phone ?? matched.CustomerPhone ?? matched.Phone ?? '') : String(matched.phone || '')).replace(/["']/g, '').trim();
+      if(p.length === 10 && /^[1][0125]\d{8}$/.test(p)) p = '0' + p;
+      if(p && p !== '0000000000' && p !== '00000'){
+        if(obj.customer && typeof obj.customer === 'object') obj.customer.phone = p;
+        if(obj.CustomerPhone !== undefined) obj.CustomerPhone = p;
+        return p;
+      }
+    }
+  }
+
+  return '';
 }
 
 function formatCustomerFullName(objOrName, optTitle){
@@ -4190,29 +4259,31 @@ function extractCustomerEmail(obj){
   return String(val).replace(/["']/g, '').trim();
 }
 
-/* Safe customer normalizer - prevents cross-pollination or phone number mixups */
+/* Safe customer normalizer - links receipts to Customer Directory */
 function recoverAndSyncAllCustomerPhones(verbose = false){
-  // Normalize customer objects in place without overwriting phones based on generic name matches
+  let matchedCount = 0;
   (state.receipts || []).forEach(r => {
     if(!r) return;
-    const currentPhone = extractCustomerPhone(r);
     const name = extractCustomerName(r);
     const title = extractCustomerTitle(r);
+    const currentPhone = extractCustomerPhone(r);
     if(!r.customer || typeof r.customer !== 'object'){
       r.customer = { title: title || '', name: name || 'عميل', phone: currentPhone || '', email: extractCustomerEmail(r) };
     }
     if(!r.customer.phone && currentPhone && currentPhone !== '0000000000'){
       r.customer.phone = currentPhone;
+      matchedCount++;
     }
     if(r.customer.phone && !r.CustomerPhone){
       r.CustomerPhone = r.customer.phone;
     }
+    if(!r.CustomerTitle && title) r.CustomerTitle = title;
   });
 
   if(verbose){
-    showToast(`تم فحص سلامة جهات الاتصال وحمايتها من التداخل ✅`, 'success');
+    showToast(`تم ربط وتحديث جهات الاتصال المسجلة في دليل العملاء بنجاح (${matchedCount} إيصال) ✅`, 'success');
   }
-  return { recoveredCount: 0, totalCustomers: (state.customers || []).length };
+  return { recoveredCount: matchedCount, totalCustomers: (state.customers || []).length };
 }
 
 /* ---------------- Receipt Date & Time Helpers ---------------- */
@@ -9962,7 +10033,18 @@ function renderCustomersPage(main){
 }
 
 function openQuickAddPhoneModal(customerName, customerTitle=''){
-  openEditCustomerModal({ title: customerTitle, name: customerName, phone: '', email: '' });
+  let existing = null;
+  if(typeof findCustomerInDirectory === 'function'){
+    existing = findCustomerInDirectory(customerName);
+  }
+  if(!existing && typeof state !== 'undefined' && Array.isArray(state.customers)){
+    existing = state.customers.find(c => (c.name || '').trim().toLowerCase() === (customerName || '').trim().toLowerCase());
+  }
+  if(existing){
+    openEditCustomerModal(existing);
+  } else {
+    openEditCustomerModal({ title: customerTitle, name: customerName, phone: '', email: '' });
+  }
 }
 
 function openEditCustomerModal(c){

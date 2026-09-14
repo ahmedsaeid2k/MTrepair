@@ -4190,149 +4190,29 @@ function extractCustomerEmail(obj){
   return String(val).replace(/["']/g, '').trim();
 }
 
-/* Master function to recover, cross-reference, and synchronize all customer phone numbers across the entire system */
+/* Safe customer normalizer - prevents cross-pollination or phone number mixups */
 function recoverAndSyncAllCustomerPhones(verbose = false){
-  const nameToPhoneMap = new Map();
-  const phoneToCustomerMap = new Map();
-  let recoveredCount = 0;
-
-  // 1. Scan existing state.customers
-  (state.customers || []).forEach(c => {
-    const name = extractCustomerName(c);
-    const phone = extractCustomerPhone(c);
-    const title = extractCustomerTitle(c);
-    if(name && phone && phone !== '0000000000'){
-      nameToPhoneMap.set(name.toLowerCase(), phone);
-      phoneToCustomerMap.set(phone, { title, name, phone, email: extractCustomerEmail(c) });
-    }
-  });
-
-  // 2. Scan receipts_raw from cache (if any)
-  const rawReceipts = getCache('receipts_raw', []);
-  if(Array.isArray(rawReceipts)){
-    rawReceipts.forEach(r => {
-      const name = extractCustomerName(r);
-      const phone = extractCustomerPhone(r);
-      const title = extractCustomerTitle(r);
-      if(name && phone && phone !== '0000000000'){
-        nameToPhoneMap.set(name.toLowerCase(), phone);
-        if(!phoneToCustomerMap.has(phone)){
-          phoneToCustomerMap.set(phone, { title, name, phone, email: extractCustomerEmail(r) });
-        }
-      }
-    });
-  }
-
-  // 3. Scan state.receipts
+  // Normalize customer objects in place without overwriting phones based on generic name matches
   (state.receipts || []).forEach(r => {
-    const name = extractCustomerName(r);
-    const phone = extractCustomerPhone(r);
-    const title = extractCustomerTitle(r);
-    if(name && phone && phone !== '0000000000'){
-      nameToPhoneMap.set(name.toLowerCase(), phone);
-      if(!phoneToCustomerMap.has(phone)){
-        phoneToCustomerMap.set(phone, { title, name, phone, email: extractCustomerEmail(r) });
-      }
-    }
-  });
-
-  // 4. Scan state.sales
-  (state.sales || []).forEach(s => {
-    const name = extractCustomerName(s);
-    const phone = extractCustomerPhone(s);
-    const title = extractCustomerTitle(s);
-    if(name && phone && phone !== '0000000000'){
-      nameToPhoneMap.set(name.toLowerCase(), phone);
-      if(!phoneToCustomerMap.has(phone)){
-        phoneToCustomerMap.set(phone, { title, name, phone, email: '' });
-      }
-    }
-  });
-
-  // 5. Scan state.quotations
-  (state.quotations || []).forEach(q => {
-    const name = extractCustomerName(q);
-    const phone = extractCustomerPhone(q);
-    const title = extractCustomerTitle(q);
-    if(name && phone && phone !== '0000000000'){
-      nameToPhoneMap.set(name.toLowerCase(), phone);
-      if(!phoneToCustomerMap.has(phone)){
-        phoneToCustomerMap.set(phone, { title, name, phone, email: '' });
-      }
-    }
-  });
-
-  // 6. Scan state.invoices
-  (state.invoices || []).forEach(inv => {
-    const name = extractCustomerName(inv);
-    const phone = extractCustomerPhone(inv);
-    const title = extractCustomerTitle(inv);
-    if(name && phone && phone !== '0000000000'){
-      nameToPhoneMap.set(name.toLowerCase(), phone);
-      if(!phoneToCustomerMap.has(phone)){
-        phoneToCustomerMap.set(phone, { title, name, phone, email: '' });
-      }
-    }
-  });
-
-  // 7. Cross-back populate missing phone numbers, clean titles and names into receipts
-  (state.receipts || []).forEach(r => {
-    const name = extractCustomerName(r);
-    const title = extractCustomerTitle(r);
+    if(!r) return;
     const currentPhone = extractCustomerPhone(r);
+    const name = extractCustomerName(r);
+    const title = extractCustomerTitle(r);
     if(!r.customer || typeof r.customer !== 'object'){
       r.customer = { title: title || '', name: name || 'عميل', phone: currentPhone || '', email: extractCustomerEmail(r) };
-    } else {
-      if(title && !r.customer.title) r.customer.title = title;
-      if(name && (!r.customer.name || r.customer.name === 'عميل' || parseCustomerTitleAndName(r.customer.name).title)){
-        r.customer.name = name;
-      }
     }
-    if(title) r.CustomerTitle = title;
-    if(name) r.CustomerName = name;
-    if((!currentPhone || currentPhone === '0000000000') && name){
-      const knownPhone = nameToPhoneMap.get(name.toLowerCase());
-      if(knownPhone){
-        r.customer.phone = knownPhone;
-        r.CustomerPhone = knownPhone;
-        recoveredCount++;
-      }
+    if(!r.customer.phone && currentPhone && currentPhone !== '0000000000'){
+      r.customer.phone = currentPhone;
+    }
+    if(r.customer.phone && !r.CustomerPhone){
+      r.CustomerPhone = r.customer.phone;
     }
   });
-
-  // 8. Rebuild unified state.customers
-  const unifiedCustomers = [];
-  const addedKeys = new Set();
-
-  phoneToCustomerMap.forEach(c => {
-    const key = (c.phone || c.name).toLowerCase();
-    if(!addedKeys.has(key)){
-      addedKeys.add(key);
-      unifiedCustomers.push(c);
-    }
-  });
-
-  // Add any name-only customer if not already added
-  (state.customers || []).forEach(c => {
-    const name = extractCustomerName(c);
-    const phone = extractCustomerPhone(c);
-    const title = extractCustomerTitle(c);
-    const key = (phone || name).toLowerCase();
-    if(name && !addedKeys.has(key)){
-      addedKeys.add(key);
-      unifiedCustomers.push({ title, name, phone: nameToPhoneMap.get(name.toLowerCase()) || phone || '', email: extractCustomerEmail(c) });
-    }
-  });
-
-  state.customers = unifiedCustomers;
-  setCache('customers', state.customers);
-  setCache('receipts', state.receipts);
 
   if(verbose){
-    showToast(`تم بنجاح فحص واسترداد وتوحيد (${state.customers.length}) جهة اتصال لعملاء المنظومة ✅`, 'success');
+    showToast(`تم فحص سلامة جهات الاتصال وحمايتها من التداخل ✅`, 'success');
   }
-
-  return { recoveredCount, totalCustomers: state.customers.length };
+  return { recoveredCount: 0, totalCustomers: (state.customers || []).length };
 }
 
 /* ---------------- Receipt Date & Time Helpers ---------------- */
@@ -5112,29 +4992,13 @@ async function loadReceipts(){
   try {
     const rows = await apiGet('getReceipts');
     if(Array.isArray(rows) && rows.length > 0){
-      const mapped = rows.map(rowToReceipt);
-      const existing = state.receipts || [];
-      existing.forEach(oldR => {
-        const fresh = mapped.find(m => String(m.id) === String(oldR.id) || (m.receiptNumber && String(m.receiptNumber) === String(oldR.receiptNumber)));
-        if(fresh){
-          if(!fresh.customer.phone && oldR.customer && oldR.customer.phone){
-            fresh.customer.phone = oldR.customer.phone;
-          }
-          if(!fresh.customer.name && oldR.customer && oldR.customer.name){
-            fresh.customer.name = oldR.customer.name;
-          }
-        } else {
-          mapped.push(oldR);
-        }
-      });
-      state.receipts = mapped;
+      state.receipts = rows.map(rowToReceipt);
       setCache('receipts_raw', rows);
       setCache('receipts', state.receipts);
     }
   } catch(e){
     console.warn('loadReceipts fetch failed or offline:', e);
   }
-  recoverAndSyncAllCustomerPhones(false);
   return state.receipts;
 }
 
@@ -5142,25 +5006,27 @@ async function loadCustomers(){
   try {
     const rows = await apiGet('getCustomers');
     if(Array.isArray(rows) && rows.length > 0){
+      const list = [];
+      const seen = new Set();
       rows.forEach(r => {
         const name = extractCustomerName(r);
         const phone = extractCustomerPhone(r);
         const email = extractCustomerEmail(r);
-        if(name || phone){
-          const existing = state.customers.find(c => (phone && c.phone === phone) || (name && c.name.toLowerCase() === name.toLowerCase()));
-          if(existing){
-            if(phone && !existing.phone) existing.phone = phone;
-            if(email && !existing.email) existing.email = email;
-          } else {
-            state.customers.push({ name: name || 'عميل', phone, email });
-          }
+        const title = extractCustomerTitle(r);
+        const taxNumber = r.TaxNumber || r.taxNumber || '';
+        const address = r.Address || r.address || '';
+        const key = `${(name||'').trim().toLowerCase()}_${(phone||'').trim()}`;
+        if((name || phone) && !seen.has(key)){
+          seen.add(key);
+          list.push({ title, name: name || 'عميل', phone: phone || '', email: email || '', taxNumber, address });
         }
       });
+      state.customers = list;
+      setCache('customers', state.customers);
     }
   } catch(e){
     console.warn('loadCustomers remote get failed:', e);
   }
-  recoverAndSyncAllCustomerPhones(false);
   return state.customers;
 }
 async function loadTechnicians(){
@@ -6690,12 +6556,41 @@ async function init(){
     }
   }
 
-  // Periodic heartbeat sync every 35 seconds
-  setInterval(()=>{
-    if(navigator.onLine && getSyncQueue().length > 0){
-      syncOfflineQueue();
+  // Periodic multi-device cloud synchronization every 40 seconds
+  setInterval(async ()=>{
+    if(navigator.onLine){
+      if(getSyncQueue().length > 0){
+        await syncOfflineQueue();
+      }
+      // If user is not currently filling a draft form, pull fresh data from cloud
+      if(!state.draft && (state.tab === 'archive' || state.tab === 'dashboard' || state.tab === 'customers')){
+        try {
+          const [freshReceipts, freshCustomers] = await Promise.all([loadReceipts(), loadCustomers()]);
+          if(freshReceipts && freshReceipts.length){
+            state.receipts = freshReceipts;
+          }
+          if(freshCustomers && freshCustomers.length){
+            state.customers = freshCustomers;
+          }
+          renderMain();
+        } catch(syncErr){}
+      }
     }
-  }, 35000);
+  }, 40000);
+
+  // Auto-sync whenever user returns to or focuses the window/tab from another device
+  window.addEventListener('focus', async () => {
+    if(navigator.onLine && !state.draft){
+      try {
+        const [freshReceipts, freshCustomers] = await Promise.all([loadReceipts(), loadCustomers()]);
+        if(freshReceipts && freshReceipts.length) state.receipts = freshReceipts;
+        if(freshCustomers && freshCustomers.length) state.customers = freshCustomers;
+        if(state.tab === 'archive' || state.tab === 'dashboard' || state.tab === 'customers'){
+          renderMain();
+        }
+      } catch(fErr){}
+    }
+  });
 }
 async function refreshPayments(){ state.payments = await loadPayments(); }
 async function refreshSales(){ state.sales = await loadSales(); }
@@ -11993,11 +11888,18 @@ function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0, offsetX =
   }
 
   // ── Step 3: build offsetTransform (optional, for fine calibration) ──
-  const offsetCss = (offsetX || offsetY) ? `transform: translate(${offsetX}mm, ${offsetY}mm);` : '';
+  const transformRules = [];
+  if(offsetX || offsetY){
+    transformRules.push(`translate(${offsetX}mm, ${offsetY}mm)`);
+  }
+  if(rotation && Number(rotation) !== 0){
+    transformRules.push(`rotate(${rotation}deg)`);
+  }
+  const offsetCss = transformRules.length ? `transform: ${transformRules.join(' ')};` : '';
 
   // ── Step 4: build full iframe HTML ──
-  // Enforce EXACT physical millimeter dimensions in @page and container
-  // This prevents Chrome from expanding to 210mm paper height and ensures single-label precision.
+  // Enforce EXACT physical millimeter dimensions with Portrait orientation
+  // This prevents Chrome and driver from auto-rotating 90deg to landscape and spans across single label only.
   const iframeHtml = `<!DOCTYPE html>
 <html>
 <head>
@@ -12005,7 +11907,7 @@ function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0, offsetX =
 <style>
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   @page {
-    size: ${dim.w}mm ${dim.h}mm !important;
+    size: portrait !important;
     margin: 0mm !important;
   }
   html, body {
@@ -12110,8 +12012,8 @@ function openStickerPrintModal(opts){
   let currentSizeKey = savedSettings.defaultSize || '40x20';
   let customW = Number(savedSettings.customWidth) || 40;
   let customH = Number(savedSettings.customHeight) || 20;
-  // XP-246B يحتاج 90° افتراضياً لطباعة ليبل 40x20 أفقي بشكل صحيح
-  let currentRotation = (savedSettings.rotation !== undefined && savedSettings.rotation !== null) ? Number(savedSettings.rotation) : 90;
+  // الاتجاه الطبيعي 0° بدون تدوير أفقي
+  let currentRotation = (savedSettings.rotation !== undefined && savedSettings.rotation !== null) ? Number(savedSettings.rotation) : 0;
   let currentOffsetX = Number(savedSettings.offsetX) || 0;
   let currentOffsetY = Number(savedSettings.offsetY) || 0;
   let copies = Math.max(1, Number(opts.copies) || 1);
@@ -12451,7 +12353,7 @@ function openStickerPrint(rawR, forceModal = false){
   if(isKiosk){
     const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
     const dim = getThermalStickerDimensions(prnSettings.defaultSize || '40x20', prnSettings.customWidth, prnSettings.customHeight);
-    const rot = (prnSettings.rotation !== undefined && prnSettings.rotation !== null) ? Number(prnSettings.rotation) : 90;
+    const rot = (prnSettings.rotation !== undefined && prnSettings.rotation !== null) ? Number(prnSettings.rotation) : 0;
     const offX = Number(prnSettings.offsetX) || 0;
     const offY = Number(prnSettings.offsetY) || 0;
     showToast('🏷️ جاري طباعة ملصق الصيانة فوراً (وضع الكيوسك ⚡)', 'info');
@@ -22773,7 +22675,7 @@ function executeBatchInvoiceBarcodePrint(itemsToPrint, presetKey = 'thermal_40x2
 <style>
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   @page {
-    size: ${dim.w}mm ${dim.h}mm !important;
+    size: portrait !important;
     margin: 0mm !important;
   }
   html, body {

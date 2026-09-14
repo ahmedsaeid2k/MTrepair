@@ -5114,6 +5114,27 @@ async function saveReceiptRemote(d){
   if(idx>-1) state.receipts[idx] = d; else state.receipts.push(d);
   setCache('receipts', state.receipts);
   recoverAndSyncAllCustomerPhones(false);
+
+  // Auto-ensure customer exists in directory
+  if(d.customer && d.customer.name && d.customer.name !== 'عميل' && d.customer.name !== 'زبون'){
+    const custName = d.customer.name.trim().toLowerCase();
+    const custPhone = (d.customer.phone || '').trim();
+    const existing = state.customers.find(c => {
+      if(custPhone && custPhone !== '0000000000' && c.phone === custPhone) return true;
+      if((c.name||'').trim().toLowerCase() === custName) return true;
+      return false;
+    });
+    if(!existing){
+      state.customers.push({ title: d.customer.title||'', name: d.customer.name, phone: custPhone, email: d.customer.email||'' });
+      setCache('customers', state.customers);
+      try { await saveCustomerRemote(d.customer); } catch(e){ console.warn('Auto-save customer:', e); }
+    } else if(custPhone && custPhone !== '0000000000' && (!existing.phone || existing.phone === '0000000000')){
+      existing.phone = custPhone;
+      setCache('customers', state.customers);
+      try { await saveCustomerRemote(existing); } catch(e){ console.warn('Auto-update customer phone:', e); }
+    }
+  }
+
   return apiPost('saveReceipt', {data: row, user: state.user?state.user.name:'نظام'});
 }
 async function deleteReceiptRemote(id){
@@ -8923,9 +8944,22 @@ async function saveReceipt(d, printA5, sendWa, printSticker){
       catch(payErr){ console.warn(payErr); }
       await refreshPayments();
     }
-    if(!state.customers.find(c=>c.phone===d.customer.phone)){
+    const custName = (d.customer.name || '').trim().toLowerCase();
+    const custPhone = (d.customer.phone || '').trim();
+    const existingCust = state.customers.find(c => {
+      if(custPhone && custPhone !== '0000000000' && c.phone === custPhone) return true;
+      if(custName && custName !== 'عميل' && custName !== 'زبون' && (c.name||'').trim().toLowerCase() === custName) return true;
+      return false;
+    });
+    if(!existingCust){
       await saveCustomerRemote(d.customer);
       state.customers.push(d.customer);
+    } else {
+      // Update phone if the existing entry has no phone but new one does
+      if(custPhone && custPhone !== '0000000000' && (!existingCust.phone || existingCust.phone === '0000000000')){
+        existingCust.phone = custPhone;
+        await saveCustomerRemote(existingCust);
+      }
     }
     state.draft = null;
     state.tab = 'archive';

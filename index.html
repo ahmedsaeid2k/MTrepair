@@ -4708,6 +4708,28 @@ async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, cust
   };
   state.sales.push(sale);
   setCache('sales', state.sales);
+
+  // Auto-ensure customer is in directory if non-walk-in
+  if(customerName && customerName !== 'عميل زائر' && customerName !== 'عميل' && customerName !== 'زبون'){
+    const cPhone = (customerPhone || '').trim();
+    const cNameLow = customerName.trim().toLowerCase();
+    const existing = (state.customers || []).find(c => {
+      if(cPhone && cPhone !== '0000000000' && c.phone === cPhone) return true;
+      if((c.name||'').trim().toLowerCase() === cNameLow) return true;
+      return false;
+    });
+    if(!existing){
+      const newC = { title: '', name: customerName.trim(), phone: cPhone, email: '', taxNumber: '', address: '' };
+      state.customers.push(newC);
+      setCache('customers', state.customers);
+      try { saveCustomerRemote(newC); } catch(e){}
+    } else if(cPhone && cPhone !== '0000000000' && (!existing.phone || existing.phone === '0000000000')){
+      existing.phone = cPhone;
+      setCache('customers', state.customers);
+      try { saveCustomerRemote(existing); } catch(e){}
+    }
+  }
+
   recordAuditLog('مبيعات كاشير POS', 'مبيعات', `فاتورة مبيعات POS بقيمة ${total} ج.م للعميل (${customerName||'عميل زائر'}) - الأصناف: ${itemsSummary}`, sale.ID);
   // Auto Journal Entry: Dr. 1101 (الخزينة) / Cr. 4102 (إيرادات مبيعات الأجهزة والإكسسوار)
   recordAutoJournalEntry(
@@ -4902,6 +4924,43 @@ async function saveInvoiceRemote(inv){
   const idx = state.invoices.findIndex(x=>x.ID===inv.ID);
   if(idx>-1) state.invoices[idx] = inv; else state.invoices.push(inv);
   setCache('invoices', state.invoices);
+
+  // Auto-ensure invoice customer is saved to directory
+  if(inv.CustomerName && inv.CustomerName !== 'عميل زائر' && inv.CustomerName !== 'عميل' && inv.CustomerName !== 'زبون'){
+    const cPhone = (inv.CustomerPhone || '').trim();
+    const cNameLow = inv.CustomerName.trim().toLowerCase();
+    const existing = (state.customers || []).find(c => {
+      if(cPhone && cPhone !== '0000000000' && c.phone === cPhone) return true;
+      if((c.name||'').trim().toLowerCase() === cNameLow) return true;
+      return false;
+    });
+    if(!existing){
+      const newC = {
+        title: inv.CustomerTitle || '',
+        name: inv.CustomerName.trim(),
+        phone: cPhone,
+        email: '',
+        taxNumber: inv.CustomerTaxNumber || '',
+        address: inv.CustomerAddress || ''
+      };
+      state.customers.push(newC);
+      setCache('customers', state.customers);
+      try { saveCustomerRemote(newC); } catch(e){}
+    } else {
+      let changed = false;
+      if(cPhone && cPhone !== '0000000000' && (!existing.phone || existing.phone === '0000000000')){
+        existing.phone = cPhone;
+        changed = true;
+      }
+      if(inv.CustomerTaxNumber && !existing.taxNumber){ existing.taxNumber = inv.CustomerTaxNumber; changed = true; }
+      if(inv.CustomerAddress && !existing.address){ existing.address = inv.CustomerAddress; changed = true; }
+      if(changed){
+        setCache('customers', state.customers);
+        try { saveCustomerRemote(existing); } catch(e){}
+      }
+    }
+  }
+
   return apiPost('saveInvoice', {data: inv, user: inv.By});
 }
 async function deleteInvoiceRemote(id){
@@ -5066,6 +5125,9 @@ async function loadReceipts(){
       state.receipts = rows.map(rowToReceipt);
       setCache('receipts_raw', rows);
       setCache('receipts', state.receipts);
+
+      // Extract customers from receipts that are missing from the directory
+      _extractCustomersFromReceipts();
     }
   } catch(e){
     console.warn('loadReceipts fetch failed or offline:', e);
@@ -5073,11 +5135,52 @@ async function loadReceipts(){
   return state.receipts;
 }
 
+function _extractCustomersFromReceipts(){
+  if(!state.customers || !state.receipts) return;
+  const existingNames = new Set((state.customers).map(c => (c.name||'').trim().toLowerCase()));
+  const existingPhones = new Set((state.customers).filter(c => c.phone).map(c => c.phone.trim()));
+  let added = 0;
+
+  state.receipts.forEach(r => {
+    const name = extractCustomerName(r);
+    const phone = extractCustomerPhone(r);
+    if(!name || name === 'عميل' || name === 'زبون') return;
+    const nameLow = name.trim().toLowerCase();
+    const phoneTrim = (phone||'').trim();
+
+    // Skip if already known
+    if(existingNames.has(nameLow)) {
+      // But if we have a phone and the existing entry doesn't, update it
+      if(phoneTrim && phoneTrim !== '0000000000' && !existingPhones.has(phoneTrim)){
+        const existing = state.customers.find(c => (c.name||'').trim().toLowerCase() === nameLow);
+        if(existing && (!existing.phone || existing.phone === '0000000000')){
+          existing.phone = phoneTrim;
+          existingPhones.add(phoneTrim);
+        }
+      }
+      return;
+    }
+    if(phoneTrim && existingPhones.has(phoneTrim)) return;
+
+    // New customer from receipt — add to local directory
+    const title = extractCustomerTitle(r);
+    state.customers.push({ title: title||'', name, phone: phoneTrim, email: '' });
+    existingNames.add(nameLow);
+    if(phoneTrim) existingPhones.add(phoneTrim);
+    added++;
+  });
+
+  if(added > 0){
+    setCache('customers', state.customers);
+    console.log(`Extracted ${added} customers from receipts into directory`);
+  }
+}
+
 async function loadCustomers(){
   try {
     const rows = await apiGet('getCustomers');
     if(Array.isArray(rows) && rows.length > 0){
-      const list = [];
+      const cloudList = [];
       const seen = new Set();
       rows.forEach(r => {
         const name = extractCustomerName(r);
@@ -5089,10 +5192,37 @@ async function loadCustomers(){
         const key = `${(name||'').trim().toLowerCase()}_${(phone||'').trim()}`;
         if((name || phone) && !seen.has(key)){
           seen.add(key);
-          list.push({ title, name: name || 'عميل', phone: phone || '', email: email || '', taxNumber, address });
+          cloudList.push({ title, name: name || 'عميل', phone: phone || '', email: email || '', taxNumber, address });
         }
       });
-      state.customers = list;
+
+      // === SAFE MERGE: preserve local customers not yet in cloud ===
+      const merged = [...cloudList];
+      const cloudKeys = new Set(cloudList.map(c => (c.name||'').trim().toLowerCase()));
+      const cloudPhones = new Set(cloudList.filter(c => c.phone).map(c => c.phone.trim()));
+
+      // Keep any local-only customers (added via receipts/POS but not yet synced to cloud)
+      (state.customers || []).forEach(local => {
+        const localName = (local.name||'').trim().toLowerCase();
+        const localPhone = (local.phone||'').trim();
+        const inCloudByName = localName && localName !== 'عميل' && localName !== 'زبون' && cloudKeys.has(localName);
+        const inCloudByPhone = localPhone && localPhone !== '0000000000' && cloudPhones.has(localPhone);
+        if(!inCloudByName && !inCloudByPhone){
+          // This customer exists locally but NOT in cloud — preserve it and try to sync
+          merged.push(local);
+          if(local.name && local.name !== 'عميل'){
+            try { saveCustomerRemote(local); } catch(e){ console.warn('Re-sync local customer:', e); }
+          }
+        } else if(inCloudByName && localPhone && !inCloudByPhone) {
+          // Customer exists in cloud by name but with different/missing phone — update cloud entry
+          const cloudEntry = merged.find(c => (c.name||'').trim().toLowerCase() === localName);
+          if(cloudEntry && (!cloudEntry.phone || cloudEntry.phone === '0000000000') && localPhone !== '0000000000'){
+            cloudEntry.phone = localPhone;
+          }
+        }
+      });
+
+      state.customers = merged;
       setCache('customers', state.customers);
     }
   } catch(e){
@@ -5145,22 +5275,33 @@ async function deleteReceiptRemote(id){
 async function saveCustomerRemote(c, oldName = null){
   if(!c || !c.name) return;
   const cTitle = (c.title != null ? c.title : (c.Title != null ? c.Title : '')).trim();
-  const searchName = oldName || c.name;
-  const exists = state.customers.find(x => (oldName && x.name && x.name.trim().toLowerCase() === oldName.trim().toLowerCase()) ||
-                                           (c.phone && x.phone === c.phone) ||
-                                           (x.name && x.name.trim().toLowerCase() === searchName.trim().toLowerCase()));
+  const searchName = (oldName || c.name || '').trim().toLowerCase();
+  const cPhone = (c.phone || '').trim();
+
+  // Search by NAME first (primary key), then by phone only if name didn't match
+  const exists = state.customers.find(x => {
+    const xName = (x.name||'').trim().toLowerCase();
+    // Match by old name (for renames)
+    if(oldName && xName === oldName.trim().toLowerCase()) return true;
+    // Match by current name
+    if(xName === searchName) return true;
+    return false;
+  });
+
   if(!exists){
-    state.customers.push({ title: cTitle, name: c.name, phone: c.phone||'', email: c.email||'', taxNumber: c.taxNumber||'', address: c.address||'' });
+    state.customers.push({ title: cTitle, name: c.name, phone: cPhone, email: c.email||'', taxNumber: c.taxNumber||'', address: c.address||'' });
   } else {
     exists.title = cTitle;
     exists.name = c.name;
-    if(c.phone != null) exists.phone = c.phone;
+    // Only update phone if the new value is non-empty (don't erase existing phone)
+    if(cPhone && cPhone !== '0000000000') exists.phone = cPhone;
     if(c.email != null) exists.email = c.email;
     if(c.taxNumber != null) exists.taxNumber = c.taxNumber;
     if(c.address != null) exists.address = c.address;
   }
   setCache('customers', state.customers);
-  return apiPost('saveCustomer', {data: {Title:cTitle, Name:c.name, OldName:oldName||'', Phone:c.phone||'', Email:c.email||'', TaxNumber:c.taxNumber||'', Address:c.address||''}});
+  // Use Name as upsert key instead of Phone to prevent overwriting different customers
+  return apiPost('saveCustomer', {data: {Title:cTitle, Name:c.name, OldName:oldName||'', Phone:cPhone, Email:c.email||'', TaxNumber:c.taxNumber||'', Address:c.address||''}});
 }
 async function saveTechnicianRemote(name){
   if(!state.technicians.includes(name)) state.technicians.push(name);
@@ -8944,23 +9085,7 @@ async function saveReceipt(d, printA5, sendWa, printSticker){
       catch(payErr){ console.warn(payErr); }
       await refreshPayments();
     }
-    const custName = (d.customer.name || '').trim().toLowerCase();
-    const custPhone = (d.customer.phone || '').trim();
-    const existingCust = state.customers.find(c => {
-      if(custPhone && custPhone !== '0000000000' && c.phone === custPhone) return true;
-      if(custName && custName !== 'عميل' && custName !== 'زبون' && (c.name||'').trim().toLowerCase() === custName) return true;
-      return false;
-    });
-    if(!existingCust){
-      await saveCustomerRemote(d.customer);
-      state.customers.push(d.customer);
-    } else {
-      // Update phone if the existing entry has no phone but new one does
-      if(custPhone && custPhone !== '0000000000' && (!existingCust.phone || existingCust.phone === '0000000000')){
-        existingCust.phone = custPhone;
-        await saveCustomerRemote(existingCust);
-      }
-    }
+    // Customer saving is now handled inside saveReceiptRemote automatically
     state.draft = null;
     state.tab = 'archive';
     showToast(`تم حفظ الإيصال ${d.receiptNumber} بنجاح!`, 'success');
@@ -10128,10 +10253,15 @@ function openEditCustomerModal(c){
     const oldName = c ? c.name : null;
     await saveCustomerRemote({ title, name, phone, email }, oldName);
 
-    // Update any receipts with this customer name
+    // Update receipts that belong to THIS specific customer (match by name + old phone)
+    const oldPhone = c ? (c.phone || '') : '';
     (state.receipts || []).forEach(r => {
       const rName = extractCustomerName(r);
-      if(rName && (rName.toLowerCase() === name.toLowerCase() || (oldName && rName.toLowerCase() === oldName.toLowerCase()))){
+      const rPhone = extractCustomerPhone(r);
+      // Match by name AND (old phone matches OR receipt had no phone)
+      const nameMatch = rName && (rName.toLowerCase() === name.toLowerCase() || (oldName && rName.toLowerCase() === oldName.toLowerCase()));
+      const phoneMatch = !oldPhone || !rPhone || rPhone === oldPhone;
+      if(nameMatch && phoneMatch){
         if(!r.customer) r.customer = { title, name, phone, email };
         else {
           r.customer.title = title;

@@ -11615,7 +11615,7 @@ function openReceiptPrint(rawR, kind){
   );
   document.body.classList.add('printing-a5-receipt');
 
-  // Inject strictly-calibrated A5 Landscape page rule
+  // Inject strictly-calibrated A5 Landscape page rule for Dual-Copy Side-by-Side Printing
   const a5Style = document.createElement('style');
   a5Style.id = 'dynamicA5ReceiptStyle';
   a5Style.innerHTML = `
@@ -11668,126 +11668,186 @@ function openReceiptPrint(rawR, kind){
       }
       body.printing-a5-receipt #receiptPaper {
         position: static !important;
-        width: 190mm !important;
-        max-width: 190mm !important;
-        height: 124mm !important;
-        max-height: 124mm !important;
+        width: 204mm !important;
+        max-width: 204mm !important;
+        height: 140mm !important;
+        max-height: 140mm !important;
         margin: auto !important;
-        padding: 3mm 5mm !important;
-        border: 1.5px solid #0f172a !important;
-        border-radius: 4px !important;
+        padding: 0 !important;
+        border: none !important;
         background: #ffffff !important;
         color: #000000 !important;
         box-shadow: none !important;
-        display: flex !important;
-        flex-direction: column !important;
-        justify-content: space-between !important;
+        display: grid !important;
+        grid-template-columns: 1fr 6mm 1fr !important;
+        gap: 0 !important;
         overflow: hidden !important;
         box-sizing: border-box !important;
         page-break-inside: avoid !important;
         page-break-after: avoid !important;
         break-inside: avoid !important;
         break-after: avoid !important;
-        font-size: 9px !important;
-        line-height: 1.2 !important;
+      }
+      .a5-copy-card {
+        border: 1.2px solid #0f172a !important;
+        border-radius: 4px !important;
+        box-sizing: border-box !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
       }
     }
   `;
   document.head.appendChild(a5Style);
 
-  const otherAmt = Number(r.otherAccountAmount || 0);
-  const remaining = Number(r.cost||0)+Number(r.partsCost||0)+otherAmt-Number(r.deposit||0)+Number(r.refunded||0);
   const mount = document.createElement('div');
   mount.id = 'printMount';
 
   const titles = {receipt:'إيصال استلام جهاز للصيانة', invoice:'فاتورة صيانة نهائية', workorder:'أمر شغل داخلي للفني'};
   const trackUrl = `${window.location.origin}${window.location.pathname}?track=${encodeURIComponent(r.receiptNumber)}`;
-  const qrSvgHtml = QRCodeGenerator.toSvg(trackUrl, 38);
+  const qrSvgHtml = QRCodeGenerator.toSvg(trackUrl, 30);
 
-  const svcItems = Array.isArray(r.serviceItems) ? r.serviceItems.filter(it => (it.desc && it.desc.trim()) || Number(it.price) > 0) : [];
+  function buildHalfCopy(copyRole, barcodeId){
+    const isCust = copyRole === 'customer';
+    const roleBadge = isCust
+      ? '<span style="background:#0f172a;color:#fff;font-size:8px;font-weight:900;padding:1px 6px;border-radius:3px;">👤 نسخة العميل</span>'
+      : '<span style="background:#047857;color:#fff;font-size:8px;font-weight:900;padding:1px 6px;border-radius:3px;">🏢 نسخة المركز</span>';
 
-  const financeSection = `
-    <div class="section-title">البيان المالي ${svcItems.length > 0 ? 'وتفاصيل بنود الصيانة' : ''}</div>
-    ${svcItems.length > 0 ? `
-      <table style="margin-bottom:3px;font-size:8px;">
-        <thead>
-          <tr style="background:#f1f5f9;"><th style="text-align:right;padding:1px 3px;">بند الصيانة المستحق</th><th style="text-align:center;width:60px;padding:1px 3px;">التكلفة</th></tr>
-        </thead>
-        <tbody>
-          ${svcItems.map(it => `<tr><td style="padding:1px 3px;">${escapeHtml(it.desc || 'بند صيانة')}</td><td class="mono" style="text-align:center;padding:1px 3px;font-weight:bold;">${Number(it.price || 0)} ج.م</td></tr>`).join('')}
-        </tbody>
-      </table>
-    ` : ''}
-    <div class="fin-box">
-      <div class="fin-cell"><div class="l">تكلفة الخدمة</div><div class="v">${Number(r.cost||0)}</div></div>
-      ${Number(r.partsCost||0)>0 ? `<div class="fin-cell"><div class="l">قطع الغيار</div><div class="v">${Number(r.partsCost)}</div></div>` : ''}
-      ${otherAmt>0 ? `<div class="fin-cell" style="background:#fef3c7;"><div class="l">${escapeHtml(r.otherAccountDesc||'حساب آخر')}</div><div class="v">${otherAmt} ج.م</div></div>` : ''}
-      <div class="fin-cell"><div class="l">دفعة مقدمة</div><div class="v">${Number(r.deposit||0)}</div></div>
-      <div class="fin-cell hi"><div class="l">المتبقي المطلوب</div><div class="v">${remaining} ج.م</div></div>
-    </div>`;
-  const termsSection = kind==='workorder' ? '' : `<div class="terms">${TERMS}</div>`;
-  const signSection = kind==='workorder'
-    ? `<div class="sign-row"><div>توقيع الفني المستلم</div><div>ملاحظات الإدارة</div></div>`
-    : `<div class="sign-row"><div>توقيع العميل</div><div>توقيع الموظف (${r.updatedBy||r.createdBy||state.user.name})</div></div>`;
+    const otherAmt = Number(r.otherAccountAmount || 0);
+    const remaining = Number(r.cost||0)+Number(r.partsCost||0)+otherAmt-Number(r.deposit||0)+Number(r.refunded||0);
+    const customerFullName = escapeHtml((typeof formatCustomerFullName === 'function') ? formatCustomerFullName(r) : (r.customer?.name || extractCustomerName(r) || 'عميل'));
+    const dCat = escapeHtml((r.device && r.device.category) || 'جهاز');
+    const dBrand = escapeHtml(r.device ? (r.device.brand==='أخرى'?r.device.brandOther:r.device.brand) : '');
+    const dModel = escapeHtml((r.device && r.device.model) || '');
+    const dPass = escapeHtml((r.device && r.device.password) || r.password || '');
+    const dAccessories = escapeHtml(r.device && r.device.accessories ? r.device.accessories : 'بدون');
+    const faultsStr = escapeHtml((Array.isArray(r.faults) ? r.faults.join('، ') : String(r.faults || '')) || '-');
+    const rTime = (typeof formatReceiptTime === 'function' ? formatReceiptTime(r) : (r.time || ''));
+    const phoneVal = escapeHtml(r.customer?.phone || extractCustomerPhone(r) || '-');
 
-  mount.innerHTML = `
-  <div id="receiptPaper">
-    <div>
-      <div class="r-head">
-        <div>
-          ${state.settings.logoUrl ? `<img src="${state.settings.logoUrl}" style="max-height:24px;max-width:100px;object-fit:contain;margin-bottom:2px;">` : ''}
-          <h4>${escapeHtml(state.settings.shopName || 'صيانة ميكروتك')}</h4>
-          <div class="r-sub">${titles[kind]}</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <div style="width:40px;height:40px;border:1px solid #cbd5e1;border-radius:4px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fff;" title="امسح لتتبع حالة الجهاز">
-            ${qrSvgHtml}
+    return `
+    <div class="a5-copy-card" style="width:99mm;height:140mm;max-height:140mm;border:1.2px solid #0f172a;border-radius:4px;padding:2mm 2.5mm;display:flex;flex-direction:column;justify-content:space-between;box-sizing:border-box;overflow:hidden;background:#fff;color:#000;font-size:8px;line-height:1.15;direction:rtl;">
+      <!-- Top Part -->
+      <div>
+        <!-- Header Row -->
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1.5px solid #0f172a;padding-bottom:1.5px;margin-bottom:1.5px;">
+          <div>
+            <div style="display:flex;align-items:center;gap:3px;">
+              ${state.settings.logoUrl ? `<img src="${state.settings.logoUrl}" style="max-height:16px;max-width:36px;object-fit:contain;">` : ''}
+              <b style="font-size:9.5px;font-weight:900;color:#0f172a;">${escapeHtml(state.settings.shopName || 'صيانة ميكروتك')}</b>
+            </div>
+            <div style="font-size:7px;color:#475569;margin-top:0.5px;">إيصال صيانة معتمد ${state.settings.phone ? '• ' + escapeHtml(state.settings.phone) : ''}</div>
           </div>
           <div style="text-align:left;">
-            <div class="r-badge mono">${r.receiptNumber}</div>
-            <div class="r-meta">تاريخ الاستلام: ${cleanDate(r.date)}</div>
-            ${(formatReceiptTime(r) || r.time) ? `<div class="r-meta" style="color:#0f766e;font-weight:700;">وقت الاستلام: ${formatReceiptTime(r) || r.time}</div>` : ''}
-            <svg id="printBarcode" style="margin-top:2px;"></svg>
+            ${roleBadge}
+          </div>
+        </div>
+
+        <!-- Receipt # & Barcode / QR Row -->
+        <div style="display:flex;justify-content:space-between;align-items:center;background:#f8fafc;border:1px solid #cbd5e1;border-radius:3px;padding:1.5px 3px;margin-bottom:1.5px;">
+          <div>
+            <div style="display:flex;align-items:center;gap:3px;">
+              <b class="mono" style="font-size:10.5px;font-weight:900;color:#0f172a;">#${r.receiptNumber}</b>
+              <span style="font-size:7px;color:#475569;">${cleanDate(r.date)} ${rTime ? '⏰ '+rTime : ''}</span>
+            </div>
+            <svg id="${barcodeId}" style="margin-top:1px;"></svg>
+          </div>
+          <div style="width:30px;height:30px;border:1px solid #cbd5e1;border-radius:3px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fff;">
+            ${qrSvgHtml}
+          </div>
+        </div>
+
+        <!-- Customer Info -->
+        <table style="width:100%;border-collapse:collapse;font-size:7.5px;margin-bottom:1.5px;">
+          <tr>
+            <td style="width:18%;padding:1px 2px;background:#f1f5f9;font-weight:bold;border:1px solid #cbd5e1;">العميل</td>
+            <td style="width:42%;padding:1px 2px;border:1px solid #cbd5e1;font-weight:900;font-size:8.5px;">${customerFullName}</td>
+            <td style="width:14%;padding:1px 2px;background:#f1f5f9;font-weight:bold;border:1px solid #cbd5e1;">الهاتف</td>
+            <td class="mono" style="padding:1px 2px;border:1px solid #cbd5e1;font-weight:900;font-size:9px;direction:ltr;text-align:right;">${phoneVal}</td>
+          </tr>
+        </table>
+
+        <!-- Device & Fault Info -->
+        <table style="width:100%;border-collapse:collapse;font-size:7.5px;margin-bottom:1.5px;">
+          <tr>
+            <td style="width:18%;padding:1px 2px;background:#f1f5f9;font-weight:bold;border:1px solid #cbd5e1;">الجهاز</td>
+            <td colspan="3" style="padding:1px 2px;border:1px solid #cbd5e1;font-weight:800;">${dCat} - ${dBrand} ${dModel}</td>
+          </tr>
+          <tr>
+            <td style="padding:1px 2px;background:#f1f5f9;font-weight:bold;border:1px solid #cbd5e1;">الملحقات</td>
+            <td style="padding:1px 2px;border:1px solid #cbd5e1;">${dAccessories}</td>
+            <td style="padding:1px 2px;background:#f1f5f9;font-weight:bold;border:1px solid #cbd5e1;">الباسورد</td>
+            <td class="mono" style="padding:1px 2px;border:1px solid #cbd5e1;font-weight:bold;color:#b45309;">${dPass ? '🔑 '+dPass : 'بدون'}</td>
+          </tr>
+          <tr>
+            <td style="padding:1px 2px;background:#f1f5f9;font-weight:bold;border:1px solid #cbd5e1;">العطل</td>
+            <td colspan="3" style="padding:1px 2px;border:1px solid #cbd5e1;font-weight:bold;color:#0f172a;">${faultsStr}${r.faultNotes ? ' ('+escapeHtml(r.faultNotes)+')' : ''}</td>
+          </tr>
+          <tr>
+            <td style="padding:1px 2px;background:#f1f5f9;font-weight:bold;border:1px solid #cbd5e1;">الفني</td>
+            <td style="padding:1px 2px;border:1px solid #cbd5e1;">${escapeHtml(r.technician || '-')}</td>
+            <td style="padding:1px 2px;background:#f1f5f9;font-weight:bold;border:1px solid #cbd5e1;">التسليم</td>
+            <td style="padding:1px 2px;border:1px solid #cbd5e1;font-weight:bold;">${cleanDate(r.deliveryDate) || 'يحدد لاحقاً'}</td>
+          </tr>
+        </table>
+
+        <!-- Financial Box -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1.3fr;gap:2px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:3px;padding:2px;text-align:center;font-size:7.5px;margin-bottom:1.5px;">
+          <div style="padding:1px;">
+            <div style="color:#64748b;font-size:6.5px;">تكلفة الخدمة</div>
+            <div class="mono" style="font-weight:800;font-size:8px;">${Number(r.cost||0)} ج.م</div>
+          </div>
+          <div style="padding:1px;">
+            <div style="color:#64748b;font-size:6.5px;">مدفوع مقدم</div>
+            <div class="mono" style="font-weight:800;font-size:8px;color:#047857;">${Number(r.deposit||0)} ج.م</div>
+          </div>
+          <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:2px;padding:1px;">
+            <div style="color:#92400e;font-size:6.5px;font-weight:bold;">المتبقي المطلوب</div>
+            <div class="mono" style="font-weight:900;font-size:9px;color:#b45309;">${remaining} ج.م</div>
           </div>
         </div>
       </div>
 
-      <div class="section-title">بيانات العميل والاستلام</div>
-      <table>
-        <tr>
-          <td class="k">اسم العميل</td><td><b>${escapeHtml((typeof formatCustomerFullName === 'function') ? formatCustomerFullName(r) : r.customer.name)}</b></td>
-          <td class="k">الهاتف</td><td class="mono"><b>${escapeHtml(r.customer.phone)}</b></td>
-        </tr>
-        <tr>
-          <td class="k">تاريخ الاستلام</td><td><b>${cleanDate(r.date)}</b></td>
-          <td class="k">وقت الاستلام</td><td><b class="mono" style="color:#0f766e;">⏰ ${formatReceiptTime(r) || r.time || '-'}</b></td>
-        </tr>
-      </table>
+      <!-- Bottom Part: Terms & Signatures -->
+      <div>
+        <div style="font-size:6px;color:#475569;line-height:1.2;border-top:1px dashed #cbd5e1;padding-top:1px;margin-bottom:1.5px;">
+          • المركز غير مسؤول عن الجهاز بعد 30 يوماً من إخطار الجاهزية.<br>
+          • هذا الإيصال هو الوثيقة الرسمية والوحيدة المعتمدة لاستلام الجهاز.
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;font-size:7px;color:#334155;border-top:1px solid #cbd5e1;padding-top:1.5px;">
+          ${isCust ? `
+            <div>توقيع المستلم: <b>${escapeHtml(r.updatedBy || r.createdBy || state.user?.name || 'الموظف')}</b></div>
+            <div>ختم المركز: [ .................... ]</div>
+          ` : `
+            <div>إقرار وتوقيع العميل: ..........................</div>
+            <div>التاريخ: ${cleanDate(r.date)}</div>
+          `}
+        </div>
+        <div style="font-size:5.5px;color:#94a3b8;text-align:center;margin-top:1px;">ميكروERP • نظام إدارة مراكز الصيانة</div>
+      </div>
+    </div>`;
+  }
 
-      <div class="section-title">بيانات الجهاز والأعطال</div>
-      <table>
-        <tr><td class="k">الجهاز</td><td>${escapeHtml(r.device.category)} — ${r.device.brand==='أخرى'?escapeHtml(r.device.brandOther):escapeHtml(r.device.brand)} ${escapeHtml(r.device.model||'')}</td>
-            <td class="k">الملحقات</td><td>${escapeHtml(r.device.accessories||'بدون')}</td></tr>
-        ${((r.device && r.device.password) || r.password) ? `<tr><td class="k">كلمة السر</td><td colspan="3"><span class="mono" style="font-weight:bold;color:#b45309;">🔑 ${escapeHtml((r.device && r.device.password) || r.password)}</span></td></tr>` : ''}
-        ${r.previousReceiptNumber ? `<tr><td class="k">دورة الصيانة</td><td colspan="3"><b>دورة ${r.serviceCycle||2}</b> — صيانة راجعة للإيصال السابق <span class="mono">#${escapeHtml(r.previousReceiptNumber)}</span> ${r.reIntakeReason ? '('+escapeHtml(r.reIntakeReason)+')' : ''}</td></tr>` : ''}
-        <tr><td class="k">الأعطال</td><td colspan="3">${escapeHtml((Array.isArray(r.faults) ? r.faults.join('، ') : String(r.faults || ''))||'-')}${r.faultNotes?' — '+escapeHtml(r.faultNotes):''}</td></tr>
-        <tr><td class="k">الفني</td><td>${escapeHtml(r.technician||'-')}</td><td class="k">الحالة</td><td><b>${escapeHtml(r.status)}</b></td></tr>
-        <tr><td class="k">موعد التسليم</td><td colspan="3"><b>${cleanDate(r.deliveryDate)||'غير محدد'}</b></td></tr>
-      </table>
+  mount.innerHTML = `
+  <div id="receiptPaper" style="width:204mm;height:140mm;max-height:140mm;margin:auto;display:grid;grid-template-columns:1fr 6mm 1fr;gap:0;box-sizing:border-box;overflow:hidden;background:#fff;direction:rtl;">
+    <!-- Right: Customer Copy (نسخة العميل) -->
+    ${buildHalfCopy('customer', 'printBarcode_1')}
 
-      ${financeSection}
+    <!-- Center: Dashed Cutting Divider Line -->
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;height:140mm;width:6mm;">
+      <div style="width:0;height:100%;border-left:1.5px dashed #94a3b8;"></div>
+      <div style="position:absolute;top:50%;transform:translateY(-50%);background:#fff;padding:2px 0;font-size:10px;color:#64748b;">✂️</div>
     </div>
 
-    <div>
-      ${termsSection}
-      ${signSection}
-      <div style="font-size:7px;color:#94a3b8;text-align:center;margin-top:2px;">تم الطباعة بواسطة نظام ميكروتك ERP لإدارة مراكز الصيانة</div>
-    </div>
+    <!-- Left: Center / Shop Copy (نسخة المركز) -->
+    ${buildHalfCopy('shop', 'printBarcode_2')}
   </div>`;
   document.body.appendChild(mount);
 
   if(typeof JsBarcode !== 'undefined'){
-    try{ JsBarcode('#printBarcode', r.receiptNumber, {format:'CODE128', width:1.1, height:18, displayValue:false, margin:0}); }catch(e){}
+    try{
+      JsBarcode('#printBarcode_1', r.receiptNumber, {format:'CODE128', width:0.85, height:13, displayValue:false, margin:0});
+      JsBarcode('#printBarcode_2', r.receiptNumber, {format:'CODE128', width:0.85, height:13, displayValue:false, margin:0});
+    }catch(e){}
   }
 
   const cleanupA5 = ()=>{
@@ -12153,7 +12213,7 @@ function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0, offsetX =
 <style>
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   @page {
-    size: portrait !important;
+    size: ${dim.w}mm ${dim.h}mm !important;
     margin: 0mm !important;
   }
   html, body {
@@ -12165,6 +12225,7 @@ function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0, offsetX =
     max-width: ${dim.w}mm !important;
     max-height: ${dim.h}mm !important;
     overflow: hidden !important;
+    direction: rtl !important;
   }
   .sticker-page {
     width: ${dim.w}mm !important;
@@ -12181,6 +12242,7 @@ function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0, offsetX =
     page-break-after: always !important;
     break-after: page !important;
     position: relative !important;
+    direction: rtl !important;
     ${offsetCss}
   }
   .sticker-page:last-child {

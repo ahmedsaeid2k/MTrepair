@@ -4104,18 +4104,47 @@ function extractCustomerName(obj){
   return parsed.name || str;
 }
 
+function getLevenshteinDistance(a, b){
+  if(a === b) return 0;
+  const la = a.length, lb = b.length;
+  if(!la) return lb;
+  if(!lb) return la;
+  const d = [];
+  for(let i=0; i<=la; i++){ d[i] = [i]; }
+  for(let j=0; j<=lb; j++){ d[0][j] = j; }
+  for(let i=1; i<=la; i++){
+    for(let j=1; j<=lb; j++){
+      const cost = a[i-1] === b[j-1] ? 0 : 1;
+      d[i][j] = Math.min(d[i-1][j] + 1, d[i][j-1] + 1, d[i-1][j-1] + cost);
+    }
+  }
+  return d[la][lb];
+}
+
 function normalizeCustomerSearchName(str){
   if(!str) return '';
   let s = String(str).trim().toLowerCase();
-  s = s.replace(/[\u064B-\u065F]/g, ''); // Remove Arabic diacritics
-  s = s.replace(/[أإآ]/g, 'ا');
+  s = s.replace(/[\u064B-\u065F]/g, ''); // Remove Arabic diacritics / tashkeel
+  s = s.replace(/[أإآء]/g, 'ا');
   s = s.replace(/ة/g, 'ه');
   s = s.replace(/ى/g, 'ي');
+  // Normalize common phonetic twin typos in Egyptian/Arabic names:
+  s = s.replace(/ض/g, 'ص'); // مضطفي <-> مصطفي
+  s = s.replace(/ظ/g, 'ز');
+  s = s.replace(/ذ/g, 'ز');
+  s = s.replace(/عبد\s+/g, 'عبد');
+  s = s.replace(/ابو\s+/g, 'ابو');
   // Strip common titles
   s = s.replace(/^(دكتور|دكتورة|د\.|أستاذ|استاذ|أستاذة|استاذة|أ\.|ا\.|مهندس|مهندسة|م\.|سيدة|مدام|الحاج|حاج|شيخ|سيد)\s*[\/:-]?\s*/g, '');
   // Normalize punctuation and spacing
   s = s.replace(/[ـ\-_/\\.,:;]+/g, ' ').replace(/\s+/g, ' ').trim();
   return s;
+}
+
+function isCustomerPhoneValid(p){
+  if(!p) return false;
+  const s = String(p).trim();
+  return s.length >= 7 && s !== '0000000000' && s !== '00000' && s !== 'undefined' && s !== 'null';
 }
 
 function findCustomerInDirectory(rawName){
@@ -4126,41 +4155,127 @@ function findCustomerInDirectory(rawName){
   if(!clean || clean === 'عميل' || clean === 'زبون') return null;
 
   const list = state.customers;
-
-  // 1. Exact match on raw trimmed name
   const rawTrimmed = rawName.trim().toLowerCase();
-  let match = list.find(c => {
+
+  const matches = [];
+
+  for(let i=0; i<list.length; i++){
+    const c = list[i];
+    if(!c) continue;
     const cn = (c.name || c.CustomerName || '').trim().toLowerCase();
-    return cn && cn === rawTrimmed;
-  });
-  if(match) return match;
-
-  // 2. Exact match on normalized text
-  match = list.find(c => {
     const cNorm = normalizeCustomerSearchName(c.name || c.CustomerName || '');
-    return cNorm && cNorm === clean;
-  });
-  if(match) return match;
-
-  // 3. Match customer name + title (e.g. if c has title 'دكتور' and name 'جون')
-  match = list.find(c => {
     const cTitle = (c.title || c.CustomerTitle || '').trim();
-    const cName = (c.name || c.CustomerName || '').trim();
-    const combinedNorm = normalizeCustomerSearchName((cTitle ? cTitle + ' ' : '') + cName);
-    return combinedNorm && combinedNorm === clean;
-  });
-  if(match) return match;
+    const combinedNorm = normalizeCustomerSearchName((cTitle ? cTitle + ' ' : '') + (c.name || c.CustomerName || ''));
 
-  // 4. Common typo / transposition tolerance (e.g. سايمه vs ساميه)
-  match = list.find(c => {
-    const cNorm = normalizeCustomerSearchName(c.name || c.CustomerName || '');
-    if(!cNorm) return false;
-    if(cNorm.replace('سايمه', 'ساميه') === clean.replace('سايمه', 'ساميه')) return true;
-    return false;
-  });
-  if(match) return match;
+    let score = 0;
+    if(cn && cn === rawTrimmed) { score = 100; }
+    else if(cNorm && cNorm === clean) { score = 90; }
+    else if(combinedNorm && combinedNorm === clean) { score = 85; }
+    else if(cNorm && cNorm.replace('سايمه', 'ساميه') === clean.replace('سايمه', 'ساميه')) { score = 75; }
+    else if(clean.length >= 4 && cNorm && Math.abs(cNorm.length - clean.length) <= 1 && typeof getLevenshteinDistance === 'function') {
+      if(getLevenshteinDistance(cNorm, clean) <= 1) { score = 65; }
+    }
 
-  return null;
+    if(score > 0){
+      matches.push({ c, score });
+    }
+  }
+
+  if(!matches.length) return null;
+
+  // Prioritize candidates with a valid phone number
+  matches.sort((a, b) => {
+    const aHasPhone = isCustomerPhoneValid(a.c.phone || a.c.CustomerPhone);
+    const bHasPhone = isCustomerPhoneValid(b.c.phone || b.c.CustomerPhone);
+    if(aHasPhone && !bHasPhone) return -1;
+    if(!aHasPhone && bHasPhone) return 1;
+    return b.score - a.score;
+  });
+
+  const best = matches[0].c;
+
+  // Cross-pollinate phone if best match lacks it but another matched candidate has it
+  const matchWithPhone = matches.find(m => isCustomerPhoneValid(m.c.phone || m.c.CustomerPhone));
+  if(matchWithPhone && !isCustomerPhoneValid(best.phone || best.CustomerPhone)){
+    const ph = matchWithPhone.c.phone || matchWithPhone.c.CustomerPhone;
+    best.phone = ph;
+    if(best.CustomerPhone !== undefined) best.CustomerPhone = ph;
+  }
+
+  return best;
+}
+
+function deduplicateCustomerDirectory(){
+  if(typeof state === 'undefined' || !state || !Array.isArray(state.customers) || state.customers.length <= 1) return 0;
+  const oldLen = state.customers.length;
+  const mergedMap = new Map();
+
+  state.customers.forEach(c => {
+    if(!c) return;
+    const rawName = (c.name || c.CustomerName || '').trim();
+    const phone = (c.phone || c.CustomerPhone || '').trim();
+    const title = (c.title || c.CustomerTitle || '').trim();
+    const email = (c.email || c.CustomerEmail || '').trim();
+    const taxNumber = (c.taxNumber || c.TaxNumber || '').trim();
+    const address = (c.address || c.Address || '').trim();
+
+    if(!rawName || rawName === 'عميل' || rawName === 'زبون') return;
+
+    const normName = normalizeCustomerSearchName(rawName);
+    const key = isCustomerPhoneValid(phone) ? ('p_' + phone) : ('n_' + normName);
+
+    if(!mergedMap.has(key)){
+      mergedMap.set(key, { title, name: rawName, phone, email, taxNumber, address });
+    } else {
+      const existing = mergedMap.get(key);
+      if(!existing.phone && phone) existing.phone = phone;
+      if(!existing.title && title) existing.title = title;
+      if(!existing.email && email) existing.email = email;
+      if(!existing.taxNumber && taxNumber) existing.taxNumber = taxNumber;
+      if(!existing.address && address) existing.address = address;
+
+      // Prefer canonical spelling without typos (e.g. مصطفى/مصطفي over مضطفي)
+      if(existing.name.includes('مضط') && !rawName.includes('مضط')){
+        existing.name = rawName;
+      } else if(rawName.length >= existing.name.length && !rawName.includes('طط') && !rawName.includes('مضط')){
+        existing.name = rawName;
+      }
+    }
+  });
+
+  const entries = Array.from(mergedMap.values());
+  const finalCustomers = [];
+  const handledEmpty = new Set();
+
+  const withPhone = entries.filter(c => isCustomerPhoneValid(c.phone));
+  const withoutPhone = entries.filter(c => !isCustomerPhoneValid(c.phone));
+
+  withPhone.forEach(wp => {
+    const wpNorm = normalizeCustomerSearchName(wp.name);
+    withoutPhone.forEach(np => {
+      const npNorm = normalizeCustomerSearchName(np.name);
+      if(npNorm === wpNorm || (typeof getLevenshteinDistance === 'function' && wpNorm.length >= 4 && getLevenshteinDistance(wpNorm, npNorm) <= 1)){
+        if(!wp.title && np.title) wp.title = np.title;
+        if(!wp.email && np.email) wp.email = np.email;
+        handledEmpty.add(np);
+      }
+    });
+    finalCustomers.push(wp);
+  });
+
+  withoutPhone.forEach(np => {
+    if(!handledEmpty.has(np)){
+      finalCustomers.push(np);
+    }
+  });
+
+  state.customers = finalCustomers;
+  setCache('customers', state.customers);
+  const removed = oldLen - finalCustomers.length;
+  if(removed > 0){
+    console.log(`Deduplicated customers: removed ${removed} duplicates, now ${finalCustomers.length} unique customers.`);
+  }
+  return removed;
 }
 
 function extractCustomerTitle(obj){
@@ -4259,31 +4374,84 @@ function extractCustomerEmail(obj){
   return String(val).replace(/["']/g, '').trim();
 }
 
-/* Safe customer normalizer - links receipts to Customer Directory */
+/* Safe customer normalizer - links receipts to Customer Directory & heals typos */
 function recoverAndSyncAllCustomerPhones(verbose = false){
+  deduplicateCustomerDirectory();
   let matchedCount = 0;
+  let namesSynced = 0;
+  const receiptsToPersist = [];
+
   (state.receipts || []).forEach(r => {
     if(!r) return;
-    const name = extractCustomerName(r);
+    const rawName = extractCustomerName(r);
     const title = extractCustomerTitle(r);
     const currentPhone = extractCustomerPhone(r);
     if(!r.customer || typeof r.customer !== 'object'){
-      r.customer = { title: title || '', name: name || 'عميل', phone: currentPhone || '', email: extractCustomerEmail(r) };
+      r.customer = { title: title || '', name: rawName || 'عميل', phone: currentPhone || '', email: extractCustomerEmail(r) };
     }
-    if(!r.customer.phone && currentPhone && currentPhone !== '0000000000'){
-      r.customer.phone = currentPhone;
-      matchedCount++;
+
+    let changed = false;
+
+    // Cross reference with Customer Directory
+    const matched = (typeof findCustomerInDirectory === 'function' && rawName) ? findCustomerInDirectory(rawName) : null;
+    if(matched){
+      const dirPhone = (matched.phone || matched.CustomerPhone || '').trim();
+      const dirName = (matched.name || matched.CustomerName || '').trim();
+      const dirTitle = (matched.title || matched.CustomerTitle || '').trim();
+
+      if(dirName && (r.CustomerName !== dirName || r.customer.name !== dirName)){
+        r.CustomerName = dirName;
+        r.customer.name = dirName;
+        changed = true;
+        namesSynced++;
+      }
+      if(dirTitle && (r.CustomerTitle !== dirTitle || r.customer.title !== dirTitle)){
+        r.CustomerTitle = dirTitle;
+        r.customer.title = dirTitle;
+        changed = true;
+      }
+      if(dirPhone && dirPhone !== '0000000000' && (!r.customer.phone || r.customer.phone === '0000000000')){
+        r.customer.phone = dirPhone;
+        r.CustomerPhone = dirPhone;
+        changed = true;
+        matchedCount++;
+      }
+    } else {
+      if(!r.customer.phone && currentPhone && currentPhone !== '0000000000'){
+        r.customer.phone = currentPhone;
+        changed = true;
+        matchedCount++;
+      }
+      if(r.customer.phone && !r.CustomerPhone){
+        r.CustomerPhone = r.customer.phone;
+        changed = true;
+      }
+      if(!r.CustomerTitle && title){
+        r.CustomerTitle = title;
+        changed = true;
+      }
     }
-    if(r.customer.phone && !r.CustomerPhone){
-      r.CustomerPhone = r.customer.phone;
+
+    if(changed){
+      receiptsToPersist.push(r);
     }
-    if(!r.CustomerTitle && title) r.CustomerTitle = title;
   });
 
+  setCache('receipts', state.receipts);
+
   if(verbose){
-    showToast(`تم ربط وتحديث جهات الاتصال المسجلة في دليل العملاء بنجاح (${matchedCount} إيصال) ✅`, 'success');
+    showToast(`تم ربط وتحديث جهات الاتصال (${matchedCount} رقم هاتف، ${namesSynced} اسم مصحح) بنجاح ✅`, 'success');
   }
-  return { recoveredCount: matchedCount, totalCustomers: (state.customers || []).length };
+
+  if(verbose && receiptsToPersist.length > 0){
+    (async () => {
+      for(const rec of receiptsToPersist){
+        try { await apiPost('saveReceipt', { data: receiptToRow(rec), user: (state.user ? state.user.name : 'نظام') }); } catch(e){}
+      }
+    })();
+  }
+
+  return { recoveredCount: matchedCount, namesSynced, totalCustomers: (state.customers || []).length };
 }
 
 /* ---------------- Receipt Date & Time Helpers ---------------- */
@@ -5137,42 +5305,78 @@ async function loadReceipts(){
 
 function _extractCustomersFromReceipts(){
   if(!state.customers || !state.receipts) return;
-  const existingNames = new Set((state.customers).map(c => (c.name||'').trim().toLowerCase()));
-  const existingPhones = new Set((state.customers).filter(c => c.phone).map(c => c.phone.trim()));
   let added = 0;
+  let syncedToReceipts = 0;
 
   state.receipts.forEach(r => {
-    const name = extractCustomerName(r);
-    const phone = extractCustomerPhone(r);
-    if(!name || name === 'عميل' || name === 'زبون') return;
-    const nameLow = name.trim().toLowerCase();
-    const phoneTrim = (phone||'').trim();
+    const rawName = extractCustomerName(r);
+    const rawPhone = extractCustomerPhone(r);
+    if(!rawName || rawName === 'عميل' || rawName === 'زبون') return;
 
-    // Skip if already known
-    if(existingNames.has(nameLow)) {
-      // But if we have a phone and the existing entry doesn't, update it
-      if(phoneTrim && phoneTrim !== '0000000000' && !existingPhones.has(phoneTrim)){
-        const existing = state.customers.find(c => (c.name||'').trim().toLowerCase() === nameLow);
-        if(existing && (!existing.phone || existing.phone === '0000000000')){
-          existing.phone = phoneTrim;
-          existingPhones.add(phoneTrim);
-        }
+    // Look for customer in directory using robust phonetic matching
+    const matched = typeof findCustomerInDirectory === 'function' ? findCustomerInDirectory(rawName) : null;
+
+    if(matched){
+      // Customer is already known in directory!
+      const dirPhone = (matched.phone || matched.CustomerPhone || '').trim();
+      const rPhoneTrim = (rawPhone || '').trim();
+      const dirName = (matched.name || matched.CustomerName || '').trim();
+      const dirTitle = (matched.title || matched.CustomerTitle || '').trim();
+
+      let receiptChanged = false;
+
+      // Case A: Directory has a phone but receipt has no phone (or placeholder) -> sync phone to receipt!
+      if(dirPhone && dirPhone !== '0000000000' && (!rPhoneTrim || rPhoneTrim === '0000000000')){
+        if(!r.customer) r.customer = {};
+        r.customer.phone = dirPhone;
+        r.CustomerPhone = dirPhone;
+        receiptChanged = true;
       }
-      return;
-    }
-    if(phoneTrim && existingPhones.has(phoneTrim)) return;
+      // Case B: Receipt has a phone but directory doesn't -> sync phone to directory!
+      else if(rPhoneTrim && rPhoneTrim !== '0000000000' && (!dirPhone || dirPhone === '0000000000')){
+        matched.phone = rPhoneTrim;
+        if(matched.CustomerPhone !== undefined) matched.CustomerPhone = rPhoneTrim;
+        try { saveCustomerRemote(matched); } catch(e){}
+      }
 
-    // New customer from receipt — add to local directory
-    const title = extractCustomerTitle(r);
-    state.customers.push({ title: title||'', name, phone: phoneTrim, email: '' });
-    existingNames.add(nameLow);
-    if(phoneTrim) existingPhones.add(phoneTrim);
-    added++;
+      // Case C: Canonicalize receipt name & title to directory canonical spelling
+      if(dirName && (r.CustomerName !== dirName || (r.customer && r.customer.name !== dirName))){
+        if(!r.customer) r.customer = {};
+        r.CustomerName = dirName;
+        r.customer.name = dirName;
+        receiptChanged = true;
+      }
+      if(dirTitle && (r.CustomerTitle !== dirTitle || (r.customer && r.customer.title !== dirTitle))){
+        if(!r.customer) r.customer = {};
+        r.CustomerTitle = dirTitle;
+        r.customer.title = dirTitle;
+        receiptChanged = true;
+      }
+
+      if(receiptChanged){
+        syncedToReceipts++;
+      }
+    } else {
+      // New customer not found in directory at all: only add if has a valid name
+      const phoneTrim = (rawPhone || '').trim();
+      const title = extractCustomerTitle(r);
+      state.customers.push({
+        title: title || '',
+        name: rawName.trim(),
+        phone: phoneTrim,
+        email: '',
+        taxNumber: '',
+        address: ''
+      });
+      added++;
+    }
   });
 
-  if(added > 0){
+  if(added > 0 || syncedToReceipts > 0){
+    deduplicateCustomerDirectory();
     setCache('customers', state.customers);
-    console.log(`Extracted ${added} customers from receipts into directory`);
+    setCache('receipts', state.receipts);
+    console.log(`Customers-Receipts Sync: ${added} added to directory, ${syncedToReceipts} synced to receipts`);
   }
 }
 
@@ -5223,6 +5427,7 @@ async function loadCustomers(){
       });
 
       state.customers = merged;
+      deduplicateCustomerDirectory();
       setCache('customers', state.customers);
     }
   } catch(e){
@@ -9491,7 +9696,7 @@ window.openReceiptActionSheet = function(receiptId, receiptNum){
             <div class="act-desc mono">${escapeHtml(cPhone)}</div>
           </a>
         ` : `
-          <div class="action-sheet-card-btn" onclick="document.getElementById('receiptActionSheetModal').remove(); openQuickAddPhoneModal('${escapeHtml(cName)}', '${escapeHtml(cTitle)}');">
+          <div class="action-sheet-card-btn" onclick="document.getElementById('receiptActionSheetModal').remove(); openQuickAddPhoneModal('${escapeHtml(cName)}', '${escapeHtml(cTitle)}', '${safeTargetId}', '${rNum}');">
             <div class="act-icon" style="color:var(--amber);">⚠️</div>
             <div class="act-label">تسجيل هاتف</div>
             <div class="act-desc">إضافة رقم للعميل</div>
@@ -9735,7 +9940,7 @@ function archiveTable(list){
             <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" style="color:#22c55e;text-decoration:none;font-size:12px;" title="محادثة واتساب">💬</a>
           </div>
         ` : `
-          <div style="color:var(--amber-text);font-size:10.5px;font-weight:700;cursor:pointer;margin-top:2px;" onclick="openQuickAddPhoneModal('${escapeHtml(cName)}', '${escapeHtml(cTitle)}')">⚠️ هاتف غير مسجل (اضغط للإضافة)</div>
+          <div style="color:var(--amber-text);font-size:10.5px;font-weight:700;cursor:pointer;margin-top:2px;" onclick="openQuickAddPhoneModal('${escapeHtml(cName)}', '${escapeHtml(cTitle)}', '${safeTargetId}', '${rNum}'); event.stopPropagation();">⚠️ هاتف غير مسجل (اضغط للإضافة)</div>
         `}
       </td>
       <td>${dCat} - ${dBrand} <span style="color:var(--ink-secondary);">${dModel}</span></td>
@@ -9827,7 +10032,7 @@ function archiveCards(list){
                 <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" style="color:#22c55e;text-decoration:none;font-size:13px;" title="واتساب">💬</a>
               </span>
             ` : `
-              <span style="color:var(--amber-text);font-size:10.5px;font-weight:700;cursor:pointer;margin-right:auto;" onclick="openQuickAddPhoneModal('${escapeHtml(cName)}', '${escapeHtml(cTitle)}')">⚠️ هاتف غير مسجل</span>
+              <span style="color:var(--amber-text);font-size:10.5px;font-weight:700;cursor:pointer;margin-right:auto;" onclick="openQuickAddPhoneModal('${escapeHtml(cName)}', '${escapeHtml(cTitle)}', '${safeTargetId}', '${rNum}'); event.stopPropagation();">⚠️ هاتف غير مسجل</span>
             `}
           </div>
           <div style="font-size:11px;color:var(--ink-secondary);margin-top:5px;display:flex;align-items:center;gap:4px;">
@@ -10191,32 +10396,53 @@ function renderCustomersPage(main){
   });
 }
 
-function openQuickAddPhoneModal(customerName, customerTitle=''){
+function openQuickAddPhoneModal(customerName, customerTitle='', targetReceiptId='', targetReceiptNum=''){
   let existing = null;
   if(typeof findCustomerInDirectory === 'function'){
     existing = findCustomerInDirectory(customerName);
   }
   if(!existing && typeof state !== 'undefined' && Array.isArray(state.customers)){
-    existing = state.customers.find(c => (c.name || '').trim().toLowerCase() === (customerName || '').trim().toLowerCase());
+    const cleanNorm = typeof normalizeCustomerSearchName === 'function' ? normalizeCustomerSearchName(customerName) : (customerName||'').trim().toLowerCase();
+    existing = state.customers.find(c => {
+      const cn = (c.name || '').trim().toLowerCase();
+      if(cn === (customerName || '').trim().toLowerCase()) return true;
+      if(typeof normalizeCustomerSearchName === 'function' && normalizeCustomerSearchName(cn) === cleanNorm) return true;
+      return false;
+    });
   }
-  if(existing){
-    openEditCustomerModal(existing);
-  } else {
-    openEditCustomerModal({ title: customerTitle, name: customerName, phone: '', email: '' });
+
+  let targetReceipt = null;
+  if(typeof state !== 'undefined' && Array.isArray(state.receipts) && (targetReceiptId || targetReceiptNum)){
+    targetReceipt = state.receipts.find(r =>
+      (targetReceiptId && (r.id === targetReceiptId || r.ID === targetReceiptId)) ||
+      (targetReceiptNum && (r.receiptNumber === targetReceiptNum || r.ReceiptNumber === targetReceiptNum))
+    );
   }
+
+  const initialTitle = (existing && existing.title) || customerTitle || (targetReceipt ? extractCustomerTitle(targetReceipt) : '');
+  const initialName = (existing && existing.name) || customerName || (targetReceipt ? extractCustomerName(targetReceipt) : '');
+  const initialPhone = (existing && existing.phone) || (targetReceipt ? extractCustomerPhone(targetReceipt) : '');
+  const initialEmail = (existing && existing.email) || (targetReceipt ? extractCustomerEmail(targetReceipt) : '');
+
+  openEditCustomerModal({
+    title: initialTitle,
+    name: initialName,
+    phone: initialPhone,
+    email: initialEmail
+  }, targetReceiptId, targetReceiptNum);
 }
 
-function openEditCustomerModal(c){
+function openEditCustomerModal(c, targetReceiptId='', targetReceiptNum=''){
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
-  const isEdit = !!c;
+  const isEdit = !!(c && c.name);
   const curTitle = (c && (c.title || c.Title)) || '';
   const titleOptions = [''].concat(CUSTOMER_TITLES).map(t=>`<option value="${escapeHtml(t)}" ${curTitle===t?'selected':''}>${t ? escapeHtml(t) : '-- بدون لقب --'}</option>`).join('');
 
   overlay.innerHTML = `
     <div class="modal-content" style="max-width:480px;">
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
-        <h3 style="margin:0;font-size:16px;font-weight:900;">${isEdit ? '✏️ تعديل بيانات العميل' : '➕ إضافة عميل جديد'}</h3>
+        <h3 style="margin:0;font-size:16px;font-weight:900;">${isEdit ? '✏️ تعديل بيانات العميل وربط الإيصالات' : '➕ إضافة عميل جديد'}</h3>
         <button class="btn btn-ghost btn-xs" id="closeCustModalBtn">✕</button>
       </div>
       <div style="display:grid;grid-template-columns:140px 1fr;gap:10px;">
@@ -10232,7 +10458,7 @@ function openEditCustomerModal(c){
       <div class="field"><label>البريد الإلكتروني (اختياري)</label><input id="editCustEmail" value="${escapeHtml(c ? c.email : '')}" placeholder="example@mail.com"></div>
       <div style="display:flex;justify-content:space-between;margin-top:14px;">
         <button class="btn btn-ghost" id="cancelCustModalBtn">إلغاء</button>
-        <button class="btn btn-primary" id="saveCustModalBtn">💾 حفظ البيانات</button>
+        <button class="btn btn-primary" id="saveCustModalBtn">💾 حفظ ومزامنة البيانات</button>
       </div>
     </div>
   `;
@@ -10250,18 +10476,40 @@ function openEditCustomerModal(c){
 
     if(!name){ showToast('يرجى إدخال اسم العميل', 'error'); return; }
 
-    const oldName = c ? c.name : null;
+    const oldName = c ? (c.name || '').trim() : null;
+    const oldPhone = c ? (c.phone || '').trim() : '';
+    const saveBtn = document.getElementById('saveCustModalBtn');
+    if(saveBtn){ saveBtn.disabled = true; saveBtn.textContent = 'جارٍ الحفظ والمزامنة...'; }
+
+    // 1. Save customer to directory (remotely and locally)
     await saveCustomerRemote({ title, name, phone, email }, oldName);
 
-    // Update receipts that belong to THIS specific customer (match by name + old phone)
-    const oldPhone = c ? (c.phone || '') : '';
+    // 2. Identify and update all receipts that belong to this customer
+    const updatedReceipts = [];
+    const nameNorm = typeof normalizeCustomerSearchName === 'function' ? normalizeCustomerSearchName(name) : name.toLowerCase();
+    const oldNameNorm = (oldName && typeof normalizeCustomerSearchName === 'function') ? normalizeCustomerSearchName(oldName) : (oldName ? oldName.toLowerCase() : '');
+
     (state.receipts || []).forEach(r => {
       const rName = extractCustomerName(r);
       const rPhone = extractCustomerPhone(r);
-      // Match by name AND (old phone matches OR receipt had no phone)
-      const nameMatch = rName && (rName.toLowerCase() === name.toLowerCase() || (oldName && rName.toLowerCase() === oldName.toLowerCase()));
-      const phoneMatch = !oldPhone || !rPhone || rPhone === oldPhone;
-      if(nameMatch && phoneMatch){
+      const rNameNorm = typeof normalizeCustomerSearchName === 'function' ? normalizeCustomerSearchName(rName) : (rName||'').toLowerCase();
+
+      // Check if target receipt explicitly matches
+      const isTargetReceipt = (targetReceiptId && (r.id === targetReceiptId || r.ID === targetReceiptId)) ||
+                              (targetReceiptNum && (r.receiptNumber === targetReceiptNum || r.ReceiptNumber === targetReceiptNum));
+
+      // Check name match: raw or normalized (including phonetic twins like مضطفي/مصطفي)
+      const nameMatch = rName && (
+        rName.toLowerCase() === name.toLowerCase() ||
+        (oldName && rName.toLowerCase() === oldName.toLowerCase()) ||
+        rNameNorm === nameNorm ||
+        (oldNameNorm && rNameNorm === oldNameNorm) ||
+        (typeof getLevenshteinDistance === 'function' && rNameNorm.length >= 4 && getLevenshteinDistance(rNameNorm, nameNorm) <= 1)
+      );
+
+      const phoneMatch = !oldPhone || !rPhone || rPhone === oldPhone || (phone && rPhone === phone);
+
+      if(isTargetReceipt || (nameMatch && phoneMatch)){
         if(!r.customer) r.customer = { title, name, phone, email };
         else {
           r.customer.title = title;
@@ -10273,33 +10521,57 @@ function openEditCustomerModal(c){
         r.CustomerTitle = title;
         r.CustomerPhone = phone;
         r.CustomerEmail = email;
+        if(!updatedReceipts.includes(r)) updatedReceipts.push(r);
       }
     });
+
     setCache('receipts', state.receipts);
 
-    // Update customers list with new data
+    // 3. Update customers list in local state
     if (oldName) {
-      const cust = (state.customers || []).find(c => c.name && c.name.toLowerCase() === oldName.toLowerCase());
+      const cust = (state.customers || []).find(c =>
+        (c.name && c.name.toLowerCase() === oldName.toLowerCase()) ||
+        (typeof normalizeCustomerSearchName === 'function' && normalizeCustomerSearchName(c.name) === oldNameNorm)
+      );
       if (cust) {
         cust.title = title;
         cust.name = name;
         cust.phone = phone;
         cust.email = email;
+      } else {
+        state.customers.push({ title, name, phone, email });
       }
     } else {
-      // New customer - add if not already present
-      if (!state.customers.find(c => c.name && c.name.toLowerCase() === name.toLowerCase())) {
+      const existingInState = (state.customers || []).find(c =>
+        (c.name && c.name.toLowerCase() === name.toLowerCase()) ||
+        (typeof normalizeCustomerSearchName === 'function' && normalizeCustomerSearchName(c.name) === nameNorm)
+      );
+      if(existingInState){
+        existingInState.title = title;
+        existingInState.name = name;
+        existingInState.phone = phone;
+        existingInState.email = email;
+      } else {
         state.customers.push({ title, name, phone, email });
       }
     }
+    deduplicateCustomerDirectory();
     setCache('customers', state.customers);
-    recoverAndSyncAllCustomerPhones(false);
-    showToast('تم حفظ وتحديث بيانات العميل وألقابه بنجاح ✅', 'success');
+
+    // 4. CRITICAL: Persist each updated receipt to Google Sheets!
+    for(const ur of updatedReceipts){
+      try {
+        await saveReceiptRemote(ur);
+      } catch(eReceipt){
+        console.warn('Sync receipt to cloud warning:', eReceipt);
+      }
+    }
+
+    showToast(`تم حفظ وتحديث بيانات (${name}) وتحديث ${updatedReceipts.length} إيصال بنجاح ✅`, 'success');
     overlay.remove();
 
-      const main = document.getElementById('main');
-      if (state.tab === 'customers') renderCustomersPage(main);
-      else if (state.tab === 'archive') renderArchive(main);
+    // Re-render UI immediately
+    renderMain();
   };
 }
 

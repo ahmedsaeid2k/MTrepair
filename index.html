@@ -4514,6 +4514,9 @@ function receiptToRow(d){
     Model: d.device.model, Accessories: d.device.accessories, Password: pass,
     Faults: (d.faults||[]).join('، '), FaultNotes: d.faultNotes,
     Technician: d.technician, Cost: d.cost, Deposit: d.deposit, Refunded: d.refunded || 0, PartsCost: d.partsCost || 0, PartsUsed: d.partsUsed || '',
+    InspectionFee: d.inspectionFee != null ? d.inspectionFee : '',
+    EstimateTime: d.estimateTime || '',
+    Warranty: d.warranty || '',
     ServiceItems: (Array.isArray(d.serviceItems) && d.serviceItems.length) ? JSON.stringify(d.serviceItems) : '',
     OtherAccountDesc: d.otherAccountDesc || '',
     OtherAccountAmount: Number(d.otherAccountAmount || 0),
@@ -4575,6 +4578,9 @@ function rowToReceipt(row){
     refunded: Number(row.Refunded || row.refunded || 0),
     partsCost: Number(row.PartsCost || row.partsCost || 0),
     partsUsed: row.PartsUsed || row.partsUsed || '',
+    inspectionFee: (row.InspectionFee != null && row.InspectionFee !== '') ? Number(row.InspectionFee) : ((row.inspectionFee != null && row.inspectionFee !== '') ? Number(row.inspectionFee) : null),
+    estimateTime: row.EstimateTime || row.estimateTime || '',
+    warranty: row.Warranty || row.warranty || '',
     serviceItems: sItems,
     otherAccountDesc: row.OtherAccountDesc || row.otherAccountDesc || '',
     otherAccountAmount: Number(row.OtherAccountAmount != null ? row.OtherAccountAmount : (row.otherAccountAmount || 0)),
@@ -6146,6 +6152,38 @@ const DEFAULT_QUOTE_AGREEMENT_TERMS = `بند (1): موضوع العقد: يلت
 بند (5): الملكية ومحضر التسليم: تظل كافة المهمات والأجهزة ملكاً للطرف الأول حتى سداد كامل المستحقات المالية، ويحرر محضر تسليم وتشغيل رسمي موقع من الطرفين فور إتمام المشروع.`;
 
 const DEFAULT_WA_TEMPLATES = {
+  cost_estimate: `مرحبًا {customer_name} 👋
+بخصوص جهازكم المسجل لدينا بمركز {shop_name}:
+📱 الجهاز: {device}
+🔢 إيصال صيانة رقم: {receipt_no}
+📅 تاريخ الاستلام: {date}
+
+🔍 تقرير الفحص وتشخيص العطل:
+{faults_report}
+
+━━━━━━━━━━━━━━━━━━━━
+📊 عرض ومقايسة تكلفة الصيانة:
+
+✅ في حالة الموافقة على الإصلاح:
+• إجمالي تكلفة الصيانة وقطع الغيار: *{cost} ج.م*
+{deposit_info}
+• المبلغ المطلوب سداده عند الاستلام: *{remaining} ج.م*
+• مدة الإصلاح المتوقعة: *{estimate_time}*
+{warranty_info}
+
+❌ في حالة عدم الرغبة في الإصلاح (رفض الصيانة):
+• تكلفة فحص الجهاز وتشخيص العطل الفني: *{inspection_fee} ج.م* فقط.
+(ملاحظة: لا تُدفع أي رسوم فحص في حالة الموافقة على الإصلاح).
+━━━━━━━━━━━━━━━━━━━━
+
+💬 يرجى الرد على هذه الرسالة بتأكيد (موافق) للبدء في صيانة الجهاز فوراً، أو إبلاغنا في حال رغبتكم بالاستلام.
+
+🔗 تتبع حالة جهازك مباشرة عبر الرابط:
+{track_url}
+
+{shop_name}
+📞 {shop_phone}
+📍 {shop_address}`,
   check: `مرحبًا {customer_name} 👋\nتم استلام جهازكم ({device}) وهو قيد الفحص والتشخيص الفني حالياً 🔍\nرقم الإيصال: {receipt_no}\n🔗 تتبع حالة جهازك: {track_url}\n{shop_name}`,
   repair: `مرحبًا {customer_name} 👋\nنحيطكم علماً بأن جهازكم ({device}) قيد الصيانة والإصلاح حالياً في {shop_name} 🛠️\nرقم الإيصال: {receipt_no}\n🔗 تتبع حالة جهازك: {track_url}`,
   done: `مرحبًا {customer_name} 👋\nنود إبلاغكم بأنه تم الانتهاء من صيانة جهازكم ({device}) بنجاح وجاهز للاستلام الآن في {shop_name} ✅\n\n📌 رقم الإيصال: {receipt_no}\n💵 المبلغ المتبقي المطلوب: {remaining} ج.م\n🔗 تتبع جهازك مباشرة: {track_url}\n\nشكراً لثقتكم بنا!`,
@@ -6698,6 +6736,9 @@ let state = {
     quoteTerms: DEFAULT_QUOTE_TERMS,
     quoteAgreementTerms: DEFAULT_QUOTE_AGREEMENT_TERMS,
     waTemplates: DEFAULT_WA_TEMPLATES,
+    defaultInspectionFee: 100,
+    defaultEstimateTime: 'خلال 24-48 ساعة',
+    defaultWarranty: '3 شهور ضد عيوب الصناعة',
     pos: DEFAULT_POS_SETTINGS,
     printers: DEFAULT_PRINTERS_SETTINGS
   }),
@@ -9398,6 +9439,17 @@ window.openWhatsappDirect = function(receiptId, receiptNum){
   }
 };
 
+window.openCostEstimateModalDirect = function(receiptId, receiptNum){
+  try{
+    const r = findReceiptByIdOrNum(receiptId, receiptNum);
+    if(!r){ showToast('لم يتم العثور على الإيصال المطلوب', 'error'); return; }
+    openCostEstimateModal(r);
+  }catch(err){
+    console.error('Error in openCostEstimateModalDirect:', err);
+    showToast('حدث خطأ أثناء فتح نافذة مقايسة التكلفة: ' + (err.message || err), 'error');
+  }
+};
+
 window.openReceiptPrintDirect = function(receiptId, receiptNum, kind='receipt'){
   try{
     const r = findReceiptByIdOrNum(receiptId, receiptNum);
@@ -9525,6 +9577,9 @@ window.selectReceipt = function(receiptId, receiptNum){
     <div class="unified-bar-actions">
       <button class="unified-bar-btn btn-status-quick" style="background:var(--green-bg);color:var(--green-text);border-color:rgba(5,150,105,0.25);" onclick="openQuickStatusModalDirect('${safeTargetId}', '${rNum}')" title="تغيير سريع لحالة الجهاز">
         ⚡ الحالة
+      </button>
+      <button class="unified-bar-btn" style="background:#ecfdf5;color:#047857;border-color:rgba(16,185,129,0.35);font-weight:700;" onclick="openCostEstimateModalDirect('${safeTargetId}', '${rNum}')" title="عرض ومقايسة التكلفة عبر واتساب">
+        💰 عرض التكلفة
       </button>
       <button class="unified-bar-btn btn-whatsapp" onclick="openWhatsappDirect('${safeTargetId}', '${rNum}')" title="محادثة واتساب">
         ${WA_ICON} واتساب
@@ -9684,6 +9739,11 @@ window.openReceiptActionSheet = function(receiptId, receiptNum){
 
       <div class="action-sheet-section-title">💬 التواصل والعمليات</div>
       <div class="action-sheet-grid">
+        <div class="action-sheet-card-btn" style="border-color:rgba(16,185,129,0.35);background:rgba(16,185,129,0.04);" onclick="document.getElementById('receiptActionSheetModal').remove(); openCostEstimateModalDirect('${safeTargetId}', '${rNum}');">
+          <div class="act-icon" style="color:#059669;">💰</div>
+          <div class="act-label" style="color:#047857;">عرض ومقايسة التكلفة</div>
+          <div class="act-desc">موافقة/رفض ورسوم الفحص</div>
+        </div>
         <div class="action-sheet-card-btn" onclick="document.getElementById('receiptActionSheetModal').remove(); openWhatsappDirect('${safeTargetId}', '${rNum}');">
           <div class="act-icon" style="color:#22c55e;">💬</div>
           <div class="act-label">محادثة واتساب</div>
@@ -10782,7 +10842,8 @@ function openQuickStatusModal(rawR){
         </label>
       </div>
 
-      <div style="display:flex;justify-content:flex-end;gap:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <button class="btn btn-whatsapp btn-xs" id="quickStatusCostEstBtn" type="button" style="padding:6px 12px;font-weight:700;">💰 عرض ومقايسة التكلفة للعميل</button>
         <button class="btn btn-ghost btn-sm" id="cancelQuickStatus">إلغاء</button>
       </div>
     </div>
@@ -10791,6 +10852,8 @@ function openQuickStatusModal(rawR){
   document.body.appendChild(overlay);
   overlay.querySelector('#closeStatusModal').onclick = ()=>overlay.remove();
   overlay.querySelector('#cancelQuickStatus').onclick = ()=>overlay.remove();
+  const quickStatusCostEstBtn = overlay.querySelector('#quickStatusCostEstBtn');
+  if(quickStatusCostEstBtn) quickStatusCostEstBtn.onclick = ()=>{ overlay.remove(); openCostEstimateModal(r); };
 
   overlay.querySelectorAll('[data-setstatus]').forEach(btn=>{
     btn.onclick = async ()=>{
@@ -10929,10 +10992,11 @@ function openWhatsappChoice(rawR){
   const cFullName = (typeof formatCustomerFullName === 'function') ? formatCustomerFullName(r) : ((r.customer && r.customer.name) || extractCustomerName(r) || 'عميل');
   const cName = escapeHtml(cFullName);
   overlay.innerHTML = `
-    <div class="modal-content" style="max-width:400px;">
+    <div class="modal-content" style="max-width:420px;">
       <h3 style="margin-top:0;">💬 إرسال واتساب للعميل</h3>
-      <p style="font-size:12.5px;color:var(--ink-secondary);">اختر قالب الرسالة المناسب لإرساله لـ <b>${cName}</b>:</p>
+      <p style="font-size:12.5px;color:var(--ink-secondary);">اختر نوع الرسالة المناسبة لإرسالها لـ <b>${cName}</b>:</p>
       <div style="display:flex;flex-direction:column;gap:9px;margin:14px 0;">
+        <button class="btn btn-whatsapp" id="waCostEstimate" style="background:#047857;border-color:#047857;font-weight:700;">💰 عرض ومقايسة التكلفة (الموافقة / الرفض ورسوم الفحص)</button>
         <button class="btn btn-whatsapp" id="waCurrentStatus">${WA_ICON} إشعار بالحالة الحالية (${escapeHtml(r.status)})</button>
         <button class="btn btn-whatsapp" id="waFull">${WA_ICON} تفاصيل الإيصال + رابط التتبع</button>
         <button class="btn btn-ghost" id="waCancel">إلغاء</button>
@@ -10940,6 +11004,7 @@ function openWhatsappChoice(rawR){
     </div>
   `;
   document.body.appendChild(overlay);
+  overlay.querySelector('#waCostEstimate').onclick = ()=>{ overlay.remove(); openCostEstimateModal(r); };
   overlay.querySelector('#waCurrentStatus').onclick = ()=>{ sendWhatsappByStatus(r, r.status); overlay.remove(); };
   overlay.querySelector('#waFull').onclick = ()=>{
     const otherAmt = Number(r.otherAccountAmount||0);
@@ -10959,6 +11024,367 @@ function openWhatsappChoice(rawR){
     overlay.remove();
   };
   overlay.querySelector('#waCancel').onclick = ()=>overlay.remove();
+}
+
+/* ---------------- Cost Estimate & WhatsApp Quotation Modal ---------------- */
+
+function buildCostEstimateWhatsappText(rawR, vals){
+  const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
+  const devCat = (r.device && r.device.category) || 'جهاز';
+  const devBrand = r.device ? (r.device.brand==='أخرى' ? r.device.brandOther : r.device.brand) : '';
+  const devModel = (r.device && r.device.model) || '';
+  const device = `${devCat} - ${devBrand} ${devModel}`.trim();
+  const trackUrl = `${window.location.origin}${window.location.pathname}?track=${encodeURIComponent(r.receiptNumber||'')}`;
+  const shop = (state.settings && state.settings.shopName) || 'مركز الصيانة';
+  const shopPhone = (state.settings && state.settings.shopPhone) || '';
+  const shopAddress = (state.settings && state.settings.shopAddress) || '';
+  const customerDisplayName = (typeof formatCustomerFullName === 'function') ? formatCustomerFullName(r) : ((r.customer && r.customer.name) || 'عميلنا العزيز');
+  
+  const cost = Number(vals.cost || 0);
+  const deposit = Number(vals.deposit || 0);
+  const remaining = Math.max(0, cost - deposit);
+  const inspectionFee = Number(vals.inspectionFee != null ? vals.inspectionFee : ((state.settings && state.settings.defaultInspectionFee != null) ? state.settings.defaultInspectionFee : 100));
+  const estimateTime = (vals.estimateTime || 'خلال 24-48 ساعة').trim();
+  const warranty = (vals.warranty || '3 شهور ضد عيوب الصناعة').trim();
+  const faultsReport = (vals.faultsReport || (Array.isArray(r.faults) ? r.faults.join('، ') : String(r.faults || '')) || r.faultNotes || 'فحص شامل وتحديد الأعطال').trim();
+
+  const depositInfo = deposit > 0 ? `• العربون المدفوع مسبقاً: *${deposit.toLocaleString()} ج.م*` : '';
+  const warrantyInfo = warranty ? `• فترة الضمان المعتمدة: *${warranty}*` : '';
+
+  let tmpl = getWaTemplate('cost_estimate') || DEFAULT_WA_TEMPLATES.cost_estimate;
+
+  return tmpl
+    .replace(/{customer_name}/g, customerDisplayName)
+    .replace(/{receipt_no}/g, r.receiptNumber || '')
+    .replace(/{date}/g, cleanDate(r.date))
+    .replace(/{device}/g, device)
+    .replace(/{faults_report}/g, faultsReport)
+    .replace(/{faults}/g, faultsReport)
+    .replace(/{cost}/g, cost.toLocaleString())
+    .replace(/{deposit}/g, deposit.toLocaleString())
+    .replace(/{deposit_info}/g, depositInfo)
+    .replace(/{remaining}/g, remaining.toLocaleString())
+    .replace(/{inspection_fee}/g, inspectionFee.toLocaleString())
+    .replace(/{estimate_time}/g, estimateTime)
+    .replace(/{warranty}/g, warranty)
+    .replace(/{warranty_info}/g, warrantyInfo)
+    .replace(/{track_url}/g, trackUrl)
+    .replace(/{shop_name}/g, shop)
+    .replace(/{shop_phone}/g, shopPhone)
+    .replace(/{shop_address}/g, shopAddress)
+    .replace(/\n\s*\n\s*\n+/g, '\n\n');
+}
+
+function openCostEstimateModal(rawR){
+  if(!rawR) return;
+  const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'costEstimateModalOverlay';
+
+  const cFullName = (typeof formatCustomerFullName === 'function') ? formatCustomerFullName(r) : ((r.customer && r.customer.name) || extractCustomerName(r) || 'عميل');
+  const cName = escapeHtml(cFullName);
+  const cRawPhone = (r.customer && r.customer.phone) || extractCustomerPhone(r) || '';
+  const cPhone = escapeHtml(cRawPhone);
+  const dCat = escapeHtml((r.device && r.device.category) || 'جهاز');
+  const dBrand = escapeHtml(r.device ? (r.device.brand==='أخرى' ? r.device.brandOther : r.device.brand) : '');
+  const dModel = escapeHtml((r.device && r.device.model) || '');
+  const rNum = escapeHtml(String(r.receiptNumber || ''));
+
+  const initialCost = Number(r.cost || 0) + Number(r.partsCost || 0);
+  const initialDeposit = Number(r.deposit || 0);
+  const defaultFee = (state.settings && state.settings.defaultInspectionFee != null) ? Number(state.settings.defaultInspectionFee) : 100;
+  const initialInspectionFee = Number(r.inspectionFee != null ? r.inspectionFee : defaultFee);
+  const initialEstimateTime = r.estimateTime || (state.settings && state.settings.defaultEstimateTime) || 'خلال 24-48 ساعة';
+  const initialWarranty = r.warranty || (state.settings && state.settings.defaultWarranty) || '3 شهور ضد عيوب الصناعة';
+
+  let initialFaultsReport = '';
+  if(Array.isArray(r.faults) && r.faults.length){
+    initialFaultsReport = r.faults.join('، ');
+  } else if(r.faults){
+    initialFaultsReport = String(r.faults);
+  }
+  if(r.faultNotes && r.faultNotes.trim()){
+    if(initialFaultsReport) initialFaultsReport += ' - ';
+    initialFaultsReport += r.faultNotes.trim();
+  }
+  if(!initialFaultsReport){
+    initialFaultsReport = 'فحص شامل وتحديد العطل الفني وقطع الغيار المطلوبة';
+  }
+
+  overlay.innerHTML = `
+    <div class="modal-content" style="max-width:580px;max-height:92vh;overflow-y:auto;padding:22px;border-radius:14px;">
+      <!-- Header -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:14px;">
+        <div>
+          <h3 style="margin:0;font-size:17px;display:flex;align-items:center;gap:7px;color:var(--ink);">
+            <span style="font-size:20px;">💰</span> مقايسة وعرض تكلفة الصيانة (واتساب)
+          </h3>
+          <p style="margin:4px 0 0 0;font-size:12px;color:var(--ink-secondary);">إرسال عرض التكلفة للعميل قبل البدء مع توضيح رسوم الفحص في حالة الرفض</p>
+        </div>
+        <button class="btn btn-ghost btn-xs" id="closeCostEstModal" style="font-size:16px;line-height:1;padding:4px 8px;">✕</button>
+      </div>
+
+      <!-- Receipt & Customer Info Card -->
+      <div style="background:var(--paper3);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12.5px;line-height:1.6;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+          <div><b>العميل:</b> <span style="font-weight:700;color:var(--ink);">${cName}</span> ${cPhone ? `<span class="mono" style="color:var(--ink-secondary);font-size:11.5px;">(${cPhone})</span>` : ''}</div>
+          <div><b>الإيصال:</b> <span class="mono font-bold" style="color:var(--primary);direction:ltr;unicode-bidi:isolate;">#${rNum}</span></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-top:4px;">
+          <div><b>الجهاز:</b> ${dCat} - ${dBrand} ${dModel}</div>
+          <div><b>الحالة الحالية:</b> <span class="status-badge ${(STATUSES.find(s=>s.v===r.status)||{}).cls||'st-check'}">${escapeHtml(r.status)}</span></div>
+        </div>
+      </div>
+
+      <!-- Form Inputs -->
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        
+        <!-- Faults & Diagnosis Report -->
+        <div class="field" style="margin-bottom:0;">
+          <label style="font-weight:700;font-size:12.5px;display:flex;align-items:center;gap:5px;">
+            <span>🔍</span> تقرير الفحص وتشخيص العطل للعميل:
+          </label>
+          <textarea id="estFaultsReport" rows="2" style="font-size:13px;line-height:1.5;padding:8px 10px;">${escapeHtml(initialFaultsReport)}</textarea>
+        </div>
+
+        <!-- Approval Box: Cost, Deposit, Remaining, Time, Warranty -->
+        <div style="background:rgba(16,185,129,0.04);border:1px solid rgba(16,185,129,0.25);border-radius:10px;padding:12px 14px;">
+          <div style="font-size:13px;font-weight:800;color:#047857;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+            <span>✅</span> في حالة موافقة العميل على الصيانة (الإصلاح):
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+            <div class="field" style="margin-bottom:0;">
+              <label style="font-size:11.5px;font-weight:700;">إجمالي تكلفة الصيانة المتوقعة (ج.م):</label>
+              <input type="number" id="estCost" value="${initialCost || ''}" min="0" step="10" placeholder="مثال: 450" style="font-weight:800;font-size:14px;color:#047857;">
+            </div>
+            <div class="field" style="margin-bottom:0;">
+              <label style="font-size:11.5px;font-weight:700;">العربون المدفوع مسبقاً (ج.م):</label>
+              <input type="number" id="estDeposit" value="${initialDeposit || 0}" min="0" step="10" placeholder="0" style="font-weight:700;">
+            </div>
+          </div>
+
+          <!-- Live Remaining Calculation Bar -->
+          <div style="display:flex;justify-content:space-between;align-items:center;background:rgba(16,185,129,0.1);padding:6px 12px;border-radius:6px;margin-bottom:10px;font-size:12.5px;">
+            <span style="font-weight:600;color:var(--ink);">المبلغ المطلوب سداده عند الاستلام:</span>
+            <span class="mono font-bold" id="estRemainingDisplay" style="font-size:15px;color:#047857;">0 ج.م</span>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div class="field" style="margin-bottom:0;">
+              <label style="font-size:11.5px;">مدة الإصلاح المتوقعة:</label>
+              <input type="text" id="estTime" value="${escapeHtml(initialEstimateTime)}" list="estTimeDatalist" placeholder="خلال 24-48 ساعة">
+              <datalist id="estTimeDatalist">
+                <option value="خلال نفس اليوم (فوري)">
+                <option value="خلال 24 ساعة">
+                <option value="خلال 24 إلى 48 ساعة">
+                <option value="خلال 2 إلى 3 أيام">
+                <option value="خلال 3 إلى 5 أيام">
+                <option value="خلال أسبوع">
+              </datalist>
+            </div>
+            <div class="field" style="margin-bottom:0;">
+              <label style="font-size:11.5px;">فترة الضمان المعتمدة:</label>
+              <input type="text" id="estWarranty" value="${escapeHtml(initialWarranty)}" list="estWarrantyDatalist" placeholder="3 شهور ضد عيوب الصناعة">
+              <datalist id="estWarrantyDatalist">
+                <option value="شهر واحد ضد عيوب الصناعة">
+                <option value="3 شهور ضد عيوب الصناعة">
+                <option value="6 شهور ضد عيوب الصناعة">
+                <option value="سنة كاملة">
+                <option value="ضمان على قطع الغيار المبدلة">
+                <option value="بدون ضمان">
+              </datalist>
+            </div>
+          </div>
+        </div>
+
+        <!-- Rejection Box: Inspection Fee with Quick Pills -->
+        <div style="background:rgba(239,68,68,0.03);border:1px solid rgba(239,68,68,0.22);border-radius:10px;padding:12px 14px;">
+          <div style="font-size:13px;font-weight:800;color:#b91c1c;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+            <span>❌</span> في حالة عدم الرغبة في الإصلاح (رفض الصيانة):
+          </div>
+
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+            <div class="field" style="margin-bottom:0;flex:1;min-width:180px;">
+              <label style="font-size:11.5px;font-weight:700;">تكلفة فحص وتشخيص العطل الفني (ج.م):</label>
+              <input type="number" id="estInspectionFee" value="${initialInspectionFee}" min="0" step="10" placeholder="100" style="font-weight:800;font-size:14px;color:#b91c1c;">
+            </div>
+            <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;padding-top:18px;">
+              <button type="button" class="btn btn-xs btn-ghost est-fee-pill" data-fee="50" style="padding:4px 9px;">50 ج.م</button>
+              <button type="button" class="btn btn-xs btn-ghost est-fee-pill" data-fee="100" style="padding:4px 9px;">100 ج.م</button>
+              <button type="button" class="btn btn-xs btn-ghost est-fee-pill" data-fee="150" style="padding:4px 9px;">150 ج.م</button>
+              <button type="button" class="btn btn-xs btn-ghost est-fee-pill" data-fee="200" style="padding:4px 9px;">200 ج.م</button>
+              <button type="button" class="btn btn-xs btn-ghost est-fee-pill" data-fee="0" style="padding:4px 9px;">مجاناً (0)</button>
+            </div>
+          </div>
+          <div style="font-size:11px;color:var(--ink-secondary);line-height:1.5;">
+            ℹ️ <b>توضيح للعميل:</b> تُسدد هذه الرسوم فقط كأجر فحص وتشخيص في حال قرر العميل استلام جهازه دون تنفيذ الإصلاح، و<b>تسقط تماماً ولا تُدفع</b> في حال الموافقة على الصيانة.
+          </div>
+        </div>
+
+        <!-- Live WhatsApp Message Preview -->
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <label style="font-size:12px;font-weight:700;color:var(--ink);margin:0;display:flex;align-items:center;gap:5px;">
+              <span>💬</span> معاينة حية لشكل رسالة واتساب (Live Preview):
+            </label>
+            <span style="font-size:11px;color:var(--ink-secondary);">تتحدث تلقائياً مع كل تغيير</span>
+          </div>
+          <div id="estWaPreview" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;font-size:12.5px;line-height:1.6;white-space:pre-wrap;direction:rtl;max-height:170px;overflow-y:auto;font-family:inherit;color:#14532d;box-shadow:inset 0 1px 2px rgba(0,0,0,0.03);"></div>
+        </div>
+
+        <!-- Save & Status Update Options -->
+        <div style="background:var(--paper2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;margin:0;color:var(--ink);">
+            <input type="checkbox" id="estSaveToReceipt" checked style="width:auto;"> 💾 حفظ التكلفة وملاحظات الفحص ورسوم الرفض في الإيصال وسحابياً
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;margin:0;color:var(--ink);">
+            <input type="checkbox" id="estSetUnderCheck" ${r.status !== 'قيد الفحص' && r.status !== 'الصيانة' ? 'checked' : ''} style="width:auto;"> 📌 تعيين حالة الإيصال إلى "قيد الفحص" (بانتظار موافقة العميل)
+          </label>
+        </div>
+
+      </div>
+
+      <!-- Action Buttons -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;border-top:1px solid var(--line);padding-top:14px;flex-wrap:wrap;gap:10px;">
+        <button class="btn btn-ghost btn-sm" id="cancelCostEstModal">إلغاء</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-ghost btn-sm" id="copyCostEstMsgBtn" title="نسخ نص الرسالة للحافظة">📋 نسخ الرسالة</button>
+          <button class="btn btn-whatsapp btn-sm" id="sendCostEstWaBtn" style="font-weight:700;">${WA_ICON} إرسال عبر واتساب</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // References
+  const costInput = overlay.querySelector('#estCost');
+  const depositInput = overlay.querySelector('#estDeposit');
+  const feeInput = overlay.querySelector('#estInspectionFee');
+  const timeInput = overlay.querySelector('#estTime');
+  const warrantyInput = overlay.querySelector('#estWarranty');
+  const faultsReportInput = overlay.querySelector('#estFaultsReport');
+  const remainingDisplay = overlay.querySelector('#estRemainingDisplay');
+  const waPreview = overlay.querySelector('#estWaPreview');
+
+  function getVals(){
+    return {
+      cost: Number(costInput.value || 0),
+      deposit: Number(depositInput.value || 0),
+      inspectionFee: Number(feeInput.value != null && feeInput.value !== '' ? feeInput.value : defaultFee),
+      estimateTime: timeInput.value,
+      warranty: warrantyInput.value,
+      faultsReport: faultsReportInput.value
+    };
+  }
+
+  function updatePreview(){
+    const vals = getVals();
+    const remaining = Math.max(0, vals.cost - vals.deposit);
+    remainingDisplay.textContent = remaining.toLocaleString() + ' ج.م';
+    const msg = buildCostEstimateWhatsappText(r, vals);
+    waPreview.textContent = msg;
+    return msg;
+  }
+
+  // Event Listeners for Live Updating
+  [costInput, depositInput, feeInput, timeInput, warrantyInput, faultsReportInput].forEach(inp => {
+    if(inp){
+      inp.addEventListener('input', updatePreview);
+      inp.addEventListener('change', updatePreview);
+    }
+  });
+
+  overlay.querySelectorAll('.est-fee-pill').forEach(pill => {
+    pill.addEventListener('click', ()=>{
+      feeInput.value = pill.dataset.fee;
+      updatePreview();
+    });
+  });
+
+  // Initial update
+  updatePreview();
+
+  // Close buttons
+  overlay.querySelector('#closeCostEstModal').onclick = ()=>overlay.remove();
+  overlay.querySelector('#cancelCostEstModal').onclick = ()=>overlay.remove();
+
+  // Save logic helper
+  async function applyUpdatesToReceiptIfNeeded(){
+    const saveChecked = overlay.querySelector('#estSaveToReceipt').checked;
+    const setCheckChecked = overlay.querySelector('#estSetUnderCheck').checked;
+    if(!saveChecked && !setCheckChecked) return;
+
+    const vals = getVals();
+    let hasChanges = false;
+
+    if(saveChecked){
+      r.cost = vals.cost;
+      r.deposit = vals.deposit;
+      r.inspectionFee = vals.inspectionFee;
+      r.estimateTime = vals.estimateTime;
+      r.warranty = vals.warranty;
+      if(vals.faultsReport){
+        r.faultNotes = vals.faultsReport;
+      }
+      hasChanges = true;
+    }
+
+    if(setCheckChecked && r.status !== 'قيد الفحص'){
+      r.status = 'قيد الفحص';
+      hasChanges = true;
+    }
+
+    if(hasChanges){
+      r.updatedBy = (state.user && state.user.name) || 'نظام';
+      r.updatedAt = new Date().toISOString();
+      recordAuditLog('مقايسة تكلفة', 'صيانة', `تم تسجيل مقايسة تكلفة للإيصال #${r.receiptNumber} (${vals.cost} ج.م / فحص: ${vals.inspectionFee} ج.م)`, r.id);
+      
+      const idx = (state.receipts || []).findIndex(x => String(x.id) === String(r.id));
+      if(idx > -1) state.receipts[idx] = r;
+      setCache('receipts', state.receipts);
+
+      try {
+        await saveReceiptRemote(r);
+      } catch(err){
+        console.warn('saveReceiptRemote in quote:', err);
+      }
+      if(typeof renderMain === 'function') renderMain();
+    }
+  }
+
+  // Copy message button
+  overlay.querySelector('#copyCostEstMsgBtn').onclick = async ()=>{
+    const msg = updatePreview();
+    try {
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        await navigator.clipboard.writeText(msg);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = msg;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+      }
+      showToast('تم نسخ نص المقايسة بنجاح 📋', 'success');
+      await applyUpdatesToReceiptIfNeeded();
+    } catch(e){
+      showToast('تعذر النسخ التلقائي', 'error');
+    }
+  };
+
+  // Send WhatsApp button
+  overlay.querySelector('#sendCostEstWaBtn').onclick = async ()=>{
+    const msg = updatePreview();
+    overlay.remove();
+    await applyUpdatesToReceiptIfNeeded();
+    sendWhatsapp(r, msg);
+  };
 }
 
 /* ---------------- Cumulative Maintenance History & Re-Intake Engine ---------------- */
@@ -11498,6 +11924,7 @@ async function openReceiptDetail(rawR){
 
     <div class="actions-row" style="flex-wrap:wrap;margin-top:16px;">
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn btn-whatsapp btn-xs" id="detailCostEstimateBtn" title="عرض ومقايسة التكلفة للعميل عبر واتساب (موافقة/رفض)">💰 مقايسة التكلفة (واتساب)</button>
         <button class="btn btn-amber btn-xs" id="reIntakeDeviceDetailBtn" title="إعادة إدخال نفس الجهاز للصيانة بدورة جديدة">🔄 إعادة صيانة الجهاز</button>
         <button class="btn btn-blue btn-xs" id="convertReceiptToInvoiceBtn" title="إصدار فاتورة ضريبية رسمية للعميل">📄 تحويل لفاتورة رسمية</button>
         ${!r.paid ? `<button class="btn btn-green btn-xs" id="payBtn">✅ سداد المتبقي</button>` : `<button class="btn btn-blue btn-xs" id="invBtn">🖨️ طباعة إيصال نهائي</button>`}
@@ -11834,6 +12261,9 @@ async function openReceiptDetail(rawR){
   
   const woBtn = overlay.querySelector('#workOrderBtn');
   if(woBtn) woBtn.onclick = ()=>{ overlay.remove(); openReceiptPrint(r,'workorder'); };
+
+  const costEstBtn = overlay.querySelector('#detailCostEstimateBtn');
+  if(costEstBtn) costEstBtn.onclick = ()=>{ overlay.remove(); openCostEstimateModal(r); };
 
   const detStickerBtn = overlay.querySelector('#detailStickerBtn');
   if(detStickerBtn) detStickerBtn.onclick = ()=>{ overlay.remove(); openStickerPrint(r); };
@@ -21912,6 +22342,7 @@ function renderWhatsappSettings(main){
   const currentContent = templates[activeWaKey] || DEFAULT_WA_TEMPLATES[activeWaKey] || '';
 
   const waKeys = [
+    {k:'cost_estimate', icon:'💰', label:'0. عرض ومقايسة التكلفة (موافقة / رفض وفحص)'},
     {k:'check', icon:'🔍', label:'1. استلام وفحص الجهاز (قيد الفحص)'},
     {k:'repair', icon:'🛠️', label:'2. بدء الإصلاح الفعلي (الصيانة)'},
     {k:'done', icon:'✅', label:'3. جاهز للاستلام (مكتمل)'},
@@ -21927,11 +22358,14 @@ function renderWhatsappSettings(main){
     {p:'{date}', label:'📅 تاريخ الاستلام'},
     {p:'{time}', label:'⏰ وقت الاستلام'},
     {p:'{device}', label:'💻 الجهاز والماركة'},
-    {p:'{faults}', label:'⚠️ الأعطال'},
-    {p:'{status}', label:'📌 الحالة'},
+    {p:'{faults_report}', label:'🔍 تقرير الفحص'},
     {p:'{cost}', label:'💰 إجمالي التكلفة'},
     {p:'{deposit}', label:'💵 المدفوع مقدماً'},
     {p:'{remaining}', label:'🔴 المتبقي المطلوب'},
+    {p:'{inspection_fee}', label:'❌ تكلفة الفحص (رفض)'},
+    {p:'{estimate_time}', label:'⏳ مدة الإصلاح'},
+    {p:'{warranty}', label:'🛡️ فترة الضمان'},
+    {p:'{status}', label:'📌 الحالة'},
     {p:'{track_url}', label:'🔗 رابط التتبع المباشر'},
     {p:'{shop_name}', label:'🏪 اسم المحل'},
     {p:'{shop_phone}', label:'📞 هاتف المحل'}
@@ -21968,6 +22402,33 @@ function renderWhatsappSettings(main){
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;flex-wrap:wrap;gap:10px;">
         <button class="btn btn-ghost btn-sm" id="resetCurrentWaBtn">↩ استعادة القالب الافتراضي لهذه الحالة</button>
         <button class="btn btn-primary" id="saveWaTemplateBtn">💾 حفظ تعديل قالب الرسالة</button>
+      </div>
+    </div>
+
+    <!-- Default Cost Estimate & Inspection Settings -->
+    <div class="card" style="margin-top:16px;border-right:4px solid #10b981;">
+      <h3 style="margin-top:0;font-size:15px;color:#047857;display:flex;align-items:center;gap:6px;">
+        <span>⚙️</span> إعدادات مقايسة التكلفة وفحص الأجهزة الافتراضية
+      </h3>
+      <p style="font-size:12px;color:var(--ink-secondary);margin-bottom:12px;">تحديد القيم الافتراضية التي تظهر تلقائياً في نافذة عرض التكلفة ومقايسة واتساب قبل إرسالها للعميل:</p>
+      
+      <div class="grid3">
+        <div class="field" style="margin-bottom:0;">
+          <label>تكلفة الفحص وتشخيص العطل الافتراضية (في حال رفض الصيانة):</label>
+          <input type="number" id="setDefaultInspectionFee" value="${state.settings && state.settings.defaultInspectionFee != null ? state.settings.defaultInspectionFee : 100}" min="0" step="10" placeholder="100">
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label>مدة الإصلاح المتوقعة الافتراضية:</label>
+          <input type="text" id="setDefaultEstimateTime" value="${escapeHtml((state.settings && state.settings.defaultEstimateTime) || 'خلال 24-48 ساعة')}" placeholder="خلال 24-48 ساعة">
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label>فترة الضمان الافتراضية:</label>
+          <input type="text" id="setDefaultWarranty" value="${escapeHtml((state.settings && state.settings.defaultWarranty) || '3 شهور ضد عيوب الصناعة')}" placeholder="3 شهور ضد عيوب الصناعة">
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;margin-top:14px;">
+        <button class="btn btn-primary btn-sm" id="saveEstimateDefaultsBtn">💾 حفظ إعدادات المقايسة الافتراضية</button>
       </div>
     </div>
   `;
@@ -22016,6 +22477,27 @@ function renderWhatsappSettings(main){
       showToast('تم استعادة القالب الافتراضي', 'info');
     }
   };
+
+  const saveEstDefBtn = document.getElementById('saveEstimateDefaultsBtn');
+  if(saveEstDefBtn){
+    saveEstDefBtn.onclick = async ()=>{
+      const fee = Number(document.getElementById('setDefaultInspectionFee').value);
+      const estTime = document.getElementById('setDefaultEstimateTime').value.trim();
+      const war = document.getElementById('setDefaultWarranty').value.trim();
+      state.settings.defaultInspectionFee = !isNaN(fee) ? fee : 100;
+      state.settings.defaultEstimateTime = estTime || 'خلال 24-48 ساعة';
+      state.settings.defaultWarranty = war || '3 شهور ضد عيوب الصناعة';
+      setCache('settings', state.settings);
+      try {
+        await saveSettingRemote('defaultInspectionFee', String(state.settings.defaultInspectionFee));
+        await saveSettingRemote('defaultEstimateTime', state.settings.defaultEstimateTime);
+        await saveSettingRemote('defaultWarranty', state.settings.defaultWarranty);
+        showToast('تم حفظ إعدادات مقايسة التكلفة الافتراضية بنجاح ✅', 'success');
+      } catch(e){
+        showToast('تم حفظ الإعدادات محلياً', 'info');
+      }
+    };
+  }
 }
 
 /* 4. Warranty & Legal Agreement Terms */

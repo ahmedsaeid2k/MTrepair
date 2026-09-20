@@ -3527,46 +3527,50 @@ tr.selected-row {
   margin-right: 4px;
 }
 
-/* Unified Top Selection Bar */
+/* Unified Top Selection Bar - Stationary & Non-Floating (ثابتة في مكانها الطبيعي وغير عائمة) */
 #unifiedSelectionTopSlot {
   width: 100%;
-  position: sticky;
-  top: 12px;
-  z-index: 1050;
+  position: static; /* Fixed in page layout, strictly NOT floating / no sticky */
+  margin-bottom: 12px;
+  z-index: 10;
 }
 .unified-selection-bar {
-  position: relative;
-  z-index: 1050;
-  display: none;
+  position: static; /* Normal layout flow - NOT floating */
+  display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  background: #ffffff;
-  padding: 10px 18px;
-  border-radius: 16px;
-  box-shadow: 0 10px 28px -6px rgba(5, 150, 105, 0.2), 0 0 0 1.5px #059669;
-  border: 1px solid rgba(5, 150, 105, 0.25);
-  margin-bottom: 16px;
-  animation: slideDownFade 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  background: var(--paper);
+  padding: 8px 14px;
+  border-radius: 12px;
+  border: 1.5px solid rgba(5, 150, 105, 0.25);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  margin-bottom: 12px;
   flex-wrap: wrap;
+  transition: all 0.2s ease;
 }
-@keyframes slideDownFade {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-.unified-selection-bar.active {
-  display: flex !important;
+.unified-selection-bar.standby {
+  border-color: var(--line);
+  background: var(--paper2);
 }
 [data-theme="dark"] .unified-selection-bar {
   background: #1e293b;
+  border-color: rgba(16, 185, 129, 0.35);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+[data-theme="dark"] .unified-selection-bar.standby {
+  background: rgba(30, 41, 59, 0.6);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+.unified-selection-bar.active {
+  border-color: #059669;
+  background: #ffffff;
+  box-shadow: 0 2px 10px rgba(5, 150, 105, 0.12);
+}
+[data-theme="dark"] .unified-selection-bar.active {
   border-color: #10b981;
-  box-shadow: 0 10px 28px -6px rgba(16, 185, 129, 0.3), 0 0 0 1.5px #10b981;
+  background: #1e293b;
+  box-shadow: 0 2px 10px rgba(16, 185, 129, 0.2);
 }
 .unified-bar-info {
   display: flex;
@@ -6207,6 +6211,25 @@ function getWaTemplate(key){
   return DEFAULT_WA_TEMPLATES[key] || '';
 }
 
+const DEFAULT_GEMINI_SETTINGS = {
+  enabled: true,
+  apiKey: '',
+  model: 'gemini-3.5-flash',
+  temperature: 0.7,
+  systemInstruction: 'أنت مهندس خبير ومساعد ذكي متخصص في صيانة أجهزة الكمبيوتر واللابتوب والهواتف الذكية والإلكترونيات لمركز صيانة ميكروتك (MicroTech). تقدم تحليلات فنية دقيقة ومباشرة باللغة العربية، وتقترح نقاط الفحص والقياس بالآفوميتر والقطع البديلة وخطوات الإصلاح، وتصيغ تقارير فحص احترافية للعملاء.'
+};
+
+function getGeminiSettings(){
+  const s = (state.settings && state.settings.gemini) || {};
+  return {
+    enabled: s.enabled !== false,
+    apiKey: (s.apiKey || localStorage.getItem('microtech_gemini_api_key') || '').trim(),
+    model: s.model || 'gemini-3.5-flash',
+    temperature: s.temperature ?? 0.7,
+    systemInstruction: s.systemInstruction || DEFAULT_GEMINI_SETTINGS.systemInstruction
+  };
+}
+
 const DEFAULT_POS_SETTINGS = {
   shortcutItemIds: [],
   paymentMethods: [
@@ -6740,7 +6763,8 @@ let state = {
     defaultEstimateTime: 'خلال 24-48 ساعة',
     defaultWarranty: '3 شهور ضد عيوب الصناعة',
     pos: DEFAULT_POS_SETTINGS,
-    printers: DEFAULT_PRINTERS_SETTINGS
+    printers: DEFAULT_PRINTERS_SETTINGS,
+    gemini: DEFAULT_GEMINI_SETTINGS
   }),
   payments: getCache('payments', []),
   inventory: getCache('inventory', []),
@@ -6784,6 +6808,8 @@ let state = {
   selectedWarehouseFilter: 'all',
   theme: localStorage.getItem('microerp_theme') || 'light'
 };
+window.state = state;
+window.render = render;
 
 function applyThemeAndAppearance(){
   const t = state.theme || 'light';
@@ -8589,6 +8615,9 @@ function renderDashboard(main){
     renderMain();
   };
   attachRowActions(main);
+  if(typeof window.renderUnifiedSelectionBar === 'function'){
+    window.renderUnifiedSelectionBar();
+  }
 }
 
 /* ---------------- Analytics & Charts ---------------- */
@@ -9495,33 +9524,282 @@ function getOrCreateUnifiedSelectionBar(){
   if(!bar){
     bar = document.createElement('div');
     bar.id = 'unifiedSelectionBar';
-    bar.className = 'unified-selection-bar';
   }
   const topSlot = document.getElementById('unifiedSelectionTopSlot');
   if(topSlot){
     if(bar.parentElement !== topSlot){
       topSlot.appendChild(bar);
     }
-  } else {
-    if(!bar.parentElement){
-      document.body.appendChild(bar);
-    }
   }
   return bar;
 }
 
-window.hideUnifiedSelectionBar = function(){
-  const bar = document.getElementById('unifiedSelectionBar');
-  if(bar){
-    bar.classList.remove('active');
-    bar.innerHTML = '';
+window.renderUnifiedSelectionBar = function(){
+  const topSlot = document.getElementById('unifiedSelectionTopSlot');
+  if(!topSlot){
+    const existing = document.getElementById('unifiedSelectionBar');
+    if(existing && existing.parentElement !== topSlot) existing.remove();
+    return;
   }
+
+  let bar = document.getElementById('unifiedSelectionBar');
+  if(!bar){
+    bar = document.createElement('div');
+    bar.id = 'unifiedSelectionBar';
+    topSlot.appendChild(bar);
+  } else if(bar.parentElement !== topSlot){
+    topSlot.appendChild(bar);
+  }
+
+  const isInv = (state.currentSection === 'inventory') || (state.tab === 'inventory');
+
+  // Context 1: Inventory Item Selected
+  if(isInv && state.selectedInventoryItemId){
+    const item = (state.inventory || []).find(x => String(x.ID) === String(state.selectedInventoryItemId));
+    if(item){
+      const qty = Number(item.Quantity || 0);
+      const minStock = Number(item.MinStock || 2);
+      const isLow = qty <= minStock;
+      const sell = Number(item.SellPrice || 0);
+      const wh = item.Warehouse || 'المخزن الرئيسي';
+
+      bar.className = 'unified-selection-bar active';
+      bar.innerHTML = `
+        <div class="unified-bar-info">
+          <div class="unified-bar-badge" style="background:#fef3c7;color:#b45309;">
+            <span>📦 صنف مختار</span>
+            ${item.SKU ? `<b class="mono" style="direction:ltr;">#${escapeHtml(item.SKU)}</b>` : ''}
+          </div>
+          <div style="font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span style="font-weight:800;color:var(--ink);">${escapeHtml(item.Name)}</span>
+            <span style="color:var(--ink-secondary);font-size:11px;">(${escapeHtml(item.Category || 'صيانة')} • ${escapeHtml(wh)})</span>
+            <span class="mono" style="font-size:11.5px;font-weight:800;color:${isLow ? 'var(--red)' : 'var(--green)'};">
+              الرصيد: ${qty} ${escapeHtml(item.Unit || 'قطعة')}
+            </span>
+            <span class="mono" style="font-size:11.5px;font-weight:700;color:var(--ink);">
+              البيع: ${sell.toLocaleString()} ج.م
+            </span>
+          </div>
+        </div>
+
+        <div class="unified-bar-actions">
+          <button class="unified-bar-btn btn-primary" onclick="openInventoryItemModalDirect('${item.ID}', false)" title="تعديل بيانات وسعر وموقع الصنف">
+            ✏️ تعديل الصنف
+          </button>
+          <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="openWarehouseTransferModalDirect('${item.ID}')" title="تحويل رصيد لمخزن أو فرع آخر">
+            🔄 تحويل لمخزن
+          </button>
+          <button class="unified-bar-btn btn-amber" onclick="printInventoryStickerDirect('${item.ID}')" title="طباعة ملصق الباركود الحراري">
+            🏷️ طباعة ملصق
+          </button>
+          <button class="unified-bar-btn btn-ghost" style="background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;" onclick="openInventoryItemModalDirect('${item.ID}', true)" title="تكرار الصنف كنسخة جديدة">
+            📋 نسخ وتكرار
+          </button>
+          <button class="unified-bar-btn btn-red" onclick="deleteInventoryItemDirect('${item.ID}')" title="${(state.user && state.user.role==='admin') ? 'حذف الصنف' : 'طلب تصريح حذف'}">
+            ${(state.user && state.user.role==='admin') ? '🗑️ حذف' : '🔒 طلب حذف'}
+          </button>
+          <button class="unified-bar-btn-close" onclick="deselectCurrentSelection()" title="إلغاء التحديد">
+            ✕
+          </button>
+        </div>
+      `;
+      return;
+    }
+  }
+
+  // Context 2: Receipt Selected in Maintenance
+  if(!isInv && state.tab !== 'customers' && state.selectedReceiptId){
+    const r = findReceiptByIdOrNum(state.selectedReceiptId, state.selectedReceiptNum);
+    if(r){
+      const safeTargetId = String(r.id != null ? r.id : (r.ID != null ? r.ID : r.receiptNumber));
+      const rNum = String(r.receiptNumber || r.ReceiptNumber || state.selectedReceiptNum || '');
+      const otherAmt = Number(r.otherAccountAmount || 0);
+      const totalDue = Number(r.cost || 0) + Number(r.partsCost || 0) + otherAmt;
+      const deposit = Number(r.deposit || 0);
+      const remaining = Math.max(0, totalDue - deposit + Number(r.refunded || 0));
+      const cName = extractCustomerName(r) || 'عميل';
+      const dCat = (r.device && r.device.category) || 'جهاز';
+      const dBrand = (r.device ? (r.device.brand === 'أخرى' ? r.device.brandOther : r.device.brand) : '') || '';
+
+      bar.className = 'unified-selection-bar active';
+      bar.innerHTML = `
+        <div class="unified-bar-info">
+          <div class="unified-bar-badge">
+            <span>✓ إيصال مختار</span>
+            <b class="mono" style="direction:ltr;unicode-bidi:isolate;">#${escapeHtml(rNum)}</b>
+          </div>
+          <div style="font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span style="font-weight:700;color:var(--ink);">${escapeHtml(cName)}</span>
+            <span style="color:var(--ink-secondary);font-size:11px;">(${escapeHtml(dCat)} ${escapeHtml(dBrand)})</span>
+            <span class="mono" style="font-size:11.5px;font-weight:800;${remaining > 0 ? 'color:var(--red);' : 'color:var(--green);'}">
+              ${remaining > 0 ? `متبقي: ${remaining.toLocaleString()} ج.م` : 'خالص المسدد'}
+            </span>
+          </div>
+        </div>
+
+        <div class="unified-bar-actions">
+          <button class="unified-bar-btn btn-status-quick" style="background:var(--green-bg);color:var(--green-text);border-color:rgba(5,150,105,0.25);" onclick="openQuickStatusModalDirect('${safeTargetId}', '${rNum}')" title="تغيير سريع لحالة الجهاز">
+            ⚡ الحالة
+          </button>
+          <button class="unified-bar-btn" style="background:#ecfdf5;color:#047857;border-color:rgba(16,185,129,0.35);font-weight:700;" onclick="openCostEstimateModalDirect('${safeTargetId}', '${rNum}')" title="عرض ومقايسة التكلفة عبر واتساب">
+            💰 عرض التكلفة
+          </button>
+          <button class="unified-bar-btn btn-whatsapp" onclick="openWhatsappDirect('${safeTargetId}', '${rNum}')" title="محادثة واتساب">
+            ${WA_ICON} واتساب
+          </button>
+          <button class="unified-bar-btn btn-green" onclick="openReceiptPrintDirect('${safeTargetId}', '${rNum}', 'receipt')" title="طباعة إيصال استلام A5">
+            🖨️ طباعة A5
+          </button>
+          <button class="unified-bar-btn btn-amber" onclick="openStickerPrintDirect('${safeTargetId}', '${rNum}', event)" title="طباعة ملصق الباركود">
+            🏷️ ملصق
+          </button>
+          <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="openReceiptDetailModal('${safeTargetId}', '${rNum}')" title="تعديل وعرض تفاصيل الإيصال">
+            ✏️ تعديل
+          </button>
+          <button class="unified-bar-btn btn-amber" style="background:#fef3c7;color:#b45309;" onclick="openReIntakeModalDirect('${safeTargetId}', '${rNum}')" title="صيانة راجعة أو عطل جديد">
+            🔄 صيانة راجعة
+          </button>
+          <button class="unified-bar-btn btn-blue" onclick="convertReceiptToInvoiceDirect('${safeTargetId}', '${rNum}')" title="تحويل لفاتورة ضريبية">
+            📄 فاتورة
+          </button>
+          <button class="unified-bar-btn btn-red" onclick="deleteReceiptDirect('${safeTargetId}', '${rNum}')" title="${(state.user && state.user.role === 'admin') ? 'حذف الإيصال' : 'طلب تصريح حذف'}">
+            ${(state.user && state.user.role === 'admin') ? '🗑️ حذف' : '🔒 طلب حذف'}
+          </button>
+          <button class="unified-bar-btn-close" onclick="deselectCurrentSelection()" title="إلغاء التحديد">
+            ✕
+          </button>
+        </div>
+      `;
+      return;
+    }
+  }
+
+  // Context 3: Customer Selected
+  if(state.tab === 'customers' && state.selectedCustomerId){
+    const custName = state.selectedCustomerId;
+    const allCusts = state.customers || [];
+    const cust = allCusts.find(c => extractCustomerName(c) === custName);
+    const cPhone = (cust && extractCustomerPhone(cust)) || '';
+    const clientReceipts = (state.receipts || []).filter(r => {
+      const rName = extractCustomerName(r);
+      const rPhone = extractCustomerPhone(r);
+      return (rName && rName.toLowerCase() === custName.toLowerCase()) || (cPhone && rPhone === cPhone);
+    });
+
+    bar.className = 'unified-selection-bar active';
+    bar.innerHTML = `
+      <div class="unified-bar-info">
+        <div class="unified-bar-badge" style="background:#eff6ff;color:#2563eb;">
+          <span>👤 عميل مختار</span>
+        </div>
+        <div style="font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span style="font-weight:800;color:var(--ink);">${escapeHtml(custName)}</span>
+          ${cPhone && cPhone !== '0000000000' ? `<span class="mono" style="color:var(--ink-secondary);font-size:11.5px;direction:ltr;">${escapeHtml(cPhone)}</span>` : ''}
+          <span class="badge badge-blue" style="font-size:10.5px;">🛠️ ${clientReceipts.length} جهاز مسجل</span>
+        </div>
+      </div>
+
+      <div class="unified-bar-actions">
+        <button class="unified-bar-btn btn-primary" onclick="openCustomerActionSheet('${escapeHtml(custName)}', '${escapeHtml(cPhone)}');" title="فتح لوحة إجراءات العميل الموحدة">
+          ⚡ خيارات العميل
+        </button>
+        <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="document.querySelector('tr.selected-row .edit-cust-btn')?.click();" title="تعديل بيانات العميل">
+          ✏️ تعديل
+        </button>
+        <button class="unified-bar-btn btn-blue" onclick="document.querySelector('tr.selected-row .cust-new-receipt-btn')?.click();" title="إنشاء إيصال صيانة جديد لهذا العميل">
+          ➕ إيصال صيانة
+        </button>
+        <button class="unified-bar-btn btn-ghost" style="background:#faf5ff;color:#7c3aed;border:1px solid #ddd6fe;" onclick="document.querySelector('tr.selected-row .cust-new-inv-btn')?.click();" title="إنشاء فاتورة جديدة">
+          🧾 فاتورة
+        </button>
+        ${cPhone && cPhone !== '0000000000' ? `
+          <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" class="unified-bar-btn btn-whatsapp" style="text-decoration:none;">
+            ${WA_ICON} واتساب
+          </a>
+        ` : ''}
+        <button class="unified-bar-btn-close" onclick="deselectCurrentSelection()" title="إلغاء التحديد">
+          ✕
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  // Context 4: Standby State (Nothing selected) - Permanent stationary toolbar in place!
+  bar.className = 'unified-selection-bar standby';
+
+  if(isInv){
+    bar.innerHTML = `
+      <div class="unified-bar-info">
+        <div class="unified-bar-badge" style="background:var(--paper3);color:var(--ink-secondary);border:1px dashed var(--line);">
+          <span>📌 شريط إجراءات الأصناف الموحد</span>
+        </div>
+        <div style="font-size:12px;color:var(--ink-secondary);">
+          اضغط على أي صنف من الجدول أدناه لتحديد الإجراء المطلوب
+        </div>
+      </div>
+      <div class="unified-bar-actions" style="opacity:0.55;pointer-events:none;">
+        <button class="unified-bar-btn btn-primary" disabled>✏️ تعديل الصنف</button>
+        <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" disabled>🔄 تحويل لمخزن</button>
+        <button class="unified-bar-btn btn-amber" disabled>🏷️ طباعة ملصق</button>
+        <button class="unified-bar-btn btn-ghost" disabled>📋 نسخ وتكرار</button>
+        <button class="unified-bar-btn btn-red" disabled>🗑️ حذف</button>
+      </div>
+    `;
+  } else if(state.tab === 'customers'){
+    bar.innerHTML = `
+      <div class="unified-bar-info">
+        <div class="unified-bar-badge" style="background:var(--paper3);color:var(--ink-secondary);border:1px dashed var(--line);">
+          <span>📌 شريط إجراءات العملاء الموحد</span>
+        </div>
+        <div style="font-size:12px;color:var(--ink-secondary);">
+          اضغط على أي عميل لتفعيل خيارات التعديل والمراسلة وإيصالات الصيانة
+        </div>
+      </div>
+      <div class="unified-bar-actions" style="opacity:0.55;pointer-events:none;">
+        <button class="unified-bar-btn btn-primary" disabled>⚡ خيارات العميل</button>
+        <button class="unified-bar-btn btn-ghost" disabled>✏️ تعديل</button>
+        <button class="unified-bar-btn btn-blue" disabled>➕ إيصال صيانة</button>
+        <button class="unified-bar-btn btn-ghost" disabled>🧾 فاتورة</button>
+      </div>
+    `;
+  } else {
+    // Maintenance Standby
+    bar.innerHTML = `
+      <div class="unified-bar-info">
+        <div class="unified-bar-badge" style="background:var(--paper3);color:var(--ink-secondary);border:1px dashed var(--line);">
+          <span>📌 شريط إجراءات الصيانة الموحد</span>
+        </div>
+        <div style="font-size:12px;color:var(--ink-secondary);">
+          اضغط على أي إيصال من الجدول لتفعيل الإجراءات السريعة
+        </div>
+      </div>
+      <div class="unified-bar-actions" style="opacity:0.55;pointer-events:none;">
+        <button class="unified-bar-btn btn-status-quick" disabled>⚡ الحالة</button>
+        <button class="unified-bar-btn" disabled>💰 عرض التكلفة</button>
+        <button class="unified-bar-btn btn-whatsapp" disabled>${WA_ICON} واتساب</button>
+        <button class="unified-bar-btn btn-green" disabled>🖨️ طباعة A5</button>
+        <button class="unified-bar-btn btn-amber" disabled>🏷️ ملصق</button>
+        <button class="unified-bar-btn btn-ghost" disabled>✏️ تعديل</button>
+        <button class="unified-bar-btn btn-amber" disabled>🔄 صيانة راجعة</button>
+        <button class="unified-bar-btn btn-blue" disabled>📄 فاتورة</button>
+        <button class="unified-bar-btn btn-red" disabled>🗑️ حذف</button>
+      </div>
+    `;
+  }
+};
+
+window.hideUnifiedSelectionBar = function(){
   state.selectedReceiptId = null;
   state.selectedReceiptNum = null;
   state.selectedCustomerId = null;
+  state.selectedInventoryItemId = null;
   document.querySelectorAll('.selected-row').forEach(el => el.classList.remove('selected-row'));
   document.querySelectorAll('.selected-card').forEach(el => el.classList.remove('selected-card'));
   document.querySelectorAll('.selected-badge-indicator').forEach(el => el.remove());
+  if(typeof window.renderUnifiedSelectionBar === 'function'){
+    window.renderUnifiedSelectionBar();
+  }
 };
 
 window.deselectCurrentSelection = function(){
@@ -9538,76 +9816,111 @@ window.selectReceipt = function(receiptId, receiptNum){
   state.selectedReceiptId = safeTargetId;
   state.selectedReceiptNum = rNum;
   state.selectedCustomerId = null;
+  state.selectedInventoryItemId = null;
 
   // Update DOM highlights
   document.querySelectorAll('.selected-row').forEach(el => el.classList.remove('selected-row'));
   document.querySelectorAll('.selected-card').forEach(el => el.classList.remove('selected-card'));
+  document.querySelectorAll('.selected-badge-indicator').forEach(el => el.remove());
 
   const matchingRows = document.querySelectorAll(`tr[data-receipt-id="${safeTargetId}"]`);
-  matchingRows.forEach(el => el.classList.add('selected-row'));
+  matchingRows.forEach(el => {
+    el.classList.add('selected-row');
+    const firstCell = el.querySelector('td:first-child > div');
+    if(firstCell && !firstCell.querySelector('.selected-badge-indicator')){
+      const b = document.createElement('span');
+      b.className = 'selected-badge-indicator';
+      b.title = 'إيصال محدد';
+      b.textContent = '✓';
+      firstCell.prepend(b);
+    }
+  });
 
   const matchingCards = document.querySelectorAll(`.smart-receipt-card[data-receipt-id="${safeTargetId}"]`);
   matchingCards.forEach(el => el.classList.add('selected-card'));
 
-  // Calculate totals
-  const otherAmt = Number(r.otherAccountAmount || 0);
-  const totalDue = Number(r.cost || 0) + Number(r.partsCost || 0) + otherAmt;
-  const deposit = Number(r.deposit || 0);
-  const remaining = Math.max(0, totalDue - deposit + Number(r.refunded || 0));
-  const cName = extractCustomerName(r) || 'عميل';
-  const dCat = (r.device && r.device.category) || 'جهاز';
-  const dBrand = (r.device ? (r.device.brand === 'أخرى' ? r.device.brandOther : r.device.brand) : '') || '';
+  window.renderUnifiedSelectionBar();
+};
 
-  const bar = getOrCreateUnifiedSelectionBar();
-  bar.innerHTML = `
-    <div class="unified-bar-info">
-      <div class="unified-bar-badge">
-        <span>✓ إيصال مختار</span>
-        <b class="mono" style="direction:ltr;unicode-bidi:isolate;">#${escapeHtml(rNum)}</b>
-      </div>
-      <div style="font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-        <span style="font-weight:700;color:var(--ink);">${escapeHtml(cName)}</span>
-        <span style="color:var(--ink-secondary);font-size:11px;">(${escapeHtml(dCat)} ${escapeHtml(dBrand)})</span>
-        <span class="mono" style="font-size:11.5px;font-weight:800;${remaining > 0 ? 'color:var(--red);' : 'color:var(--green);'}">
-          ${remaining > 0 ? `متبقي: ${remaining.toLocaleString()} ج.م` : 'خالص المسدد'}
-        </span>
-      </div>
-    </div>
+// Inventory Direct Action Handlers
+window.openInventoryItemModalDirect = function(itemId, isClone = false){
+  const item = (state.inventory || []).find(x => String(x.ID) === String(itemId));
+  if(item) openInventoryItemModal(item, isClone, state.invHubTab || 'all');
+};
 
-    <div class="unified-bar-actions">
-      <button class="unified-bar-btn btn-status-quick" style="background:var(--green-bg);color:var(--green-text);border-color:rgba(5,150,105,0.25);" onclick="openQuickStatusModalDirect('${safeTargetId}', '${rNum}')" title="تغيير سريع لحالة الجهاز">
-        ⚡ الحالة
-      </button>
-      <button class="unified-bar-btn" style="background:#ecfdf5;color:#047857;border-color:rgba(16,185,129,0.35);font-weight:700;" onclick="openCostEstimateModalDirect('${safeTargetId}', '${rNum}')" title="عرض ومقايسة التكلفة عبر واتساب">
-        💰 عرض التكلفة
-      </button>
-      <button class="unified-bar-btn btn-whatsapp" onclick="openWhatsappDirect('${safeTargetId}', '${rNum}')" title="محادثة واتساب">
-        ${WA_ICON} واتساب
-      </button>
-      <button class="unified-bar-btn btn-green" onclick="openReceiptPrintDirect('${safeTargetId}', '${rNum}', 'receipt')" title="طباعة إيصال استلام A5">
-        🖨️ طباعة A5
-      </button>
-      <button class="unified-bar-btn btn-amber" onclick="openStickerPrintDirect('${safeTargetId}', '${rNum}', event)" title="طباعة ملصق الباركود">
-        🏷️ ملصق
-      </button>
-      <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="openReceiptDetailModal('${safeTargetId}', '${rNum}')" title="تعديل وعرض تفاصيل الإيصال">
-        ✏️ تعديل
-      </button>
-      <button class="unified-bar-btn btn-amber" style="background:#fef3c7;color:#b45309;" onclick="openReIntakeModalDirect('${safeTargetId}', '${rNum}')" title="صيانة راجعة أو عطل جديد">
-        🔄 صيانة راجعة
-      </button>
-      <button class="unified-bar-btn btn-blue" onclick="convertReceiptToInvoiceDirect('${safeTargetId}', '${rNum}')" title="تحويل لفاتورة ضريبية">
-        📄 فاتورة
-      </button>
-      <button class="unified-bar-btn btn-red" onclick="deleteReceiptDirect('${safeTargetId}', '${rNum}')" title="${(state.user && state.user.role === 'admin') ? 'حذف الإيصال' : 'طلب تصريح حذف'}">
-        ${(state.user && state.user.role === 'admin') ? '🗑️ حذف' : '🔒 طلب حذف'}
-      </button>
-      <button class="unified-bar-btn-close" onclick="deselectCurrentSelection()" title="إلغاء التحديد">
-        ✕
-      </button>
-    </div>
-  `;
-  bar.classList.add('active');
+window.openWarehouseTransferModalDirect = function(itemId){
+  const item = (state.inventory || []).find(x => String(x.ID) === String(itemId));
+  if(item) openWarehouseTransferModal(item);
+};
+
+window.printInventoryStickerDirect = function(itemId){
+  const item = (state.inventory || []).find(x => String(x.ID) === String(itemId));
+  if(item) openProductBarcodeSticker(item);
+};
+
+window.deleteInventoryItemDirect = function(itemId){
+  const item = (state.inventory || []).find(x => String(x.ID) === String(itemId));
+  if(!item) return;
+  requestAdminAuthorization({
+    action: 'حذف صنف مخزن',
+    entityType: 'صنف من المخزن',
+    entityId: item.ID,
+    entityTitle: `${item.Name} (${item.Category || 'صيانة'})`,
+    onApproved: async ()=>{
+      try {
+        await deleteInventoryItemRemote(item.ID);
+        showToast('تم حذف الصنف بنجاح', 'success');
+        window.deselectCurrentSelection();
+        if(typeof render === 'function') render();
+      } catch(e){
+        showToast('تعذر الحذف: ' + e.message, 'error');
+      }
+    }
+  });
+};
+
+window.selectInventoryItem = function(itemId){
+  if(!itemId) return;
+  const item = (state.inventory || []).find(x => String(x.ID) === String(itemId));
+  if(!item) return;
+
+  state.selectedInventoryItemId = String(itemId);
+  state.selectedReceiptId = null;
+  state.selectedReceiptNum = null;
+  state.selectedCustomerId = null;
+
+  document.querySelectorAll('.selected-row').forEach(el => el.classList.remove('selected-row'));
+  document.querySelectorAll('.selected-badge-indicator').forEach(el => el.remove());
+
+  const matchingRows = document.querySelectorAll(`tr[data-inv-id="${itemId}"]`);
+  matchingRows.forEach(el => {
+    el.classList.add('selected-row');
+    const firstCell = el.querySelector('td:first-child > div');
+    if(firstCell && !firstCell.querySelector('.selected-badge-indicator')){
+      const b = document.createElement('span');
+      b.className = 'selected-badge-indicator';
+      b.title = 'صنف محدد';
+      b.textContent = '✓';
+      firstCell.prepend(b);
+    }
+  });
+
+  window.renderUnifiedSelectionBar();
+};
+
+window.toggleInventorySelection = function(itemId){
+  if(String(state.selectedInventoryItemId) === String(itemId)){
+    window.deselectCurrentSelection();
+  } else {
+    window.selectInventoryItem(itemId);
+  }
+};
+
+window.handleInventoryRowClick = function(itemId, evt){
+  if(evt && evt.target && evt.target.closest('button, a, input, select')){
+    return;
+  }
+  window.toggleInventorySelection(itemId);
 };
 
 window.toggleReceiptSelection = function(receiptId, receiptNum){
@@ -9696,6 +10009,11 @@ window.openReceiptActionSheet = function(receiptId, receiptNum){
       <!-- Actions Grid -->
       <div class="action-sheet-section-title">🛠️ إجراءات وخدمات الصيانة</div>
       <div class="action-sheet-grid">
+        <div class="action-sheet-card-btn" style="border-color:rgba(124,58,237,0.35);background:rgba(124,58,237,0.04);" onclick="document.getElementById('receiptActionSheetModal').remove(); openAiDiagnosisModalDirect('${safeTargetId}', '${rNum}');">
+          <div class="act-icon" style="color:#7c3aed;">⚡</div>
+          <div class="act-label" style="color:#6d28d9;">تشخيص العطل (AI)</div>
+          <div class="act-desc">تحليل ذكي ومساعد الفني</div>
+        </div>
         <div class="action-sheet-card-btn" onclick="document.getElementById('receiptActionSheetModal').remove(); openQuickStatusModalDirect('${safeTargetId}', '${rNum}');">
           <div class="act-icon">⚡</div>
           <div class="act-label">تغيير الحالة</div>
@@ -10231,6 +10549,9 @@ function renderArchive(main){
   if(clearBtn) clearBtn.onclick = ()=>{ f.q=''; f.status=''; f.tech=''; f.group='all'; renderMain(); };
 
   attachRowActions(main);
+  if(typeof window.renderUnifiedSelectionBar === 'function'){
+    window.renderUnifiedSelectionBar();
+  }
 }
 
 /* ---------------- Customer Directory & Phone Management Hub ---------------- */
@@ -10454,6 +10775,9 @@ function renderCustomersPage(main){
       openInvoiceModal(newInv, true);
     };
   });
+  if(typeof window.renderUnifiedSelectionBar === 'function'){
+    window.renderUnifiedSelectionBar();
+  }
 }
 
 function openQuickAddPhoneModal(customerName, customerTitle='', targetReceiptId='', targetReceiptNum=''){
@@ -11142,9 +11466,14 @@ function openCostEstimateModal(rawR){
         
         <!-- Faults & Diagnosis Report -->
         <div class="field" style="margin-bottom:0;">
-          <label style="font-weight:700;font-size:12.5px;display:flex;align-items:center;gap:5px;">
-            <span>🔍</span> تقرير الفحص وتشخيص العطل للعميل:
-          </label>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:6px;">
+            <label style="font-weight:700;font-size:12.5px;display:flex;align-items:center;gap:5px;margin-bottom:0;">
+              <span>🔍</span> تقرير الفحص وتشخيص العطل للعميل:
+            </label>
+            <button type="button" class="btn btn-xs" id="smartDraftFaultsBtn" style="background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;border:none;border-radius:6px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:4px;box-shadow:0 2px 4px rgba(124,58,237,0.2);" title="صياغة تقرير فحص احترافي مقنع للعميل بالذكاء الاصطناعي">
+              <span>✨</span> صياغة ذكية بالذكاء الاصطناعي
+            </button>
+          </div>
           <textarea id="estFaultsReport" rows="2" style="font-size:13px;line-height:1.5;padding:8px 10px;">${escapeHtml(initialFaultsReport)}</textarea>
         </div>
 
@@ -11244,6 +11573,25 @@ function openCostEstimateModal(rawR){
           </label>
         </div>
 
+        <!-- Customer Decision Quick Actions -->
+        <div style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px;">
+          <div style="font-size:12px;font-weight:700;color:var(--ink);display:flex;align-items:center;gap:6px;">
+            <span>⚡</span> تسجيل قرار العميل المباشر:
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <button type="button" class="btn btn-sm" id="btnApproveQuote" style="background:#16a34a;color:#fff;border:none;font-weight:700;padding:8px;border-radius:6px;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;">
+              <span>✅</span> موافقة العميل (بدء الصيانة)
+            </button>
+            <button type="button" class="btn btn-sm" id="btnRejectQuote" style="background:#dc2626;color:#fff;border:none;font-weight:700;padding:8px;border-radius:6px;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;">
+              <span>❌</span> رفض العميل (رسوم فحص فقط)
+            </button>
+          </div>
+          <div style="font-size:11px;color:var(--ink-secondary);line-height:1.4;">
+            * عند الموافقة: يتحول الجهاز إلى <b>"الصيانة"</b> وتُعتمد تكلفة الإصلاح.<br>
+            * عند الرفض: يتحول الجهاز إلى <b>"رفض العميل"</b> ويتم إعفاؤه من الإصلاح واعتماد رسوم الفحص والتشخيص فقط.
+          </div>
+        </div>
+
       </div>
 
       <!-- Action Buttons -->
@@ -11307,6 +11655,33 @@ function openCostEstimateModal(rawR){
   // Initial update
   updatePreview();
 
+  // Smart AI Drafting Handler
+  const smartDraftBtn = overlay.querySelector('#smartDraftFaultsBtn');
+  if(smartDraftBtn){
+    smartDraftBtn.onclick = async () => {
+      const origHtml = smartDraftBtn.innerHTML;
+      try {
+        smartDraftBtn.disabled = true;
+        smartDraftBtn.innerHTML = '<span>⏳</span> جاري الصياغة الذكية...';
+        const drafted = await generateSmartCostEstimateDraft(r, faultsReportInput.value);
+        if(drafted){
+          faultsReportInput.value = drafted;
+          updatePreview();
+          showToast('تمت صياغة تقرير الفحص بنجاح ✨', 'success');
+        }
+      } catch(err){
+        if(err && err.code === 'NO_API_KEY'){
+          showToast('يرجى ضبط مفتاح Gemini API أولاً من الإعدادات > الذكاء الاصطناعي', 'warning');
+        } else {
+          showToast(err.message || 'تعذر استدعاء الذكاء الاصطناعي', 'error');
+        }
+      } finally {
+        smartDraftBtn.disabled = false;
+        smartDraftBtn.innerHTML = origHtml;
+      }
+    };
+  }
+
   // Close buttons
   overlay.querySelector('#closeCostEstModal').onclick = ()=>overlay.remove();
   overlay.querySelector('#cancelCostEstModal').onclick = ()=>overlay.remove();
@@ -11326,6 +11701,8 @@ function openCostEstimateModal(rawR){
       r.inspectionFee = vals.inspectionFee;
       r.estimateTime = vals.estimateTime;
       r.warranty = vals.warranty;
+      r.quotationStatus = r.quotationStatus || 'sent';
+      r.quotationSentAt = r.quotationSentAt || new Date().toISOString();
       if(vals.faultsReport){
         r.faultNotes = vals.faultsReport;
       }
@@ -11385,7 +11762,631 @@ function openCostEstimateModal(rawR){
     await applyUpdatesToReceiptIfNeeded();
     sendWhatsapp(r, msg);
   };
+
+  // Approve Customer Decision
+  const approveBtn = overlay.querySelector('#btnApproveQuote');
+  if(approveBtn){
+    approveBtn.onclick = async ()=>{
+      const vals = getVals();
+      if(!confirm(`هل أنت متأكد من تسجيل موافقة العميل على الصيانة؟\n\n- تكلفة الصيانة: ${vals.cost} ج.م\n- العربون: ${vals.deposit} ج.م\n- المتبقي: ${Math.max(0, vals.cost - vals.deposit)} ج.م\n\nسيتم تحويل حالة الجهاز إلى "الصيانة" وبدء العمل فوراً.`)) return;
+
+      r.cost = vals.cost;
+      r.deposit = vals.deposit;
+      r.inspectionFee = vals.inspectionFee;
+      r.estimateTime = vals.estimateTime;
+      r.warranty = vals.warranty;
+      if(vals.faultsReport){
+        r.faultNotes = vals.faultsReport;
+      }
+      r.status = 'الصيانة';
+      r.quotationStatus = 'approved';
+      r.quotationDecidedAt = new Date().toISOString();
+      r.updatedBy = (state.user && state.user.name) || 'نظام';
+      r.updatedAt = new Date().toISOString();
+
+      recordAuditLog('موافقة صيانة', 'صيانة', `تم تسجيل موافقة العميل على مقايسة الإيصال #${r.receiptNumber} بقيمة ${vals.cost} ج.م وبدء الصيانة`, r.id);
+
+      const idx = (state.receipts || []).findIndex(x => String(x.id) === String(r.id));
+      if(idx > -1) state.receipts[idx] = r;
+      setCache('receipts', state.receipts);
+
+      try {
+        await saveReceiptRemote(r);
+      } catch(err){
+        console.warn('saveReceiptRemote in approve:', err);
+      }
+
+      overlay.remove();
+      showToast(`تم تسجيل موافقة العميل وتحويل الجهاز إلى الصيانة بنجاح ✅`, 'success');
+      if(typeof renderMain === 'function') renderMain();
+    };
+  }
+
+  // Reject Customer Decision
+  const rejectBtn = overlay.querySelector('#btnRejectQuote');
+  if(rejectBtn){
+    rejectBtn.onclick = async ()=>{
+      const vals = getVals();
+      if(!confirm(`هل أنت متأكد من تسجيل رفض العميل للصيانة؟\n\n- سيتم إعفاء العميل من أي تكاليف صيانة أو قطع غيار.\n- سيتم احتساب رسوم فحص وتشخيص العطل المعتمدة (${vals.inspectionFee} ج.م) فقط.\n- سيتم تحويل حالة الجهاز إلى "رفض العميل".`)) return;
+
+      r.cost = vals.inspectionFee; // Set receipt billable cost to the diagnosis inspection fee!
+      r.deposit = vals.deposit;
+      r.inspectionFee = vals.inspectionFee;
+      r.estimateTime = vals.estimateTime;
+      r.warranty = '';
+      if(vals.faultsReport){
+        r.faultNotes = vals.faultsReport;
+      }
+      r.status = 'رفض العميل';
+      r.quotationStatus = 'rejected';
+      r.quotationDecidedAt = new Date().toISOString();
+      r.updatedBy = (state.user && state.user.name) || 'نظام';
+      r.updatedAt = new Date().toISOString();
+
+      recordAuditLog('رفض صيانة', 'صيانة', `تم تسجيل رفض العميل لمقايسة الإيصال #${r.receiptNumber} واعتماد رسوم فحص وتشخيص بقيمة ${vals.inspectionFee} ج.م`, r.id);
+
+      const idx = (state.receipts || []).findIndex(x => String(x.id) === String(r.id));
+      if(idx > -1) state.receipts[idx] = r;
+      setCache('receipts', state.receipts);
+
+      try {
+        await saveReceiptRemote(r);
+      } catch(err){
+        console.warn('saveReceiptRemote in reject:', err);
+      }
+
+      overlay.remove();
+      showToast(`تم تسجيل رفض العميل واعتماد رسوم الفحص والتشخيص (${vals.inspectionFee} ج.م) ❌`, 'info');
+      if(typeof renderMain === 'function') renderMain();
+    };
+  }
 }
+
+/* ============================================================
+   Google Gemini AI Integration Engine (محرك الذكاء الاصطناعي)
+   ============================================================ */
+
+function renderAiMarkdownToHtml(md){
+  if(!md) return '';
+  let s = escapeHtml(String(md).trim());
+
+  // Bold: **text**
+  s = s.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+
+  // Italic: *text*
+  s = s.replace(/\*(.*?)\*/g, '<i>$1</i>');
+
+  // Code / Badges: `text`
+  s = s.replace(/`([^`]+)`/g, '<code class="mono" style="background:rgba(124,58,237,0.08);color:#6d28d9;padding:1px 5px;border-radius:4px;font-size:12px;font-weight:600;">$1</code>');
+
+  // Headings
+  s = s.replace(/^###\s*(.*?)$/gm, '<h4 style="margin:14px 0 6px 0;font-size:13.5px;color:var(--ink);font-weight:800;display:flex;align-items:center;gap:6px;"><span style="color:#7c3aed;">▸</span> $1</h4>');
+  s = s.replace(/^##\s*(.*?)$/gm, '<h3 style="margin:16px 0 8px 0;font-size:15px;color:var(--primary);font-weight:800;border-bottom:1px dashed var(--line);padding-bottom:4px;">$1</h3>');
+  s = s.replace(/^#\s*(.*?)$/gm, '<h2 style="margin:18px 0 10px 0;font-size:16px;color:var(--ink);font-weight:900;">$1</h2>');
+
+  // List bullets: * or - or •
+  s = s.replace(/^[\*\-•]\s*(.*?)$/gm, '<div style="display:flex;gap:6px;align-items:flex-start;margin:3px 0;padding-right:4px;"><span style="color:#7c3aed;font-size:13px;line-height:1.5;">•</span><div style="flex:1;line-height:1.5;">$1</div></div>');
+
+  // Numbered items: 1. text
+  s = s.replace(/^(\d+)\.\s*(.*?)$/gm, '<div style="display:flex;gap:6px;align-items:flex-start;margin:4px 0;padding-right:4px;"><span class="mono font-bold" style="color:#7c3aed;font-size:12px;min-width:18px;line-height:1.6;">$1.</span><div style="flex:1;line-height:1.5;">$2</div></div>');
+
+  // Paragraphs & newlines
+  s = s.replace(/\n\n+/g, '<div style="height:10px;"></div>');
+  s = s.replace(/\n/g, '<br>');
+
+  return s;
+}
+
+async function callGeminiAI(options = {}){
+  const cfg = getGeminiSettings();
+  const apiKey = (options.apiKey || cfg.apiKey || '').trim();
+  if(!apiKey){
+    const err = new Error('لم يتم إدخال مفتاح Google Gemini API بعد. يرجى ضبط المفتاح في قسم الإعدادات > الذكاء الاصطناعي.');
+    err.code = 'NO_API_KEY';
+    throw err;
+  }
+
+  const model = options.model || cfg.model || 'gemini-3.5-flash';
+  const temperature = options.temperature != null ? options.temperature : (cfg.temperature ?? 0.7);
+  const maxTokens = options.maxTokens || 2048;
+  const systemPrompt = options.systemPrompt || cfg.systemInstruction || DEFAULT_GEMINI_SETTINGS.systemInstruction;
+
+  let contents = [];
+  if(Array.isArray(options.contents) && options.contents.length > 0){
+    contents = options.contents;
+  } else if(options.prompt){
+    contents = [{ role: 'user', parts: [{ text: options.prompt }] }];
+  } else {
+    throw new Error('لم يتم تحديد نص للطلب (prompt is missing)');
+  }
+
+  const requestBody = {
+    contents: contents,
+    generationConfig: {
+      temperature: temperature,
+      maxOutputTokens: maxTokens
+    }
+  };
+
+  if(systemPrompt){
+    requestBody.systemInstruction = {
+      parts: [{ text: systemPrompt }]
+    };
+  }
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
+    });
+  } catch(netErr){
+    throw new Error('تعذر الاتصال بخوادم Google Gemini. يرجى التحقق من اتصال الإنترنت.');
+  }
+
+  const data = await response.json().catch(() => ({}));
+
+  if(!response.ok){
+    const apiError = data.error || {};
+    const errMsg = apiError.message || 'خطأ غير معروف أثناء استدعاء الذكاء الاصطناعي';
+    const status = apiError.status || '';
+
+    if(errMsg.toLowerCase().includes('api key') || errMsg.includes('API_KEY_INVALID') || (status === 'INVALID_ARGUMENT' && errMsg.includes('API_KEY'))){
+      throw new Error('مفتاح Google Gemini API غير صالح. يرجى التأكد من نسخه بشكل صحيح من Google AI Studio.');
+    }
+    if(status === 'RESOURCE_EXHAUSTED' || response.status === 429){
+      throw new Error('تم تجاوز حد الاستخدام المسموح لنموذج Gemini مؤقتاً (Rate Limit). يرجى المحاولة بعد قليل.');
+    }
+    if(response.status === 503 || errMsg.includes('high demand') || errMsg.includes('overloaded')){
+      throw new Error('خوادم Google تواجه ضغطاً مؤقتاً حالياً (503). يرجى المحاولة بعد قليل أو تجربة نموذج gemini-3.5-flash-lite.');
+    }
+    if(response.status === 404 || errMsg.includes('models/')){
+      throw new Error(`النموذج (${model}) غير متاح لحسابك. يرجى اختيار gemini-3.5-flash من الإعدادات.`);
+    }
+    throw new Error(`خطأ Gemini (${response.status}): ${errMsg}`);
+  }
+
+  const candidate = data.candidates && data.candidates[0];
+  if(!candidate || !candidate.content || !candidate.content.parts){
+    if(candidate && candidate.finishReason === 'SAFETY'){
+      throw new Error('تم حظر الرد من قبل معايير الأمان التابعة لـ Google.');
+    }
+    if(candidate && candidate.finishReason === 'MAX_TOKENS'){
+      throw new Error('تم استهلاك حد الرموز (Tokens) بالكامل قبل اكتمال الرد.');
+    }
+    throw new Error('لم يُرجع نموذج Gemini أي محتوى في الرد.');
+  }
+
+  const parts = candidate.content.parts || [];
+  let visibleText = '';
+  for(const p of parts){
+    if(p.text && !p.thought){
+      visibleText += p.text;
+    }
+  }
+  if(!visibleText.trim()){
+    visibleText = parts.map(p => p.text || '').join('').trim();
+  }
+
+  if(!visibleText.trim()){
+    if(candidate.finishReason === 'MAX_TOKENS'){
+      throw new Error('تم استهلاك حد الرموز أثناء تفكير النموذج (Thinking). يرجى زيادة حد الرموز أو استخدام gemini-3.5-flash-lite.');
+    }
+    throw new Error('لم يُرجع نموذج Gemini أي محتوى في الرد.');
+  }
+
+  return visibleText.trim();
+}
+
+async function testGeminiConnection(apiKey, model){
+  const start = Date.now();
+  const testApiKey = (apiKey || getGeminiSettings().apiKey || '').trim();
+  const testModel = model || getGeminiSettings().model || 'gemini-3.5-flash';
+
+  if(!testApiKey){
+    throw new Error('يرجى كتابة أو لصق مفتاح API أولاً لتجربة الاتصال.');
+  }
+
+  const prompt = 'اختبار اتصال سريع: رد بكلمة واحدة فقط: "متصل"';
+  const reply = await callGeminiAI({
+    apiKey: testApiKey,
+    model: testModel,
+    prompt: prompt,
+    temperature: 0.1,
+    maxTokens: 1000
+  });
+
+  const latencyMs = Date.now() - start;
+  return {
+    success: true,
+    latencyMs: latencyMs,
+    reply: reply.trim(),
+    model: testModel
+  };
+}
+
+async function generateSmartCostEstimateDraft(rawR, currentNotes = ''){
+  const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
+  const dCat = (r.device && r.device.category) || 'جهاز';
+  const dBrand = r.device ? (r.device.brand === 'أخرى' ? r.device.brandOther : r.device.brand) : '';
+  const dModel = (r.device && r.device.model) || '';
+  const faults = Array.isArray(r.faults) ? r.faults.join('، ') : String(r.faults || 'غير محدد');
+
+  const prompt = `أنت مهندس صيانة إلكترونيات وأجهزة محترف في مركز صيانة ميكروتك (MicroTech).
+المطلوب: صياغة تقرير فحص وتشخيص فني للعطل موجه للعميل مباشرة في رسالة مقايسة التكلفة بالواتساب.
+
+بيانات الجهاز:
+- نوع الجهاز: ${dCat}
+- الماركة والموديل: ${dBrand} ${dModel}
+- العطل والشكوى المسجلة: ${faults}
+- ملاحظات الفحص الحالية للمهندس: ${currentNotes || 'لا توجد ملاحظات إضافية'}
+
+الشروط والتعليمات:
+1. اكتب التقرير بلغة عربية احترافية وواضحة ومبسطة يفهمها العميل العادي وتقنعه بسبب التكلفة وضرورة الإصلاح.
+2. اجعل الصياغة في حدود 2 إلى 4 أسطر فقط.
+3. وضّح الخلل الفني وما سيتم عمله في الصيانة (مثال: فحص وتغيير المكونات التالفة بدائرة الباور/الشحن، عمل شبلنة أو تغيير آي سي، فحص مسارات الفولت، عمل اختبارات الإجهاد والحرارة).
+4. لا تضع أي ترحيبات أو تحيات أو توقيعات، أخرج فقط نص التقرير المباشر.`;
+
+  try {
+    const drafted = await callGeminiAI({ prompt, maxTokens: 1500, temperature: 0.4 });
+    return drafted.trim().replace(/^["']|["']$/g, '');
+  } catch(err) {
+    console.warn('Gemini API call failed or no key set, falling back to offline expert hardware diagnosis engine:', err);
+    return generateOfflineExpertCostDraft(r, currentNotes);
+  }
+}
+
+function generateOfflineExpertCostDraft(r, currentNotes = '') {
+  const combined = ((r.faults ? (Array.isArray(r.faults) ? r.faults.join(' ') : String(r.faults)) : '') + ' ' + (r.notes || '') + ' ' + (currentNotes || '')).toLowerCase();
+
+  if (combined.includes('باور') || combined.includes('power') || combined.includes('شورت') || combined.includes('ماس') || combined.includes('فاصل') || combined.includes('قفل') || combined.includes('dead')) {
+    return 'تم فحص الدوائر الإلكترونية الرئيسية ومسارات الجهد العالي (19V)، وتبين وجود ماس كهربائي (شورت) مع تلف في عناصر التغذية الرئيسية (موسفتات الدخل ومكثفات التنعيم). تتطلب الصيانة إزالة القصر، استبدال القطع التالفة بقطع أصلية، ومراجعة استقرار خطوط التغذية لحماية المعالج واللوحة الأم.';
+  }
+  if (combined.includes('مية') || combined.includes('ماء') || combined.includes('سائل') || combined.includes('عصير') || combined.includes('شاي') || combined.includes('قهوة') || combined.includes('liquid') || combined.includes('water')) {
+    return 'تبين بعد الفحص الميكروسكوبي وجود آثار تسريب سوائل وأكسدة على مسارات التغذية ومكونات اللوحة الأم. تتطلب الصيانة تفكيك الجهاز بالكامل، تنظيف الأكسدة كيميائياً بالموجات فوق الصوتية، معالجة المسارات المتآكلة، واستبدال المقاومات والمكثفات المتضررة لضمان عدم حدوث قصر مستقبلي.';
+  }
+  if (combined.includes('شاشة') || combined.includes('screen') || combined.includes('عرض') || combined.includes('display') || combined.includes('فلاتة') || combined.includes('مكسور') || combined.includes('خطوط')) {
+    return 'تم فحص دائرة العرض وإشارة الفيديو، وتبين وجود كسر/تلف في بنية الشاشة الداخلية مع حاجة لفحص فلاتة نقل الإشارة (EDP Cable) ومسارات الإضاءة الخلفية (Backlight Circuit). تشمل الصيانة تركيب شاشة بديلة أصلية مطابقة للمواصفات ومعايرة الألوان والإضاءة واختبار ثبات العرض.';
+  }
+  if (combined.includes('حرارة') || combined.includes('سخونة') || combined.includes('مروحة') || combined.includes('صوت عالي') || combined.includes('fan') || combined.includes('يطفي') || combined.includes('heat')) {
+    return 'أظهر الفحص ارتفاعاً حرجاً في درجات حرارة المعالج والشريحة الرسومية نتيجة جفاف المعجون الحراري وانسداد مسارات التبريد وتهالك مروحة التبريد. تتطلب الصيانة صيانة نظام التبريد بالكامل، تنظيف غرف الطرد الحراري، وضع معجون حراري احترافي عالي الكفاءة، واختبار استقرار الجهاز تحت الضغط (Stress Test).';
+  }
+  if (combined.includes('شحن') || combined.includes('بطارية') || combined.includes('سوكت') || combined.includes('شاحن') || combined.includes('dc') || combined.includes('jack') || combined.includes('charge')) {
+    return 'تم فحص دائرة الشحن ومنظومة الطاقة، وتبين وجود تلف/خلخلة في منفذ الشحن (DC Power Jack) مع عدم استقرار في إشارة الشحن الواصلة لآي سي إدارة الطاقة (Charging IC). تتطلب الصيانة صيانة وتثبيت منفذ الشحن واستبدال المكونات التالفة لضمان الشحن السليم وحماية البطارية.';
+  }
+  if (combined.includes('بايوس') || combined.includes('bios') || combined.includes('شاشة سوداء') || combined.includes('black screen') || combined.includes('رمشة')) {
+    return 'أظهر الفحص تلفاً في البرمجة الثابتة لشريحة البايوْس (Corrupted BIOS Firmware) مما يمنع إتمام دورة الإقلاع الأولي للوحة الأم (POST). تتطلب الصيانة إعادة برمجة وشحن شريحة الـ BIOS بملف أصلي متوافق مع الموديل والسيريال وفحص مسارات الفولت المغذية للشريحة (3.3V / 1.8V).';
+  }
+  if (combined.includes('ssd') || combined.includes('هارد') || combined.includes('بطء') || combined.includes('ram') || combined.includes('رام')) {
+    return 'تم فحص قطاعات التخزين ومنظومة الذاكرة، وتبين وجود قطاعات تالفة/بطء شديد في استجابة وحدة التخزين مما يؤثر على كفاءة واستقرار النظام. تشمل الصيانة تركيب وحدة تخزين سريعة SSD/M.2 متوافقة، نقل البيانات المهمة، وتهيئة بيئة تشغيل مستقرة وخالية من أخطاء الذاكرة.';
+  }
+
+  return 'تم إجراء الفحص الأولي للقطع الحيوية للجهاز وحصر الخلل في دوائر التشغيل والتحكم. تشمل أعمال الصيانة فحص المكونات التالفة واستبدالها ومراجعة دوائر الحماية واختبار أداء الجهاز بالكامل لضمان التشغيل المستقر والمعتمد.';
+}
+
+async function generateAiDiagnosis(rawR, additionalNotes = ''){
+  const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
+  const dCat = (r.device && r.device.category) || 'جهاز';
+  const dBrand = r.device ? (r.device.brand === 'أخرى' ? r.device.brandOther : r.device.brand) : '';
+  const dModel = (r.device && r.device.model) || '';
+  const faults = Array.isArray(r.faults) ? r.faults.join('، ') : String(r.faults || 'غير محدد');
+  const existingNotes = r.notes || r.faultNotes || '';
+
+  const prompt = `أنت الخبير الفني وكبير مهندسي الصيانة والإلكترونيات لمركز ميكروتك (MicroTech).
+قم بإجراء تحليل تشخيصي فني دقيق لجهاز الصيانة التالي وقدم دليلاً عملياً يساعد فني الصيانة على طاولة الفحص:
+
+بيانات الجهاز:
+- نوع الجهاز: ${dCat}
+- الماركة: ${dBrand}
+- الموديل: ${dModel}
+- الأعطال والشكوى المسجلة: ${faults}
+- ملاحظات الاستلام: ${existingNotes || 'لا توجد'}
+${additionalNotes ? `- ملاحظات وقياسات إضافية من الفني: ${additionalNotes}` : ''}
+
+المطلوب تقديم تحليل فني غني ومنظم يشمل الأقسام التالية بوضوح:
+### 1. 🎯 الأسباب المحتملة للعطل (Root Causes)
+مرتبة من الأكثر شيوعاً في هذا الموديل إلى الأقل شيوعاً.
+
+### 2. ⚡ خطوات الفحص والقياس العملي (Bench Diagnostic Steps)
+خطوات محددة للقياس بالآفوميتر وملاحظة سحب الأمبير بالباور سبلاي مع الفولتيات المتوقعة (مثل: 19V, 5V, 3.3V, 1.05V, VCORE...).
+
+### 3. 🔍 القطع والمكونات المشتبه بتلفها (Suspect Components)
+الدوائر المتهمة (آي سي شحن، آي سي باور، موسفتات الدخل، رامات، مكثفات تانتاليوم أو سيراميك، شورت صريح، أو عطل شحنة بايوْس BIOS).
+
+### 4. 💡 بدائل وحلول مقترحة ونصائح وقائية
+أرقام بدائل مشهورة، نصائح للحرارة واللحام، واختبار ما بعد الإصلاح.
+
+### 5. 📝 تقرير مقترح للعميل
+صياغة مبسطة ومقنعة تشرح للعميل سبب العطل وضرورة الصيانة ليتم وضعها في مقايسة التكلفة.`;
+
+  return await callGeminiAI({ prompt, maxTokens: 2500, temperature: 0.6 });
+}
+
+function openAiDiagnosisModal(rawR){
+  if(!rawR){
+    showToast('لم يتم تحديد إيصال الصيانة', 'error');
+    return;
+  }
+  const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
+  const cfg = getGeminiSettings();
+
+  const prevModal = document.getElementById('aiDiagnosisModal');
+  if(prevModal) prevModal.remove();
+
+  const safeTargetId = String(r.id != null ? r.id : (r.ID != null ? r.ID : r.receiptNumber));
+  const rNum = String(r.receiptNumber || r.ReceiptNumber || '');
+  const cName = (typeof formatCustomerFullName === 'function') ? formatCustomerFullName(r) : ((r.customer && r.customer.name) || extractCustomerName(r) || 'عميل');
+  const dCat = (r.device && r.device.category) || 'جهاز';
+  const dBrand = r.device ? (r.device.brand === 'أخرى' ? r.device.brandOther : r.device.brand) : '';
+  const dModel = (r.device && r.device.model) || '';
+  const faults = Array.isArray(r.faults) ? r.faults.join('، ') : String(r.faults || 'غير محدد');
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'aiDiagnosisModal';
+  overlay.style.zIndex = '12000';
+
+  let chatHistory = [];
+  let lastDiagnosisText = '';
+
+  overlay.innerHTML = `
+    <div class="modal-content" style="max-width:760px;max-height:92vh;display:flex;flex-direction:column;padding:20px;border-radius:18px;box-shadow:0 24px 60px rgba(0,0,0,0.3);">
+      <!-- Header -->
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 4px 10px rgba(124,58,237,0.35);">
+            ⚡
+          </div>
+          <div>
+            <h3 style="margin:0;font-size:16px;color:var(--ink);display:flex;align-items:center;gap:8px;">
+              المساعد الذكي لتشخيص الأعطال
+              <span class="mono" style="background:rgba(124,58,237,0.1);color:#7c3aed;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;border:1px solid rgba(124,58,237,0.25);">
+                ${cfg.model || 'gemini-3.5-flash'}
+              </span>
+            </h3>
+            <div style="font-size:11.5px;color:var(--ink-secondary);margin-top:2px;">
+              تحليل إلكتروني متخصص • اقتراح القياسات والبدائل • مركز صيانة ميكروتك
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="closeAiDiagModal" style="border-radius:50%;width:32px;height:32px;padding:0;display:flex;align-items:center;justify-content:center;">✕</button>
+      </div>
+
+      <!-- Device Summary Bar -->
+      <div style="background:var(--paper2);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12.5px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <div><b>الإيصال:</b> <span class="mono font-bold" style="color:var(--primary);direction:ltr;unicode-bidi:isolate;">#${escapeHtml(rNum)}</span> • <b>العميل:</b> ${escapeHtml(cName)}</div>
+        <div><b>الجهاز:</b> <span style="font-weight:700;color:var(--ink);">${escapeHtml(dCat)} - ${escapeHtml(dBrand)} ${escapeHtml(dModel)}</span></div>
+        <div style="width:100%;background:var(--paper);padding:6px 10px;border-radius:6px;border:1px dashed var(--line);font-size:12px;margin-top:2px;">
+          <b style="color:var(--amber-text);">⚠️ العطل المسجل:</b> ${escapeHtml(faults)}
+        </div>
+      </div>
+
+      <!-- Diagnostic Body Container (Scrollable) -->
+      <div id="aiDiagBody" style="flex:1;overflow-y:auto;padding-left:6px;padding-right:6px;margin-bottom:14px;min-height:220px;">
+        ${!cfg.apiKey ? `
+          <div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.3);border-radius:12px;padding:24px;text-align:center;margin:20px 0;">
+            <div style="font-size:42px;margin-bottom:10px;">🔑</div>
+            <h4 style="margin:0 0 8px 0;font-size:16px;color:var(--ink);">مفتاح Google Gemini API غير مضبوط</h4>
+            <p style="font-size:13px;color:var(--ink-secondary);max-width:460px;margin:0 auto 16px auto;line-height:1.6;">
+              للاستفادة من ميزات الذكاء الاصطناعي في تشخيص الأعطال وصياغة تقارير المقايسة، يرجى إدخال مفتاح API الخاص بك. يمكنك استخراجه مجاناً في دقيقة واحدة من Google AI Studio.
+            </p>
+            <div style="display:flex;justify-content:center;gap:10px;">
+              <button class="btn btn-primary font-bold" id="goToAiSettingsBtn">
+                ⚙️ الانتقال إلى إعدادات الذكاء الاصطناعي
+              </button>
+            </div>
+          </div>
+        ` : `
+          <div id="aiLoadingBox" style="text-align:center;padding:40px 20px;">
+            <div class="spinner" style="width:36px;height:36px;border-width:3px;border-color:rgba(124,58,237,0.2);border-top-color:#7c3aed;margin:0 auto 14px auto;"></div>
+            <div style="font-weight:700;font-size:14px;color:var(--ink);">جاري تحليل العطل بواسطة Gemini AI...</div>
+            <div style="font-size:12px;color:var(--ink-secondary);margin-top:4px;">يتم الآن فحص الأعطال المحتملة ومسارات القياس للموديل ${escapeHtml(dBrand)} ${escapeHtml(dModel)}</div>
+          </div>
+          <div id="aiResultContent" style="display:none;background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:16px 18px;font-size:13px;line-height:1.7;"></div>
+        `}
+      </div>
+
+      <!-- Quick Action Buttons -->
+      <div id="aiActionButtons" style="display:none;gap:8px;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--line);margin-bottom:10px;">
+        <button type="button" class="btn btn-xs" id="insertToNotesBtn" style="background:#059669;color:#fff;font-weight:700;border:none;border-radius:6px;display:inline-flex;align-items:center;gap:4px;">
+          📋 إدراج في ملاحظات الإيصال
+        </button>
+        <button type="button" class="btn btn-xs" id="openEstFromAiBtn" style="background:#0284c7;color:#fff;font-weight:700;border:none;border-radius:6px;display:inline-flex;align-items:center;gap:4px;">
+          💰 فتح مقايسة التكلفة (واتساب)
+        </button>
+        <button type="button" class="btn btn-xs btn-ghost" id="copyAiResultBtn" style="border-radius:6px;display:inline-flex;align-items:center;gap:4px;">
+          📑 نسخ التحليل
+        </button>
+        <button type="button" class="btn btn-xs btn-ghost" id="reDiagnoseBtn" style="border-radius:6px;margin-right:auto;display:inline-flex;align-items:center;gap:4px;">
+          🔄 إعادة التشخيص
+        </button>
+      </div>
+
+      <!-- Technician Follow-Up Chat Box -->
+      <div id="aiChatBoxWrap" style="display:none;background:var(--paper2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;">
+        <div style="font-size:11.5px;font-weight:700;color:var(--ink-secondary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+          <span>💬</span> استشارة ومتابعة فنية للفني (Technician Live Bench Q&A):
+        </div>
+        <div id="aiChatThread" style="max-height:140px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:8px;font-size:12px;"></div>
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="aiFollowUpInput" placeholder="اكتب استفساراً للفحص (مثلاً: قست خط 3.3V ولقيت شورت، أو ما هو بديل آي سي الشحن؟)..." style="flex:1;font-size:12.5px;padding:7px 10px;border-radius:8px;">
+          <button type="button" class="btn btn-primary btn-sm" id="sendAiFollowUpBtn" style="background:#7c3aed;border-color:#7c3aed;padding:0 14px;font-weight:700;">
+            إرسال ⚡
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('#closeAiDiagModal').onclick = () => overlay.remove();
+
+  const goToSettingsBtn = overlay.querySelector('#goToAiSettingsBtn');
+  if(goToSettingsBtn){
+    goToSettingsBtn.onclick = () => {
+      overlay.remove();
+      state.currentSection = 'settings';
+      state.settingsTab = 'ai';
+      render();
+    };
+    return;
+  }
+
+  const aiLoadingBox = overlay.querySelector('#aiLoadingBox');
+  const aiResultContent = overlay.querySelector('#aiResultContent');
+  const aiActionButtons = overlay.querySelector('#aiActionButtons');
+  const aiChatBoxWrap = overlay.querySelector('#aiChatBoxWrap');
+  const aiChatThread = overlay.querySelector('#aiChatThread');
+  const followUpInput = overlay.querySelector('#aiFollowUpInput');
+  const sendFollowUpBtn = overlay.querySelector('#sendAiFollowUpBtn');
+
+  async function runDiagnosis(){
+    if(aiLoadingBox){
+      aiLoadingBox.style.display = 'block';
+      aiLoadingBox.innerHTML = `
+        <div class="spinner" style="width:36px;height:36px;border-width:3px;border-color:rgba(124,58,237,0.2);border-top-color:#7c3aed;margin:0 auto 14px auto;"></div>
+        <div style="font-weight:700;font-size:14px;color:var(--ink);">جاري تحليل العطل بواسطة Gemini AI...</div>
+        <div style="font-size:12px;color:var(--ink-secondary);margin-top:4px;">يتم الآن فحص الأعطال المحتملة ومسارات القياس للموديل ${escapeHtml(dBrand)} ${escapeHtml(dModel)}</div>
+      `;
+    }
+    if(aiResultContent) aiResultContent.style.display = 'none';
+    if(aiActionButtons) aiActionButtons.style.display = 'none';
+    if(aiChatBoxWrap) aiChatBoxWrap.style.display = 'none';
+
+    try {
+      const diagText = await generateAiDiagnosis(r);
+      lastDiagnosisText = diagText;
+
+      chatHistory = [
+        { role: 'user', parts: [{ text: `قم بتحليل عطل الجهاز: ${dCat} ${dBrand} ${dModel}، العطل: ${faults}` }] },
+        { role: 'model', parts: [{ text: diagText }] }
+      ];
+
+      if(aiLoadingBox) aiLoadingBox.style.display = 'none';
+      if(aiResultContent){
+        aiResultContent.innerHTML = renderAiMarkdownToHtml(diagText);
+        aiResultContent.style.display = 'block';
+      }
+      if(aiActionButtons) aiActionButtons.style.display = 'flex';
+      if(aiChatBoxWrap) aiChatBoxWrap.style.display = 'block';
+    } catch(err){
+      if(aiLoadingBox){
+        aiLoadingBox.innerHTML = `
+          <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:18px;text-align:center;">
+            <div style="font-size:32px;margin-bottom:8px;">⚠️</div>
+            <div style="font-weight:700;color:var(--red);margin-bottom:6px;">تعذر إتمام التحليل الذكي</div>
+            <div style="font-size:12.5px;color:var(--ink-secondary);line-height:1.5;">${escapeHtml(err.message || 'حدث خطأ غير متوقع')}</div>
+            <button class="btn btn-ghost btn-sm" id="retryAiDiagBtn" style="margin-top:12px;color:var(--primary);">🔄 إعادة المحاولة</button>
+          </div>
+        `;
+        const retryBtn = overlay.querySelector('#retryAiDiagBtn');
+        if(retryBtn) retryBtn.onclick = runDiagnosis;
+      }
+    }
+  }
+
+  const insertToNotesBtn = overlay.querySelector('#insertToNotesBtn');
+  if(insertToNotesBtn){
+    insertToNotesBtn.onclick = async () => {
+      if(!lastDiagnosisText) return;
+      const summaryLine = `[تشخيص AI - ${new Date().toLocaleDateString('ar-EG')}]: ${lastDiagnosisText.replace(/\n+/g, ' ').substring(0, 300)}...`;
+      r.notes = (r.notes ? r.notes + '\n\n' : '') + summaryLine;
+      const idx = (state.receipts || []).findIndex(x => String(x.id) === String(r.id));
+      if(idx > -1) state.receipts[idx] = r;
+      setCache('receipts', state.receipts);
+      try {
+        await saveReceiptRemote(r);
+      } catch(e){}
+      showToast('تم إدراج ملخص التشخيص في ملاحظات الإيصال بنجاح ✅', 'success');
+    };
+  }
+
+  const openEstFromAiBtn = overlay.querySelector('#openEstFromAiBtn');
+  if(openEstFromAiBtn){
+    openEstFromAiBtn.onclick = () => {
+      overlay.remove();
+      openCostEstimateModal(r);
+    };
+  }
+
+  const copyAiResultBtn = overlay.querySelector('#copyAiResultBtn');
+  if(copyAiResultBtn){
+    copyAiResultBtn.onclick = () => {
+      if(!lastDiagnosisText) return;
+      navigator.clipboard.writeText(lastDiagnosisText).then(() => {
+        showToast('تم نسخ التحليل بالكامل إلى الحافظة 📋', 'success');
+      }).catch(() => {
+        showToast('تعذر النسخ تلقائياً', 'error');
+      });
+    };
+  }
+
+  const reDiagnoseBtn = overlay.querySelector('#reDiagnoseBtn');
+  if(reDiagnoseBtn){
+    reDiagnoseBtn.onclick = runDiagnosis;
+  }
+
+  async function handleFollowUp(){
+    const q = (followUpInput.value || '').trim();
+    if(!q) return;
+
+    followUpInput.value = '';
+    followUpInput.disabled = true;
+    sendFollowUpBtn.disabled = true;
+
+    const userBubble = document.createElement('div');
+    userBubble.style.cssText = 'background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin-bottom:4px;border-right:3px solid var(--primary);align-self:flex-end;max-width:85%;';
+    userBubble.innerHTML = `<b style="color:var(--primary);font-size:11px;">الفني:</b> <span>${escapeHtml(q)}</span>`;
+    aiChatThread.appendChild(userBubble);
+
+    const aiBubble = document.createElement('div');
+    aiBubble.style.cssText = 'background:rgba(124,58,237,0.06);border:1px solid rgba(124,58,237,0.25);border-radius:8px;padding:6px 10px;margin-bottom:4px;border-left:3px solid #7c3aed;max-width:92%;';
+    aiBubble.innerHTML = `<b style="color:#7c3aed;font-size:11px;">المساعد الذكي:</b> <span class="mono">⏳ جاري التفكير والرد...</span>`;
+    aiChatThread.appendChild(aiBubble);
+    aiChatThread.scrollTop = aiChatThread.scrollHeight;
+
+    chatHistory.push({ role: 'user', parts: [{ text: q }] });
+
+    try {
+      const reply = await callGeminiAI({
+        contents: chatHistory,
+        maxTokens: 1000,
+        temperature: 0.5
+      });
+      chatHistory.push({ role: 'model', parts: [{ text: reply }] });
+      aiBubble.innerHTML = `<b style="color:#7c3aed;font-size:11px;">المساعد الذكي:</b> <div>${renderAiMarkdownToHtml(reply)}</div>`;
+    } catch(err){
+      aiBubble.innerHTML = `<b style="color:var(--red);font-size:11px;">خطأ:</b> <span style="color:var(--red);">${escapeHtml(err.message || 'تعذر الحصول على إجابة')}</span>`;
+    } finally {
+      followUpInput.disabled = false;
+      sendFollowUpBtn.disabled = false;
+      followUpInput.focus();
+      aiChatThread.scrollTop = aiChatThread.scrollHeight;
+    }
+  }
+
+  if(sendFollowUpBtn && followUpInput){
+    sendFollowUpBtn.onclick = handleFollowUp;
+    followUpInput.onkeydown = (e) => {
+      if(e.key === 'Enter'){
+        e.preventDefault();
+        handleFollowUp();
+      }
+    };
+  }
+
+  runDiagnosis();
+}
+
+window.openAiDiagnosisModalDirect = function(safeId, rNum){
+  const r = findReceiptByIdOrNum(safeId, rNum);
+  if(r) openAiDiagnosisModal(r);
+  else showToast('لم يتم العثور على الإيصال المطلوب', 'error');
+};
 
 /* ---------------- Cumulative Maintenance History & Re-Intake Engine ---------------- */
 function getDeviceMaintenanceHistory(rawR){
@@ -11802,9 +12803,14 @@ async function openReceiptDetail(rawR){
 
     overlay.innerHTML = `
     <div class="modal-content" style="max-width:700px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
         <h3 style="margin:0;font-size:17px;">⚙️ إيصال صيانة: <span class="mono" style="color:var(--primary);">${escapeHtml(r.receiptNumber)}</span></h3>
-        <button class="btn btn-ghost btn-xs" id="closeDetailBtn">✕ إغلاق</button>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <button type="button" class="btn btn-xs" id="detailAiDiagBtn" style="background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;border:none;border-radius:6px;font-weight:700;display:inline-flex;align-items:center;gap:4px;box-shadow:0 2px 5px rgba(124,58,237,0.25);cursor:pointer;" title="المساعد الذكي لتشخيص العطل واقتراح القياسات">
+            <span>⚡</span> تشخيص ذكي (AI)
+          </button>
+          <button class="btn btn-ghost btn-xs" id="closeDetailBtn">✕ إغلاق</button>
+        </div>
       </div>
 
       <div style="background:var(--paper2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:7px 12px;margin-bottom:12px;font-size:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
@@ -12076,6 +13082,9 @@ async function openReceiptDetail(rawR){
   if(closeDetBtn) closeDetBtn.onclick = ()=>overlay.remove();
   const closeModBtn = overlay.querySelector('#closeModalBtn');
   if(closeModBtn) closeModBtn.onclick = ()=>overlay.remove();
+
+  const detailAiDiagBtn = overlay.querySelector('#detailAiDiagBtn');
+  if(detailAiDiagBtn) detailAiDiagBtn.onclick = () => openAiDiagnosisModal(r);
 
   function collectEdits(){
     const selectedTitle = (overlay.querySelector('#eTitle')?.value || '').trim();
@@ -16716,6 +17725,8 @@ function renderInventory(main, categoryFilter, titleOverride){
       ${(state.invSearchQ || state.invStockFilter!=='all' || state.selectedWarehouseFilter!=='all') ? `<button class="btn btn-ghost btn-sm" id="clearInvFiltersBtn">مسح الفلاتر</button>` : ''}
     </div>
 
+    <div id="unifiedSelectionTopSlot"></div>
+
     <div class="card">
       ${list.length===0 ? '<div class="empty">لا توجد أصناف مطابقة للبحث أو الفلتر المختار.</div>' : `
       <div class="table-wrap">
@@ -16732,7 +17743,7 @@ function renderInventory(main, categoryFilter, titleOverride){
               <th>سعر البيع (قطاعي)</th>
               <th>سعر الجملة</th>
               <th>هامش الربح</th>
-              <th>الإجراءات</th>
+              <th style="min-width:170px;">الإجراءات</th>
             </tr>
           </thead>
           <tbody>
@@ -16746,39 +17757,43 @@ function renderInventory(main, categoryFilter, titleOverride){
               const profitMarginPct = sell > 0 ? Math.round((profitAmt / sell) * 100) : 0;
               const isLowStock = qty <= minStock;
               const whName = it.Warehouse || 'المخزن الرئيسي';
+              const isSelected = String(it.ID) === String(state.selectedInventoryItemId);
 
               return `
-                <tr style="${isLowStock ? 'background:rgba(239,68,68,0.05);' : ''}">
+                <tr class="selectable-row ${isSelected ? 'selected-row' : ''}" data-inv-id="${it.ID}" onclick="handleInventoryRowClick('${it.ID}', event)" style="${isLowStock ? 'background:rgba(239,68,68,0.05);' : ''}">
                   <td>
-                    <div style="font-weight:800;font-size:13px;color:var(--ink);cursor:pointer;" data-edititem="${it.ID}">${it.Name}</div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      ${isSelected ? '<span class="selected-badge-indicator" title="صنف محدد">✓</span>' : ''}
+                      <div style="font-weight:800;font-size:13px;color:var(--ink);cursor:pointer;">${escapeHtml(it.Name)}</div>
+                    </div>
                     <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:var(--ink-secondary);margin-top:2px;">
-                      ${it.SKU ? `<span class="mono" style="color:var(--primary);font-weight:700;">#${it.SKU}</span>` : ''}
-                      ${it.SubCategory ? `<span>• ${it.SubCategory}</span>` : ''}
+                      ${it.SKU ? `<span class="mono" style="color:var(--primary);font-weight:700;">#${escapeHtml(it.SKU)}</span>` : ''}
+                      ${it.SubCategory ? `<span>• ${escapeHtml(it.SubCategory)}</span>` : ''}
                       ${it.WarrantyMonths ? `<span>• 🛡️ ضمان ${it.WarrantyMonths} شهر</span>` : ''}
                     </div>
-                    ${it.CompatibleModels ? `<div style="font-size:10.5px;color:var(--slate-500);margin-top:1px;">💻 متوافق: ${it.CompatibleModels}</div>` : ''}
+                    ${it.CompatibleModels ? `<div style="font-size:10.5px;color:var(--slate-500);margin-top:1px;">💻 متوافق: ${escapeHtml(it.CompatibleModels)}</div>` : ''}
                   </td>
                   <td>
                     <span style="background:rgba(0,122,255,0.08);color:var(--primary);padding:3px 8px;border-radius:6px;font-size:11px;font-weight:800;white-space:nowrap;">
-                      🏢 ${whName}
+                      🏢 ${escapeHtml(whName)}
                     </span>
                   </td>
-                  ${categoryFilter==='all'?`<td><span class="status-badge st-check">${it.Category||'صيانة'}</span></td>`:''}
+                  ${categoryFilter==='all'?`<td><span class="status-badge st-check">${escapeHtml(it.Category||'صيانة')}</span></td>`:''}
                   <td>
-                    ${it.ShelfLocation ? `<span style="background:var(--paper3);border:1px solid var(--line-strong);padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700;color:var(--ink);">📍 ${it.ShelfLocation}</span>` : '<span style="color:var(--slate-400);font-size:11px;">-</span>'}
+                    ${it.ShelfLocation ? `<span style="background:var(--paper3);border:1px solid var(--line-strong);padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700;color:var(--ink);">📍 ${escapeHtml(it.ShelfLocation)}</span>` : '<span style="color:var(--slate-400);font-size:11px;">-</span>'}
                   </td>
                   <td>
                     ${it.Barcode ? `
                       <div style="display:flex;align-items:center;gap:4px;">
-                        <span class="mono" style="font-size:11px;font-weight:700;color:var(--ink-secondary);">${it.Barcode}</span>
-                        <button class="btn btn-xs btn-ghost" data-printsticker="${it.ID}" title="طباعة ملصق الباركود الحراري" style="padding:2px 5px;">🏷️</button>
+                        <span class="mono" style="font-size:11px;font-weight:700;color:var(--ink-secondary);">${escapeHtml(it.Barcode)}</span>
+                        <button class="btn btn-xs btn-ghost" onclick="printInventoryStickerDirect('${it.ID}'); event.stopPropagation();" title="طباعة ملصق الباركود الحراري" style="padding:2px 5px;">🏷️</button>
                       </div>
                     ` : '<span style="color:var(--slate-400);font-size:11px;">بدون</span>'}
                   </td>
                   <td>
                     <div style="display:flex;align-items:center;gap:4px;">
                       <span class="mono" style="font-weight:900;font-size:13.5px;color:${isLowStock?'var(--red)':'var(--ink)'};">${qty}</span>
-                      <span style="font-size:11px;color:var(--ink-secondary);">${it.Unit||'قطعة'}</span>
+                      <span style="font-size:11px;color:var(--ink-secondary);">${escapeHtml(it.Unit||'قطعة')}</span>
                       ${isLowStock ? '<span title="الكمية وصلت لحد الأمان أو نفدت" style="font-size:11px;">⚠️</span>' : ''}
                     </div>
                   </td>
@@ -16790,12 +17805,12 @@ function renderInventory(main, categoryFilter, titleOverride){
                       ${profitAmt >= 0 ? '+' : ''}${profitAmt.toLocaleString()} ج.م (${profitMarginPct}%)
                     </span>
                   </td>
-                  <td class="row-actions">
-                    <button class="btn btn-xs btn-primary" data-edititem="${it.ID}" title="تعديل بيانات الصنف">✏️ تعديل</button>
-                    <button class="btn btn-xs btn-ghost" data-transferitem="${it.ID}" title="تحويل رصيد لمخزن آخر">🔄 تحويل</button>
-                    <button class="btn btn-xs btn-amber" data-printsticker="${it.ID}" title="طباعة ملصق الباركود">🏷️ ملصق</button>
-                    <button class="btn btn-xs btn-ghost" data-cloneitem="${it.ID}" title="تكرار الصنف">📋 نسخ</button>
-                    <button class="btn btn-xs btn-red" data-delitem="${it.ID}" title="${state.user.role==='admin'?'حذف الصنف':'طلب تصريح حذف من المدير'}">${state.user.role==='admin'?'🗑️':'🔒'}</button>
+                  <td class="row-actions" onclick="event.stopPropagation()">
+                    <button class="btn btn-xs btn-primary font-bold" onclick="selectInventoryItem('${it.ID}'); event.stopPropagation();" title="تحديد الصنف وتفعيل الإجراءات الموحدة بالأعلى">
+                      ⚡ خيارات الصنف
+                    </button>
+                    <button class="btn btn-xs btn-ghost" onclick="openInventoryItemModalDirect('${it.ID}', false); event.stopPropagation();" title="تعديل سريع">✏️</button>
+                    <button class="btn btn-xs btn-amber" onclick="printInventoryStickerDirect('${it.ID}'); event.stopPropagation();" title="طباعة ملصق">🏷️</button>
                   </td>
                 </tr>
               `;
@@ -16805,6 +17820,10 @@ function renderInventory(main, categoryFilter, titleOverride){
       </div>`}
     </div>
   `;
+
+  if(typeof window.renderUnifiedSelectionBar === 'function'){
+    window.renderUnifiedSelectionBar();
+  }
 
   // Attach search & filter handlers
   const searchInput = document.getElementById('invSearchInput');
@@ -20904,6 +21923,9 @@ function renderSettingsSectionApp(app){
         <div class="nav-item ${activeTab==='faults'?'active':''}" data-stab="faults">
           <span class="nav-item-icon">⚠️</span><span>الأعطال والفنيين</span>
         </div>
+        <div class="nav-item ${activeTab==='ai'?'active':''}" data-stab="ai">
+          <span class="nav-item-icon">🤖</span><span>الذكاء الاصطناعي (Gemini)</span>
+        </div>
         <div class="nav-item ${activeTab==='sync'?'active':''}" data-stab="sync">
           <span class="nav-item-icon">🔄</span><span>المزامنة السحابية والكاش</span>
         </div>
@@ -20941,6 +21963,7 @@ function renderSettingsNavHeader(activeTabTitle, activeTabSubtitle){
     {k:'warranty', label:'📜 بنود الضمان'},
     {k:'devices', label:'🛠️ تصنيفات الأجهزة'},
     {k:'faults', label:'⚠️ الأعطال والفنيين'},
+    {k:'ai', label:'🤖 الذكاء الاصطناعي'},
     {k:'sync', label:'🔄 المزامنة السحابية'}
   ];
 
@@ -20985,6 +22008,7 @@ function renderSettingsContent(main){
   if(activeTab === 'warranty') return renderWarrantySettings(main);
   if(activeTab === 'devices') return renderDevicesSettings(main);
   if(activeTab === 'faults') return renderFaultsSettings(main);
+  if(activeTab === 'ai') return renderAiSettings(main);
   if(activeTab === 'sync') return renderSyncSettings(main);
   renderAppearanceSettings(main);
 }
@@ -22907,6 +23931,195 @@ function renderSyncSettings(main){
       setTimeout(()=>window.location.reload(), 600);
     }
   };
+}
+
+/* 10. AI Settings (إعدادات وتكامل Google Gemini AI) */
+function renderAiSettings(main){
+  const cfg = getGeminiSettings();
+  const hasKey = !!cfg.apiKey;
+
+  main.innerHTML = `
+    ${renderSettingsNavHeader('🤖 الذكاء الاصطناعي (Google Gemini)', 'تكامل نماذج الذكاء الاصطناعي لتشخيص الأعطال، واقتراح القياسات، وصياغة تقارير المقايسة')}
+
+    <div class="card" style="border-right:4px solid #7c3aed;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:22px;">🤖</span>
+          <h3 style="margin:0;font-size:16px;">إعدادات وتكامل Google Gemini API</h3>
+        </div>
+        <span class="status-badge ${hasKey ? 'st-done' : 'st-repair'}">
+          ${hasKey ? '🟢 تم ضبط المفتاح بنجاح' : '🟡 غير مهيأ (بانتظار المفتاح)'}
+        </span>
+      </div>
+
+      <p style="font-size:13px;color:var(--ink-secondary);line-height:1.6;margin-bottom:16px;">
+        يدعم نظام ميكروتك ERP التكامل مع أحدث نماذج <b>Google Gemini</b> الرسمية. يُستخدم الذكاء الاصطناعي كمساعد وخبير تقني للفنيين لتشخيص الأعطال واقتراح المكونات البديلة ونقاط الفحص بالآفوميتر، وصياغة تقارير مقايسة التكلفة للعميل عبر واتساب.
+      </p>
+
+      <div style="display:grid;grid-template-columns:1fr;gap:14px;max-width:680px;">
+        <!-- API Key Input -->
+        <div class="field">
+          <label style="font-weight:700;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+            <span>مفتاح Google Gemini API:</span>
+            <a href="https://aistudio.google.com/apikey" target="_blank" style="font-size:11.5px;color:var(--primary);text-decoration:none;font-weight:600;">
+              الحصول على مفتاح مجاني من Google AI Studio ↗
+            </a>
+          </label>
+          <div style="display:flex;gap:6px;">
+            <input type="password" id="geminiApiKeyInput" value="${escapeHtml(cfg.apiKey)}" placeholder="AIzaSy..." class="mono" style="flex:1;direction:ltr;font-size:13px;padding:8px 10px;">
+            <button type="button" class="btn btn-ghost btn-sm" id="toggleApiKeyVisBtn" title="إظهار/إخفاء المفتاح">👁️</button>
+          </div>
+          <div style="font-size:11.5px;color:var(--ink-secondary);margin-top:4px;">
+            يتم حفظ المفتاح بأمان في المتصفح ومزامنته مع إعدادات النظام.
+          </div>
+        </div>
+
+        <!-- Model Selector -->
+        <div class="field">
+          <label style="font-weight:700;">النموذج الافتراضي (Model):</label>
+          <select id="geminiModelSelect" style="font-size:13px;padding:8px 10px;">
+            <option value="gemini-3.5-flash" ${cfg.model==='gemini-3.5-flash'?'selected':''}>gemini-3.5-flash (الموصى به - متوازن وفائق الدقة في التشخيص)</option>
+            <option value="gemini-3.5-flash-lite" ${cfg.model==='gemini-3.5-flash-lite'?'selected':''}>gemini-3.5-flash-lite (فائق السرعة وخفيف جداً - استجابة فورية)</option>
+            <option value="gemini-3.8-flash" ${cfg.model==='gemini-3.8-flash'?'selected':''}>gemini-3.8-flash (النموذج التجريبي الأحدث)</option>
+            <option value="gemini-3.1-pro-preview" ${cfg.model==='gemini-3.1-pro-preview'?'selected':''}>gemini-3.1-pro-preview (تفكير تحليلي عميق للمخططات والأعطال المعقدة)</option>
+          </select>
+          <div style="font-size:11.5px;color:var(--ink-secondary);margin-top:4px;">
+            نماذج Google الرسمية المحدثة والمعتمدة.
+          </div>
+        </div>
+
+        <!-- System Prompt Customization -->
+        <div class="field">
+          <label style="font-weight:700;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+            <span>التعليمات التوجيهية للنظام (System Instructions):</span>
+            <button type="button" class="btn btn-xs btn-ghost" id="resetSystemPromptBtn" style="font-size:11px;">استعادة النص الافتراضي</button>
+          </label>
+          <textarea id="geminiSystemPromptInput" rows="3" style="font-size:12.5px;line-height:1.5;">${escapeHtml(cfg.systemInstruction)}</textarea>
+          <div style="font-size:11px;color:var(--ink-secondary);margin-top:2px;">
+            تحدد هوية وأسلوب الذكاء الاصطناعي وخبرته في إلكترونيات ميكروتك.
+          </div>
+        </div>
+
+        <!-- Test Connection Result Box -->
+        <div id="testConnResultBox" style="display:none;padding:10px 14px;border-radius:8px;font-size:12.5px;margin-top:4px;"></div>
+
+        <!-- Action Buttons -->
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;">
+          <button type="button" class="btn btn-primary" id="saveAiSettingsBtn" style="background:#7c3aed;border-color:#7c3aed;font-weight:700;padding:8px 20px;">
+            💾 حفظ إعدادات الذكاء الاصطناعي
+          </button>
+          <button type="button" class="btn btn-ghost" id="testAiConnBtn" style="font-weight:700;display:inline-flex;align-items:center;gap:6px;">
+            <span>⚡</span> اختبار الاتصال الآن
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Guide Card -->
+    <div class="card" style="margin-top:16px;">
+      <h3 style="margin:0 0 10px 0;font-size:15px;display:flex;align-items:center;gap:6px;">
+        <span>💡</span> كيف تحصل على مفتاح Google Gemini API مجاناً؟
+      </h3>
+      <ol style="font-size:13px;color:var(--ink-secondary);line-height:1.8;padding-right:20px;margin:0;">
+        <li>قم بزيارة <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--primary);font-weight:700;">Google AI Studio ↗</a> وسجل الدخول بحساب Google الخاص بك.</li>
+        <li>انقر على زر <b>"Create API key"</b>.</li>
+        <li>انسخ المفتاح الذي يظهر لك وضعه في حقل المفتاح أعلاه ثم اضغط <b>"اختبار الاتصال الآن"</b> ثم <b>"حفظ"</b>.</li>
+        <li>حسابك يتضمن حصة مجانية كريمة من Google تكفي لآلاف عمليات الفحص الشهرية لمركز الصيانة.</li>
+      </ol>
+    </div>
+  `;
+
+  attachSettingsQuickTabEvents(main);
+
+  const keyInput = document.getElementById('geminiApiKeyInput');
+  const visBtn = document.getElementById('toggleApiKeyVisBtn');
+  if(visBtn && keyInput){
+    visBtn.onclick = () => {
+      keyInput.type = keyInput.type === 'password' ? 'text' : 'password';
+    };
+  }
+
+  const resetPromptBtn = document.getElementById('resetSystemPromptBtn');
+  if(resetPromptBtn){
+    resetPromptBtn.onclick = () => {
+      document.getElementById('geminiSystemPromptInput').value = DEFAULT_GEMINI_SETTINGS.systemInstruction;
+    };
+  }
+
+  const testBtn = document.getElementById('testAiConnBtn');
+  const resultBox = document.getElementById('testConnResultBox');
+  if(testBtn){
+    testBtn.onclick = async () => {
+      const k = keyInput.value.trim();
+      const m = document.getElementById('geminiModelSelect').value;
+      testBtn.disabled = true;
+      const origHtml = testBtn.innerHTML;
+      testBtn.innerHTML = '<span>⏳</span> جاري الاختبار...';
+      resultBox.style.display = 'none';
+
+      try {
+        const res = await testGeminiConnection(k, m);
+        resultBox.style.display = 'block';
+        resultBox.style.background = 'rgba(16,185,129,0.1)';
+        resultBox.style.border = '1px solid var(--green)';
+        resultBox.style.color = '#047857';
+        resultBox.innerHTML = `
+          <div style="font-weight:700;">✅ الاتصال ناجح ومستقر!</div>
+          <div style="font-size:11.5px;margin-top:2px;">النموذج: <b>${res.model}</b> • زمن الاستجابة: <b>${res.latencyMs} مللي ثانية</b> • رد الذكاء: "${escapeHtml(res.reply)}"</div>
+        `;
+        showToast('تم التحقق من الاتصال بنجاح ✨', 'success');
+      } catch(err){
+        resultBox.style.display = 'block';
+        resultBox.style.background = 'rgba(239,68,68,0.1)';
+        resultBox.style.border = '1px solid var(--red)';
+        resultBox.style.color = '#b91c1c';
+        resultBox.innerHTML = `
+          <div style="font-weight:700;">❌ فشل الاتصال:</div>
+          <div style="font-size:11.5px;margin-top:2px;">${escapeHtml(err.message || 'حدث خطأ في الاتصال')}</div>
+        `;
+        showToast('فشل اختبار الاتصال ⚠️', 'error');
+      } finally {
+        testBtn.disabled = false;
+        testBtn.innerHTML = origHtml;
+      }
+    };
+  }
+
+  const saveBtn = document.getElementById('saveAiSettingsBtn');
+  if(saveBtn){
+    saveBtn.onclick = async () => {
+      const k = keyInput.value.trim();
+      const m = document.getElementById('geminiModelSelect').value;
+      const sys = document.getElementById('geminiSystemPromptInput').value.trim();
+
+      const newSettings = {
+        enabled: true,
+        apiKey: k,
+        model: m,
+        temperature: 0.7,
+        systemInstruction: sys || DEFAULT_GEMINI_SETTINGS.systemInstruction
+      };
+
+      if(!state.settings) state.settings = {};
+      state.settings.gemini = newSettings;
+      setCache('settings', state.settings);
+      localStorage.setItem('microtech_gemini_api_key', k);
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'جاري الحفظ...';
+
+      try {
+        await saveSettingRemote('gemini', JSON.stringify(newSettings));
+        showToast('تم حفظ إعدادات الذكاء الاصطناعي بنجاح ✅', 'success');
+      } catch(err){
+        showToast('تم الحفظ محلياً في المتصفح بنجاح ✅', 'info');
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = '💾 حفظ إعدادات الذكاء الاصطناعي';
+        renderAiSettings(main);
+      }
+    };
+  }
 }
 
 /* ============================================================

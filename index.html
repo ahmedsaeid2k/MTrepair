@@ -4522,6 +4522,7 @@ function receiptToRow(d){
     EstimateTime: d.estimateTime || '',
     Warranty: d.warranty || '',
     ServiceItems: (Array.isArray(d.serviceItems) && d.serviceItems.length) ? JSON.stringify(d.serviceItems) : '',
+    Devices: (Array.isArray(d.devices) && d.devices.length) ? JSON.stringify(d.devices) : '',
     OtherAccountDesc: d.otherAccountDesc || '',
     OtherAccountAmount: Number(d.otherAccountAmount || 0),
     DeliveryDate: d.deliveryDate, Status: d.status, Paid: d.paid ? 'TRUE' : 'FALSE',
@@ -4602,7 +4603,15 @@ function rowToReceipt(row){
     serviceCycle: Number(row.ServiceCycle || row.serviceCycle || 1),
     nextReceiptId: row.NextReceiptID || row.nextReceiptId || '',
     nextReceiptNumber: row.NextReceiptNumber || row.nextReceiptNumber || '',
-    maintenanceHistory: row.maintenanceHistory || []
+    maintenanceHistory: row.maintenanceHistory || [],
+    devices: (()=>{
+      const rawD = row.Devices || row.devices;
+      if(Array.isArray(rawD) && rawD.length) return rawD;
+      if(typeof rawD === 'string' && rawD.trim()){
+        try{ const p = JSON.parse(rawD); if(Array.isArray(p) && p.length) return p; }catch(e){}
+      }
+      return null;
+    })()
   };
 }
 
@@ -4726,6 +4735,60 @@ function normalizeReceipt(r){
   r.partsCost = Number(r.partsCost != null ? r.partsCost : (r.PartsCost || 0));
   r.deposit = Number(r.deposit != null ? r.deposit : (r.Deposit || 0));
   r.refunded = Number(r.refunded != null ? r.refunded : (r.Refunded || 0));
+
+  // Normalize Devices (دعم استلام أكثر من جهاز في الإيصال الواحد)
+  let rawDevs = r.devices || r.Devices;
+  if(typeof rawDevs === 'string' && rawDevs.trim()){
+    try {
+      const p = JSON.parse(rawDevs);
+      if(Array.isArray(p)) rawDevs = p;
+    } catch(e){}
+  }
+  if(!Array.isArray(rawDevs) || rawDevs.length === 0){
+    rawDevs = [
+      {
+        id: 'dev_1',
+        category: String(r.device.category || 'لابتوب'),
+        brand: String(r.device.brand || ''),
+        brandOther: String(r.device.brandOther || ''),
+        model: String(r.device.model || ''),
+        accessories: String(r.device.accessories || ''),
+        password: String(pass || ''),
+        faults: Array.isArray(r.faults) ? [...r.faults] : [],
+        faultNotes: String(r.faultNotes || ''),
+        technician: String(r.technician || '')
+      }
+    ];
+  } else {
+    rawDevs = rawDevs.map((d, idx) => ({
+      id: String(d.id || ('dev_' + (idx + 1))),
+      category: String(d.category || r.device.category || 'لابتوب'),
+      brand: String(d.brand != null ? d.brand : (r.device.brand || '')),
+      brandOther: String(d.brandOther != null ? d.brandOther : ''),
+      model: String(d.model != null ? d.model : ''),
+      accessories: String(d.accessories != null ? d.accessories : ''),
+      password: String(d.password != null ? d.password : (pass || '')),
+      faults: Array.isArray(d.faults) ? d.faults.map(String) : (typeof d.faults === 'string' ? d.faults.split('، ').filter(Boolean) : []),
+      faultNotes: String(d.faultNotes != null ? d.faultNotes : ''),
+      technician: String(d.technician != null ? d.technician : (r.technician || ''))
+    }));
+  }
+  r.devices = rawDevs;
+
+  // Keep first device mirrored to top-level for 100% backward compatibility
+  if(r.devices.length > 0){
+    const d0 = r.devices[0];
+    r.device.category = d0.category;
+    r.device.brand = d0.brand;
+    r.device.brandOther = d0.brandOther;
+    r.device.model = d0.model;
+    r.device.accessories = d0.accessories;
+    r.device.password = d0.password;
+    if(r.devices.length === 1){
+      r.faults = d0.faults;
+      r.faultNotes = d0.faultNotes;
+    }
+  }
 
   return r;
 }
@@ -6742,6 +6805,9 @@ let state = {
   draft: null,
   maintenanceViewMode: localStorage.getItem('microerp_maint_view_mode') || 'table',
   archiveFilter: {q:'', status:'', tech:'', group:'all'},
+  selectedReceiptId: null,
+  selectedReceiptNum: null,
+  selectedReceiptIds: [],
   settings: getCache('settings', {
     shopName: 'صيانة ميكروتك',
     logoUrl: '',
@@ -6879,6 +6945,19 @@ function newDraft(){
   const h12 = hours % 12 || 12;
   const currentTimeStr = `${h12}:${minutes} ${ampm}`;
 
+  const initialDev = {
+    id: 'dev_' + now.getTime() + '_1',
+    category: 'لابتوب',
+    brand: 'Apple',
+    brandOther: '',
+    model: '',
+    accessories: '',
+    password: '',
+    faults: [],
+    faultNotes: '',
+    technician: ''
+  };
+
   return {
     id: 'r_'+now.getTime(),
     receiptNumber: '',
@@ -6887,7 +6966,9 @@ function newDraft(){
     createdAt: now.toISOString(),
     receivedAt: now.toISOString(),
     customer: {name:'', phone:'', email:''},
-    device: {category:'لابتوب', brand:'Apple', brandOther:'', model:'', accessories:'', password:''},
+    devices: [ initialDev ],
+    activeDeviceIndex: 0,
+    device: initialDev,
     password: '',
     faults: [],
     faultNotes: '',
@@ -8851,6 +8932,28 @@ function stepCustomer(body,d){
 }
 
 function stepDevice(body,d){
+  // Ensure d.devices array exists and is well-formed
+  if(!Array.isArray(d.devices) || d.devices.length === 0){
+    d.devices = [{
+      id: 'dev_' + Date.now() + '_1',
+      category: (d.device && d.device.category) || 'لابتوب',
+      brand: (d.device && d.device.brand) || 'Dell',
+      brandOther: (d.device && d.device.brandOther) || '',
+      model: (d.device && d.device.model) || '',
+      accessories: (d.device && d.device.accessories) || '',
+      password: (d.device && d.device.password) || d.password || '',
+      faults: Array.isArray(d.faults) ? [...d.faults] : [],
+      faultNotes: d.faultNotes || '',
+      technician: d.technician || ''
+    }];
+  }
+  if(d.activeDeviceIndex == null || d.activeDeviceIndex < 0 || d.activeDeviceIndex >= d.devices.length){
+    d.activeDeviceIndex = 0;
+  }
+
+  const activeIdx = d.activeDeviceIndex;
+  const currDev = d.devices[activeIdx];
+
   const brandsObj = getBrands();
   const cats = Object.keys(brandsObj);
 
@@ -8879,7 +8982,35 @@ function stepDevice(body,d){
 
   body.innerHTML = `
     <div class="card">
-      <h3>💻 بيانات الجهاز المستلم</h3>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+        <h3 style="margin:0;">💻 بيانات الأجهزة المستلمة</h3>
+        <button type="button" class="btn btn-primary btn-sm" id="addNewDeviceBtn" style="font-weight:700;display:inline-flex;align-items:center;gap:4px;">
+          <span>➕</span> إضافة جهاز آخر لنفس العميل
+        </button>
+      </div>
+
+      <!-- Multiple Devices Tabs Bar -->
+      <div style="background:var(--paper2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 10px;margin-bottom:14px;">
+        <div style="font-size:11.5px;font-weight:800;color:var(--ink-secondary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+          <span>📱 أجهزة هذا الإيصال (${d.devices.length}):</span>
+          ${d.devices.length > 1 ? '<span style="color:var(--primary);font-size:11px;">(اضغط على الجهاز لتعديل بياناته)</span>' : ''}
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;" id="deviceTabsBar">
+          ${d.devices.map((dv, idx) => {
+            const isAct = idx === activeIdx;
+            const bStr = dv.brand === 'أخرى' ? dv.brandOther : dv.brand;
+            const title = `${dv.category || 'جهاز'} ${bStr || ''} ${dv.model || ''}`.trim() || `جهاز #${idx+1}`;
+            return `
+              <div class="device-tab-chip" data-idx="${idx}" style="display:inline-flex;align-items:center;gap:6px;background:${isAct ? 'var(--primary)' : 'var(--paper)'};color:${isAct ? '#fff' : 'var(--ink)'};border:1px solid ${isAct ? 'var(--primary)' : 'var(--line)'};border-radius:6px;padding:3px 10px;font-size:12px;font-weight:${isAct?'800':'600'};cursor:pointer;">
+                <span>📱 ${escapeHtml(title)}</span>
+                ${d.devices.length > 1 ? `
+                  <span class="delete-dev-chip" data-delidx="${idx}" style="color:${isAct ? '#fca5a5' : 'var(--red)'};font-weight:900;font-size:13px;cursor:pointer;padding:0 2px;" title="حذف هذا الجهاز">✕</span>
+                ` : ''}
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
 
       ${priorDevices.length > 0 ? `
         <div style="background:rgba(245,158,11,0.08);border:1px dashed var(--amber);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:14px;">
@@ -8905,29 +9036,103 @@ function stepDevice(body,d){
       ` : ''}
 
       <div class="field"><label>فئة الجهاز</label>
-        <select id="devCat">${cats.map(c=>`<option ${c===d.device.category?'selected':''}>${c}</option>`).join('')}</select>
+        <select id="devCat">${cats.map(c=>`<option ${c===currDev.category?'selected':''}>${c}</option>`).join('')}</select>
       </div>
       <div class="grid3">
         <div class="field"><label>الماركة</label><select id="devBrand"></select></div>
-        <div class="field" id="brandOtherWrap" style="display:none"><label>اكتب الماركة يدويًا</label><input id="devBrandOther" value="${d.device.brandOther}"></div>
-        <div class="field"><label>الموديل / السيريال</label><input id="devModel" value="${d.device.model}" placeholder="مثال: Dell G15 5515"></div>
+        <div class="field" id="brandOtherWrap" style="display:none"><label>اكتب الماركة يدويًا</label><input id="devBrandOther" value="${escapeHtml(currDev.brandOther||'')}"></div>
+        <div class="field"><label>الموديل / السيريال</label><input id="devModel" value="${escapeHtml(currDev.model||'')}" placeholder="مثال: Dell G15 5515"></div>
       </div>
       <div class="grid2">
-        <div class="field"><label>الملحقات المستلمة مع الجهاز</label><input id="devAcc" placeholder="شاحن أصلي، كابل باور، حقيبة، ماوس..." value="${d.device.accessories}"></div>
-        <div class="field"><label>كلمة المرور / الباسورد (اختياري)</label><input id="devPassword" type="text" placeholder="باسورد الجهاز أو رمز القفل للفحص إن وجد..." value="${(d.device && d.device.password) || d.password || ''}"></div>
+        <div class="field"><label>الملحقات المستلمة مع هذا الجهاز</label><input id="devAcc" placeholder="شاحن أصلي، كابل باور، حقيبة، ماوس..." value="${escapeHtml(currDev.accessories||'')}"></div>
+        <div class="field"><label>كلمة المرور / الباسورد (اختياري)</label><input id="devPassword" type="text" placeholder="باسورد الجهاز أو رمز القفل للفحص إن وجد..." value="${escapeHtml(currDev.password||'')}"></div>
       </div>
     </div>
   `;
+
   function fillBrands(){
     const currentBrandsObj = getBrands();
     const cat = document.getElementById('devCat').value;
     const sel = document.getElementById('devBrand');
-    sel.innerHTML = (currentBrandsObj[cat]||['أخرى']).map(b=>`<option ${b===d.device.brand?'selected':''}>${b}</option>`).join('');
+    sel.innerHTML = (currentBrandsObj[cat]||['أخرى']).map(b=>`<option ${b===currDev.brand?'selected':''}>${b}</option>`).join('');
     document.getElementById('brandOtherWrap').style.display = sel.value==='أخرى' ? '' : 'none';
   }
   fillBrands();
   document.getElementById('devCat').onchange = fillBrands;
   document.getElementById('devBrand').onchange = ()=>{ document.getElementById('brandOtherWrap').style.display = document.getElementById('devBrand').value==='أخرى'?'':'none'; };
+
+  function collectActiveDeviceFromDom(){
+    currDev.category = document.getElementById('devCat').value;
+    currDev.brand = document.getElementById('devBrand').value;
+    currDev.brandOther = document.getElementById('devBrandOther') ? document.getElementById('devBrandOther').value : '';
+    currDev.model = document.getElementById('devModel').value.trim();
+    currDev.accessories = document.getElementById('devAcc').value.trim();
+    currDev.password = document.getElementById('devPassword') ? document.getElementById('devPassword').value.trim() : '';
+
+    // Keep top-level d.device in sync with d.devices[0] for full backward compatibility
+    d.device = {
+      category: d.devices[0].category,
+      brand: d.devices[0].brand,
+      brandOther: d.devices[0].brandOther,
+      model: d.devices[0].model,
+      accessories: d.devices[0].accessories,
+      password: d.devices[0].password
+    };
+    d.password = d.device.password;
+  }
+
+  // Device tabs navigation
+  body.querySelectorAll('.device-tab-chip').forEach(el => {
+    el.onclick = (e)=>{
+      if(e.target.closest('.delete-dev-chip')) return;
+      collectActiveDeviceFromDom();
+      d.activeDeviceIndex = Number(el.dataset.idx);
+      stepDevice(body, d);
+    };
+  });
+
+  // Add new device button
+  const addDevBtn = document.getElementById('addNewDeviceBtn');
+  if(addDevBtn){
+    addDevBtn.onclick = ()=>{
+      collectActiveDeviceFromDom();
+      const newDev = {
+        id: 'dev_' + Date.now() + '_' + (d.devices.length + 1),
+        category: 'لابتوب',
+        brand: 'Dell',
+        brandOther: '',
+        model: '',
+        accessories: '',
+        password: '',
+        faults: [],
+        faultNotes: '',
+        technician: d.technician || ''
+      };
+      d.devices.push(newDev);
+      d.activeDeviceIndex = d.devices.length - 1;
+      showToast(`تمت إضافة جهاز جديد (${d.devices.length}) - أدخل بياناته الآن`, 'success');
+      stepDevice(body, d);
+    };
+  }
+
+  // Delete device chip
+  body.querySelectorAll('.delete-dev-chip').forEach(btn => {
+    btn.onclick = (e)=>{
+      e.stopPropagation();
+      const delIdx = Number(btn.dataset.delidx);
+      if(d.devices.length <= 1) return;
+      const targetDev = d.devices[delIdx];
+      const targetName = `${targetDev.category || 'جهاز'} ${targetDev.brand || ''} ${targetDev.model || ''}`.trim() || `جهاز #${delIdx+1}`;
+      if(!confirm(`هل أنت متأكد من حذف ${targetName} من هذا الإيصال؟`)) return;
+      collectActiveDeviceFromDom();
+      d.devices.splice(delIdx, 1);
+      if(d.activeDeviceIndex >= d.devices.length){
+        d.activeDeviceIndex = d.devices.length - 1;
+      }
+      showToast('تم حذف الجهاز من الإيصال', 'info');
+      stepDevice(body, d);
+    };
+  });
 
   body.querySelectorAll('.pick-prior-device-btn').forEach(btn => {
     btn.onclick = ()=>{
@@ -8985,55 +9190,145 @@ function stepDevice(body,d){
   }
 
   currentStepCollector = ()=>{
-    d.device.category = document.getElementById('devCat').value;
-    d.device.brand = document.getElementById('devBrand').value;
-    d.device.brandOther = document.getElementById('devBrandOther') ? document.getElementById('devBrandOther').value : '';
-    d.device.model = document.getElementById('devModel').value.trim();
-    d.device.accessories = document.getElementById('devAcc').value.trim();
-    d.device.password = document.getElementById('devPassword') ? document.getElementById('devPassword').value.trim() : '';
-    d.password = d.device.password;
+    collectActiveDeviceFromDom();
   };
+
   stepNav(body, true, ()=>{
     currentStepCollector();
-    state.formStep=2; renderMain();
+    state.formStep = 2;
+    renderMain();
   });
 }
 
 function stepFaults(body,d){
+  if(!Array.isArray(d.devices) || d.devices.length === 0){
+    d.devices = [{
+      id: 'dev_1',
+      category: d.device.category || 'لابتوب',
+      brand: d.device.brand || 'Dell',
+      brandOther: d.device.brandOther || '',
+      model: d.device.model || '',
+      faults: Array.isArray(d.faults) ? [...d.faults] : [],
+      faultNotes: d.faultNotes || '',
+      technician: d.technician || ''
+    }];
+  }
+  if(d.activeDeviceIndex == null || d.activeDeviceIndex < 0 || d.activeDeviceIndex >= d.devices.length){
+    d.activeDeviceIndex = 0;
+  }
+
+  const activeIdx = d.activeDeviceIndex;
+  const currDev = d.devices[activeIdx];
+  if(!Array.isArray(currDev.faults)) currDev.faults = [];
+
   const faultsList = getCommonFaults();
+  const bStr = currDev.brand === 'أخرى' ? currDev.brandOther : currDev.brand;
+  const devTitle = `${currDev.category || 'جهاز'} ${bStr || ''} ${currDev.model || ''}`.trim() || `جهاز #${activeIdx+1}`;
+
   body.innerHTML = `
     <div class="card">
-      <h3>⚠️ الأعطال والتشخيص الأولي</h3>
-      <label>الأعطال الشائعة (اضغط لتحديد العطل)</label>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+        <h3 style="margin:0;">⚠️ الأعطال والتشخيص الفني</h3>
+        ${d.devices.length > 1 ? `
+          <span class="badge" style="background:#e0e7ff;color:#3730a3;font-size:12px;font-weight:800;padding:4px 10px;border-radius:6px;">
+            جهاز ${activeIdx + 1} من ${d.devices.length}: ${escapeHtml(devTitle)}
+          </span>
+        ` : ''}
+      </div>
+
+      ${d.devices.length > 1 ? `
+        <!-- Device Switcher for Independent Faults & Notes -->
+        <div style="background:var(--paper2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 10px;margin-bottom:16px;">
+          <div style="font-size:11.5px;font-weight:800;color:var(--ink-secondary);margin-bottom:6px;">
+            اضغط على الجهاز لتحديد أعطاله وملاحظاته الخاصة:
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            ${d.devices.map((dv, idx) => {
+              const isAct = idx === activeIdx;
+              const b = dv.brand === 'أخرى' ? dv.brandOther : dv.brand;
+              const t = `${dv.category || 'جهاز'} ${b || ''} ${dv.model || ''}`.trim() || `جهاز #${idx+1}`;
+              const count = (dv.faults && dv.faults.length) || 0;
+              return `
+                <button type="button" class="btn btn-sm ${isAct ? 'btn-primary' : 'btn-ghost'} faults-dev-tab" data-fidx="${idx}" style="font-size:12px;display:inline-flex;align-items:center;gap:6px;">
+                  <span>📱 ${escapeHtml(t)}</span>
+                  ${count > 0 ? `<span class="badge" style="background:${isAct ? '#fff' : 'var(--primary)'};color:${isAct ? 'var(--primary)' : '#fff'};font-size:10px;padding:0 5px;border-radius:10px;">${count} أعطال</span>` : '<span style="font-size:10.5px;opacity:0.7;">(لم تحدد أعطال)</span>'}
+                </button>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      ` : ''}
+
+      <div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.25);border-radius:6px;padding:8px 12px;margin-bottom:14px;font-size:12.5px;display:flex;align-items:center;gap:6px;">
+        <span>🎯</span>
+        <span>تحديد أعطال وملاحظات: <b style="color:var(--ink);">${escapeHtml(devTitle)}</b></span>
+      </div>
+
+      <label style="font-weight:700;margin-bottom:6px;display:block;">الأعطال الشائعة لهذا الجهاز (اضغط لتحديد أو إلغاء العطل):</label>
       <div class="chip-group" id="faultChips" style="margin-bottom:16px;">
-        ${faultsList.map(f=>`<div class="chip ${d.faults.includes(f)?'sel':''}" data-f="${f}">${f}</div>`).join('')}
+        ${faultsList.map(f=>`<div class="chip ${currDev.faults.includes(f)?'sel':''}" data-f="${f}">${f}</div>`).join('')}
       </div>
-      <div class="field"><label>تفاصيل العطل وملاحظات الفحص</label>
-        <textarea id="faultNotes" placeholder="اكتب شكوى العميل بالتفصيل أو أي ملاحظات ظاهرية على الجهاز...">${d.faultNotes}</textarea>
+
+      <div class="field">
+        <label>تفاصيل العطل وملاحظات الفحص الخاصة بهذا الجهاز</label>
+        <textarea id="faultNotes" placeholder="اكتب شكوى العميل بالتفصيل أو أي ملاحظات ظاهرية خاصة بهذا الجهاز...">${escapeHtml(currDev.faultNotes||'')}</textarea>
       </div>
-      <div class="field"><label>الفني المسؤول عن الصيانة</label>
+
+      <div class="field">
+        <label>الفني المسؤول عن الصيانة</label>
         <select id="techSelect">
           <option value="">-- اختر فني متخصص --</option>
-          ${state.technicians.map(t=>`<option ${t===d.technician?'selected':''}>${t}</option>`).join('')}
+          ${state.technicians.map(t=>`<option ${t===(currDev.technician||d.technician)?'selected':''}>${t}</option>`).join('')}
         </select>
       </div>
     </div>
   `;
+
+  function collectActiveFaultsFromDom(){
+    currDev.faultNotes = document.getElementById('faultNotes').value.trim();
+    const tech = document.getElementById('techSelect').value;
+    currDev.technician = tech;
+    d.technician = tech;
+
+    // Sync legacy/global fields with devices[0]
+    d.faults = [...(d.devices[0].faults || [])];
+    d.faultNotes = d.devices[0].faultNotes || '';
+
+    // If multiple devices, make summary available in d.faults for backward display
+    if(d.devices.length > 1){
+      const allUniqueFaults = Array.from(new Set(d.devices.flatMap(x => x.faults || [])));
+      d.faults = allUniqueFaults;
+    }
+  }
+
+  // Toggle fault chips on active device
   document.querySelectorAll('#faultChips .chip').forEach(c=>{
     c.onclick = ()=>{
       const f = c.dataset.f;
-      const idx = d.faults.indexOf(f);
-      if(idx>-1) d.faults.splice(idx,1); else d.faults.push(f);
+      const idx = currDev.faults.indexOf(f);
+      if(idx > -1) currDev.faults.splice(idx, 1);
+      else currDev.faults.push(f);
       c.classList.toggle('sel');
     };
   });
+
+  // Switch device in faults step
+  body.querySelectorAll('.faults-dev-tab').forEach(btn => {
+    btn.onclick = ()=>{
+      collectActiveFaultsFromDom();
+      d.activeDeviceIndex = Number(btn.dataset.fidx);
+      stepFaults(body, d);
+    };
+  });
+
   currentStepCollector = ()=>{
-    d.faultNotes = document.getElementById('faultNotes').value.trim();
-    d.technician = document.getElementById('techSelect').value;
+    collectActiveFaultsFromDom();
   };
+
   stepNav(body, true, ()=>{
     currentStepCollector();
-    state.formStep=3; renderMain();
+    state.formStep = 3;
+    renderMain();
   });
 }
 
@@ -9291,15 +9586,15 @@ function stepReview(body,d){
   const otherAmt = Number(d.otherAccountAmount || 0);
   const totalCost = Number(d.cost||0) + Number(d.partsCost||0) + otherAmt;
   const remaining = Math.max(0, totalCost - Number(d.deposit||0));
+  const isMultiDev = Array.isArray(d.devices) && d.devices.length > 1;
+
   body.innerHTML = `
     <div class="card">
       <h3>📋 مراجعة بيانات الإيصال قبل الحفظ</h3>
       <div class="grid2" style="font-size:13.5px;line-height:2;">
         <div><b>👤 العميل:</b> ${d.customer.name} — <span class="mono">${d.customer.phone}</span></div>
-        <div><b>💻 الجهاز:</b> ${d.device.category} / ${d.device.brand==='أخرى'?d.device.brandOther:d.device.brand} / ${d.device.model||'-'} ${((d.device && d.device.password) || d.password) ? `<span style="margin-right:6px;color:var(--amber-text);font-size:12px;">(🔑 كلمة السر: <span class="mono">${escapeHtml((d.device && d.device.password) || d.password)}</span>)</span>` : ''}</div>
         <div><b>📅 تاريخ ووقت الاستلام:</b> <span class="mono" style="font-weight:bold;">${cleanDate(d.date)}</span> <span class="badge badge-blue mono" style="font-size:11.5px;margin-right:4px;">⏰ ${formatReceiptTime(d) || d.time || ''}</span></div>
         ${d.previousReceiptNumber ? `<div><b>🔄 صيانة راجعة / تكرارية:</b> <span class="badge badge-amber mono">#${escapeHtml(d.previousReceiptNumber)}</span> <span style="font-size:11.5px;color:var(--ink-secondary);">${d.reIntakeReason ? '('+escapeHtml(d.reIntakeReason)+')' : ''}</span></div>` : ''}
-        <div><b>⚠️ الأعطال:</b> ${d.faults.join('، ')||'-'}</div>
         <div><b>👨‍🔧 الفني المسؤول:</b> ${d.technician||'غير محدد'}</div>
         <div><b>💵 تكلفة الخدمة:</b> ${d.cost||0} ج.م</div>
         ${(d.serviceItems && d.serviceItems.length > 0) ? `<div style="grid-column:1/-1;background:var(--paper2);padding:6px 10px;border-radius:4px;border:1px solid var(--line);font-size:12px;line-height:1.5;"><b>🛠️ تفاصيل بنود الصيانة (${d.serviceItems.length}):</b> ${d.serviceItems.map(it=>`${escapeHtml(it.desc)} (<b class="mono">${it.price}</b> ج.م)`).join(' | ')}</div>` : ''}
@@ -9309,6 +9604,43 @@ function stepReview(body,d){
         <div><b style="color:var(--primary);">المبلغ المتبقي المطلوب:</b> <span class="mono" style="font-size:17px;font-weight:900;color:var(--primary);">${remaining}</span> ج.م</div>
         <div><b>📅 موعد التسليم:</b> ${d.deliveryDate||'غير محدد'}</div>
       </div>
+
+      ${isMultiDev ? `
+        <div style="margin-top:14px;background:var(--paper2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px 12px;">
+          <div style="font-weight:800;font-size:13.5px;color:var(--primary);margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+            <span>📱 الأجهزة المستلمة في هذا الإيصال (${d.devices.length} أجهزة):</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${d.devices.map((dv, i) => {
+              const dvCat = escapeHtml(dv.category || 'جهاز');
+              const dvBrand = escapeHtml(dv.brand === 'أخرى' ? dv.brandOther : (dv.brand || ''));
+              const dvModel = escapeHtml(dv.model || '-');
+              const dvAcc = escapeHtml(dv.accessories || 'بدون');
+              const dvPass = dv.password ? `<span style="color:var(--amber-text);font-size:12px;margin-right:6px;">(🔑 باسورد: <span class="mono">${escapeHtml(dv.password)}</span>)</span>` : '';
+              const dvFaults = (dv.faults && dv.faults.length) ? dv.faults.join('، ') : 'لم تحدد أعطال';
+              const dvNotes = dv.faultNotes ? ` | <b>ملاحظات:</b> ${escapeHtml(dv.faultNotes)}` : '';
+              return `
+                <div style="background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:8px 12px;font-size:13px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:6px;">
+                    <b style="color:var(--ink);">📱 جهاز #${i+1}: ${dvCat} - ${dvBrand} ${dvModel}</b>
+                    ${dvPass}
+                  </div>
+                  <div style="color:var(--ink-secondary);font-size:12px;line-height:1.7;">
+                    <div><b>الملحقات:</b> ${dvAcc}</div>
+                    <div><b>الأعطال:</b> <span style="color:var(--red);font-weight:700;">${escapeHtml(dvFaults)}</span>${dvNotes}</div>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      ` : `
+        <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);font-size:13.5px;line-height:1.8;">
+          <div><b>💻 الجهاز:</b> ${d.device.category} / ${d.device.brand==='أخرى'?d.device.brandOther:d.device.brand} / ${d.device.model||'-'} ${((d.device && d.device.password) || d.password) ? `<span style="margin-right:6px;color:var(--amber-text);font-size:12px;">(🔑 كلمة السر: <span class="mono">${escapeHtml((d.device && d.device.password) || d.password)}</span>)</span>` : ''}</div>
+          <div><b>⚠️ الأعطال:</b> ${d.faults.join('، ')||'-'}${d.faultNotes ? ' ('+escapeHtml(d.faultNotes)+')' : ''}</div>
+          <div><b>🎒 الملحقات:</b> ${(d.device && d.device.accessories) || 'بدون'}</div>
+        </div>
+      `}
     </div>
     <div class="actions-row" style="flex-wrap:wrap;">
       <button class="btn btn-ghost" id="backBtn">السابق</button>
@@ -9607,6 +9939,63 @@ window.renderUnifiedSelectionBar = function(){
     }
   }
 
+  // Context 1.5: Multiple Receipts Selected (Consolidated Invoicing & Batch Actions)
+  if(!isInv && state.tab !== 'customers' && state.selectedReceiptIds && state.selectedReceiptIds.length > 1){
+    const count = state.selectedReceiptIds.length;
+    const selReceipts = (state.receipts || []).filter(r => {
+      const id = String(r.id != null ? r.id : (r.ID != null ? r.ID : r.receiptNumber));
+      return state.selectedReceiptIds.map(String).includes(id);
+    });
+    let totalDue = 0, totalDeposit = 0, totalRemaining = 0;
+    const customerNames = new Set();
+    selReceipts.forEach(r => {
+      const otherAmt = Number(r.otherAccountAmount || 0);
+      const due = Number(r.cost || 0) + Number(r.partsCost || 0) + otherAmt;
+      const dep = Number(r.deposit || 0);
+      const rem = Math.max(0, due - dep + Number(r.refunded || 0));
+      totalDue += due;
+      totalDeposit += dep;
+      totalRemaining += rem;
+      const c = extractCustomerName(r);
+      if(c) customerNames.add(c);
+    });
+    const cLabel = Array.from(customerNames).join('، ') || 'متعدد';
+
+    bar.className = 'unified-selection-bar active';
+    bar.innerHTML = `
+      <div class="unified-bar-info">
+        <div class="unified-bar-badge" style="background:#e0e7ff;color:#3730a3;">
+          <span>📑 تم تحديد (${count}) إيصالات</span>
+        </div>
+        <div style="font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span style="font-weight:700;color:var(--ink);">${escapeHtml(cLabel)}</span>
+          <span class="mono" style="font-size:11.5px;font-weight:800;color:var(--ink);">
+            الإجمالي: ${totalDue.toLocaleString()} ج.م
+          </span>
+          <span class="mono" style="font-size:11.5px;font-weight:800;color:var(--green);">
+            المدفوع: ${totalDeposit.toLocaleString()} ج.م
+          </span>
+          <span class="mono" style="font-size:11.5px;font-weight:800;${totalRemaining > 0 ? 'color:var(--red);' : 'color:var(--green);'}">
+            المتبقي: ${totalRemaining.toLocaleString()} ج.م
+          </span>
+        </div>
+      </div>
+
+      <div class="unified-bar-actions">
+        <button class="unified-bar-btn btn-primary" style="background:linear-gradient(135deg, #4f46e5, #4338ca);color:#fff;font-weight:800;box-shadow:0 2px 6px rgba(79,70,229,0.3);" onclick="convertMultipleReceiptsToInvoice(state.selectedReceiptIds)" title="إنشاء فاتورة ضريبية مجمعة تجمع كافة الأجهزة والصيانات للإيصالات المحددة">
+          🧾 إصدار فاتورة مجمعة (${count})
+        </button>
+        <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="state.selectedReceiptIds = []; if(typeof renderArchive==='function') renderArchive(); if(typeof window.renderUnifiedSelectionBar==='function') window.renderUnifiedSelectionBar();" title="إلغاء التحديد">
+          إلغاء التحديد
+        </button>
+        <button class="unified-bar-btn-close" onclick="state.selectedReceiptIds = []; if(typeof renderArchive==='function') renderArchive(); if(typeof window.renderUnifiedSelectionBar==='function') window.renderUnifiedSelectionBar();" title="إلغاء التحديد">
+          ✕
+        </button>
+      </div>
+    `;
+    return;
+  }
+
   // Context 2: Receipt Selected in Maintenance
   if(!isInv && state.tab !== 'customers' && state.selectedReceiptId){
     const r = findReceiptByIdOrNum(state.selectedReceiptId, state.selectedReceiptNum);
@@ -9792,11 +10181,15 @@ window.renderUnifiedSelectionBar = function(){
 window.hideUnifiedSelectionBar = function(){
   state.selectedReceiptId = null;
   state.selectedReceiptNum = null;
+  state.selectedReceiptIds = [];
   state.selectedCustomerId = null;
   state.selectedInventoryItemId = null;
   document.querySelectorAll('.selected-row').forEach(el => el.classList.remove('selected-row'));
   document.querySelectorAll('.selected-card').forEach(el => el.classList.remove('selected-card'));
   document.querySelectorAll('.selected-badge-indicator').forEach(el => el.remove());
+  document.querySelectorAll('.receipt-select-cb').forEach(cb => { cb.checked = false; });
+  const allCb = document.getElementById('receiptSelectAllCb');
+  if(allCb) { allCb.checked = false; allCb.indeterminate = false; }
   if(typeof window.renderUnifiedSelectionBar === 'function'){
     window.renderUnifiedSelectionBar();
   }
@@ -9815,6 +10208,7 @@ window.selectReceipt = function(receiptId, receiptNum){
 
   state.selectedReceiptId = safeTargetId;
   state.selectedReceiptNum = rNum;
+  state.selectedReceiptIds = [safeTargetId];
   state.selectedCustomerId = null;
   state.selectedInventoryItemId = null;
 
@@ -9826,7 +10220,9 @@ window.selectReceipt = function(receiptId, receiptNum){
   const matchingRows = document.querySelectorAll(`tr[data-receipt-id="${safeTargetId}"]`);
   matchingRows.forEach(el => {
     el.classList.add('selected-row');
-    const firstCell = el.querySelector('td:first-child > div');
+    const cb = el.querySelector('.receipt-select-cb');
+    if(cb) cb.checked = true;
+    const firstCell = el.querySelector('td:nth-child(2) > div') || el.querySelector('td:first-child > div');
     if(firstCell && !firstCell.querySelector('.selected-badge-indicator')){
       const b = document.createElement('span');
       b.className = 'selected-badge-indicator';
@@ -9837,9 +10233,96 @@ window.selectReceipt = function(receiptId, receiptNum){
   });
 
   const matchingCards = document.querySelectorAll(`.smart-receipt-card[data-receipt-id="${safeTargetId}"]`);
-  matchingCards.forEach(el => el.classList.add('selected-card'));
+  matchingCards.forEach(el => {
+    el.classList.add('selected-card');
+    const cb = el.querySelector('.receipt-select-cb');
+    if(cb) cb.checked = true;
+  });
 
   window.renderUnifiedSelectionBar();
+};
+
+window.toggleReceiptMultiSelection = function(receiptId, isChecked, evt){
+  if(evt) evt.stopPropagation();
+  if(!Array.isArray(state.selectedReceiptIds)) state.selectedReceiptIds = [];
+  const sId = String(receiptId);
+
+  if(isChecked){
+    if(!state.selectedReceiptIds.includes(sId)){
+      state.selectedReceiptIds.push(sId);
+    }
+  } else {
+    state.selectedReceiptIds = state.selectedReceiptIds.filter(id => String(id) !== sId);
+  }
+
+  if(state.selectedReceiptIds.length === 1){
+    state.selectedReceiptId = state.selectedReceiptIds[0];
+    const r = findReceiptByIdOrNum(state.selectedReceiptId);
+    state.selectedReceiptNum = r ? String(r.receiptNumber || '') : null;
+  } else if(state.selectedReceiptIds.length === 0){
+    state.selectedReceiptId = null;
+    state.selectedReceiptNum = null;
+  } else {
+    state.selectedReceiptId = null;
+  }
+
+  // Update DOM highlights
+  const row = document.querySelector(`tr[data-receipt-id="${sId}"]`);
+  if(row){
+    if(isChecked) row.classList.add('selected-row');
+    else row.classList.remove('selected-row');
+  }
+  const card = document.querySelector(`.smart-receipt-card[data-receipt-id="${sId}"]`);
+  if(card){
+    if(isChecked) card.classList.add('selected-card');
+    else card.classList.remove('selected-card');
+  }
+
+  const allCb = document.getElementById('receiptSelectAllCb');
+  if(allCb){
+    const visibleCbs = Array.from(document.querySelectorAll('.receipt-select-cb'));
+    if(visibleCbs.length > 0){
+      allCb.checked = visibleCbs.every(c => c.checked);
+      allCb.indeterminate = visibleCbs.some(c => c.checked) && !allCb.checked;
+    }
+  }
+
+  if(typeof window.renderUnifiedSelectionBar === 'function'){
+    window.renderUnifiedSelectionBar();
+  }
+};
+
+window.toggleSelectAllReceipts = function(isChecked){
+  if(!Array.isArray(state.selectedReceiptIds)) state.selectedReceiptIds = [];
+  const visibleCbs = document.querySelectorAll('.receipt-select-cb');
+  visibleCbs.forEach(cb => {
+    cb.checked = isChecked;
+    const sId = String(cb.value);
+    const row = document.querySelector(`tr[data-receipt-id="${sId}"]`);
+    const card = document.querySelector(`.smart-receipt-card[data-receipt-id="${sId}"]`);
+    if(isChecked){
+      if(!state.selectedReceiptIds.includes(sId)) state.selectedReceiptIds.push(sId);
+      if(row) row.classList.add('selected-row');
+      if(card) card.classList.add('selected-card');
+    } else {
+      if(row) row.classList.remove('selected-row');
+      if(card) card.classList.remove('selected-card');
+    }
+  });
+
+  if(!isChecked){
+    state.selectedReceiptIds = [];
+    state.selectedReceiptId = null;
+    state.selectedReceiptNum = null;
+  } else if(state.selectedReceiptIds.length === 1){
+    state.selectedReceiptId = state.selectedReceiptIds[0];
+  } else {
+    state.selectedReceiptId = null;
+  }
+
+  if(typeof window.renderUnifiedSelectionBar === 'function'){
+    window.renderUnifiedSelectionBar();
+  }
 };
 
 // Inventory Direct Action Handlers
@@ -10230,6 +10713,13 @@ window.openCustomerActionSheet = function(custName, custPhone, custTitle, custEm
           <div class="act-label">تعديل البيانات</div>
           <div class="act-desc">تحديث الهاتف والاسم</div>
         </div>
+        ${clientReceipts.length > 1 ? `
+          <div class="action-sheet-card-btn" style="background:#f5f3ff;border-color:#ddd6fe;" onclick="document.getElementById('customerActionSheetModal').remove(); openCustomerConsolidatedInvoiceModal('${escapeHtml(custName)}');">
+            <div class="act-icon" style="color:#7c3aed;">🧾</div>
+            <div class="act-label">فاتورة مجمعة (${clientReceipts.length})</div>
+            <div class="act-desc">فوترة لكافة أجهزة العميل</div>
+          </div>
+        ` : ''}
       </div>
 
       <div class="action-sheet-section-title">💬 الاتصال والتواصل والأرشيف</div>
@@ -10272,8 +10762,17 @@ window.openCustomerActionSheet = function(custName, custPhone, custTitle, custEm
 /* ---------------- Table & Cards Views with Unified Actions ---------------- */
 
 function archiveTable(list){
+  const selIds = state.selectedReceiptIds || [];
+  const allSelected = list.length > 0 && list.every(rawR => {
+    const sId = String(rawR.id != null ? rawR.id : (rawR.ID != null ? rawR.ID : rawR.receiptNumber));
+    return selIds.includes(sId);
+  });
+
   return `<div class="table-wrap"><table><thead><tr>
-    <th>رقم الإيصال</th><th>العميل</th><th>الجهاز</th><th>الفني</th><th>الحالة</th><th>التكلفة</th><th>المدفوع</th><th>المتبقي</th><th>الإجراءات الموحدة</th>
+    <th style="width:36px;text-align:center;">
+      <input type="checkbox" id="receiptSelectAllCb" ${allSelected ? 'checked' : ''} onchange="window.toggleSelectAllReceipts(this.checked)" title="تحديد الكل" style="cursor:pointer;width:16px;height:16px;" />
+    </th>
+    <th>رقم الإيصال</th><th>العميل</th><th>الأجهزة</th><th>الفني</th><th>الحالة</th><th>التكلفة</th><th>المدفوع</th><th>المتبقي</th><th>الإجراءات الموحدة</th>
   </tr></thead><tbody>
   ${list.map(rawR=>{
     const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
@@ -10293,9 +10792,28 @@ function archiveTable(list){
     const rId = escapeHtml(String(r.id != null ? r.id : (r.ID != null ? r.ID : '')));
     const rNum = escapeHtml(String(r.receiptNumber || r.ReceiptNumber || ''));
     const safeTargetId = rId || rNum;
-    const isSelected = String(safeTargetId) === String(state.selectedReceiptId);
+    const isChecked = selIds.includes(String(safeTargetId));
+    const isSelected = isChecked || (String(safeTargetId) === String(state.selectedReceiptId));
+
+    const isMultiDev = Array.isArray(r.devices) && r.devices.length > 1;
+    const deviceHtml = isMultiDev ? `
+      <div>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <span class="badge" style="background:#e0e7ff;color:#3730a3;font-size:10px;font-weight:800;padding:1px 5px;border-radius:4px;">${r.devices.length} أجهزة</span>
+          <b style="font-size:12px;color:var(--ink);">${escapeHtml(r.devices[0].category || 'جهاز')} ${escapeHtml(r.devices[0].brand === 'أخرى' ? r.devices[0].brandOther : (r.devices[0].brand || ''))}</b>
+        </div>
+        <div style="font-size:11px;color:var(--ink-secondary);margin-top:2px;">
+          + ${r.devices.slice(1).map(d => escapeHtml((d.category || 'جهاز') + ' ' + (d.brand === 'أخرى' ? d.brandOther : (d.brand || '')) + ' ' + (d.model || ''))).join('، ')}
+        </div>
+      </div>
+    ` : `
+      <div>${dCat} - ${dBrand} <span style="color:var(--ink-secondary);">${dModel}</span></div>
+    `;
 
     return `<tr class="selectable-row ${isSelected ? 'selected-row' : ''}" data-receipt-id="${safeTargetId}" data-receipt-num="${rNum}" onclick="handleReceiptRowClick('${safeTargetId}', '${rNum}', event)" style="${isOverdue?'background:rgba(245,158,11,0.08);':''}">
+      <td style="text-align:center;" onclick="event.stopPropagation();">
+        <input type="checkbox" class="receipt-select-cb" value="${safeTargetId}" ${isChecked ? 'checked' : ''} onchange="window.toggleReceiptMultiSelection('${safeTargetId}', this.checked, event)" style="cursor:pointer;width:16px;height:16px;" />
+      </td>
       <td>
         <div style="display:flex;align-items:center;gap:4px;">
           ${isSelected ? '<span class="selected-badge-indicator" title="إيصال محدد">✓</span>' : ''}
@@ -10321,7 +10839,7 @@ function archiveTable(list){
           <div style="color:var(--amber-text);font-size:10.5px;font-weight:700;cursor:pointer;margin-top:2px;" onclick="openQuickAddPhoneModal('${escapeHtml(cName)}', '${escapeHtml(cTitle)}', '${safeTargetId}', '${rNum}'); event.stopPropagation();">⚠️ هاتف غير مسجل (اضغط للإضافة)</div>
         `}
       </td>
-      <td>${dCat} - ${dBrand} <span style="color:var(--ink-secondary);">${dModel}</span></td>
+      <td>${deviceHtml}</td>
       <td>${r.technician ? `<span style="font-weight:600;">${escapeHtml(r.technician)}</span>` : '<span style="color:var(--slate-400);">-</span>'}</td>
       <td>
         <button class="btn-status-quick" onclick="openQuickStatusModalDirect('${safeTargetId}', '${rNum}'); event.stopPropagation();" title="اضغط لتغيير حالة الجهاز فورًا">
@@ -10356,6 +10874,7 @@ function archiveTable(list){
 }
 
 function archiveCards(list){
+  const selIds = state.selectedReceiptIds || [];
   return `<div class="smart-cards-grid">
   ${list.map(rawR=>{
     const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
@@ -10375,22 +10894,29 @@ function archiveCards(list){
     const rId = escapeHtml(String(r.id != null ? r.id : (r.ID != null ? r.ID : '')));
     const rNum = escapeHtml(String(r.receiptNumber || r.ReceiptNumber || ''));
     const safeTargetId = rId || rNum;
-    const isSelected = String(safeTargetId) === String(state.selectedReceiptId);
+    const isChecked = selIds.includes(String(safeTargetId));
+    const isSelected = isChecked || (String(safeTargetId) === String(state.selectedReceiptId));
+
+    const isMultiDev = Array.isArray(r.devices) && r.devices.length > 1;
 
     return `<div class="smart-receipt-card ${isSelected ? 'selected-card' : ''}" data-receipt-id="${safeTargetId}" data-receipt-num="${rNum}" onclick="handleReceiptCardClick('${safeTargetId}', '${rNum}', event)" style="${isOverdue?'border-right: 4px solid var(--amber);background:rgba(245,158,11,0.03);':''}">
       <div>
         <div class="smart-card-header">
-          <div>
-            <div style="display:flex;align-items:center;gap:6px;">
-              ${isSelected ? '<span class="selected-badge-indicator">✓ محدد</span>' : ''}
-              <span class="badge" style="background:var(--paper2);color:var(--primary);font-size:11.5px;font-weight:800;border:1px solid var(--line);padding:2px 8px;border-radius:4px;">
-                إيصال <span class="mono" style="direction:ltr;unicode-bidi:isolate;display:inline-block;font-size:12.5px;">${rNum}</span>
-              </span>
-              ${r.previousReceiptNumber ? `<span class="badge" style="background:#fef3c7;color:#b45309;font-size:10px;font-weight:700;">🔄 صيانة راجعة (<span class="mono" style="direction:ltr;unicode-bidi:isolate;display:inline-block;">${escapeHtml(r.previousReceiptNumber)}</span>)</span>` : ''}
-            </div>
-            <div style="color:var(--ink-secondary);font-size:11px;display:flex;align-items:center;gap:6px;margin-top:3px;">
-              <span>📅 ${cleanDate(r.date)}</span>
-              ${(formatReceiptTime(r) || r.time) ? `<span class="mono" style="color:var(--primary);font-size:10.5px;font-weight:600;">⏰ ${formatReceiptTime(r) || r.time}</span>` : ''}
+          <div style="display:flex;align-items:flex-start;gap:8px;">
+            <input type="checkbox" class="receipt-select-cb" value="${safeTargetId}" ${isChecked ? 'checked' : ''} onclick="event.stopPropagation();" onchange="window.toggleReceiptMultiSelection('${safeTargetId}', this.checked, event)" style="cursor:pointer;width:18px;height:18px;margin-top:2px;" />
+            <div>
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                ${isSelected ? '<span class="selected-badge-indicator">✓ محدد</span>' : ''}
+                <span class="badge" style="background:var(--paper2);color:var(--primary);font-size:11.5px;font-weight:800;border:1px solid var(--line);padding:2px 8px;border-radius:4px;">
+                  إيصال <span class="mono" style="direction:ltr;unicode-bidi:isolate;display:inline-block;font-size:12.5px;">${rNum}</span>
+                </span>
+                ${isMultiDev ? `<span class="badge" style="background:#e0e7ff;color:#3730a3;font-size:10px;font-weight:800;">${r.devices.length} أجهزة</span>` : ''}
+                ${r.previousReceiptNumber ? `<span class="badge" style="background:#fef3c7;color:#b45309;font-size:10px;font-weight:700;">🔄 صيانة راجعة (<span class="mono" style="direction:ltr;unicode-bidi:isolate;display:inline-block;">${escapeHtml(r.previousReceiptNumber)}</span>)</span>` : ''}
+              </div>
+              <div style="color:var(--ink-secondary);font-size:11px;display:flex;align-items:center;gap:6px;margin-top:3px;">
+                <span>📅 ${cleanDate(r.date)}</span>
+                ${(formatReceiptTime(r) || r.time) ? `<span class="mono" style="color:var(--primary);font-size:10.5px;font-weight:600;">⏰ ${formatReceiptTime(r) || r.time}</span>` : ''}
+              </div>
             </div>
           </div>
           <button class="btn-status-quick" onclick="openQuickStatusModalDirect('${safeTargetId}', '${rNum}'); event.stopPropagation();" title="اضغط لتغيير حالة الجهاز فوراً" style="margin:0;">
@@ -10400,7 +10926,16 @@ function archiveCards(list){
         </div>
 
         <div style="margin-top:10px;">
-          <div class="smart-card-device">📱 ${dCat} - ${dBrand} <span style="color:var(--ink-secondary);font-weight:500;">${dModel}</span></div>
+          ${isMultiDev ? `
+            <div class="smart-card-device">
+              📱 <b>${escapeHtml(r.devices[0].category || 'جهاز')} ${escapeHtml(r.devices[0].brand === 'أخرى' ? r.devices[0].brandOther : (r.devices[0].brand || ''))}</b> <span style="color:var(--ink-secondary);font-weight:500;">${escapeHtml(r.devices[0].model || '')}</span>
+              <div style="font-size:11px;color:var(--ink-secondary);margin-top:2px;">
+                + ${r.devices.slice(1).map(d => escapeHtml((d.category || 'جهاز') + ' ' + (d.brand === 'أخرى' ? d.brandOther : (d.brand || '')) + ' ' + (d.model || ''))).join('، ')}
+              </div>
+            </div>
+          ` : `
+            <div class="smart-card-device">📱 ${dCat} - ${dBrand} <span style="color:var(--ink-secondary);font-weight:500;">${dModel}</span></div>
+          `}
           <div class="smart-card-customer">
             ${cTitle ? `<span class="badge" style="background:var(--paper2);color:var(--primary);font-size:10px;font-weight:700;border:1px solid var(--line);padding:1px 5px;border-radius:4px;">${escapeHtml(cTitle)}</span>` : ''}
             <b style="color:var(--ink);">${escapeHtml(cName)}</b>
@@ -10686,6 +11221,11 @@ function renderCustomersPage(main){
                       <button class="btn btn-ghost btn-xs cust-new-inv-btn" data-custtitle="${escapeHtml(cTitle)}" data-custname="${escapeHtml(cName)}" data-custphone="${escapeHtml(cPhone||'')}" style="color:var(--purple);">
                         🧾 فاتورة
                       </button>
+                      ${clientReceipts.length > 1 ? `
+                        <button class="btn btn-xs" style="background:#ede9fe;color:#6d28d9;border:1px solid #c4b5fd;font-weight:800;" onclick="openCustomerConsolidatedInvoiceModal('${escapeHtml(cName)}'); event.stopPropagation();" title="إصدار فاتورة مجمعة لكافة أجهزة هذا العميل">
+                          🧾 مجمعة (${clientReceipts.length})
+                        </button>
+                      ` : ''}
                     </div>
                   </td>
                 </tr>
@@ -11334,16 +11874,29 @@ function openWhatsappChoice(rawR){
     const otherAmt = Number(r.otherAccountAmount||0);
     const remaining = Number(r.cost||0)+Number(r.partsCost||0)+otherAmt-Number(r.deposit||0)+Number(r.refunded||0);
     const trackUrl = `${window.location.origin}${window.location.pathname}?track=${encodeURIComponent(r.receiptNumber||'')}`;
-    const devCat = (r.device && r.device.category) || 'جهاز';
-    const devBrand = r.device ? (r.device.brand==='أخرى' ? r.device.brandOther : r.device.brand) : '';
-    const devModel = (r.device && r.device.model) || '';
-    const faultsStr = (Array.isArray(r.faults) ? r.faults.join('، ') : String(r.faults || '')) || '-';
     const shopName = (state.settings && state.settings.shopName) || 'صيانة ميكروتك';
     const otherNote = otherAmt > 0 ? `\n*حساب إضافي (${r.otherAccountDesc || 'رصيد آخر'}):* ${otherAmt} ج.م` : '';
     const rTime = typeof formatReceiptTime === 'function' ? formatReceiptTime(r) : (r.time || '');
     const dateStr = cleanDate(r.date) + (rTime ? ` (الساعة ${rTime})` : '');
     const customerDisplayName = (typeof formatCustomerFullName === 'function') ? formatCustomerFullName(r) : (r.customer.name || 'عميلنا العزيز');
-    const msg = `مرحبًا ${customerDisplayName} 👋\n*إيصال صيانة رقم:* ${r.receiptNumber}\n*تاريخ ووقت الاستلام:* ${dateStr}\n*الجهاز:* ${devCat} - ${devBrand} ${devModel}\n*الأعطال:* ${faultsStr}\n*الحالة الحالية:* ${r.status}${otherNote}\n*المتبقي المطلوب:* ${remaining} ج.م\n*رابط تتبع الجهاز مباشرة:* ${trackUrl}\n\n${shopName}`;
+
+    let deviceSection = '';
+    if(Array.isArray(r.devices) && r.devices.length > 1){
+      deviceSection = `*الأجهزة المستلمة (${r.devices.length} أجهزة):*\n` + r.devices.map((dv, i) => {
+        const dTitle = `${dv.category || 'جهاز'} - ${(dv.brand === 'أخرى' ? dv.brandOther : dv.brand) || ''} ${dv.model || ''}`.trim();
+        const dF = (Array.isArray(dv.faults) && dv.faults.length) ? dv.faults.join('، ') : 'فحص عام';
+        const dN = dv.faultNotes ? ` (${dv.faultNotes})` : '';
+        return `  ${i+1}. *${dTitle}*: ${dF}${dN}`;
+      }).join('\n');
+    } else {
+      const devCat = (r.device && r.device.category) || 'جهاز';
+      const devBrand = r.device ? (r.device.brand==='أخرى' ? r.device.brandOther : r.device.brand) : '';
+      const devModel = (r.device && r.device.model) || '';
+      const faultsStr = (Array.isArray(r.faults) ? r.faults.join('، ') : String(r.faults || '')) || '-';
+      deviceSection = `*الجهاز:* ${devCat} - ${devBrand} ${devModel}\n*الأعطال:* ${faultsStr}${r.faultNotes ? ' ('+r.faultNotes+')' : ''}`;
+    }
+
+    const msg = `مرحبًا ${customerDisplayName} 👋\n*إيصال صيانة رقم:* ${r.receiptNumber}\n*تاريخ ووقت الاستلام:* ${dateStr}\n${deviceSection}\n*الحالة الحالية:* ${r.status}${otherNote}\n*المتبقي المطلوب:* ${remaining} ج.م\n*رابط تتبع الجهاز مباشرة:* ${trackUrl}\n\n${shopName}`;
     sendWhatsapp(r, msg);
     overlay.remove();
   };
@@ -12848,6 +13401,26 @@ async function openReceiptDetail(rawR){
         <div class="field"><label>اسم العميل</label><input id="eName" value="${escapeHtml(curName)}"></div>
         <div class="field"><label>رقم هاتف العميل</label><input id="ePhone" value="${escapeHtml(r.customer.phone||'')}"></div>
       </div>
+
+      ${(Array.isArray(r.devices) && r.devices.length > 1) ? `
+        <div style="background:var(--paper2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 10px;margin-bottom:12px;">
+          <div style="font-size:11.5px;font-weight:800;color:var(--ink-secondary);margin-bottom:6px;">
+            📱 أجهزة هذا الإيصال (${r.devices.length} أجهزة) — اضغط للتبديل وتعديل بيانات كل جهاز وأعطاله:
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;" id="detailDevTabsBar">
+            ${r.devices.map((dv, idx) => {
+              const isAct = idx === 0;
+              const b = dv.brand === 'أخرى' ? dv.brandOther : (dv.brand || '');
+              const t = `${dv.category || 'جهاز'} ${b} ${dv.model || ''}`.trim() || `جهاز #${idx+1}`;
+              return `
+                <button type="button" class="btn btn-xs ${isAct ? 'btn-primary' : 'btn-ghost'} detail-dev-tab-btn" data-didx="${idx}" style="font-size:12px;">
+                  📱 ${escapeHtml(t)}
+                </button>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      ` : ''}
       <div class="grid4">
         <div class="field"><label>فئة الجهاز</label><input id="eCat" value="${escapeHtml(r.device.category||'')}"></div>
         <div class="field"><label>الماركة</label><input id="eBrand" value="${escapeHtml(r.device.brand||'')}"></div>
@@ -13068,12 +13641,78 @@ async function openReceiptDetail(rawR){
   const eOtherInp = overlay.querySelector('#eOtherAmount');
   if(eOtherInp) eOtherInp.oninput = recalcDetailFinances;
 
+  let currentEditDevIdx = 0;
+  const hasMultipleDevices = Array.isArray(r.devices) && r.devices.length > 1;
+
+  function syncCurrentDevToDom(idx){
+    const dev = (hasMultipleDevices && r.devices[idx]) ? r.devices[idx] : r.device;
+    if(!dev) return;
+    const catInp = overlay.querySelector('#eCat');
+    if(catInp) catInp.value = dev.category || '';
+    const brandInp = overlay.querySelector('#eBrand');
+    if(brandInp) brandInp.value = (dev.brand === 'أخرى' ? dev.brandOther : dev.brand) || '';
+    const modelInp = overlay.querySelector('#eModel');
+    if(modelInp) modelInp.value = dev.model || '';
+    const passInp = overlay.querySelector('#ePassword');
+    if(passInp) passInp.value = dev.password || '';
+    const notesInp = overlay.querySelector('#eFaultNotes');
+    if(notesInp) notesInp.value = (hasMultipleDevices ? dev.faultNotes : r.faultNotes) || '';
+
+    // Update chips
+    const devFaults = hasMultipleDevices ? (dev.faults || []) : (r.faults || []);
+    overlay.querySelectorAll('#editFaultChips .chip').forEach(c => {
+      const f = c.dataset.f;
+      if(devFaults.includes(f)) c.classList.add('sel');
+      else c.classList.remove('sel');
+    });
+
+    // Update active tab styling
+    overlay.querySelectorAll('.detail-dev-tab-btn').forEach(btn => {
+      const bIdx = Number(btn.dataset.didx);
+      if(bIdx === idx){
+        btn.className = 'btn btn-xs btn-primary detail-dev-tab-btn';
+      } else {
+        btn.className = 'btn btn-xs btn-ghost detail-dev-tab-btn';
+      }
+    });
+  }
+
+  function saveDomToCurrentDev(idx){
+    if(!hasMultipleDevices) return;
+    const dev = r.devices[idx];
+    if(!dev) return;
+    dev.category = (overlay.querySelector('#eCat')?.value || '').trim();
+    dev.brand = (overlay.querySelector('#eBrand')?.value || '').trim();
+    dev.model = (overlay.querySelector('#eModel')?.value || '').trim();
+    dev.password = (overlay.querySelector('#ePassword')?.value || '').trim();
+    dev.faultNotes = (overlay.querySelector('#eFaultNotes')?.value || '').trim();
+  }
+
+  if(hasMultipleDevices){
+    overlay.querySelectorAll('.detail-dev-tab-btn').forEach(btn => {
+      btn.onclick = () => {
+        saveDomToCurrentDev(currentEditDevIdx);
+        currentEditDevIdx = Number(btn.dataset.didx);
+        syncCurrentDevToDom(currentEditDevIdx);
+      };
+    });
+  }
+
   overlay.querySelectorAll('#editFaultChips .chip').forEach(c=>{
     c.onclick = ()=>{
       const f = c.dataset.f;
-      if(!Array.isArray(r.faults)) r.faults = [];
-      const idx = r.faults.indexOf(f);
-      if(idx>-1) r.faults.splice(idx,1); else r.faults.push(f);
+      if(hasMultipleDevices && r.devices[currentEditDevIdx]){
+        const dev = r.devices[currentEditDevIdx];
+        if(!Array.isArray(dev.faults)) dev.faults = [];
+        const idx = dev.faults.indexOf(f);
+        if(idx > -1) dev.faults.splice(idx, 1);
+        else dev.faults.push(f);
+      } else {
+        if(!Array.isArray(r.faults)) r.faults = [];
+        const idx = r.faults.indexOf(f);
+        if(idx > -1) r.faults.splice(idx, 1);
+        else r.faults.push(f);
+      }
       c.classList.toggle('sel');
     };
   });
@@ -13096,12 +13735,29 @@ async function openReceiptDetail(rawR){
     r.CustomerName = r.customer.name;
     r.customer.phone = overlay.querySelector('#ePhone').value.trim();
     r.CustomerPhone = r.customer.phone;
-    r.device.category = overlay.querySelector('#eCat').value.trim();
-    r.device.brand = overlay.querySelector('#eBrand').value.trim();
-    r.device.model = overlay.querySelector('#eModel').value.trim();
-    r.device.password = (overlay.querySelector('#ePassword')?.value || '').trim();
-    r.password = r.device.password;
-    r.faultNotes = overlay.querySelector('#eFaultNotes').value.trim();
+
+    if(hasMultipleDevices){
+      saveDomToCurrentDev(currentEditDevIdx);
+      r.device = {
+        category: r.devices[0].category,
+        brand: r.devices[0].brand,
+        brandOther: r.devices[0].brandOther || '',
+        model: r.devices[0].model,
+        accessories: r.devices[0].accessories || '',
+        password: r.devices[0].password || ''
+      };
+      r.password = r.device.password;
+      r.faults = Array.from(new Set(r.devices.flatMap(x => x.faults || [])));
+      r.faultNotes = r.devices[0].faultNotes || '';
+    } else {
+      r.device.category = overlay.querySelector('#eCat').value.trim();
+      r.device.brand = overlay.querySelector('#eBrand').value.trim();
+      r.device.model = overlay.querySelector('#eModel').value.trim();
+      r.device.password = (overlay.querySelector('#ePassword')?.value || '').trim();
+      r.password = r.device.password;
+      r.faultNotes = overlay.querySelector('#eFaultNotes').value.trim();
+    }
+
     r.technician = overlay.querySelector('#eTech').value;
     r.status = overlay.querySelector('#eStatus').value.replace(/^[^\s]+\s/, '');
     r.serviceItems = detailServiceItems.filter(it => (it.desc && it.desc.trim()) || Number(it.price) > 0);
@@ -13478,28 +14134,69 @@ function openReceiptPrint(rawR, kind){
         </table>
 
         <!-- Device & Fault Info -->
-        <table style="width:100%;border-collapse:collapse;font-size:7.5px;margin-bottom:1.5px;">
-          <tr>
-            <td style="width:18%;padding:1px 2px;background:#f1f5f9;font-weight:bold;border:1px solid #cbd5e1;">الجهاز</td>
-            <td colspan="3" style="padding:1px 2px;border:1px solid #cbd5e1;font-weight:800;">${dCat} - ${dBrand} ${dModel}</td>
-          </tr>
-          <tr>
-            <td style="padding:1px 2px;background:#f1f5f9;font-weight:bold;border:1px solid #cbd5e1;">الملحقات</td>
-            <td style="padding:1px 2px;border:1px solid #cbd5e1;">${dAccessories}</td>
-            <td style="padding:1px 2px;background:#f1f5f9;font-weight:bold;border:1px solid #cbd5e1;">الباسورد</td>
-            <td class="mono" style="padding:1px 2px;border:1px solid #cbd5e1;font-weight:bold;color:#b45309;">${dPass ? '🔑 '+dPass : 'بدون'}</td>
-          </tr>
-          <tr>
-            <td style="padding:1px 2px;background:#f1f5f9;font-weight:bold;border:1px solid #cbd5e1;">العطل</td>
-            <td colspan="3" style="padding:1px 2px;border:1px solid #cbd5e1;font-weight:bold;color:#0f172a;">${faultsStr}${r.faultNotes ? ' ('+escapeHtml(r.faultNotes)+')' : ''}</td>
-          </tr>
-          <tr>
-            <td style="padding:1px 2px;background:#f1f5f9;font-weight:bold;border:1px solid #cbd5e1;">الفني</td>
-            <td style="padding:1px 2px;border:1px solid #cbd5e1;">${escapeHtml(r.technician || '-')}</td>
-            <td style="padding:1px 2px;background:#f1f5f9;font-weight:bold;border:1px solid #cbd5e1;">التسليم</td>
-            <td style="padding:1px 2px;border:1px solid #cbd5e1;font-weight:bold;">${cleanDate(r.deliveryDate) || 'يحدد لاحقاً'}</td>
-          </tr>
-        </table>
+        ${(Array.isArray(r.devices) && r.devices.length > 1) ? `
+          <table style="width:100%;border-collapse:collapse;font-size:7px;margin-bottom:1.5px;">
+            <thead>
+              <tr style="background:#f1f5f9;font-weight:bold;">
+                <th style="border:1px solid #cbd5e1;padding:1px 2px;width:14px;text-align:center;">#</th>
+                <th style="border:1px solid #cbd5e1;padding:1px 2px;text-align:right;">الجهاز والموديل</th>
+                <th style="border:1px solid #cbd5e1;padding:1px 2px;text-align:right;">الأعطال وملاحظات الفحص</th>
+                <th style="border:1px solid #cbd5e1;padding:1px 2px;width:38px;text-align:center;">الملحقات</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${r.devices.map((dv, idx) => {
+                const c = escapeHtml(dv.category || 'جهاز');
+                const b = escapeHtml(dv.brand === 'أخرى' ? dv.brandOther : (dv.brand || ''));
+                const m = escapeHtml(dv.model || '');
+                const p = dv.password ? ` [🔑 ${escapeHtml(dv.password)}]` : '';
+                const f = (Array.isArray(dv.faults) ? dv.faults.join('، ') : String(dv.faults || '')) || '';
+                const n = dv.faultNotes ? ` (${escapeHtml(dv.faultNotes)})` : '';
+                const fStr = escapeHtml(f) + n;
+                const acc = escapeHtml(dv.accessories || 'بدون');
+                return `
+                  <tr>
+                    <td style="border:1px solid #cbd5e1;padding:1px 2px;text-align:center;font-weight:bold;">${idx+1}</td>
+                    <td style="border:1px solid #cbd5e1;padding:1px 2px;font-weight:800;">${c} ${b} ${m}${p}</td>
+                    <td style="border:1px solid #cbd5e1;padding:1px 2px;color:#0f172a;">${fStr || '-'}</td>
+                    <td style="border:1px solid #cbd5e1;padding:1px 2px;text-align:center;font-size:6.5px;">${acc}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+          <table style="width:100%;border-collapse:collapse;font-size:7px;margin-bottom:1.5px;">
+            <tr>
+              <td style="width:18%;padding:1px 2px;background:#f1f5f9;font-weight:bold;border:1px solid #cbd5e1;">الفني</td>
+              <td style="padding:1px 2px;border:1px solid #cbd5e1;">${escapeHtml(r.technician || '-')}</td>
+              <td style="width:18%;padding:1px 2px;background:#f1f5f9;font-weight:bold;border:1px solid #cbd5e1;">التسليم</td>
+              <td style="padding:1px 2px;border:1px solid #cbd5e1;font-weight:bold;">${cleanDate(r.deliveryDate) || 'يحدد لاحقاً'}</td>
+            </tr>
+          </table>
+        ` : `
+          <table style="width:100%;border-collapse:collapse;font-size:7.5px;margin-bottom:1.5px;">
+            <tr>
+              <td style="width:18%;padding:1px 2px;background:#f1f5f9;font-weight:bold;border:1px solid #cbd5e1;">الجهاز</td>
+              <td colspan="3" style="padding:1px 2px;border:1px solid #cbd5e1;font-weight:800;">${dCat} - ${dBrand} ${dModel}</td>
+            </tr>
+            <tr>
+              <td style="padding:1px 2px;background:#f1f5f9;font-weight:bold;border:1px solid #cbd5e1;">الملحقات</td>
+              <td style="padding:1px 2px;border:1px solid #cbd5e1;">${dAccessories}</td>
+              <td style="padding:1px 2px;background:#f1f5f9;font-weight:bold;border:1px solid #cbd5e1;">الباسورد</td>
+              <td class="mono" style="padding:1px 2px;border:1px solid #cbd5e1;font-weight:bold;color:#b45309;">${dPass ? '🔑 '+dPass : 'بدون'}</td>
+            </tr>
+            <tr>
+              <td style="padding:1px 2px;background:#f1f5f9;font-weight:bold;border:1px solid #cbd5e1;">العطل</td>
+              <td colspan="3" style="padding:1px 2px;border:1px solid #cbd5e1;font-weight:bold;color:#0f172a;">${faultsStr}${r.faultNotes ? ' ('+escapeHtml(r.faultNotes)+')' : ''}</td>
+            </tr>
+            <tr>
+              <td style="padding:1px 2px;background:#f1f5f9;font-weight:bold;border:1px solid #cbd5e1;">الفني</td>
+              <td style="padding:1px 2px;border:1px solid #cbd5e1;">${escapeHtml(r.technician || '-')}</td>
+              <td style="padding:1px 2px;background:#f1f5f9;font-weight:bold;border:1px solid #cbd5e1;">التسليم</td>
+              <td style="padding:1px 2px;border:1px solid #cbd5e1;font-weight:bold;">${cleanDate(r.deliveryDate) || 'يحدد لاحقاً'}</td>
+            </tr>
+          </table>
+        `}
 
         <!-- Financial Box -->
         <div style="display:grid;grid-template-columns:1fr 1fr 1.3fr;gap:2px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:3px;padding:2px;text-align:center;font-size:7.5px;margin-bottom:1.5px;">
@@ -13898,10 +14595,25 @@ function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0, offsetX =
   // ── Step 2: build sticker page HTML for each copy ──
   let pagesHtml = '';
   for(let i = 0; i < copies; i++){
-    const innerHtml = isReceipt
-      ? generateReceiptStickerHTML(cfg.data, dim, `bcSvg_${i}`)
-      : generateProductStickerHTML(cfg.data, dim, `bcSvg_${i}`);
-    pagesHtml += `<div class="sticker-page">${innerHtml}</div>`;
+    if(isReceipt && cfg.data && Array.isArray(cfg.data.devices) && cfg.data.devices.length > 1){
+      cfg.data.devices.forEach((dev, devIdx) => {
+        const subR = {
+          ...cfg.data,
+          device: { category: dev.category, brand: dev.brand, brandOther: dev.brandOther, model: dev.model, accessories: dev.accessories, password: dev.password },
+          faults: dev.faults,
+          faultNotes: dev.faultNotes,
+          password: dev.password,
+          receiptNumber: `${cfg.data.receiptNumber || ''}-${devIdx + 1}/${cfg.data.devices.length}`
+        };
+        const sHtml = generateReceiptStickerHTML(subR, dim, `bcSvg_${i}_${devIdx}`);
+        pagesHtml += `<div class="sticker-page">${sHtml}</div>`;
+      });
+    } else {
+      const innerHtml = isReceipt
+        ? generateReceiptStickerHTML(cfg.data, dim, `bcSvg_${i}`)
+        : generateProductStickerHTML(cfg.data, dim, `bcSvg_${i}`);
+      pagesHtml += `<div class="sticker-page">${innerHtml}</div>`;
+    }
   }
 
   // ── Step 3: build offsetTransform (optional, for fine calibration) ──
@@ -14557,6 +15269,246 @@ function convertReceiptToInvoice(receiptId){
 
   openInvoiceModal(prefilledInvoice, true);
 }
+
+window.convertMultipleReceiptsToInvoice = function(receiptIds){
+  if(!Array.isArray(receiptIds) || receiptIds.length === 0){
+    showToast('يرجى تحديد إيصالات لإصدار الفاتورة المجمعة', 'error');
+    return;
+  }
+
+  const receipts = receiptIds.map(id => findReceiptByIdOrNum(id)).filter(Boolean);
+  if(receipts.length === 0){
+    showToast('تعذر العثور على الإيصالات المحددة', 'error');
+    return;
+  }
+
+  if(receipts.length === 1){
+    return convertReceiptToInvoice(receipts[0].id || receipts[0].receiptNumber);
+  }
+
+  const firstCustName = extractCustomerName(receipts[0]) || 'عميل';
+  const firstCustTitle = extractCustomerTitle(receipts[0]) || '';
+  const firstCustPhone = extractCustomerPhone(receipts[0]) || '';
+  const firstCustEmail = extractCustomerEmail(receipts[0]) || '';
+
+  const differentCusts = receipts.filter(r => (extractCustomerName(r) || '').trim().toLowerCase() !== firstCustName.trim().toLowerCase());
+  if(differentCusts.length > 0){
+    if(!confirm(`تنبيه: الإيصالات المحددة تخص أكثر من عميل.\nهل ترغب في إصدار الفاتورة المجمعة باسم العميل (${firstCustName})؟`)){
+      return;
+    }
+  }
+
+  const items = [];
+  let totalPaymentsAll = 0;
+  const receiptNumbers = [];
+
+  receipts.forEach(r => {
+    const rNum = r.receiptNumber || r.id;
+    receiptNumbers.push(rNum);
+
+    const totalCost = Number(r.cost || 0);
+    const partsCost = Number(r.partsCost || 0);
+    const laborCost = Math.max(0, totalCost - partsCost);
+
+    const payments = (typeof getReceiptPayments === 'function') ? getReceiptPayments(r) : [];
+    const pAmt = payments.reduce((s, p) => s + Number(p.Amount || 0), 0);
+    const depositAmt = Number(r.deposit || 0);
+    const paidForThis = pAmt > 0 ? pAmt : depositAmt;
+    totalPaymentsAll += paidForThis;
+
+    const devs = (Array.isArray(r.devices) && r.devices.length) ? r.devices : [ r.device ];
+    const devDescs = devs.map(d => {
+      const cat = d.category || 'جهاز';
+      const b = d.brand === 'أخرى' ? d.brandOther : d.brand;
+      return `${cat} ${b||''} ${d.model||''}`.trim();
+    }).join(' + ');
+
+    const faultsDesc = (Array.isArray(r.faults) && r.faults.length) ? r.faults.join('، ') : (r.faultNotes || 'صيانة عامة');
+
+    const svcItems = Array.isArray(r.serviceItems) ? r.serviceItems.filter(it => (it.desc && it.desc.trim()) || Number(it.price) > 0) : [];
+    if(svcItems.length > 0){
+      svcItems.forEach(it => {
+        items.push({
+          Name: `خدمة صيانة: ${it.desc} (${devDescs} - إيصال #${rNum})`,
+          Qty: 1,
+          Price: Number(it.price || 0),
+          Total: Number(it.price || 0)
+        });
+      });
+    } else {
+      items.push({
+        Name: `أجور وخدمات صيانة: ${devDescs} (إيصال #${rNum} - عطل: ${faultsDesc})`,
+        Qty: 1,
+        Price: laborCost > 0 ? laborCost : totalCost,
+        Total: laborCost > 0 ? laborCost : totalCost
+      });
+    }
+
+    if(partsCost > 0){
+      items.push({
+        Name: `قطع غيار مستخدمة (${devDescs} - إيصال #${rNum}): ${r.partsUsed || 'مستلزمات صيانة'}`,
+        Qty: 1,
+        Price: partsCost,
+        Total: partsCost
+      });
+    }
+
+    const otherAmt = Number(r.otherAccountAmount || 0);
+    if(otherAmt > 0){
+      items.push({
+        Name: `حساب إضافي (إيصال #${rNum}): ${r.otherAccountDesc || 'رصيد سابق'}`,
+        Qty: 1,
+        Price: otherAmt,
+        Total: otherAmt
+      });
+    }
+  });
+
+  const subtotal = items.reduce((s, it) => s + Number(it.Total || 0), 0);
+  const remaining = Math.max(0, subtotal - totalPaymentsAll);
+
+  const prefilledInvoice = {
+    ID: 'inv_' + Date.now(),
+    InvoiceNumber: 'INV-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-4),
+    Date: new Date().toISOString().slice(0, 10),
+    DueDate: new Date().toISOString().slice(0, 10),
+    CustomerTitle: firstCustTitle,
+    CustomerName: firstCustName,
+    CustomerPhone: firstCustPhone,
+    CustomerTaxNumber: '',
+    CustomerAddress: '',
+    Items: items,
+    ItemsSummary: items.map(i => i.Name).join(' + '),
+    Subtotal: subtotal,
+    TaxPercent: 0,
+    TaxAmount: 0,
+    Discount: 0,
+    Total: subtotal,
+    AmountPaid: totalPaymentsAll,
+    Remaining: remaining,
+    Status: remaining <= 0 ? 'مدفوعة بالكامل' : (totalPaymentsAll > 0 ? 'مدفوعة جزئياً' : 'غير مدفوعة (آجلة)'),
+    PaymentMethod: 'نقدي',
+    ReferenceType: 'MultipleReceipts',
+    ReferenceID: receiptNumbers.join(', '),
+    Notes: `فاتورة مجمعة صادرة عن (${receipts.length}) إيصالات صيانة: #${receiptNumbers.join('، #')}`
+  };
+
+  openInvoiceModal(prefilledInvoice, true);
+};
+
+window.openCustomerConsolidatedInvoiceModal = function(custName){
+  const cleanName = (custName || '').trim().toLowerCase();
+  const clientReceipts = (state.receipts || []).filter(r => {
+    const rName = extractCustomerName(r);
+    return rName && rName.trim().toLowerCase() === cleanName;
+  });
+
+  if(clientReceipts.length === 0){
+    showToast('لا توجد أي إيصالات مسجلة لهذا العميل', 'warning');
+    return;
+  }
+  if(clientReceipts.length === 1){
+    return convertReceiptToInvoice(clientReceipts[0].id || clientReceipts[0].receiptNumber);
+  }
+
+  const prevModal = document.getElementById('custConsolidatedInvoicePickerModal');
+  if(prevModal) prevModal.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'custConsolidatedInvoicePickerModal';
+  overlay.style.zIndex = '11200';
+
+  overlay.innerHTML = `
+    <div class="modal-content" style="max-width:560px;padding:22px;border-radius:18px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:14px;">
+        <div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-size:18px;">🧾</span>
+            <h3 style="margin:0;font-size:16.5px;color:var(--ink);">فاتورة مجمعة للعميل: <b>${escapeHtml(custName)}</b></h3>
+          </div>
+          <div style="font-size:12px;color:var(--ink-secondary);margin-top:2px;">حدد إيصالات الصيانة المطلوب تضمينها في الفاتورة المجمعة (${clientReceipts.length} إيصالات متوفرة):</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('custConsolidatedInvoicePickerModal').remove()">✕</button>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:12px;">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:700;">
+          <input type="checkbox" id="pickAllCustRecsChk" checked>
+          <span>تحديد الكل</span>
+        </label>
+        <div id="custConsolidatedSummary" style="font-weight:800;color:var(--primary);"></div>
+      </div>
+
+      <div style="max-height:280px;overflow-y:auto;border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px;display:flex;flex-direction:column;gap:6px;margin-bottom:14px;background:var(--paper2);">
+        ${clientReceipts.map(r => {
+          const rNum = r.receiptNumber || r.id;
+          const otherAmt = Number(r.otherAccountAmount || 0);
+          const totalCost = Number(r.cost || 0) + Number(r.partsCost || 0) + otherAmt;
+          const deposit = Number(r.deposit || 0);
+          const remaining = Math.max(0, totalCost - deposit + Number(r.refunded || 0));
+          const devCat = (r.device && r.device.category) || 'جهاز';
+          const brand = (r.device ? (r.device.brand==='أخرى'?r.device.brandOther:r.device.brand) : '') || '';
+          const model = (r.device && r.device.model) || '';
+
+          return `
+            <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;background:var(--paper);border:1px solid var(--line);border-radius:6px;cursor:pointer;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <input type="checkbox" class="cust-inv-rec-chk" value="${r.id || rNum}" checked>
+                <div>
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <b class="mono" style="color:var(--primary);font-size:12.5px;">#${escapeHtml(rNum)}</b>
+                    <span style="font-size:12px;font-weight:700;color:var(--ink);">${escapeHtml(devCat)} ${escapeHtml(brand)} ${escapeHtml(model)}</span>
+                  </div>
+                  <div style="font-size:11px;color:var(--ink-secondary);">الحالة: <b>${escapeHtml(r.status)}</b> • التاريخ: ${cleanDate(r.date)}</div>
+                </div>
+              </div>
+              <div style="text-align:left;" class="mono">
+                <div style="font-weight:800;font-size:12px;color:var(--ink);">${totalCost.toLocaleString()} ج.م</div>
+                <div style="font-size:10.5px;${remaining > 0 ? 'color:var(--red);' : 'color:var(--green);'}">متبقي: ${remaining.toLocaleString()} ج.م</div>
+              </div>
+            </label>
+          `;
+        }).join('')}
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <button class="btn btn-ghost" onclick="document.getElementById('custConsolidatedInvoicePickerModal').remove()">إلغاء</button>
+        <button class="btn btn-primary" id="confirmCustConsolidatedInvoiceBtn" style="font-weight:800;">
+          🧾 إصدار الفاتورة المجمعة ➔
+        </button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const checkboxes = overlay.querySelectorAll('.cust-inv-rec-chk');
+  const allChk = overlay.querySelector('#pickAllCustRecsChk');
+  const summaryEl = overlay.querySelector('#custConsolidatedSummary');
+
+  function updateSummary(){
+    const selected = Array.from(checkboxes).filter(c => c.checked).map(c => c.value);
+    summaryEl.textContent = `تم تحديد (${selected.length} من ${clientReceipts.length})`;
+    allChk.checked = selected.length === clientReceipts.length;
+  }
+  updateSummary();
+
+  allChk.onchange = ()=>{
+    checkboxes.forEach(c => c.checked = allChk.checked);
+    updateSummary();
+  };
+  checkboxes.forEach(c => c.onchange = updateSummary);
+
+  overlay.querySelector('#confirmCustConsolidatedInvoiceBtn').onclick = ()=>{
+    const selectedIds = Array.from(checkboxes).filter(c => c.checked).map(c => c.value);
+    if(selectedIds.length === 0){
+      showToast('يرجى تحديد إيصال واحد على الأقل', 'error');
+      return;
+    }
+    overlay.remove();
+    convertMultipleReceiptsToInvoice(selectedIds);
+  };
+};
 
 function openInvoiceModal(existingInv, isFromReceipt=false){
   const overlay = document.createElement('div');

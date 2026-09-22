@@ -1,0 +1,529 @@
+/* ============================================================
+   Google Apps Script Backend - ميكروERP
+   ============================================================
+   طريقة الاستخدام:
+   1) افتح Google Sheet جديد أو الموجود عندك.
+   2) من القائمة: الإضافات (Extensions) > Apps Script.
+   3) امسح الكود الموجود والصق هذا الكود بالكامل (في ملف الكود الرئيسي، مثلاً Code.gs).
+   4) مهم جدًا: من نفس محرر Apps Script، اضغط على "+" جنب "Files" واختر "HTML"،
+      وسمّي الملف بالظبط: Index (من غير امتداد .html، الـ Apps Script بيضيفه لوحده).
+      افتح ملف "ميكروERP.html" المرفق معاك، انسخ محتواه بالكامل، والصقه جوه ملف Index ده.
+      ده اللي هيخلي رابط النشر بتاعك يفتح البرنامج نفسه من أي متصفح، أي جهاز، من غير
+      ما تنزّل أي ملف يدويًا — نفس الرابط هو البرنامج والـ API مع بعض.
+   5) اعمل داخل نفس الشيت سبع أوراق (Sheets/Tabs) بالأسماء التالية بالضبط:
+        - Users        (أعمدة: Name | Password | Role | Sections)
+                         Sections مثال: maintenance,cameras,pos (فاضي = الصيانة بس افتراضيًا)
+        - Receipts     (أعمدة: ID | ReceiptNumber | Date | CustomerTitle | CustomerName | CustomerPhone |
+                                CustomerEmail | Category | Brand | Model | Accessories |
+                                Faults | FaultNotes | Technician | Cost | Deposit | Refunded | PartsCost | PartsUsed |
+                                DeliveryDate | Status | Paid | Bonus | CreatedBy |
+                                UpdatedBy | UpdatedAt)
+        - Customers    (أعمدة: Name | Phone | Email)
+        - Technicians  (أعمدة: Name)
+        - Settings     (أعمدة: Key | Value) — تستخدم لتخزين اسم الشركة وإعدادات عامة أخرى
+        - Payments     (أعمدة: ID | ReceiptID | Date | Amount | Note | By) — سجل كل دفعة على حدة
+        - Inventory    (أعمدة: ID | Name | Category | Barcode | ImageURL | Quantity | PurchasePrice | SellPrice)
+                         Category: "صيانة" أو "كاميرات" أو "كمبيوتر" أو "إكسسوار"
+        - Sales        (أعمدة: ID | Date | ItemsSummary | ItemsJSON | Total | PaymentMethod | AmountPaid |
+                                CustomerName | CustomerPhone | By)
+        - Returns      (أعمدة: ID | SaleID | Date | ItemsSummary | RefundAmount | By)
+        - Quotations   (أعمدة: ID | Date | ClientName | ClientPhone | ItemsSummary | LaborCost |
+                                Total | Status | By)
+        - Services     (أعمدة: Name | DefaultPrice | Notes) — كاتالوج الخدمات (تركيب كاميرات، شبكات...)
+        - Purchases    (أعمدة: ID | Date | Supplier | SupplierID | ItemsSummary | Total | AmountPaid | WarrantyMonths | By)
+        - Invoices     (أعمدة: ID | InvoiceNumber | Date | DueDate | CustomerName | CustomerPhone | CustomerTaxNumber | CustomerAddress | ItemsSummary | ItemsJSON | Subtotal | TaxPercent | TaxAmount | Discount | Total | AmountPaid | Remaining | Status | PaymentMethod | ReferenceType | ReferenceID | Notes | By)
+   6) من "Deploy" > "New deployment" > اختر النوع Web app.
+      - Execute as: Me
+      - Who has access: Anyone (أو Anyone with the link)
+      احفظ الرابط الناتج (exec) — ده رابط البرنامج الكامل، افتحه من أي متصفح.
+   ============================================================ */
+
+const SHEET_USERS = 'Users';
+const SHEET_RECEIPTS = 'Receipts';
+const SHEET_CUSTOMERS = 'Customers';
+const SHEET_TECHNICIANS = 'Technicians';
+const SHEET_SETTINGS = 'Settings';
+const SHEET_PAYMENTS = 'Payments';
+const SHEET_INVENTORY = 'Inventory';
+const SHEET_SALES = 'Sales';
+const SHEET_RETURNS = 'Returns';
+const SHEET_QUOTATIONS = 'Quotations';
+const SHEET_SERVICES = 'Services';
+const SHEET_PURCHASES = 'Purchases';
+const SHEET_SUPPLIERS = 'Suppliers';
+const SHEET_SERIALS = 'Serials';
+const SHEET_SUPPLIER_PAYMENTS = 'SupplierPayments';
+const SHEET_EXPENSES = 'Expenses';
+const SHEET_ACCOUNTS = 'Accounts';
+const SHEET_JOURNAL = 'JournalEntries';
+const SHEET_INVOICES = 'Invoices';
+/* أضف ورقة عمل جديدة باسم Invoices لإدارة الفواتير الضريبية والرسمية:
+      أعمدة: ID | InvoiceNumber | Date | DueDate | CustomerName | CustomerPhone | CustomerTaxNumber | CustomerAddress |
+              ItemsSummary | ItemsJSON | Subtotal | TaxPercent | TaxAmount | Discount | Total |
+              AmountPaid | Remaining | Status | PaymentMethod | ReferenceType | ReferenceID | Notes | By */
+
+function doGet(e) {
+  const action = e.parameter.action;
+  if (!action) {
+    return HtmlService.createHtmlOutputFromFile('Index')
+      .setTitle('ميكروERP')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+  }
+  try {
+    if (action === 'getReceipts') return jsonOut(getAllRows(SHEET_RECEIPTS));
+    if (action === 'getCustomers') return jsonOut(getAllRows(SHEET_CUSTOMERS));
+    if (action === 'getTechnicians') return jsonOut(getAllRows(SHEET_TECHNICIANS));
+    if (action === 'getSettings') {
+      const rows = getAllRows(SHEET_SETTINGS);
+      const obj = {};
+      rows.forEach(r => obj[r.Key] = r.Value);
+      return jsonOut(obj);
+    }
+    if (action === 'getPayments') {
+      let rows = getAllRows(SHEET_PAYMENTS);
+      if (e.parameter.receiptId) rows = rows.filter(r => String(r.ReceiptID) === String(e.parameter.receiptId));
+      return jsonOut(rows);
+    }
+    if (action === 'getInventory') return jsonOut(getAllRows(SHEET_INVENTORY));
+    if (action === 'getSales') return jsonOut(getAllRows(SHEET_SALES));
+    if (action === 'getReturns') return jsonOut(getAllRows(SHEET_RETURNS));
+    if (action === 'getQuotations') return jsonOut(getAllRows(SHEET_QUOTATIONS));
+    if (action === 'getServices') return jsonOut(getAllRows(SHEET_SERVICES));
+    if (action === 'getPurchases') return jsonOut(getAllRows(SHEET_PURCHASES));
+    if (action === 'getSuppliers') return jsonOut(getAllRows(SHEET_SUPPLIERS));
+    if (action === 'getSerials') {
+      let rows = getAllRows(SHEET_SERIALS);
+      if (e.parameter.itemId) rows = rows.filter(r => String(r.ItemID) === String(e.parameter.itemId));
+      if (e.parameter.status) rows = rows.filter(r => r.Status === e.parameter.status);
+      return jsonOut(rows);
+    }
+    if (action === 'getSupplierPayments') return jsonOut(getAllRows(SHEET_SUPPLIER_PAYMENTS));
+    if (action === 'getExpenses') return jsonOut(getAllRows(SHEET_EXPENSES));
+    if (action === 'getAccounts') return jsonOut(getAllRows(SHEET_ACCOUNTS));
+    if (action === 'getJournalEntries') return jsonOut(getAllRows(SHEET_JOURNAL));
+    if (action === 'getInvoices') return jsonOut(getAllRows(SHEET_INVOICES));
+    if (action === 'login') {
+      const name = e.parameter.name;
+      const pass = e.parameter.password;
+      const users = getAllRows(SHEET_USERS);
+      const found = users.find(u => u.Name === name && String(u.Password) === String(pass));
+      if (!found) return jsonOut({ error: 'بيانات الدخول غير صحيحة' }, 401);
+      return jsonOut({ name: found.Name, role: found.Role, sections: found.Sections || '' });
+    }
+    return jsonOut({ error: 'إجراء غير معروف' }, 400);
+  } catch (err) {
+    return jsonOut({ error: err.message }, 500);
+  }
+}
+
+function doPost(e) {
+  try {
+    const body = JSON.parse(e.postData.contents);
+    const action = body.action;
+
+    if (action === 'saveReceipt') {
+      upsertRow(SHEET_RECEIPTS, body.data, 'ID');
+      logAudit(body.data.ID, body.user, 'حفظ/تعديل إيصال');
+      return jsonOut({ ok: true });
+    }
+    if (action === 'deleteReceipt') {
+      if (body.role !== 'admin') return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
+      deleteRow(SHEET_RECEIPTS, body.id, 'ID');
+      logAudit(body.id, body.user, 'حذف إيصال');
+      return jsonOut({ ok: true });
+    }
+    if (action === 'saveCustomer') {
+      // Use Name (or OldName for renames) as lookup key instead of Phone
+      // This prevents customers without phones from overwriting each other
+      const sh = getSheet(SHEET_CUSTOMERS);
+      const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+      const nameCol = headers.indexOf('Name');
+      const values = sh.getDataRange().getValues();
+      let rowIndex = -1;
+
+      // First try to find by OldName (for renames), then by Name
+      const lookupName = (body.data.OldName && body.data.OldName.trim()) ? body.data.OldName.trim() : (body.data.Name || '').trim();
+      if(lookupName && nameCol >= 0){
+        for (let i = 1; i < values.length; i++) {
+          if (String(values[i][nameCol]).trim().toLowerCase() === lookupName.toLowerCase()) {
+            rowIndex = i;
+            break;
+          }
+        }
+      }
+
+      const row = headers.map(h => (body.data[h] !== undefined ? body.data[h] : ''));
+      if (rowIndex === -1) {
+        sh.appendRow(row);
+      } else {
+        // Preserve existing phone if new phone is empty
+        const phoneCol = headers.indexOf('Phone');
+        if(phoneCol >= 0 && !body.data.Phone && values[rowIndex][phoneCol]){
+          row[phoneCol] = values[rowIndex][phoneCol];
+        }
+        sh.getRange(rowIndex + 1, 1, 1, row.length).setValues([row]);
+      }
+      return jsonOut({ ok: true });
+    }
+    if (action === 'saveTechnician') {
+      appendRow(SHEET_TECHNICIANS, { Name: body.name });
+      return jsonOut({ ok: true });
+    }
+    if (action === 'saveSetting') {
+      upsertRow(SHEET_SETTINGS, { Key: body.key, Value: body.value }, 'Key');
+      return jsonOut({ ok: true });
+    }
+    if (action === 'savePayment') {
+      const payment = {
+        ID: 'p_' + new Date().getTime() + '_' + Math.floor(Math.random() * 1000),
+        ReceiptID: body.receiptId, Date: body.date, Amount: body.amount,
+        Note: body.note || '', By: body.user
+      };
+      appendRow(SHEET_PAYMENTS, payment);
+      logAudit(body.receiptId, body.user, 'تسجيل دفعة: ' + body.amount + ' ج.م');
+      return jsonOut({ ok: true, payment });
+    }
+    if (action === 'saveInventoryItem') {
+      const item = {
+        ID: body.data.ID || ('inv_' + new Date().getTime()),
+        Name: body.data.Name,
+        Category: body.data.Category || 'صيانة',
+        SubCategory: body.data.SubCategory || '',
+        SKU: body.data.SKU || '',
+        Barcode: body.data.Barcode || '',
+        ShelfLocation: body.data.ShelfLocation || '',
+        Quantity: Number(body.data.Quantity || 0),
+        MinStock: Number(body.data.MinStock || 2),
+        Unit: body.data.Unit || 'قطعة',
+        PurchasePrice: Number(body.data.PurchasePrice || 0),
+        SellPrice: Number(body.data.SellPrice || 0),
+        WholesalePrice: Number(body.data.WholesalePrice || 0),
+        WarrantyMonths: Number(body.data.WarrantyMonths || 0),
+        CompatibleModels: body.data.CompatibleModels || '',
+        ImageURL: body.data.ImageURL || ''
+      };
+      upsertRow(SHEET_INVENTORY, item, 'ID');
+      return jsonOut({ ok: true, item });
+    }
+    if (action === 'deleteInventoryItem') {
+      if (body.role !== 'admin') return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
+      deleteRow(SHEET_INVENTORY, body.id, 'ID');
+      return jsonOut({ ok: true });
+    }
+    if (action === 'adjustInventoryQty') {
+      const sh = getSheet(SHEET_INVENTORY);
+      const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+      const idCol = headers.indexOf('ID');
+      const qtyCol = headers.indexOf('Quantity');
+      const values = sh.getDataRange().getValues();
+      for (let i = 1; i < values.length; i++) {
+        if (String(values[i][idCol]) === String(body.id)) {
+          const newQty = Number(values[i][qtyCol] || 0) + Number(body.delta);
+          sh.getRange(i + 1, qtyCol + 1).setValue(newQty);
+          return jsonOut({ ok: true, newQty });
+        }
+      }
+      return jsonOut({ error: 'الصنف غير موجود' }, 404);
+    }
+    if (action === 'saveSale') {
+      const sale = {
+        ID: 'sale_' + new Date().getTime(),
+        Date: body.date, ItemsSummary: body.itemsSummary, ItemsJSON: body.itemsJson || '',
+        Total: body.total, PaymentMethod: body.paymentMethod || 'نقدي', AmountPaid: body.amountPaid != null ? body.amountPaid : body.total,
+        CustomerName: body.customerName || '', CustomerPhone: body.customerPhone || '', By: body.user
+      };
+      appendRow(SHEET_SALES, sale);
+      return jsonOut({ ok: true, sale });
+    }
+    if (action === 'settleSaleDebt') {
+      const sh = getSheet(SHEET_SALES);
+      const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+      const idCol = headers.indexOf('ID');
+      const paidCol = headers.indexOf('AmountPaid');
+      const values = sh.getDataRange().getValues();
+      for (let i = 1; i < values.length; i++) {
+        if (String(values[i][idCol]) === String(body.saleId)) {
+          const newPaid = Number(values[i][paidCol] || 0) + Number(body.amount);
+          sh.getRange(i + 1, paidCol + 1).setValue(newPaid);
+          return jsonOut({ ok: true, newPaid });
+        }
+      }
+      return jsonOut({ error: 'عملية البيع غير موجودة' }, 404);
+    }
+    if (action === 'saveReturn') {
+      const ret = {
+        ID: 'ret_' + new Date().getTime(), SaleID: body.saleId, Date: body.date,
+        ItemsSummary: body.itemsSummary, RefundAmount: body.refundAmount, By: body.user
+      };
+      appendRow(SHEET_RETURNS, ret);
+      return jsonOut({ ok: true, ret });
+    }
+    if (action === 'saveQuotation') {
+      const q = {
+        ID: body.data.ID || ('quo_' + new Date().getTime()),
+        Date: body.data.Date, ClientName: body.data.ClientName, ClientPhone: body.data.ClientPhone,
+        ItemsSummary: body.data.ItemsSummary, LaborCost: body.data.LaborCost, Total: body.data.Total,
+        Status: body.data.Status || 'معلق', By: body.data.By
+      };
+      upsertRow(SHEET_QUOTATIONS, q, 'ID');
+      return jsonOut({ ok: true, quotation: q });
+    }
+    if (action === 'saveService') {
+      upsertRow(SHEET_SERVICES, { Name: body.data.Name, DefaultPrice: body.data.DefaultPrice, Notes: body.data.Notes || '' }, 'Name');
+      return jsonOut({ ok: true });
+    }
+    if (action === 'savePurchase') {
+      const p = {
+        ID: 'pur_' + new Date().getTime(), Date: body.date, Supplier: body.supplier, SupplierID: body.supplierId || '',
+        ItemsSummary: body.itemsSummary, Total: body.total, AmountPaid: body.amountPaid != null ? body.amountPaid : body.total,
+        WarrantyMonths: body.warrantyMonths || '', By: body.user
+      };
+      appendRow(SHEET_PURCHASES, p);
+      return jsonOut({ ok: true, purchase: p });
+    }
+    if (action === 'settlePurchaseDebt') {
+      const sh = getSheet(SHEET_PURCHASES);
+      const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+      const idCol = headers.indexOf('ID');
+      const paidCol = headers.indexOf('AmountPaid');
+      const values = sh.getDataRange().getValues();
+      for (let i = 1; i < values.length; i++) {
+        if (String(values[i][idCol]) === String(body.purchaseId)) {
+          const newPaid = Number(values[i][paidCol] || 0) + Number(body.amount);
+          sh.getRange(i + 1, paidCol + 1).setValue(newPaid);
+          const sp = {
+            ID: 'sp_' + new Date().getTime(), SupplierID: body.supplierId || '', PurchaseID: body.purchaseId,
+            Date: body.date, Amount: body.amount, Note: body.note || '', By: body.user
+          };
+          appendRow(SHEET_SUPPLIER_PAYMENTS, sp);
+          return jsonOut({ ok: true, newPaid });
+        }
+      }
+      return jsonOut({ error: 'فاتورة الشراء غير موجودة' }, 404);
+    }
+    if (action === 'saveSupplier') {
+      const s = {
+        ID: body.data.ID || ('sup_' + new Date().getTime()),
+        Name: body.data.Name, Phone: body.data.Phone || '', Notes: body.data.Notes || ''
+      };
+      upsertRow(SHEET_SUPPLIERS, s, 'ID');
+      return jsonOut({ ok: true, supplier: s });
+    }
+    if (action === 'saveSerial') {
+      const s = {
+        ID: 'sn_' + new Date().getTime() + '_' + Math.floor(Math.random() * 1000),
+        ItemID: body.itemId, ItemName: body.itemName, Serial: body.serial,
+        PurchaseID: body.purchaseId || '', SupplierID: body.supplierId || '',
+        WarrantyMonths: body.warrantyMonths || '', Status: 'In Stock', SoldRef: '', SoldDate: ''
+      };
+      appendRow(SHEET_SERIALS, s);
+      return jsonOut({ ok: true, serial: s });
+    }
+    if (action === 'markSerialSold') {
+      const sh = getSheet(SHEET_SERIALS);
+      const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+      const idCol = headers.indexOf('ID');
+      const statusCol = headers.indexOf('Status');
+      const soldRefCol = headers.indexOf('SoldRef');
+      const soldDateCol = headers.indexOf('SoldDate');
+      const values = sh.getDataRange().getValues();
+      for (let i = 1; i < values.length; i++) {
+        if (String(values[i][idCol]) === String(body.serialId)) {
+          sh.getRange(i + 1, statusCol + 1).setValue('Sold');
+          sh.getRange(i + 1, soldRefCol + 1).setValue(body.soldRef || '');
+          sh.getRange(i + 1, soldDateCol + 1).setValue(body.soldDate || '');
+          return jsonOut({ ok: true });
+        }
+      }
+      return jsonOut({ error: 'الرقم التسلسلي غير موجود' }, 404);
+    }
+    if (action === 'saveExpense') {
+      const exp = {
+        ID: body.data.ID || ('exp_' + new Date().getTime()),
+        Date: body.data.Date || new Date().toISOString().slice(0,10),
+        Category: body.data.Category || 'عام',
+        Title: body.data.Title,
+        Amount: body.data.Amount,
+        Notes: body.data.Notes || '',
+        By: body.user
+      };
+      upsertRow(SHEET_EXPENSES, exp, 'ID');
+      return jsonOut({ ok: true, expense: exp });
+    }
+    if (action === 'deleteExpense') {
+      if (body.role !== 'admin') return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
+      deleteRow(SHEET_EXPENSES, body.id, 'ID');
+      return jsonOut({ ok: true });
+    }
+    if (action === 'saveAccount') {
+      const acc = {
+        Code: String(body.data.Code),
+        Name: body.data.Name,
+        Type: body.data.Type || 'الأصول',
+        ParentCode: String(body.data.ParentCode || ''),
+        Nature: body.data.Nature || 'مدين',
+        Description: body.data.Description || '',
+        Balance: Number(body.data.Balance || 0)
+      };
+      upsertRow(SHEET_ACCOUNTS, acc, 'Code');
+      return jsonOut({ ok: true, account: acc });
+    }
+    if (action === 'deleteAccount') {
+      if (body.role !== 'admin') return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
+      deleteRow(SHEET_ACCOUNTS, String(body.code), 'Code');
+      return jsonOut({ ok: true });
+    }
+    if (action === 'saveJournalEntry') {
+      const entry = {
+        ID: body.data.ID || ('je_' + new Date().getTime()),
+        EntryNumber: body.data.EntryNumber || ('JE-' + new Date().getFullYear() + '-' + String(new Date().getTime()).slice(-4)),
+        Date: body.data.Date || new Date().toISOString().slice(0, 10),
+        Description: body.data.Description || '',
+        ReferenceType: body.data.ReferenceType || 'Manual',
+        ReferenceID: body.data.ReferenceID || '',
+        LinesJSON: typeof body.data.Lines === 'string' ? body.data.Lines : JSON.stringify(body.data.Lines || []),
+        TotalDebit: Number(body.data.TotalDebit || 0),
+        TotalCredit: Number(body.data.TotalCredit || 0),
+        By: body.user || 'نظام'
+      };
+      appendRow(SHEET_JOURNAL, entry);
+      return jsonOut({ ok: true, entry: entry });
+    }
+    if (action === 'saveInvoice') {
+      const inv = {
+        ID: body.data.ID || ('inv_' + new Date().getTime()),
+        InvoiceNumber: body.data.InvoiceNumber || ('INV-' + new Date().getFullYear() + '-' + String(new Date().getTime()).slice(-4)),
+        Date: body.data.Date || new Date().toISOString().slice(0, 10),
+        DueDate: body.data.DueDate || body.data.Date || new Date().toISOString().slice(0, 10),
+        CustomerName: body.data.CustomerName || '',
+        CustomerPhone: body.data.CustomerPhone || '',
+        CustomerTaxNumber: body.data.CustomerTaxNumber || '',
+        CustomerAddress: body.data.CustomerAddress || '',
+        ItemsSummary: body.data.ItemsSummary || '',
+        ItemsJSON: typeof body.data.ItemsJSON === 'string' ? body.data.ItemsJSON : JSON.stringify(body.data.Items || []),
+        Subtotal: Number(body.data.Subtotal || 0),
+        TaxPercent: Number(body.data.TaxPercent || 0),
+        TaxAmount: Number(body.data.TaxAmount || 0),
+        Discount: Number(body.data.Discount || 0),
+        Total: Number(body.data.Total || 0),
+        AmountPaid: Number(body.data.AmountPaid || 0),
+        Remaining: Number(body.data.Remaining || 0),
+        Status: body.data.Status || 'مدفوعة',
+        PaymentMethod: body.data.PaymentMethod || 'نقدي',
+        ReferenceType: body.data.ReferenceType || '',
+        ReferenceID: body.data.ReferenceID || '',
+        Notes: body.data.Notes || '',
+        By: body.user || 'نظام'
+      };
+      upsertRow(SHEET_INVOICES, inv, 'ID');
+      return jsonOut({ ok: true, invoice: inv });
+    }
+    if (action === 'deleteInvoice') {
+      if (body.role !== 'admin') return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
+      deleteRow(SHEET_INVOICES, body.id, 'ID');
+      return jsonOut({ ok: true });
+    }
+    return jsonOut({ error: 'إجراء غير معروف' }, 400);
+  } catch (err) {
+    return jsonOut({ error: err.message }, 500);
+  }
+}
+
+/* -------- Helpers -------- */
+function getSheet(name) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName(name);
+  if (!sh) throw new Error('ورقة العمل غير موجودة: ' + name);
+  return sh;
+}
+
+function getAllRows(sheetName) {
+  const sh = getSheet(sheetName);
+  const values = sh.getDataRange().getValues();
+  const headers = values.shift();
+  const tz = Session.getScriptTimeZone();
+  return values
+    .filter(row => row.some(cell => cell !== ''))
+    .map(row => {
+      const obj = {};
+      headers.forEach((h, i) => {
+        let v = row[i];
+        // Google Sheets silently converts date-looking text (e.g. "2026-08-21") into
+        // a real Date cell. If we don't reformat it here, JSON serialization turns it
+        // into a UTC ISO timestamp that no longer matches a simple string comparison
+        // like `row.Date === '2026-08-21'` on the client — this was breaking every
+        // "today's income" calculation. Always reformat using the sheet's own timezone.
+        if (v instanceof Date) {
+          v = Utilities.formatDate(v, tz, "yyyy-MM-dd'T'HH:mm:ss");
+        }
+        obj[h] = v;
+      });
+      return obj;
+    });
+}
+
+function ensureHeaders(sh, obj) {
+  const lastCol = Math.max(1, sh.getLastColumn());
+  let headers = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || '').trim());
+  const missingKeys = Object.keys(obj).filter(k => k && !headers.includes(k));
+  if (missingKeys.length > 0) {
+    const startCol = headers.length + 1;
+    sh.getRange(1, startCol, 1, missingKeys.length).setValues([missingKeys]);
+    headers = headers.concat(missingKeys);
+  }
+  return headers;
+}
+
+function appendRow(sheetName, obj) {
+  const sh = getSheet(sheetName);
+  const headers = ensureHeaders(sh, obj);
+  const row = headers.map(h => (obj[h] !== undefined ? obj[h] : ''));
+  sh.appendRow(row);
+}
+
+function upsertRow(sheetName, obj, keyField) {
+  const sh = getSheet(sheetName);
+  const headers = ensureHeaders(sh, obj);
+  const keyCol = headers.indexOf(keyField);
+  const values = sh.getDataRange().getValues();
+  let rowIndex = -1;
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][keyCol]) === String(obj[keyField])) { rowIndex = i; break; }
+  }
+  const row = headers.map(h => (obj[h] !== undefined ? obj[h] : ''));
+  if (rowIndex === -1) {
+    sh.appendRow(row);
+  } else {
+    sh.getRange(rowIndex + 1, 1, 1, row.length).setValues([row]);
+  }
+}
+
+function deleteRow(sheetName, keyValue, keyField) {
+  const sh = getSheet(sheetName);
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  const keyCol = headers.indexOf(keyField);
+  const values = sh.getDataRange().getValues();
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][keyCol]) === String(keyValue)) { sh.deleteRow(i + 1); break; }
+  }
+}
+
+function logAudit(receiptId, user, action) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName('AuditLog');
+  if (!sh) {
+    sh = ss.insertSheet('AuditLog');
+    sh.appendRow(['Timestamp', 'User', 'Action', 'ReceiptID']);
+  }
+  sh.appendRow([new Date(), user, action, receiptId]);
+}
+
+function jsonOut(obj, statusCode) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+/* ============================================================
+   ملاحظة أمان: كلمات المرور هنا نص عادي للتبسيط.
+   يُفضّل لاحقاً استخدام تشفير (مثلاً Utilities.computeDigest)
+   قبل التخزين والمقارنة، بدل حفظها كنص صريح في الشيت.
+   ============================================================ */

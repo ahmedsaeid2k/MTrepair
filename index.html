@@ -4886,26 +4886,36 @@ async function loadPayments(receiptId){
   }
   return state.payments;
 }
-async function savePaymentRemote(receiptId, amount, note){
+async function savePaymentRemote(receiptId, amount, note, paymentMethod){
+  const payMethod = paymentMethod || 'نقدي (كاش)';
   const payment = {
     ID: 'p_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
     ReceiptID: receiptId, Date: new Date().toISOString().slice(0,10),
-    Amount: Number(amount), Note: note || '', By: state.user ? state.user.name : 'نظام'
+    Amount: Number(amount), Note: note || '', By: state.user ? state.user.name : 'نظام',
+    PaymentMethod: payMethod
   };
   state.payments.push(payment);
   setCache('payments', state.payments);
-  recordAuditLog('تحصيل دفعة نقدية', 'الخزينة', `تحصيل دفعة نقدية بقيمة ${amount} ج.م للإيصال (${receiptId}) - البيان: ${note||'دفعة'}`, receiptId);
-  // Auto Journal Entry: Dr. 1101 (الخزينة) / Cr. 4101 (إيرادات الصيانة)
+  recordAuditLog('تحصيل دفعة مالية', 'الخزينة', `تحصيل دفعة بقيمة ${amount} ج.م للإيصال (${receiptId}) - طريقة الدفع: ${payMethod} - البيان: ${note||'دفعة'}`, receiptId);
+  
+  // Auto Journal Entry: Route debit account based on payment method
+  const pLow = String(payMethod).toLowerCase();
+  const isCredit = pLow.includes('آجل') || pLow.includes('اجل') || pLow.includes('credit');
+  const isBankOrWallet = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('إنستاباي') || pLow.includes('instapay') || pLow.includes('محفظ') || pLow.includes('فودافون') || pLow.includes('vodafone');
+  
+  const debitAccCode = isCredit ? '1103' : (isBankOrWallet ? '1102' : '1101');
+  const debitAccName = isCredit ? 'العملاء والمدينون' : (isBankOrWallet ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)');
+
   recordAutoJournalEntry(
-    `تحصيل دفعة صيانة (${note || 'دفعة إيصال'})`,
+    `تحصيل صيانة [${payMethod}] (${note || 'دفعة إيصال'})`,
     'Receipt',
     receiptId,
     [
-      {AccountCode:'1101', AccountName:'الخزينة الرئيسية (النقدية)', Debit:Number(amount), Credit:0, Notes:'تحصيل نقدية بالدرج'},
-      {AccountCode:'4101', AccountName:'إيرادات خدمات الصيانة', Debit:0, Credit:Number(amount), Notes:`إيصال: ${receiptId}`}
+      {AccountCode: debitAccCode, AccountName: debitAccName, Debit: Number(amount), Credit: 0, Notes: `تحصيل عبر ${payMethod}`},
+      {AccountCode: '4101', AccountName: 'إيرادات خدمات صيانة وتصليح', Debit: 0, Credit: Number(amount), Notes: `إيصال: ${receiptId}`}
     ]
   ).catch(e=>{});
-  return apiPost('savePayment', {receiptId, amount: payment.Amount, note: payment.Note, date: payment.Date, user: payment.By});
+  return apiPost('savePayment', {receiptId, amount: payment.Amount, note: payment.Note, paymentMethod: payMethod, date: payment.Date, user: payment.By});
 }
 
 async function loadInventory(){
@@ -6329,6 +6339,30 @@ function getPosSettings(){
     if(!state.settings.pos.quickServices) state.settings.pos.quickServices = DEFAULT_POS_SETTINGS.quickServices;
   }
   return state.settings.pos;
+}
+
+function getActivePaymentMethods(){
+  const posSettings = getPosSettings();
+  const list = (posSettings.paymentMethods || []).filter(p => p.enabled !== false);
+  return list.length ? list : DEFAULT_POS_SETTINGS.paymentMethods;
+}
+
+function getPaymentMethodBadge(methodName){
+  if(!methodName) return '<span class="badge" style="background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;font-weight:700;">💵 نقدي (كاش)</span>';
+  const str = String(methodName).toLowerCase();
+  if(str.includes('فيزا') || str.includes('card') || str.includes('بطاق') || str.includes('visa')){
+    return '<span class="badge" style="background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;font-weight:700;">💳 فيزا وبطاقات</span>';
+  }
+  if(str.includes('إنستاباي') || str.includes('انستاباي') || str.includes('instapay')){
+    return '<span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;font-weight:700;">⚡ إنستاباي</span>';
+  }
+  if(str.includes('محفظ') || str.includes('فودافون') || str.includes('vodafone') || str.includes('wallet')){
+    return '<span class="badge" style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca;font-weight:700;">📱 محفظة نقدية</span>';
+  }
+  if(str.includes('آجل') || str.includes('اجل') || str.includes('حساب') || str.includes('credit')){
+    return '<span class="badge" style="background:#f3e8ff;color:#6b21a8;border:1px solid #e9d5ff;font-weight:700;">📝 آجل / على الحساب</span>';
+  }
+  return `<span class="badge" style="background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;font-weight:700;">💵 ${escapeHtml(methodName)}</span>`;
 }
 
 // ---------------- Pure Offline QR Code SVG Generator (0ms, Zero Network Dependency) ----------------
@@ -9370,6 +9404,20 @@ function stepFinance(body,d){
         <div class="field"><label>قطع الغيار (ج.م)</label><input id="finParts" type="text" value="${d.partsCost||0}" disabled style="background:var(--paper3);direction:ltr;text-align:right;" class="mono"></div>
         <div class="field"><label>الدفعة المقدمة (ج.م)</label><input id="finDep" type="text" inputmode="decimal" value="${d.deposit||0}" placeholder="0" class="mono" style="direction:ltr;text-align:right;"></div>
       </div>
+      <!-- خيارات طريقة دفع العربون / الدفعة المقدمة -->
+      <div id="draftDepositPayMethodBox" style="margin-top:10px;padding:10px 12px;background:var(--paper2);border:1.5px solid var(--line);border-radius:var(--radius-sm);display:${Number(d.deposit||0)>0?'block':'none'};">
+        <label style="font-size:11.5px;font-weight:800;color:var(--ink);display:block;margin-bottom:6px;">
+          💳 طريقة تحصيل الدفعة المقدمة (العربون):
+        </label>
+        <div class="pos-pay-grid" id="draftDepositPayGrid">
+          ${getActivePaymentMethods().map(pm => `
+            <div class="pos-pay-btn ${d.depositPaymentMethod === pm.id || (!d.depositPaymentMethod && pm.id === 'cash') ? 'selected' : ''}" data-draftpaymethod="${pm.id}">
+              <span>${pm.icon || '💵'}</span>
+              <span>${pm.name}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
       <div style="margin-top:10px;padding:8px 12px;background:var(--paper3);border-radius:var(--radius-sm);display:flex;justify-content:space-between;align-items:center;">
         <span style="font-weight:700;font-size:13px;">المبلغ المتبقي المطلوب تقديريًا:</span>
         <span class="mono" style="font-size:16px;font-weight:900;color:var(--primary);"><span id="finRemPreview">0</span> ج.م</span>
@@ -9482,6 +9530,9 @@ function stepFinance(body,d){
     const totalDue = cost + parts + otherAmt;
     const rem = Math.max(0, totalDue - dep);
 
+    const depBox = document.getElementById('draftDepositPayMethodBox');
+    if(depBox) depBox.style.display = dep > 0 ? 'block' : 'none';
+
     const remEl = document.getElementById('finRemPreview');
     if(remEl) remEl.textContent = rem.toLocaleString();
   }
@@ -9502,6 +9553,14 @@ function stepFinance(body,d){
   if(finOtherAmtInp) finOtherAmtInp.oninput = recalcDraftFinances;
   const finDepInp = document.getElementById('finDep');
   if(finDepInp) finDepInp.oninput = recalcDraftFinances;
+
+  document.querySelectorAll('#draftDepositPayGrid .pos-pay-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('#draftDepositPayGrid .pos-pay-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      d.depositPaymentMethod = btn.dataset.draftpaymethod;
+    };
+  });
 
   renderDraftServiceItems();
 
@@ -9555,6 +9614,9 @@ function stepFinance(body,d){
     d.cost = finCostEl ? (parseFloat(toEngDigits(finCostEl.value)) || 0) : 0;
     const finDepEl = document.getElementById('finDep');
     d.deposit = finDepEl ? (parseFloat(toEngDigits(finDepEl.value)) || 0) : 0;
+    const selPayBtn = document.querySelector('#draftDepositPayGrid .pos-pay-btn.selected');
+    if(selPayBtn) d.depositPaymentMethod = selPayBtn.dataset.draftpaymethod;
+    if(!d.depositPaymentMethod) d.depositPaymentMethod = 'cash';
     const finDateEl = document.getElementById('finDate');
     d.deliveryDate = finDateEl ? finDateEl.value : '';
   };
@@ -9600,7 +9662,13 @@ function stepReview(body,d){
         ${(d.serviceItems && d.serviceItems.length > 0) ? `<div style="grid-column:1/-1;background:var(--paper2);padding:6px 10px;border-radius:4px;border:1px solid var(--line);font-size:12px;line-height:1.5;"><b>🛠️ تفاصيل بنود الصيانة (${d.serviceItems.length}):</b> ${d.serviceItems.map(it=>`${escapeHtml(it.desc)} (<b class="mono">${it.price}</b> ج.م)`).join(' | ')}</div>` : ''}
         <div><b>⚙️ تكلفة قطع الغيار:</b> ${d.partsCost||0} ج.م</div>
         ${otherAmt > 0 ? `<div><b>💳 حساب إضافي على العميل:</b> <span class="mono" style="font-weight:800;color:var(--amber-text);">${otherAmt}</span> ج.م (${escapeHtml(d.otherAccountDesc || 'حساب سابق')})</div>` : ''}
-        <div><b>📥 الدفعة المقدمة:</b> ${d.deposit||0} ج.م</div>
+        ${Number(d.deposit||0) > 0 ? `
+          <div>
+            <b>📥 الدفعة المقدمة (العربون):</b>
+            <span class="mono font-bold" style="color:var(--green-text);">${Number(d.deposit).toLocaleString()} ج.م</span>
+            ${getPaymentMethodBadge((getActivePaymentMethods().find(x=>x.id===d.depositPaymentMethod)||{name:'نقدي (كاش)'}).name)}
+          </div>
+        ` : `<div><b>📥 الدفعة المقدمة:</b> 0 ج.م</div>`}
         <div><b style="color:var(--primary);">المبلغ المتبقي المطلوب:</b> <span class="mono" style="font-size:17px;font-weight:900;color:var(--primary);">${remaining}</span> ج.م</div>
         <div><b>📅 موعد التسليم:</b> ${d.deliveryDate||'غير محدد'}</div>
       </div>
@@ -9688,7 +9756,9 @@ async function saveReceipt(d, printA5, sendWa, printSticker){
       }
     }
     if(Number(d.deposit||0) > 0){
-      try{ await savePaymentRemote(d.id, Number(d.deposit), 'دفعة مقدمة عند الاستلام'); }
+      const depMethodObj = getActivePaymentMethods().find(x => x.id === d.depositPaymentMethod) || { name: 'نقدي (كاش)' };
+      d.depositPaymentMethodName = depMethodObj.name;
+      try{ await savePaymentRemote(d.id, Number(d.deposit), 'دفعة مقدمة عند الاستلام', depMethodObj.name); }
       catch(payErr){ console.warn(payErr); }
       await refreshPayments();
     }
@@ -11557,28 +11627,47 @@ function promptDeliveryRemainingPayment(r, remaining, onProceed){
   const pOverlay = document.createElement('div');
   pOverlay.className = 'modal-overlay';
   pOverlay.style.zIndex = '11500';
+  let curMethod = 'cash';
+
+  const custName = (r && r.customer && r.customer.name) || (r && r.customerName) || 'عميل';
+  const devName = (r && r.device) ? `${r.device.category || ''} ${r.device.brand || ''}`.trim() : ((r && r.devices && r.devices[0]) ? `${r.devices[0].category || ''} ${r.devices[0].brand || ''}`.trim() : '');
+  const rNum = (r && r.receiptNumber) ? `(إيصال #${escapeHtml(r.receiptNumber)})` : '';
+
   pOverlay.innerHTML = `
-    <div class="modal-content" style="max-width:440px;text-align:center;padding:22px;border-top:4px solid var(--amber);">
+    <div class="modal-content" style="max-width:460px;text-align:center;padding:22px;border-top:4px solid var(--amber);">
       <div style="font-size:38px;margin-bottom:6px;">🤝</div>
-      <h3 style="margin:0 0 6px;font-size:16.5px;color:var(--ink);">تسليم الجهاز للعميل (إيصال #${escapeHtml(r.receiptNumber)})</h3>
-      <div style="font-size:12.5px;color:var(--ink-secondary);margin-bottom:12px;">العميل: <b>${escapeHtml(r.customer.name)}</b> | الجهاز: ${escapeHtml(r.device.category)} ${escapeHtml(r.device.brand)}</div>
+      <h3 style="margin:0 0 6px;font-size:16.5px;color:var(--ink);">تسليم الجهاز للعميل ${rNum}</h3>
+      <div style="font-size:12.5px;color:var(--ink-secondary);margin-bottom:12px;">العميل: <b>${escapeHtml(custName)}</b> ${devName ? '| الجهاز: ' + escapeHtml(devName) : ''}</div>
       
-      <div style="background:var(--amber-bg);border:1.5px solid var(--amber);border-radius:var(--radius-sm);padding:12px;margin-bottom:16px;text-align:right;">
+      <div style="background:var(--amber-bg);border:1.5px solid var(--amber);border-radius:var(--radius-sm);padding:12px;margin-bottom:14px;text-align:right;">
         <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:900;color:var(--amber-text);margin-bottom:4px;">
           <span>المبلغ المتبقي على الإيصال:</span>
           <span class="mono" style="font-size:16.5px;color:#b45309;">${Number(remaining).toLocaleString()} ج.م</span>
         </div>
         <div style="font-size:11.5px;color:var(--ink);line-height:1.45;">
-          الجهاز عليه مبلغ غير مسدد. هل ترغب في تحصيل وسداد المبلغ المتبقي بالكامل الآن وإثباته بالخزينة مع تسليم الجهاز؟
+          الجهاز عليه مبلغ غير مسدد. اختر طريقة تحصيل وسداد المبلغ المتبقي، أو اختر تسليم الجهاز فقط على الحساب (آجل):
+        </div>
+      </div>
+
+      <!-- خيارات طريقة الدفع المتطابقة مع POS -->
+      <div style="text-align:right;margin-bottom:14px;">
+        <label style="font-size:11.5px;font-weight:800;color:var(--ink);display:block;margin-bottom:6px;">💳 طريقة التحصيل / السداد:</label>
+        <div class="pos-pay-grid" id="delPromptPayGrid">
+          ${getActivePaymentMethods().map(pm => `
+            <div class="pos-pay-btn ${pm.id==='cash'?'selected':''}" data-delpm="${pm.id}">
+              <span>${pm.icon||'💵'}</span>
+              <span>${pm.name}</span>
+            </div>
+          `).join('')}
         </div>
       </div>
 
       <div style="display:flex;flex-direction:column;gap:8px;">
         <button class="btn btn-green" id="promptBtnPayAndDeliver" style="justify-content:center;font-weight:800;padding:10px;">
-          💰 سداد المتبقي (${Number(remaining).toLocaleString()} ج.م) وتسليم الجهاز
+          💰 تحصيل نقدي (${Number(remaining).toLocaleString()} ج.م) وتسليم الجهاز
         </button>
         <button class="btn btn-ghost" id="promptBtnDeliverOnly" style="justify-content:center;font-weight:700;border-color:var(--line);">
-          📦 تسليم الجهاز فقط (تأجيل السداد / آجل)
+          📝 تسليم الجهاز فقط (تأجيل السداد / آجل)
         </button>
         <button class="btn btn-ghost btn-sm" id="promptBtnCancel" style="justify-content:center;color:var(--ink-secondary);margin-top:4px;">
           إلغاء التغيير
@@ -11588,13 +11677,32 @@ function promptDeliveryRemainingPayment(r, remaining, onProceed){
   `;
   document.body.appendChild(pOverlay);
 
+  pOverlay.querySelectorAll('#delPromptPayGrid .pos-pay-btn').forEach(btn => {
+    btn.onclick = () => {
+      pOverlay.querySelectorAll('#delPromptPayGrid .pos-pay-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      curMethod = btn.dataset.delpm;
+      const pmObj = getActivePaymentMethods().find(x=>x.id===curMethod) || {name:'نقدي'};
+      if(curMethod === 'credit'){
+        pOverlay.querySelector('#promptBtnPayAndDeliver').textContent = `📝 تسليم الجهاز على الحساب (آجل)`;
+      } else {
+        pOverlay.querySelector('#promptBtnPayAndDeliver').textContent = `💰 تحصيل ${pmObj.name} (${Number(remaining).toLocaleString()} ج.م) وتسليم الجهاز`;
+      }
+    };
+  });
+
   pOverlay.querySelector('#promptBtnPayAndDeliver').onclick = ()=>{
     pOverlay.remove();
-    onProceed(true); // true = سداد المتبقي + تسليم
+    const pmObj = getActivePaymentMethods().find(x=>x.id===curMethod) || {name:'نقدي (كاش)'};
+    if(curMethod === 'credit'){
+      onProceed(false, 'آجل / على الحساب');
+    } else {
+      onProceed(true, pmObj.name);
+    }
   };
   pOverlay.querySelector('#promptBtnDeliverOnly').onclick = ()=>{
     pOverlay.remove();
-    onProceed(false); // false = تسليم فقط دون سداد
+    onProceed(false, 'آجل / على الحساب');
   };
   pOverlay.querySelector('#promptBtnCancel').onclick = ()=>{
     pOverlay.remove();
@@ -11602,24 +11710,42 @@ function promptDeliveryRemainingPayment(r, remaining, onProceed){
 }
 
 /**
- * نافذة تأكيد تغيير الحالة إلى "تم التسليم" عند سداد المبلغ المتبقي
+ * نافذة تأكيد سداد المبلغ المتبقي واختيار طريقة الدفع
  */
 function promptPaymentDeliveryStatus(r, amt, onProceed){
   const pOverlay = document.createElement('div');
   pOverlay.className = 'modal-overlay';
   pOverlay.style.zIndex = '11500';
+  let curMethod = 'cash';
+
+  const custName = (r && r.customer && r.customer.name) || (r && r.customerName) || 'عميل';
+  const rNum = (r && r.receiptNumber) ? `#${escapeHtml(r.receiptNumber)}` : '';
+
   pOverlay.innerHTML = `
-    <div class="modal-content" style="max-width:440px;text-align:center;padding:22px;border-top:4px solid var(--green);">
+    <div class="modal-content" style="max-width:460px;text-align:center;padding:22px;border-top:4px solid var(--green);">
       <div style="font-size:38px;margin-bottom:6px;">💰</div>
       <h3 style="margin:0 0 6px;font-size:16.5px;color:var(--ink);">سداد المبلغ المتبقي (${Number(amt).toLocaleString()} ج.م)</h3>
-      <div style="font-size:12.5px;color:var(--ink-secondary);margin-bottom:12px;">الإيصال: <b class="mono">#${escapeHtml(r.receiptNumber)}</b> | العميل: <b>${escapeHtml(r.customer.name)}</b></div>
+      <div style="font-size:12.5px;color:var(--ink-secondary);margin-bottom:12px;">الإيصال: <b class="mono">${rNum}</b> | العميل: <b>${escapeHtml(custName)}</b></div>
 
-      <div style="background:var(--green-bg);border:1.5px solid var(--green);border-radius:var(--radius-sm);padding:12px;margin-bottom:16px;text-align:right;">
+      <div style="background:var(--green-bg);border:1.5px solid var(--green);border-radius:var(--radius-sm);padding:12px;margin-bottom:14px;text-align:right;">
         <div style="font-size:12.5px;font-weight:900;color:var(--green-text);margin-bottom:4px;">
-          ✅ سيتم تسجيل إتمام سداد المبلغ كاملاً وإيداعه في الخزينة.
+          ✅ سيتم تسجيل إتمام سداد المبلغ كاملاً وإيداعه في الخزينة والحسابات.
         </div>
-        <div style="font-size:12.5px;font-weight:800;color:var(--ink);margin-top:6px;line-height:1.4;">
-          هل ترغب أيضاً في تغيير حالة الجهاز إلى "تم التسليم 🤝"؟
+        <div style="font-size:12px;color:var(--ink);margin-top:4px;line-height:1.4;">
+          اختر طريقة التحصيل وتحديد حالة الجهاز:
+        </div>
+      </div>
+
+      <!-- خيارات طريقة الدفع -->
+      <div style="text-align:right;margin-bottom:14px;">
+        <label style="font-size:11.5px;font-weight:800;color:var(--ink);display:block;margin-bottom:6px;">💳 اختر طريقة التحصيل:</label>
+        <div class="pos-pay-grid" id="statusPromptPayGrid">
+          ${getActivePaymentMethods().filter(p=>p.id!=='credit').map(pm => `
+            <div class="pos-pay-btn ${pm.id==='cash'?'selected':''}" data-statuspm="${pm.id}">
+              <span>${pm.icon||'💵'}</span>
+              <span>${pm.name}</span>
+            </div>
+          `).join('')}
         </div>
       </div>
 
@@ -11628,7 +11754,7 @@ function promptPaymentDeliveryStatus(r, amt, onProceed){
           🤝 نعم، سداد وتغيير الحالة إلى "تم التسليم"
         </button>
         <button class="btn btn-primary" id="promptBtnKeepStatus" style="justify-content:center;font-weight:700;padding:9px;">
-          📦 سداد المبلغ فقط دون تسليم (الاحتفاظ بالحالة أو مكتمل)
+          📦 سداد المبلغ فقط دون تسليم (الاحتفاظ بالحالة)
         </button>
         <button class="btn btn-ghost btn-sm" id="promptBtnCancelPay" style="justify-content:center;color:var(--ink-secondary);margin-top:4px;">
           إلغاء
@@ -11638,13 +11764,23 @@ function promptPaymentDeliveryStatus(r, amt, onProceed){
   `;
   document.body.appendChild(pOverlay);
 
+  pOverlay.querySelectorAll('#statusPromptPayGrid .pos-pay-btn').forEach(btn => {
+    btn.onclick = () => {
+      pOverlay.querySelectorAll('#statusPromptPayGrid .pos-pay-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      curMethod = btn.dataset.statuspm;
+    };
+  });
+
   pOverlay.querySelector('#promptBtnDeliver').onclick = ()=>{
     pOverlay.remove();
-    onProceed(true); // true = تغيير الحالة لتم التسليم
+    const pmObj = getActivePaymentMethods().find(x=>x.id===curMethod) || {name:'نقدي (كاش)'};
+    onProceed(true, pmObj.name); // true = تغيير الحالة لتم التسليم
   };
   pOverlay.querySelector('#promptBtnKeepStatus').onclick = ()=>{
     pOverlay.remove();
-    onProceed(false); // false = سداد فقط مع إبقاء الحالة
+    const pmObj = getActivePaymentMethods().find(x=>x.id===curMethod) || {name:'نقدي (كاش)'};
+    onProceed(false, pmObj.name); // false = سداد فقط مع إبقاء الحالة
   };
   pOverlay.querySelector('#promptBtnCancelPay').onclick = ()=>{
     pOverlay.remove();
@@ -11728,16 +11864,16 @@ function openQuickStatusModal(rawR){
 
       // إذا كان التغيير إلى "تم التسليم" وهناك مبلغ متبقي غير مسدد
       if(newStatus === 'تم التسليم' && remaining > 0){
-        promptDeliveryRemainingPayment(r, remaining, async (shouldPay)=>{
+        promptDeliveryRemainingPayment(r, remaining, async (shouldPay, payMethodName)=>{
           if(newTech) r.technician = newTech;
           r.status = 'تم التسليم';
           r.updatedBy = state.user.name;
           r.updatedAt = new Date().toISOString();
-          recordAuditLog('تسليم جهاز', 'صيانة', `تم تسليم الجهاز للإيصال #${r.receiptNumber} للعميل (${r.customer.name})` + (shouldPay ? ` مع سداد كامل المتبقي (${remaining} ج.م)` : ' (المتبقي آجل)'), r.id);
+          recordAuditLog('تسليم جهاز', 'صيانة', `تم تسليم الجهاز للإيصال #${r.receiptNumber} للعميل (${r.customer.name})` + (shouldPay ? ` مع سداد كامل المتبقي (${remaining} ج.م) بواسطة [${payMethodName||'نقدي'}]` : ' (المتبقي آجل)'), r.id);
 
           if(shouldPay){
             try {
-              await savePaymentRemote(r.id, remaining, 'سداد المتبقي عند التسليم');
+              await savePaymentRemote(r.id, remaining, 'سداد المتبقي عند التسليم', payMethodName || 'نقدي (كاش)');
               r.deposit = Number(r.deposit||0) + remaining;
               r.paid = true;
               await refreshPayments();
@@ -13185,6 +13321,12 @@ function openReIntakeDeviceModal(previousReceipt){
           <label>دفعة مقدمة (ج.م)</label>
           <input id="reIntakeDeposit" type="number" value="0">
         </div>
+        <div class="field">
+          <label>طريقة دفع الدفعة المقدمة</label>
+          <select id="reIntakePayMethod" style="font-weight:700;">
+            ${getActivePaymentMethods().map(pm => `<option value="${escapeHtml(pm.name)}">${pm.icon||'💵'} ${escapeHtml(pm.name)}</option>`).join('')}
+          </select>
+        </div>
       </div>
 
       <div class="actions-row" style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px;">
@@ -13312,7 +13454,8 @@ function openReIntakeDeviceModal(previousReceipt){
 
       if(deposit > 0){
         try{
-          await savePaymentRemote(newReceipt.id, deposit, 'دفعة مقدمة عند إعادة إدخال الجهاز');
+          const rePayMethod = overlay.querySelector('#reIntakePayMethod') ? overlay.querySelector('#reIntakePayMethod').value : 'نقدي (كاش)';
+          await savePaymentRemote(newReceipt.id, deposit, 'دفعة مقدمة عند إعادة إدخال الجهاز', rePayMethod);
           await refreshPayments();
         }catch(e){}
       }
@@ -13488,13 +13631,19 @@ async function openReceiptDetail(rawR){
     <div class="card" style="background:var(--paper3);padding:12px;border-radius:var(--radius-sm);margin-top:8px;">
       <h3 style="font-size:13.5px;margin-bottom:6px;">سجل الدفعات</h3>
       <div id="paymentsList" style="font-size:12px;margin-bottom:10px;">جارٍ التحميل...</div>
-      <div style="display:flex;gap:8px;align-items:flex-end;">
-        <div class="field" style="flex:1;margin-bottom:0;">
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+        <div class="field" style="flex:1;min-width:110px;margin-bottom:0;">
           <label>مبلغ دفعة جديدة</label>
           <input id="newPayAmt" type="number" placeholder="0" min="1" max="${remaining}">
           <div id="newPayAmtHint" style="font-size:11px;color:var(--ink-secondary);margin-top:2px;">الحد الأقصى: <b class="mono">${remaining}</b> ج.م</div>
         </div>
-        <div class="field" style="flex:2;margin-bottom:0;"><label>ملاحظة</label><input id="newPayNote" placeholder="دفعة تحت الحساب..."></div>
+        <div class="field" style="flex:1.3;min-width:150px;margin-bottom:0;">
+          <label>طريقة الدفع</label>
+          <select id="newPayMethod" style="font-weight:700;">
+            ${getActivePaymentMethods().map(pm => `<option value="${escapeHtml(pm.name)}">${pm.icon||'💵'} ${escapeHtml(pm.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field" style="flex:2;min-width:160px;margin-bottom:0;"><label>ملاحظة</label><input id="newPayNote" placeholder="دفعة تحت الحساب..."></div>
         <button class="btn btn-green btn-sm" id="addPayBtn" ${remaining<=0?'disabled':''}>تسجيل دفعة</button>
       </div>
     </div>
@@ -13530,8 +13679,13 @@ async function openReceiptDetail(rawR){
       return;
     }
     box.innerHTML = payments.map(p=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--line);">
-      <span><b class="mono" style="font-size:11.5px;color:var(--ink-secondary);">${cleanDate(p.Date)}</b> ${p.Note?'— '+p.Note:''} <span style="color:var(--slate-400);font-size:11px;">(${p.By||'نظام'})</span></span>
-      <span class="mono" style="font-weight:800;color:var(--green-text);">${p.Amount} ج.م</span>
+      <span>
+        <b class="mono" style="font-size:11.5px;color:var(--ink-secondary);">${cleanDate(p.Date)}</b>
+        ${getPaymentMethodBadge(p.PaymentMethod || 'نقدي (كاش)')}
+        ${p.Note?'— '+escapeHtml(p.Note):''}
+        <span style="color:var(--slate-400);font-size:11px;">(${escapeHtml(p.By||'نظام')})</span>
+      </span>
+      <span class="mono" style="font-weight:800;color:var(--green-text);">${Number(p.Amount||0).toLocaleString()} ج.م</span>
     </div>`).join('');
   }
   renderPaymentsList();
@@ -13784,12 +13938,12 @@ async function openReceiptDetail(rawR){
     const remainingNow = Math.max(0, totalDue - totalPaid + Number(r.refunded||0));
 
     if(r.status === 'تم التسليم' && remainingNow > 0){
-      promptDeliveryRemainingPayment(r, remainingNow, async (shouldPay)=>{
+      promptDeliveryRemainingPayment(r, remainingNow, async (shouldPay, payMethodName)=>{
         const btn = overlay.querySelector('#saveEditBtn');
         if(btn){ btn.disabled = true; btn.textContent = 'جارٍ الحفظ...'; }
         if(shouldPay){
           try{
-            await savePaymentRemote(r.id, remainingNow, 'سداد المتبقي عند التسليم');
+            await savePaymentRemote(r.id, remainingNow, 'سداد المتبقي عند التسليم', payMethodName || 'نقدي (كاش)');
             r.deposit = Number(r.deposit||0) + remainingNow;
             r.paid = true;
             await refreshPayments();
@@ -13825,6 +13979,8 @@ async function openReceiptDetail(rawR){
   overlay.querySelector('#addPayBtn').onclick = async ()=>{
     const amt = Number(overlay.querySelector('#newPayAmt').value);
     const note = overlay.querySelector('#newPayNote').value.trim();
+    const payMethodInp = overlay.querySelector('#newPayMethod');
+    const chosenMethod = payMethodInp ? payMethodInp.value : 'نقدي (كاش)';
     if(!amt || amt<=0){ showToast('أدخل مبلغاً صحيحاً', 'error'); return; }
 
     const totalDue = Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0);
@@ -13843,9 +13999,10 @@ async function openReceiptDetail(rawR){
 
     // إذا كانت الدفعة تغطي المبلغ المتبقي بالكامل والحالة لم تسلم بعد
     if(amt >= remainingBefore && r.status !== 'تم التسليم'){
-      promptPaymentDeliveryStatus(r, amt, async (shouldDeliver)=>{
+      promptPaymentDeliveryStatus(r, amt, async (shouldDeliver, payMethodName)=>{
         try{
-          await savePaymentRemote(r.id, amt, note || (shouldDeliver ? 'سداد المتبقي عند التسليم' : 'سداد الدفعة المتبقية'));
+          const methodToUse = payMethodName || chosenMethod;
+          await savePaymentRemote(r.id, amt, note || (shouldDeliver ? 'سداد المتبقي عند التسليم' : 'سداد الدفعة المتبقية'), methodToUse);
           r.deposit = Number(r.deposit||0) + amt;
           if(r.deposit >= totalDue) r.paid = true;
           if(shouldDeliver){
@@ -13865,7 +14022,7 @@ async function openReceiptDetail(rawR){
     }
 
     try{
-      await savePaymentRemote(r.id, amt, note);
+      await savePaymentRemote(r.id, amt, note, chosenMethod);
       r.deposit = Number(r.deposit||0) + amt;
       if(r.deposit >= totalDue) r.paid = true;
       const newRem = Math.max(0, totalDue - Number(r.deposit||0) + Number(r.refunded||0));
@@ -13892,10 +14049,10 @@ async function openReceiptDetail(rawR){
       return;
     }
 
-    promptPaymentDeliveryStatus(r, remainingNow, async (shouldDeliver)=>{
+    promptPaymentDeliveryStatus(r, remainingNow, async (shouldDeliver, payMethodName)=>{
       payBtn.disabled = true;
       try{
-        await savePaymentRemote(r.id, remainingNow, shouldDeliver ? 'سداد المتبقي عند التسليم' : 'سداد المتبقي بالكامل');
+        await savePaymentRemote(r.id, remainingNow, shouldDeliver ? 'سداد المتبقي عند التسليم' : 'سداد المتبقي بالكامل', payMethodName || 'نقدي (كاش)');
         r.deposit = Number(r.deposit||0) + remainingNow;
         r.paid = true;
         if(shouldDeliver){
@@ -14205,7 +14362,7 @@ function openReceiptPrint(rawR, kind){
             <div class="mono" style="font-weight:800;font-size:8px;">${Number(r.cost||0)} ج.م</div>
           </div>
           <div style="padding:1px;">
-            <div style="color:#64748b;font-size:6.5px;">مدفوع مقدم</div>
+            <div style="color:#64748b;font-size:6.5px;">مدفوع مقدم${(Number(r.deposit||0) > 0 && r.depositPaymentMethod) ? ` (${escapeHtml(r.depositPaymentMethod)})` : ''}</div>
             <div class="mono" style="font-weight:800;font-size:8px;color:#047857;">${Number(r.deposit||0)} ج.م</div>
           </div>
           <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:2px;padding:1px;">
@@ -16274,7 +16431,7 @@ function getUnifiedDailyTransactions(){
       in: Number(p.Amount || 0),
       out: 0,
       by: p.By || 'نظام',
-      method: 'نقدي بالدرج',
+      method: p.PaymentMethod || 'نقدي (كاش)',
       notes: p.Note || '',
       canDelete: false
     });
@@ -16355,7 +16512,7 @@ function getUnifiedDailyTransactions(){
         in: 0,
         out: paidAmt,
         by: pur.By || 'نظام',
-        method: 'نقدي بالدرج',
+        method: pur.PaymentMethod || 'نقدي (كاش)',
         notes: pur.Supplier,
         canDelete: false
       });
@@ -16381,7 +16538,7 @@ function getUnifiedDailyTransactions(){
         in: 0,
         out: Number(r.refunded),
         by: r.updatedBy || r.createdBy || 'نظام',
-        method: 'نقدي',
+        method: 'نقدي (كاش)',
         notes: 'مبالغ مستردة',
         canDelete: false
       });
@@ -16393,6 +16550,7 @@ function getUnifiedDailyTransactions(){
     const isIncome = ex.Type === 'in' || ex.Type === 'income';
     const isDraw = ex.Type === 'out' || ex.Category === 'مسحوبات شخصية' || ex.Category === 'جاري الشركاء';
     const isPetty = ex.Type === 'petty' || ex.Category === 'بوفيه ونثريات' || ex.Category === 'نثريات';
+    const isSupplierPay = ex.Category === 'سداد موردين ومشتريات' || ex.Category === 'سداد موردين' || !!ex.Supplier;
 
     let tType = 'out';
     let sIcon = '💸';
@@ -16410,6 +16568,14 @@ function getUnifiedDailyTransactions(){
       accCode = '1101';
       accName = 'الخزينة الرئيسية (وارد يدوي)';
       accTag = '1101 • وارد يدوي';
+    } else if(isSupplierPay){
+      tType = 'out';
+      sIcon = '💸';
+      sCat = 'سداد موردين';
+      sRef = ex.Reference ? `سند #${ex.Reference}` : 'سند صرف مورد';
+      accCode = '2101';
+      accName = 'الموردون والدائنون';
+      accTag = '2101 • موردين';
     } else if(isPetty){
       tType = 'petty';
       sIcon = '☕';
@@ -16434,7 +16600,7 @@ function getUnifiedDailyTransactions(){
       date: cleanDate(ex.Date) || new Date().toISOString().slice(0,10),
       rawTime: '',
       type: tType,
-      sourceType: isIncome ? 'manual_in' : (isPetty ? 'petty' : 'expense'),
+      sourceType: isIncome ? 'manual_in' : (isPetty ? 'petty' : (isSupplierPay ? 'supplier_pay' : 'expense')),
       sourceIcon: sIcon,
       accountCode: accCode,
       accountName: accName,
@@ -16445,7 +16611,7 @@ function getUnifiedDailyTransactions(){
       in: isIncome ? Number(ex.Amount || 0) : 0,
       out: isIncome ? 0 : Number(ex.Amount || 0),
       by: ex.By || 'نظام',
-      method: ex.PaymentMethod || 'نقدي بالدرج',
+      method: ex.PaymentMethod || 'نقدي (كاش)',
       notes: ex.Notes || '',
       canDelete: true
     });
@@ -16540,9 +16706,7 @@ function openRecordTransactionModal(defaultType='expense'){
           <div class="field">
             <label>طريقة الدفع / الصندوق</label>
             <select id="txPaymentMethod">
-              <option>نقدي بالدرج</option>
-              <option>حساب البنك</option>
-              <option>فودافون كاش / إنستاباي</option>
+              ${getActivePaymentMethods().map(pm => `<option value="${escapeHtml(pm.name)}">${pm.icon||'💵'} ${escapeHtml(pm.name)}</option>`).join('')}
             </select>
           </div>
         </div>
@@ -16682,6 +16846,7 @@ function openDailyClosePrint(date, stats, list){
         <tr style="background:#0f172a;color:#fff;">
           <th style="padding:5px 8px;text-align:right;">#</th>
           <th style="padding:5px 8px;text-align:right;">البيان والمعاملة</th>
+          <th style="padding:5px 8px;text-align:right;">طريقة الدفع</th>
           <th style="padding:5px 8px;text-align:right;">القسم / المرجع</th>
           <th style="padding:5px 8px;text-align:center;">وارد (مدين)</th>
           <th style="padding:5px 8px;text-align:center;">منصرف (دائن)</th>
@@ -16693,6 +16858,7 @@ function openDailyClosePrint(date, stats, list){
           <tr style="border-bottom:1px solid #e2e8f0;">
             <td style="padding:5px 8px;color:#64748b;" class="mono">${idx+1}</td>
             <td style="padding:5px 8px;font-weight:700;">${t.title}</td>
+            <td style="padding:5px 8px;font-size:10px;font-weight:600;white-space:nowrap;">${t.method || 'نقدي (كاش)'}</td>
             <td style="padding:5px 8px;color:#475569;">${t.reference}</td>
             <td style="padding:5px 8px;text-align:center;font-weight:800;color:#16a34a;" class="mono">${t.in > 0 ? t.in.toLocaleString() : '-'}</td>
             <td style="padding:5px 8px;text-align:center;font-weight:800;color:#dc2626;" class="mono">${t.out > 0 ? t.out.toLocaleString() : '-'}</td>
@@ -16790,6 +16956,19 @@ function renderDailyJournalPage(main){
     filtered = filtered.filter(t => t.sourceType === 'expense' || t.sourceType === 'purchase');
   }
 
+  // Apply Payment Method Filter
+  if(state.dailyMethodFilter && state.dailyMethodFilter !== 'all'){
+    filtered = filtered.filter(t => {
+      const m = (t.method || '').toLowerCase();
+      if(state.dailyMethodFilter === 'cash') return m.includes('نقدي') || m.includes('كاش') || m.includes('cash');
+      if(state.dailyMethodFilter === 'visa') return m.includes('فيزا') || m.includes('card') || m.includes('بطاق') || m.includes('visa');
+      if(state.dailyMethodFilter === 'instapay') return m.includes('إنستاباي') || m.includes('انستاباي') || m.includes('instapay');
+      if(state.dailyMethodFilter === 'wallet') return m.includes('محفظ') || m.includes('فودافون') || m.includes('vodafone') || m.includes('wallet');
+      if(state.dailyMethodFilter === 'credit') return m.includes('آجل') || m.includes('اجل') || m.includes('حساب') || m.includes('credit');
+      return true;
+    });
+  }
+
   // Apply Search
   const q = (state.dailySearchQ||'').trim().toLowerCase();
   if(q){
@@ -16798,7 +16977,8 @@ function renderDailyJournalPage(main){
       (t.reference||'').toLowerCase().includes(q) ||
       (t.category||'').toLowerCase().includes(q) ||
       (t.by||'').toLowerCase().includes(q) ||
-      (t.notes||'').toLowerCase().includes(q)
+      (t.notes||'').toLowerCase().includes(q) ||
+      (t.method||'').toLowerCase().includes(q)
     );
   }
 
@@ -16892,8 +17072,16 @@ function renderDailyJournalPage(main){
         <option value="expense" ${state.dailyTypeFilter==='expense'?'selected':''}>💸 المصروفات والمشتريات</option>
         <option value="petty" ${state.dailyTypeFilter==='petty'?'selected':''}>☕ نثريات وبوفيه فقط</option>
       </select>
+      <select id="dailyMethodFilterSelect" style="min-width:140px;">
+        <option value="all" ${(!state.dailyMethodFilter || state.dailyMethodFilter==='all')?'selected':''}>💳 كل طرق الدفع</option>
+        <option value="cash" ${state.dailyMethodFilter==='cash'?'selected':''}>💵 نقدي (كاش)</option>
+        <option value="visa" ${state.dailyMethodFilter==='visa'?'selected':''}>💳 فيزا وبطاقات</option>
+        <option value="instapay" ${state.dailyMethodFilter==='instapay'?'selected':''}>⚡ إنستاباي</option>
+        <option value="wallet" ${state.dailyMethodFilter==='wallet'?'selected':''}>📱 محفظة نقدية</option>
+        <option value="credit" ${state.dailyMethodFilter==='credit'?'selected':''}>📝 آجل / على الحساب</option>
+      </select>
       <input id="dailySearchInp" placeholder="🔍 بحث في المعاملات، الإيصالات، النثريات، أو المسؤول..." value="${state.dailySearchQ}" style="flex:1;min-width:220px;">
-      ${(state.dailySearchQ || state.dailyTypeFilter!=='all' || state.dailyDateFilter!=='today') ? `<button class="btn btn-ghost btn-sm" id="clearDailyFilters">إعادة ضبط</button>` : ''}
+      ${(state.dailySearchQ || state.dailyTypeFilter!=='all' || (state.dailyMethodFilter && state.dailyMethodFilter!=='all') || state.dailyDateFilter!=='today') ? `<button class="btn btn-ghost btn-sm" id="clearDailyFilters">إعادة ضبط</button>` : ''}
     </div>
 
     <!-- Ledger Table -->
@@ -16906,6 +17094,7 @@ function renderDailyJournalPage(main){
               <th style="width:40px;">#</th>
               <th>التاريخ</th>
               <th>البيان والمعاملة</th>
+              <th>طريقة الدفع</th>
               <th>المرجع / القسم</th>
               <th>الحساب المحاسبي</th>
               <th>التصنيف</th>
@@ -16925,6 +17114,9 @@ function renderDailyJournalPage(main){
                   <td>
                     <div style="font-weight:800;font-size:13px;">${t.title}</div>
                     ${t.notes ? `<div style="font-size:11px;color:var(--ink-secondary);">${t.notes}</div>` : ''}
+                  </td>
+                  <td>
+                    ${getPaymentMethodBadge(t.method)}
                   </td>
                   <td>
                     <span class="status-badge st-check" style="font-size:10.5px;">${t.sourceIcon} ${t.reference}</span>
@@ -16984,6 +17176,11 @@ function renderDailyJournalPage(main){
     typeSel.onchange = (e)=>{ state.dailyTypeFilter = e.target.value; renderDailyJournalPage(main); };
   }
 
+  const methodSel = document.getElementById('dailyMethodFilterSelect');
+  if(methodSel){
+    methodSel.onchange = (e)=>{ state.dailyMethodFilter = e.target.value; renderDailyJournalPage(main); };
+  }
+
   const searchInp = document.getElementById('dailySearchInp');
   if(searchInp){
     searchInp.oninput = (e)=>{ state.dailySearchQ = e.target.value; renderDailyJournalPage(main); };
@@ -16994,6 +17191,7 @@ function renderDailyJournalPage(main){
     clearBtn.onclick = ()=>{
       state.dailyDateFilter = 'today';
       state.dailyTypeFilter = 'all';
+      state.dailyMethodFilter = 'all';
       state.dailySearchQ = '';
       renderDailyJournalPage(main);
     };
@@ -20883,7 +21081,15 @@ function renderPosSalesLog(main){
 /* ---------------- Suppliers, Purchases ---------------- */
 function renderSuppliers(main){
   main.innerHTML = `
-    <div class="top-header"><div><h2 class="page-title">👥 إدارة الموردين</h2><div class="subtitle">${state.suppliers.length} مورد مسجل</div></div></div>
+    <div class="top-header">
+      <div>
+        <h2 class="page-title">👥 إدارة الموردين</h2>
+        <div class="subtitle">${state.suppliers.length} مورد مسجل</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-green btn-sm" id="openPaySupBtn">💸 سداد / دفع لمورد (سند صرف)</button>
+      </div>
+    </div>
     <div class="card">
       <h3>➕ إضافة مورد جديد</h3>
       <div style="display:grid;grid-template-columns:140px 1.5fr 1fr 1fr;gap:10px;">
@@ -20902,7 +21108,7 @@ function renderSuppliers(main){
     <div class="card">
       <h3>قائمة الموردين</h3>
       ${state.suppliers.length===0 ? '<div class="empty">لا يوجد موردون بعد.</div>' : `
-      <div class="table-wrap"><table><thead><tr><th>اللقب والاسم</th><th>الهاتف</th><th>ملاحظات</th></tr></thead><tbody>
+      <div class="table-wrap"><table><thead><tr><th>اللقب والاسم</th><th>الهاتف</th><th>ملاحظات</th><th style="width:130px;text-align:center;">الإجراءات</th></tr></thead><tbody>
         ${state.suppliers.map(s=>{
           const sTitle = s.Title || s.title || '';
           const sName = s.Name || s.name || '';
@@ -20915,11 +21121,21 @@ function renderSuppliers(main){
             </td>
             <td class="mono">${escapeHtml(s.Phone||s.phone||'-')}</td>
             <td>${escapeHtml(s.Notes||s.notes||'-')}</td>
+            <td style="text-align:center;">
+              <div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;">
+                <button class="btn btn-xs btn-green" data-suppaybtn="${escapeHtml(sName)}" title="تسجيل سند صرف وسداد دفعة لهذا المورد">💵 سداد دفعة</button>
+                ${(() => {
+                  const pCount = (state.expenses || []).filter(ex => (ex.Category === 'سداد موردين ومشتريات' || ex.Supplier) && ex.Supplier === sName).length;
+                  return pCount ? `<button class="btn btn-xs btn-ghost" data-suphistbtn="${escapeHtml(sName)}" title="عرض سجل سندات الصرف">📋 السجل (${pCount})</button>` : '';
+                })()}
+              </div>
+            </td>
           </tr>`;
         }).join('')}
       </tbody></table></div>`}
     </div>
   `;
+
   document.getElementById('addSupBtn').onclick = async ()=>{
     const title = document.getElementById('newSupTitle').value.trim();
     const name = document.getElementById('newSupName').value.trim();
@@ -20932,6 +21148,383 @@ function renderSuppliers(main){
       renderSuppliers(main);
     }catch(e){ showToast('تمت الإضافة محلياً', 'info'); }
   };
+
+  const openPaySupBtn = document.getElementById('openPaySupBtn');
+  if(openPaySupBtn) openPaySupBtn.onclick = () => openPaySupplierModal();
+
+  main.querySelectorAll('[data-suppaybtn]').forEach(btn => {
+    btn.onclick = () => openPaySupplierModal(btn.dataset.suppaybtn);
+  });
+
+  main.querySelectorAll('[data-suphistbtn]').forEach(btn => {
+    btn.onclick = () => openSupplierPaymentsHistoryModal(btn.dataset.suphistbtn);
+  });
+}
+
+function openPaySupplierModal(preselectedName){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.zIndex = '11500';
+  let curMethod = 'cash';
+
+  const suppliersList = (state.suppliers || []).map(s => (s.Name || s.name || '').trim()).filter(Boolean);
+
+  overlay.innerHTML = `
+    <div class="modal-content" style="max-width:480px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
+        <h3 style="margin:0;font-size:16px;color:var(--ink);display:flex;align-items:center;gap:6px;">
+          <span>💸</span>
+          <span>تسجيل سند صرف / سداد دفعة لمورد</span>
+        </h3>
+        <button class="btn btn-ghost btn-xs" id="closePaySupModal">✕</button>
+      </div>
+
+      <div class="field">
+        <label>اختر المورد المستحق *</label>
+        <select id="paySupSelect" style="font-weight:700;">
+          <option value="">-- اختر من قائمة الموردين --</option>
+          ${suppliersList.map(name => `<option value="${escapeHtml(name)}" ${preselectedName === name ? 'selected' : ''}>${escapeHtml(name)}</option>`).join('')}
+        </select>
+      </div>
+
+      <div class="grid2">
+        <div class="field">
+          <label>المبلغ المدفوع (ج.م) *</label>
+          <input id="paySupAmount" type="number" class="mono font-bold" placeholder="0" style="font-size:16px;direction:ltr;text-align:right;">
+        </div>
+        <div class="field">
+          <label>تاريخ السداد *</label>
+          <input id="paySupDate" type="date" value="${new Date().toISOString().slice(0,10)}">
+        </div>
+      </div>
+
+      <!-- طرق الدفع المتاحة مطابقة لنقطة البيع POS -->
+      <div class="pos-pay-section" style="margin-bottom:14px;">
+        <label style="font-size:11.5px;font-weight:800;color:var(--ink);display:block;margin-bottom:6px;">
+          💳 طريقة الدفع للمورد:
+        </label>
+        <div class="pos-pay-grid" id="supPayGrid">
+          ${getActivePaymentMethods().map(pm => `
+            <div class="pos-pay-btn ${pm.id==='cash'?'selected':''}" data-suppaymethod="${pm.id}">
+              <span>${pm.icon || '💵'}</span>
+              <span>${pm.name}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="field">
+          <label>رقم الفاتورة / المرجع (اختياري)</label>
+          <input id="paySupRef" placeholder="مثال: فاتورة توريد #102">
+        </div>
+        <div class="field">
+          <label>البيان / ملاحظات الصرف</label>
+          <input id="paySupNotes" placeholder="مثال: دفعة حساب بضاعة، قطع غيار...">
+        </div>
+      </div>
+
+      <div class="actions-row" style="margin-top:16px;border-top:1px solid var(--line);padding-top:12px;">
+        <button class="btn btn-ghost" id="cancelPaySupModal">إلغاء</button>
+        <button class="btn btn-green" id="savePaySupBtn" style="font-weight:800;">💾 تسجيل سند الصرف بالخزينة</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('#closePaySupModal').onclick = () => overlay.remove();
+  overlay.querySelector('#cancelPaySupModal').onclick = () => overlay.remove();
+
+  overlay.querySelectorAll('#supPayGrid .pos-pay-btn').forEach(btn => {
+    btn.onclick = () => {
+      overlay.querySelectorAll('#supPayGrid .pos-pay-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      curMethod = btn.dataset.suppaymethod;
+    };
+  });
+
+  overlay.querySelector('#savePaySupBtn').onclick = async () => {
+    const supName = overlay.querySelector('#paySupSelect').value.trim();
+    const amount = Number(overlay.querySelector('#paySupAmount').value);
+    const date = overlay.querySelector('#paySupDate').value;
+    const ref = overlay.querySelector('#paySupRef').value.trim();
+    const notes = overlay.querySelector('#paySupNotes').value.trim();
+
+    if(!supName){
+      showToast('يرجى اختيار المورد أولاً', 'error');
+      return;
+    }
+    if(!amount || amount <= 0){
+      showToast('يرجى إدخال مبلغ صحيح', 'error');
+      return;
+    }
+
+    const pmObj = getActivePaymentMethods().find(x => x.id === curMethod) || { name: 'نقدي (كاش)' };
+    const payMethodName = pmObj.name;
+
+    const saveBtn = overlay.querySelector('#savePaySupBtn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'جارٍ الحفظ...';
+
+    const fullTitle = `سداد مورد: ${supName}${ref ? ' (' + ref + ')' : ''}`;
+    const expObj = {
+      ID: 'exp_sup_' + Date.now(),
+      Date: date || new Date().toISOString().slice(0,10),
+      Title: fullTitle,
+      Amount: amount,
+      Type: 'out',
+      Category: 'سداد موردين ومشتريات',
+      PaymentMethod: payMethodName,
+      Supplier: supName,
+      Reference: ref,
+      Notes: notes ? `طريقة الدفع: [${payMethodName}] — ${notes}` : `سداد للمورد (${supName}) عبر [${payMethodName}]`,
+      By: state.user ? state.user.name : 'نظام'
+    };
+
+    try {
+      await saveExpenseRemote(expObj);
+
+      // Auto Journal Entry for Supplier Payment:
+      // Dr. 2101 (الموردون والدائنون) / Cr. 1101 (الخزينة) or 1102 (البنك والمحافظ)
+      const pLow = String(payMethodName).toLowerCase();
+      const isBank = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('إنستاباي') || pLow.includes('instapay') || pLow.includes('محفظ') || pLow.includes('فودافون');
+      const isCredit = pLow.includes('آجل') || pLow.includes('اجل');
+      const creditAccCode = isCredit ? '2101' : (isBank ? '1102' : '1101');
+      const creditAccName = isCredit ? 'الموردون والدائنون (شيك/كمبيالة)' : (isBank ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)');
+
+      recordAutoJournalEntry(
+        `سند صرف وسداد مورد (${supName}) - [${payMethodName}]`,
+        'SupplierPayment',
+        expObj.ID,
+        [
+          { AccountCode: '2101', AccountName: 'الموردون والدائنون', Debit: amount, Credit: 0, Notes: `سداد للمورد: ${supName}` },
+          { AccountCode: creditAccCode, AccountName: creditAccName, Debit: 0, Credit: amount, Notes: `صرف عبر ${payMethodName}` }
+        ]
+      ).catch(e=>{});
+
+      recordAuditLog('سند صرف مورد', 'الموردين', `تم تسجيل سند صرف لمورد: ${supName} بقيمة ${amount} ج.م بطريقة [${payMethodName}]`, expObj.ID);
+
+      showToast(`تم تسجيل سداد ${amount.toLocaleString()} ج.م للمورد (${supName}) بنجاح ✅`, 'success');
+      overlay.remove();
+      const main = document.getElementById('main');
+      if(state.invHubTab === 'suppliers') renderSuppliers(main);
+      else renderMain();
+
+      setTimeout(()=>{
+        if(confirm(`تم تسجيل سداد ${amount.toLocaleString()} ج.م للمورد (${supName}) بنجاح ✅\n\nهل ترغب في طباعة سند الصرف الآن؟`)){
+          openExpenseVoucherPrint(expObj);
+        }
+      }, 100);
+    } catch(err) {
+      showToast('حدث خطأ أثناء حفظ السند: ' + (err.message || err), 'error');
+      saveBtn.disabled = false;
+      saveBtn.textContent = '💾 تسجيل سند الصرف بالخزينة';
+    }
+  };
+}
+
+function openExpenseVoucherPrint(exp){
+  if(!exp) return;
+  const oldMount = document.getElementById('printMount');
+  if(oldMount) oldMount.remove();
+  const oldA5 = document.getElementById('dynamicA5ReceiptStyle');
+  if(oldA5) oldA5.remove();
+  const oldThermal = document.getElementById('dynamicThermalReceiptStyle');
+  if(oldThermal) oldThermal.remove();
+  const oldVoucher = document.getElementById('dynamicExpenseVoucherStyle');
+  if(oldVoucher) oldVoucher.remove();
+
+  const voucherStyle = document.createElement('style');
+  voucherStyle.id = 'dynamicExpenseVoucherStyle';
+  voucherStyle.innerHTML = `
+    @media print {
+      @page {
+        size: A5 landscape !important;
+        margin: 6mm !important;
+      }
+      body.printing-voucher {
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+      }
+      body.printing-voucher #app,
+      body.printing-voucher .sidebar,
+      body.printing-voucher .top-header,
+      body.printing-voucher #toastContainer,
+      body.printing-voucher .modal-overlay,
+      body.printing-voucher .cmd-palette-overlay {
+        display: none !important;
+      }
+      body.printing-voucher #printMount {
+        display: block !important;
+        width: 100% !important;
+        margin: 0 auto !important;
+      }
+    }
+  `;
+  document.head.appendChild(voucherStyle);
+
+  const shopName = (state.settings && state.settings.shopName) || 'صيانة ميكروتك';
+  const shopPhone = (state.settings && state.settings.shopPhone) || '';
+  const shopAddress = (state.settings && state.settings.shopAddress) || '';
+
+  const mount = document.createElement('div');
+  mount.id = 'printMount';
+  mount.innerHTML = `
+    <div style="width:100%;max-width:700px;margin:0 auto;background:#fff;color:#0f172a;border:2px solid #0f172a;border-radius:8px;padding:16px 20px;box-sizing:border-box;font-family:var(--font-main);direction:rtl;">
+      <!-- Header -->
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #0f172a;padding-bottom:8px;margin-bottom:12px;">
+        <div>
+          ${state.settings.logoUrl ? `<img src="${state.settings.logoUrl}" style="max-height:36px;max-width:120px;object-fit:contain;margin-bottom:4px;"><br>` : ''}
+          <h2 style="margin:0;font-size:18px;font-weight:900;">${escapeHtml(shopName)}</h2>
+          <div style="font-size:11px;color:#475569;">${shopPhone ? 'هاتف: ' + escapeHtml(shopPhone) : ''} ${shopAddress ? '| ' + escapeHtml(shopAddress) : ''}</div>
+        </div>
+        <div style="text-align:center;">
+          <div style="background:#0f172a;color:#fff;font-size:13.5px;font-weight:900;padding:4px 14px;border-radius:6px;display:inline-block;">
+            💸 سند صرف نقدية / سداد مورد
+          </div>
+          <div style="font-size:11px;color:#64748b;margin-top:4px;" class="mono">رقم السند: <b>${exp.ID}</b></div>
+          <div style="font-size:10.5px;color:#64748b;">التاريخ: <b>${cleanDate(exp.Date)}</b></div>
+        </div>
+      </div>
+
+      <!-- Voucher Body -->
+      <table style="width:100%;border-collapse:collapse;margin-bottom:14px;font-size:12px;">
+        <tr style="border-bottom:1px solid #cbd5e1;">
+          <td style="width:25%;padding:6px 8px;background:#f8fafc;font-weight:bold;color:#475569;">يصرف للمستفيد / المورد:</td>
+          <td style="padding:6px 8px;font-weight:900;font-size:13.5px;color:#0f172a;">${escapeHtml(exp.Supplier || exp.Title)}</td>
+        </tr>
+        <tr style="border-bottom:1px solid #cbd5e1;">
+          <td style="padding:6px 8px;background:#f8fafc;font-weight:bold;color:#475569;">المبلغ المصروف:</td>
+          <td style="padding:6px 8px;">
+            <span class="mono" style="font-size:16px;font-weight:900;color:#dc2626;">${Number(exp.Amount||0).toLocaleString()} ج.م</span>
+          </td>
+        </tr>
+        <tr style="border-bottom:1px solid #cbd5e1;">
+          <td style="padding:6px 8px;background:#f8fafc;font-weight:bold;color:#475569;">طريقة الدفع / الصرف:</td>
+          <td style="padding:6px 8px;font-weight:800;color:#0f172a;">
+            ${getPaymentMethodBadge(exp.PaymentMethod || 'نقدي (كاش)')}
+          </td>
+        </tr>
+        <tr style="border-bottom:1px solid #cbd5e1;">
+          <td style="padding:6px 8px;background:#f8fafc;font-weight:bold;color:#475569;">المرجع / رقم الفاتورة:</td>
+          <td style="padding:6px 8px;font-weight:700;">${escapeHtml(exp.Reference || '-')}</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 8px;background:#f8fafc;font-weight:bold;color:#475569;">البيان والغرض من الصرف:</td>
+          <td style="padding:6px 8px;color:#334155;">${escapeHtml(exp.Notes || exp.Title || '-')}</td>
+        </tr>
+      </table>
+
+      <!-- Signatures -->
+      <div style="display:flex;justify-content:space-between;margin-top:20px;border-top:1.5px dashed #cbd5e1;padding-top:10px;font-size:11px;color:#475569;">
+        <div style="text-align:center;width:40%;">
+          <div>توقيع أمين الخزينة / المسؤول</div>
+          <div style="margin-top:28px;border-bottom:1px dashed #94a3b8;width:80%;margin-left:auto;margin-right:auto;"></div>
+          <div style="font-size:10px;color:#94a3b8;margin-top:3px;">${escapeHtml(exp.By || state.user?.name || '')}</div>
+        </div>
+        <div style="text-align:center;width:40%;">
+          <div>توقيع المستلم / المورد</div>
+          <div style="margin-top:28px;border-bottom:1px dashed #94a3b8;width:80%;margin-left:auto;margin-right:auto;"></div>
+          <div style="font-size:10px;color:#94a3b8;margin-top:3px;">[ ......................................... ]</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.classList.add('printing-voucher');
+  document.body.appendChild(mount);
+  setTimeout(()=>{
+    window.print();
+    mount.remove();
+    document.body.classList.remove('printing-voucher');
+    voucherStyle.remove();
+  }, 250);
+}
+
+function openSupplierPaymentsHistoryModal(supName){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.zIndex = '11500';
+
+  const payments = (state.expenses || []).filter(ex => (ex.Category === 'سداد موردين ومشتريات' || ex.Supplier) && ex.Supplier === supName);
+  const total = payments.reduce((acc, ex) => acc + Number(ex.Amount || 0), 0);
+
+  overlay.innerHTML = `
+    <div class="modal-content" style="max-width:680px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
+        <h3 style="margin:0;font-size:16.5px;color:var(--ink);display:flex;align-items:center;gap:6px;">
+          <span>📋</span>
+          <span>سجل سدادات وسندات صرف المورد: <b>${escapeHtml(supName)}</b></span>
+        </h3>
+        <button class="btn btn-ghost btn-xs" id="closeSupHistModal">✕</button>
+      </div>
+
+      <div style="background:var(--paper2);border:1px solid var(--line);border-radius:6px;padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <span style="font-size:12px;color:var(--ink-secondary);">إجمالي ما تم سداده للمورد:</span>
+          <div class="mono" style="font-size:18px;font-weight:900;color:var(--green);">${total.toLocaleString()} ج.م</div>
+        </div>
+        <button class="btn btn-sm btn-green" id="newPaySupFromHistBtn">➕ تسجيل دفعة جديدة</button>
+      </div>
+
+      ${payments.length === 0 ? '<div class="empty">لا توجد سندات صرف مسجلة لهذا المورد بعد.</div>' : `
+      <div class="table-wrap" style="max-height:360px;overflow-y:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>التاريخ</th>
+              <th>المبلغ</th>
+              <th>طريقة الدفع</th>
+              <th>المرجع</th>
+              <th>البيان</th>
+              <th style="width:70px;text-align:center;">طباعة</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${payments.slice().reverse().map(p => `
+              <tr>
+                <td class="mono font-bold" style="font-size:11.5px;white-space:nowrap;">${cleanDate(p.Date)}</td>
+                <td class="mono font-bold" style="color:var(--red);">${Number(p.Amount||0).toLocaleString()} ج.م</td>
+                <td>${getPaymentMethodBadge(p.PaymentMethod || 'نقدي (كاش)')}</td>
+                <td style="font-size:11.5px;">${escapeHtml(p.Reference || '-')}</td>
+                <td style="font-size:11.5px;color:var(--ink-secondary);">${escapeHtml(p.Notes || p.Title || '-')}</td>
+                <td style="text-align:center;">
+                  <button class="btn btn-xs btn-ghost" data-printvouch="${p.ID}" title="طباعة سند الصرف">🖨️</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>`}
+
+      <div class="actions-row" style="margin-top:16px;border-top:1px solid var(--line);padding-top:12px;">
+        <button class="btn btn-ghost" id="dismissSupHistModal">إغلاق</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('#closeSupHistModal').onclick = () => overlay.remove();
+  overlay.querySelector('#dismissSupHistModal').onclick = () => overlay.remove();
+
+  const newPayBtn = overlay.querySelector('#newPaySupFromHistBtn');
+  if(newPayBtn){
+    newPayBtn.onclick = () => {
+      overlay.remove();
+      openPaySupplierModal(supName);
+    };
+  }
+
+  overlay.querySelectorAll('[data-printvouch]').forEach(btn => {
+    btn.onclick = () => {
+      const exp = payments.find(x => x.ID === btn.dataset.printvouch);
+      if(exp) openExpenseVoucherPrint(exp);
+    };
+  });
 }
 
 function renderPurchases(main){

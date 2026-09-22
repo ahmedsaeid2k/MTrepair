@@ -177,10 +177,11 @@ function doPost(e) {
       const payment = {
         ID: 'p_' + new Date().getTime() + '_' + Math.floor(Math.random() * 1000),
         ReceiptID: body.receiptId, Date: body.date, Amount: body.amount,
-        Note: body.note || '', By: body.user
+        Note: body.note || '', By: body.user,
+        PaymentMethod: body.paymentMethod || 'نقدي (كاش)'
       };
       appendRow(SHEET_PAYMENTS, payment);
-      logAudit(body.receiptId, body.user, 'تسجيل دفعة: ' + body.amount + ' ج.م');
+      logAudit(body.receiptId, body.user, 'تسجيل دفعة: ' + body.amount + ' ج.م (' + (body.paymentMethod || 'نقدي') + ')');
       return jsonOut({ ok: true, payment });
     }
     if (action === 'saveInventoryItem') {

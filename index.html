@@ -11159,6 +11159,108 @@ function renderArchive(main){
   }
 }
 
+/* ---------------- Spotlight Search Normalization & Matching ---------------- */
+function normalizeSearchText(str){
+  if(!str) return '';
+  return String(str)
+    .replace(/[\u064B-\u065F\u0670]/g, '') // remove tashkeel
+    .replace(/[أإآء]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/[ى]/g, 'ي')
+    .replace(/[\u0660-\u0669]/g, d => String.fromCharCode(d.charCodeAt(0) - 0x0660 + 48))
+    .replace(/[\u06F0-\u06F9]/g, d => String.fromCharCode(d.charCodeAt(0) - 0x06F0 + 48))
+    .toLowerCase()
+    .trim();
+}
+
+function highlightSpotlightMatch(originalText, query){
+  if(!originalText) return '';
+  if(!query || !query.trim()) return escapeHtml(originalText);
+  const qClean = normalizeSearchText(query);
+  if(!qClean) return escapeHtml(originalText);
+
+  const tokens = qClean.split(/\s+/).filter(Boolean);
+  if(!tokens.length) return escapeHtml(originalText);
+
+  try {
+    const pattern = tokens.map(tok => {
+      let p = '';
+      for(const ch of tok){
+        if(ch === 'ا') p += '[اأإآء]';
+        else if(ch === 'ه') p += '[هة]';
+        else if(ch === 'ي') p += '[ييى]';
+        else p += ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      }
+      return p;
+    }).join('|');
+    const regex = new RegExp(`(${pattern})`, 'gi');
+    return escapeHtml(originalText).replace(regex, '<mark class="spotlight-mark" style="background:#fef08a;color:#854d0e;padding:0 2px;border-radius:2px;font-weight:900;">$1</mark>');
+  } catch(e) {
+    return escapeHtml(originalText);
+  }
+}
+
+function filterCustomersSpotlight(allCusts, searchStr){
+  if(!searchStr || !searchStr.trim()) return allCusts;
+  const qClean = normalizeSearchText(searchStr);
+  const tokens = qClean.split(/\s+/).filter(Boolean);
+
+  const scored = [];
+
+  allCusts.forEach(c => {
+    const cName = extractCustomerName(c) || '';
+    const cPhone = extractCustomerPhone(c) || '';
+    const cNotes = c.notes || c.Notes || c.email || c.address || '';
+    
+    const clientReceipts = (state.receipts||[]).filter(r => {
+      const rName = extractCustomerName(r);
+      const rPhone = extractCustomerPhone(r);
+      return (rName && rName.toLowerCase() === cName.toLowerCase()) || (cPhone && rPhone === cPhone);
+    });
+
+    const normName = normalizeSearchText(cName);
+    const normPhone = normalizeSearchText(cPhone);
+    const normNotes = normalizeSearchText(cNotes);
+
+    const devStrings = clientReceipts.map(r => {
+      const d = r.device || (r.devices && r.devices[0]) || {};
+      return normalizeSearchText(`${d.category || ''} ${d.brand || ''} ${d.model || ''} ${r.receiptNumber || ''}`);
+    }).join(' ');
+
+    const fullTarget = `${normName} ${normPhone} ${normNotes} ${devStrings}`;
+
+    // 1. All tokens match target
+    const allTokensMatch = tokens.every(tok => fullTarget.includes(tok));
+
+    // 2. Sequential letters match (Spotlight: "مح عل" matches "محمد علي")
+    let seqMatch = false;
+    if(qClean.length >= 2){
+      let idx = 0;
+      for(let i = 0; i < normName.length && idx < qClean.length; i++){
+        if(normName[i] === qClean[idx] || (qClean[idx] === ' ' && normName[i] === ' ')) idx++;
+      }
+      if(idx === qClean.length) seqMatch = true;
+    }
+
+    if(!allTokensMatch && !seqMatch) return;
+
+    let score = 10;
+    if(normName === qClean) score += 100;
+    else if(normName.startsWith(qClean)) score += 80;
+    else if(normName.includes(qClean)) score += 60;
+    else if(allTokensMatch) score += 50;
+    if(seqMatch) score += 35;
+
+    if(normPhone.startsWith(qClean)) score += 75;
+    else if(normPhone.includes(qClean)) score += 45;
+
+    scored.push({ customer: c, score });
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.map(x => x.customer);
+}
+
 /* ---------------- Customer Directory & Phone Management Hub ---------------- */
 function renderCustomersPage(main){
   if(!state.custSearch) state.custSearch = '';
@@ -11170,20 +11272,13 @@ function renderCustomersPage(main){
   const withPhones = allCusts.filter(c => c.phone && c.phone.trim() !== '' && c.phone !== '0000000000');
   const missingPhones = allCusts.filter(c => !c.phone || c.phone.trim() === '' || c.phone === '0000000000');
 
-  const sText = state.custSearch.trim().toLowerCase();
-  const filtered = allCusts.filter(c => {
-    if(!sText) return true;
-    const mName = (c.name || '').toLowerCase().includes(sText);
-    const mPhone = (c.phone || '').includes(sText);
-    const mEmail = (c.email || '').toLowerCase().includes(sText);
-    return mName || mPhone || mEmail;
-  });
+  const filtered = filterCustomersSpotlight(allCusts, state.custSearch);
 
   main.innerHTML = `
     <div class="top-header">
       <div>
         <h2 class="page-title">👥 دليل وسجل هواتف العملاء</h2>
-        <div class="subtitle mono" style="font-size:12px;color:var(--ink-secondary);">${allCusts.length} عميل مسجل</div>
+        <div class="subtitle mono" style="font-size:12px;color:var(--ink-secondary);">${allCusts.length} عميل مسجل ${state.custSearch ? `(مطابق للبحث: <b>${filtered.length}</b>)` : ''}</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <button class="btn btn-ghost btn-sm" id="custRecoverBtn" style="color:var(--primary);font-weight:800;">
@@ -11210,18 +11305,23 @@ function renderCustomersPage(main){
       </div>
     </div>
 
-    <!-- Search Box -->
-    <div class="card" style="padding:12px;margin-bottom:14px;background:var(--paper2);">
+    <!-- Search Box (Spotlight Search Style) -->
+    <div class="card" style="padding:12px;margin-bottom:14px;background:var(--paper2);border:1.5px solid var(--primary);">
       <div style="display:flex;gap:10px;align-items:center;">
-        <input id="custSearchInput" value="${escapeHtml(state.custSearch)}" placeholder="🔍 بحث باسم العميل، رقم الهاتف، أو البريد الإلكتروني..." style="flex:1;">
+        <span style="font-size:16px;">🔍</span>
+        <input id="custSearchInput" value="${escapeHtml(state.custSearch)}" placeholder="بحث فوري بنمط Spotlight (اكتب أجزاء من الاسم أو الحروف مثل: مح عل، أو رقم الهاتف، أو الجهاز)..." style="flex:1;font-weight:700;font-size:13.5px;" autofocus>
         ${state.custSearch ? `<button class="btn btn-ghost btn-sm" id="resetCustSearchBtn">✕ مسح البحث</button>` : ''}
+      </div>
+      <div style="font-size:11px;color:var(--ink-secondary);margin-top:6px;display:flex;justify-content:space-between;">
+        <span>⚡ يدعم البحث بالهمزة وبدونها (أ/إ/آ)، التاء والهاء (ة/ه)، وأجزاء الكلمات المتفرقة.</span>
+        ${state.custSearch ? `<span class="mono" style="font-weight:800;color:var(--primary);">${filtered.length} نتيجة</span>` : ''}
       </div>
     </div>
 
     <div id="unifiedSelectionTopSlot"></div>
 
     <!-- Customers Table -->
-    ${filtered.length === 0 ? '<div class="card empty" style="padding:30px;text-align:center;">لا يوجد عملاء مطابقين لمعايير البحث.</div>' : `
+    ${filtered.length === 0 ? '<div class="card empty" style="padding:30px;text-align:center;">لا يوجد عملاء مطابقين لبحث Spotlight.</div>' : `
       <div class="table-wrap">
         <table>
           <thead>
@@ -11251,13 +11351,13 @@ function renderCustomersPage(main){
                     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                       ${isSelectedCust ? '<span class="selected-badge-indicator">✓</span>' : ''}
                       ${cTitle ? `<span class="badge" style="background:var(--paper2);color:var(--primary);font-size:11px;font-weight:700;border:1px solid var(--line);padding:1px 6px;border-radius:4px;white-space:nowrap;">${escapeHtml(cTitle)}</span>` : ''}
-                      <span style="font-weight:800;font-size:13.5px;color:var(--ink);">${escapeHtml(cName)}</span>
+                      <span style="font-weight:800;font-size:13.5px;color:var(--ink);">${highlightSpotlightMatch(cName, state.custSearch)}</span>
                     </div>
                   </td>
                   <td>
                     ${cPhone && cPhone !== '0000000000' ? `
                       <div style="display:inline-flex;align-items:center;gap:6px;">
-                        <span class="mono font-bold" style="font-size:13px;direction:ltr;">${escapeHtml(cPhone)}</span>
+                        <span class="mono font-bold" style="font-size:13px;direction:ltr;">${highlightSpotlightMatch(cPhone, state.custSearch)}</span>
                         <a href="tel:${cPhone}" class="btn btn-ghost btn-xs" style="padding:2px 6px;" title="اتصال هاتفي" onclick="event.stopPropagation();">📞</a>
                         <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" class="btn btn-ghost btn-xs" style="padding:2px 6px;color:#22c55e;" title="محادثة واتساب" onclick="event.stopPropagation();">💬</a>
                       </div>
@@ -11275,7 +11375,7 @@ function renderCustomersPage(main){
                     ` : `<span style="color:var(--ink-secondary);font-size:11px;">-</span>`}
                   </td>
                   <td style="font-size:11.5px;color:var(--ink-secondary);">
-                    ${escapeHtml(c.email || c.address || '-')}
+                    ${highlightSpotlightMatch(c.email || c.address || '-', state.custSearch)}
                   </td>
                   <td style="text-align:center;" onclick="event.stopPropagation();">
                     <div style="display:inline-flex;gap:4px;flex-wrap:wrap;justify-content:center;">
@@ -11293,7 +11393,7 @@ function renderCustomersPage(main){
                       </button>
                       ${clientReceipts.length > 1 ? `
                         <button class="btn btn-xs" style="background:#ede9fe;color:#6d28d9;border:1px solid #c4b5fd;font-weight:800;" onclick="openCustomerConsolidatedInvoiceModal('${escapeHtml(cName)}'); event.stopPropagation();" title="إصدار فاتورة مجمعة لكافة أجهزة هذا العميل">
-                          🧾 مجمعة (${clientReceipts.length})
+                          📑 مجمعة
                         </button>
                       ` : ''}
                     </div>
@@ -11307,12 +11407,19 @@ function renderCustomersPage(main){
     `}
   `;
 
-  // Attach search events
+  // Attach search events with seamless cursor & focus preservation
   const sInput = document.getElementById('custSearchInput');
   if(sInput){
     sInput.oninput = (e)=>{
       state.custSearch = e.target.value;
+      const start = e.target.selectionStart;
+      const end = e.target.selectionEnd;
       renderCustomersPage(main);
+      const reInput = document.getElementById('custSearchInput');
+      if(reInput){
+        reInput.focus();
+        try { reInput.setSelectionRange(start, end); } catch(err){}
+      }
     };
   }
   const resetBtn = document.getElementById('resetCustSearchBtn');
@@ -11320,6 +11427,8 @@ function renderCustomersPage(main){
     resetBtn.onclick = ()=>{
       state.custSearch = '';
       renderCustomersPage(main);
+      const reInput = document.getElementById('custSearchInput');
+      if(reInput) reInput.focus();
     };
   }
 
@@ -16551,6 +16660,7 @@ function getUnifiedDailyTransactions(){
     const isDraw = ex.Type === 'out' || ex.Category === 'مسحوبات شخصية' || ex.Category === 'جاري الشركاء';
     const isPetty = ex.Type === 'petty' || ex.Category === 'بوفيه ونثريات' || ex.Category === 'نثريات';
     const isSupplierPay = ex.Category === 'سداد موردين ومشتريات' || ex.Category === 'سداد موردين' || !!ex.Supplier;
+    const isPosReturn = ex.Category === 'مرتجع مبيعات POS' || ex.AccountCode === '4102-RET';
 
     let tType = 'out';
     let sIcon = '💸';
@@ -16568,6 +16678,14 @@ function getUnifiedDailyTransactions(){
       accCode = '1101';
       accName = 'الخزينة الرئيسية (وارد يدوي)';
       accTag = '1101 • وارد يدوي';
+    } else if(isPosReturn){
+      tType = 'out';
+      sIcon = '↩️';
+      sCat = 'مرتجع مبيعات POS';
+      sRef = ex.Reference || 'إذن ارتجاع POS';
+      accCode = '4102-RET';
+      accName = 'مردودات ومسموحات مبيعات POS';
+      accTag = '4102 • مرتجع مبيعات';
     } else if(isSupplierPay){
       tType = 'out';
       sIcon = '💸';
@@ -16600,7 +16718,7 @@ function getUnifiedDailyTransactions(){
       date: cleanDate(ex.Date) || new Date().toISOString().slice(0,10),
       rawTime: '',
       type: tType,
-      sourceType: isIncome ? 'manual_in' : (isPetty ? 'petty' : (isSupplierPay ? 'supplier_pay' : 'expense')),
+      sourceType: isIncome ? 'manual_in' : (isPosReturn ? 'pos_return' : (isPetty ? 'petty' : (isSupplierPay ? 'supplier_pay' : 'expense'))),
       sourceIcon: sIcon,
       accountCode: accCode,
       accountName: accName,
@@ -16893,6 +17011,9 @@ function getAccountBadgeHtml(t){
   if(t.sourceType === 'pos'){
     return '<span class="badge" style="background:#dcfce7;color:#15803d;font-weight:800;border:1px solid #bbf7d0;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;">🧾 4102 مبيعات POS</span>';
   }
+  if(t.sourceType === 'pos_return' || t.accountCode === '4102-RET'){
+    return '<span class="badge" style="background:#fee2e2;color:#b91c1c;font-weight:800;border:1px solid #fca5a5;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;">↩️ 4102 مرتجع مبيعات</span>';
+  }
   if(t.sourceType === 'invoice'){
     return '<span class="badge" style="background:#f1f5f9;color:#334155;font-weight:800;border:1px solid #cbd5e1;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;">📄 4102 فواتير</span>';
   }
@@ -16990,6 +17111,23 @@ function renderDailyJournalPage(main){
   const totalPetty = filtered.filter(t=>t.type==='petty'||t.category.includes('نثريات')).reduce((s,t)=>s+Number(t.out||0), 0);
   const netCash = totalIn - totalOut;
 
+  // Payment Channels Breakdown
+  const isMethodMatch = (m, target) => {
+    const s = String(m || '').toLowerCase();
+    if(target === 'cash') return s.includes('نقدي') || s.includes('كاش') || s.includes('cash');
+    if(target === 'visa') return s.includes('فيزا') || s.includes('card') || s.includes('بطاق') || s.includes('visa');
+    if(target === 'instapay') return s.includes('إنستاباي') || s.includes('انستاباي') || s.includes('instapay');
+    if(target === 'wallet') return s.includes('محفظ') || s.includes('فودافون') || s.includes('vodafone') || s.includes('wallet');
+    if(target === 'credit') return s.includes('آجل') || s.includes('اجل') || s.includes('حساب') || s.includes('credit');
+    return false;
+  };
+
+  const cashNet = filtered.filter(t => isMethodMatch(t.method, 'cash')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
+  const cardIn = filtered.filter(t => isMethodMatch(t.method, 'visa')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
+  const instapayNet = filtered.filter(t => isMethodMatch(t.method, 'instapay')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
+  const walletNet = filtered.filter(t => isMethodMatch(t.method, 'wallet')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
+  const creditNet = filtered.filter(t => isMethodMatch(t.method, 'credit')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
+
   // Overall Cash Balance in Drawer (from all time)
   const currentTotalCashInDrawer = allTx.length ? allTx[allTx.length - 1].runningBalance : 0;
 
@@ -17011,7 +17149,7 @@ function renderDailyJournalPage(main){
     </div>
 
     <!-- KPIs Grid (Separated Maintenance & Sales without overlap) -->
-    <div class="stat-grid" style="grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;margin-bottom:16px;">
+    <div class="stat-grid" style="grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;margin-bottom:14px;">
       <div class="stat-card" style="border-top:3px solid #0284c7;background:linear-gradient(180deg, #f0f9ff 0%, #fff 100%);">
         <div class="top-row"><span class="lbl" style="color:#0369a1;font-weight:800;">🛠️ مقبوضات الصيانة (ح/ 4101)</span><div class="icon-box" style="background:#e0f2fe;">🛠️</div></div>
         <div class="num mono" style="color:#0369a1;">${totalMaintIn.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
@@ -17036,6 +17174,43 @@ function renderDailyJournalPage(main){
         <div class="top-row"><span class="lbl" style="color:#6d28d9;font-weight:800;">💰 رصيد الخزينة بالدرج</span><div class="icon-box" style="background:#ede9fe;">💵</div></div>
         <div class="num mono" style="font-weight:900;color:#6d28d9;">${currentTotalCashInDrawer.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
         <div style="font-size:11px;color:var(--ink-secondary);margin-top:3px;">الرصيد الفعلي الحاضر بالدرج</div>
+      </div>
+    </div>
+
+    <!-- Payment Channels Breakdown (متابعة وتفصيل حركة الخزينة حسب وسيلة الدفع) -->
+    <div style="background:var(--paper2);border:1.5px solid var(--line);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
+        <span style="font-size:12px;font-weight:800;color:var(--ink);display:flex;align-items:center;gap:6px;">
+          <span>💳</span><span>متابعة وتفصيل حركة الخزينة حسب وسيلة الدفع (Payment Channels)</span>
+        </span>
+        <span style="font-size:11px;color:var(--ink-secondary);">اضغط على أي قناة لفرز وعزل حركاتها تلقائياً</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:8px;">
+        <div class="pos-pay-stat-tile" data-dmethodquick="cash" style="background:#fff;border:1.5px solid ${state.dailyMethodFilter==='cash'?'#059669':'#cbd5e1'};border-radius:6px;padding:8px 10px;cursor:pointer;transition:all 0.15s ease;">
+          <div style="font-size:11px;color:#047857;font-weight:800;">💵 نقدي (كاش)</div>
+          <div class="mono font-bold" style="font-size:14px;color:#065f46;margin-top:2px;">${cashNet.toLocaleString()} ج.م</div>
+          <div style="font-size:9.5px;color:var(--ink-secondary);">ح/ 1101 الخزينة</div>
+        </div>
+        <div class="pos-pay-stat-tile" data-dmethodquick="visa" style="background:#fff;border:1.5px solid ${state.dailyMethodFilter==='visa'?'#4338ca':'#cbd5e1'};border-radius:6px;padding:8px 10px;cursor:pointer;transition:all 0.15s ease;">
+          <div style="font-size:11px;color:#3730a3;font-weight:800;">💳 فيزا وبطاقات</div>
+          <div class="mono font-bold" style="font-size:14px;color:#4338ca;margin-top:2px;">${cardIn.toLocaleString()} ج.م</div>
+          <div style="font-size:9.5px;color:var(--ink-secondary);">ح/ 1102 البنك</div>
+        </div>
+        <div class="pos-pay-stat-tile" data-dmethodquick="instapay" style="background:#fff;border:1.5px solid ${state.dailyMethodFilter==='instapay'?'#d97706':'#cbd5e1'};border-radius:6px;padding:8px 10px;cursor:pointer;transition:all 0.15s ease;">
+          <div style="font-size:11px;color:#92400e;font-weight:800;">⚡ إنستاباي InstaPay</div>
+          <div class="mono font-bold" style="font-size:14px;color:#b45309;margin-top:2px;">${instapayNet.toLocaleString()} ج.م</div>
+          <div style="font-size:9.5px;color:var(--ink-secondary);">ح/ 1102 لحظي</div>
+        </div>
+        <div class="pos-pay-stat-tile" data-dmethodquick="wallet" style="background:#fff;border:1.5px solid ${state.dailyMethodFilter==='wallet'?'#dc2626':'#cbd5e1'};border-radius:6px;padding:8px 10px;cursor:pointer;transition:all 0.15s ease;">
+          <div style="font-size:11px;color:#991b1b;font-weight:800;">📱 محافظ نقدية</div>
+          <div class="mono font-bold" style="font-size:14px;color:#b91c1c;margin-top:2px;">${walletNet.toLocaleString()} ج.م</div>
+          <div style="font-size:9.5px;color:var(--ink-secondary);">ح/ 1102 محافظ</div>
+        </div>
+        <div class="pos-pay-stat-tile" data-dmethodquick="credit" style="background:#fff;border:1.5px solid ${state.dailyMethodFilter==='credit'?'#7e22ce':'#cbd5e1'};border-radius:6px;padding:8px 10px;cursor:pointer;transition:all 0.15s ease;">
+          <div style="font-size:11px;color:#6b21a8;font-weight:800;">📝 آجل وعلى الحساب</div>
+          <div class="mono font-bold" style="font-size:14px;color:#7e22ce;margin-top:2px;">${creditNet.toLocaleString()} ج.م</div>
+          <div style="font-size:9.5px;color:var(--ink-secondary);">ح/ 1103 مدينون</div>
+        </div>
       </div>
     </div>
 
@@ -17162,6 +17337,15 @@ function renderDailyJournalPage(main){
   document.querySelectorAll('#dailyDeptChips .chip').forEach(c => {
     c.onclick = ()=>{
       state.dailyTypeFilter = c.dataset.tchip;
+      renderDailyJournalPage(main);
+    };
+  });
+
+  // Quick Payment Channels Click Filter
+  main.querySelectorAll('[data-dmethodquick]').forEach(tile => {
+    tile.onclick = () => {
+      const m = tile.dataset.dmethodquick;
+      state.dailyMethodFilter = (state.dailyMethodFilter === m) ? 'all' : m;
       renderDailyJournalPage(main);
     };
   });
@@ -17392,6 +17576,7 @@ function renderCashDrawerPage(main){
   if(!state.drawerDateFilter) state.drawerDateFilter = 'today';
   if(!state.drawerCustomDate) state.drawerCustomDate = new Date().toISOString().slice(0,10);
   if(!state.drawerTypeFilter) state.drawerTypeFilter = 'all';
+  if(!state.drawerMethodFilter) state.drawerMethodFilter = 'all';
   if(!state.drawerSearchQ) state.drawerSearchQ = '';
 
   const allTx = getUnifiedDailyTransactions();
@@ -17432,6 +17617,28 @@ function renderCashDrawerPage(main){
     filtered = filtered.filter(t => t.sourceType === 'pos');
   } else if(state.drawerTypeFilter === 'maintenance'){
     filtered = filtered.filter(t => t.sourceType === 'maintenance' || t.sourceType === 'refund');
+  }
+
+  // Payment Channels Breakdown helper & totals
+  const isMethodMatch = (m, target) => {
+    const s = String(m || '').toLowerCase();
+    if(target === 'cash') return s.includes('نقدي') || s.includes('كاش') || s.includes('cash');
+    if(target === 'visa') return s.includes('فيزا') || s.includes('card') || s.includes('بطاق') || s.includes('visa');
+    if(target === 'instapay') return s.includes('إنستاباي') || s.includes('انستاباي') || s.includes('instapay');
+    if(target === 'wallet') return s.includes('محفظ') || s.includes('فودافون') || s.includes('vodafone') || s.includes('wallet');
+    if(target === 'credit') return s.includes('آجل') || s.includes('اجل') || s.includes('حساب') || s.includes('credit');
+    return false;
+  };
+
+  const cashNet = filtered.filter(t => isMethodMatch(t.method, 'cash')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
+  const cardIn = filtered.filter(t => isMethodMatch(t.method, 'visa')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
+  const instapayNet = filtered.filter(t => isMethodMatch(t.method, 'instapay')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
+  const walletNet = filtered.filter(t => isMethodMatch(t.method, 'wallet')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
+  const creditNet = filtered.filter(t => isMethodMatch(t.method, 'credit')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
+
+  // Apply Payment Method Filter
+  if(state.drawerMethodFilter && state.drawerMethodFilter !== 'all'){
+    filtered = filtered.filter(t => isMethodMatch(t.method, state.drawerMethodFilter));
   }
 
   // Apply Search
@@ -17493,6 +17700,43 @@ function renderCashDrawerPage(main){
         <div class="top-row"><span class="lbl" style="color:#4338ca;font-weight:800;">⚖️ صافي حركة الوردية</span><div class="icon-box" style="background:#e0e7ff;">📊</div></div>
         <div class="num mono" style="color:${netShiftCash>=0?'#15803d':'#dc2626'};">${netShiftCash>=0?'+':''}${netShiftCash.toLocaleString()} <span style="font-size:12px;">ج.م</span></div>
         <div style="font-size:11px;color:var(--ink-secondary);margin-top:3px;">صافي السيولة النقدية للفترة المحددة</div>
+      </div>
+    </div>
+
+    <!-- Payment Channels Breakdown (متابعة وتفصيل حركة الخزينة حسب وسيلة الدفع) -->
+    <div style="background:var(--paper2);border:1.5px solid var(--line);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
+        <span style="font-size:12px;font-weight:800;color:var(--ink);display:flex;align-items:center;gap:6px;">
+          <span>💳</span><span>متابعة وتفصيل الخزينة حسب وسيلة التحصيل (Payment Channels)</span>
+        </span>
+        <span style="font-size:11px;color:var(--ink-secondary);">اضغط على أي قناة لفرز وعزل حركات الدرج</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:8px;">
+        <div class="pos-pay-stat-tile" data-drmethodquick="cash" style="background:#fff;border:1.5px solid ${state.drawerMethodFilter==='cash'?'#059669':'#cbd5e1'};border-radius:6px;padding:8px 10px;cursor:pointer;transition:all 0.15s ease;">
+          <div style="font-size:11px;color:#047857;font-weight:800;">💵 نقدي (كاش بالدرج)</div>
+          <div class="mono font-bold" style="font-size:14px;color:#065f46;margin-top:2px;">${cashNet.toLocaleString()} ج.م</div>
+          <div style="font-size:9.5px;color:var(--ink-secondary);">ح/ 1101 الخزينة</div>
+        </div>
+        <div class="pos-pay-stat-tile" data-drmethodquick="visa" style="background:#fff;border:1.5px solid ${state.drawerMethodFilter==='visa'?'#4338ca':'#cbd5e1'};border-radius:6px;padding:8px 10px;cursor:pointer;transition:all 0.15s ease;">
+          <div style="font-size:11px;color:#3730a3;font-weight:800;">💳 فيزا وبطاقات</div>
+          <div class="mono font-bold" style="font-size:14px;color:#4338ca;margin-top:2px;">${cardIn.toLocaleString()} ج.م</div>
+          <div style="font-size:9.5px;color:var(--ink-secondary);">ح/ 1102 البنك</div>
+        </div>
+        <div class="pos-pay-stat-tile" data-drmethodquick="instapay" style="background:#fff;border:1.5px solid ${state.drawerMethodFilter==='instapay'?'#d97706':'#cbd5e1'};border-radius:6px;padding:8px 10px;cursor:pointer;transition:all 0.15s ease;">
+          <div style="font-size:11px;color:#92400e;font-weight:800;">⚡ إنستاباي InstaPay</div>
+          <div class="mono font-bold" style="font-size:14px;color:#b45309;margin-top:2px;">${instapayNet.toLocaleString()} ج.م</div>
+          <div style="font-size:9.5px;color:var(--ink-secondary);">ح/ 1102 لحظي</div>
+        </div>
+        <div class="pos-pay-stat-tile" data-drmethodquick="wallet" style="background:#fff;border:1.5px solid ${state.drawerMethodFilter==='wallet'?'#dc2626':'#cbd5e1'};border-radius:6px;padding:8px 10px;cursor:pointer;transition:all 0.15s ease;">
+          <div style="font-size:11px;color:#991b1b;font-weight:800;">📱 محافظ نقدية</div>
+          <div class="mono font-bold" style="font-size:14px;color:#b91c1c;margin-top:2px;">${walletNet.toLocaleString()} ج.م</div>
+          <div style="font-size:9.5px;color:var(--ink-secondary);">ح/ 1102 محافظ</div>
+        </div>
+        <div class="pos-pay-stat-tile" data-drmethodquick="credit" style="background:#fff;border:1.5px solid ${state.drawerMethodFilter==='credit'?'#7e22ce':'#cbd5e1'};border-radius:6px;padding:8px 10px;cursor:pointer;transition:all 0.15s ease;">
+          <div style="font-size:11px;color:#6b21a8;font-weight:800;">📝 آجل وعلى الحساب</div>
+          <div class="mono font-bold" style="font-size:14px;color:#7e22ce;margin-top:2px;">${creditNet.toLocaleString()} ج.م</div>
+          <div style="font-size:9.5px;color:var(--ink-secondary);">ح/ 1103 مدينون</div>
+        </div>
       </div>
     </div>
 
@@ -17595,6 +17839,16 @@ function renderCashDrawerPage(main){
       renderCashDrawerPage(main);
     };
   });
+
+  // Quick Payment Channels Click Filter
+  main.querySelectorAll('[data-drmethodquick]').forEach(tile => {
+    tile.onclick = () => {
+      const m = tile.dataset.drmethodquick;
+      state.drawerMethodFilter = (state.drawerMethodFilter === m) ? 'all' : m;
+      renderCashDrawerPage(main);
+    };
+  });
+
   const dateInp = document.getElementById('drawerCustomDateInp');
   if(dateInp){
     dateInp.onchange = (e)=>{ state.drawerCustomDate = e.target.value; renderCashDrawerPage(main); };
@@ -17608,6 +17862,7 @@ function renderCashDrawerPage(main){
     clrBtn.onclick = ()=>{
       state.drawerDateFilter = 'today';
       state.drawerTypeFilter = 'all';
+      state.drawerMethodFilter = 'all';
       state.drawerSearchQ = '';
       renderCashDrawerPage(main);
     };
@@ -19964,6 +20219,7 @@ function renderPosSell(main){
         <h2 class="page-title">🧾 نقطة البيع السريعة (POS Terminal)</h2>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <button class="btn btn-amber btn-sm" id="posOpenReturnBtn">↩️ استرجاع فاتورة (14 يوم)</button>
         <button class="btn btn-ghost btn-sm" id="posGoToSettingsBtn">⚙️ إعدادات الـ POS</button>
         <button class="btn btn-ghost btn-sm" id="posClearCartTopBtn" style="color:var(--red);">🗑️ تفريغ السلة</button>
       </div>
@@ -20456,6 +20712,11 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
       state.settingsTab = 'pos';
       render();
     };
+  }
+
+  const posReturnBtn = document.getElementById('posOpenReturnBtn');
+  if(posReturnBtn){
+    posReturnBtn.onclick = ()=>openPosReturnLookupModal();
   }
 
   // Complete Sale Logic
@@ -20998,6 +21259,7 @@ function renderPosSalesLog(main){
               <th>الأصناف المباعة</th>
               <th>الإجمالي</th>
               <th>طريقة الدفع</th>
+              <th>الحالة</th>
               <th>الإجراءات والطباعة</th>
             </tr>
           </thead>
@@ -21024,7 +21286,19 @@ function renderPosSalesLog(main){
                   <td>
                     <span class="status-badge st-check" style="font-size:10.5px;">${s.PaymentMethod||'نقدي'}</span>
                   </td>
+                  <td>
+                    ${s.IsReturned ? `
+                      <span class="badge" style="background:#fee2e2;color:#b91c1c;font-weight:800;border:1px solid #fca5a5;padding:2px 6px;border-radius:4px;font-size:10.5px;white-space:nowrap;">↩️ مرتجع</span>
+                    ` : `
+                      <span class="badge" style="background:#dcfce7;color:#15803d;font-weight:700;border:1px solid #bbf7d0;padding:2px 6px;border-radius:4px;font-size:10.5px;white-space:nowrap;">✓ مباع</span>
+                    `}
+                  </td>
                   <td class="row-actions">
+                    ${!s.IsReturned ? `
+                      <button class="btn btn-xs btn-amber" data-posact="return" data-saleid="${s.ID}" title="استرجاع الفاتورة (خلال 14 يوم)">↩️ إرجاع</button>
+                    ` : `
+                      <button class="btn btn-xs btn-purple" data-posact="returnvoucher" data-saleid="${s.ID}" title="طباعة إشعار وسند الارتجاع">🧾 إذن ارتجاع</button>
+                    `}
                     <button class="btn btn-xs btn-blue" data-posact="taxinvoice" data-saleid="${s.ID}" title="إصدار وتحويل لفاتورة ضريبية رسمية مع باركود QR">📄 فاتورة ضريبية</button>
                     <button class="btn btn-xs btn-green" data-posact="receipt" data-saleid="${s.ID}" title="طباعة إيصال بيع سريع">🖨️ إيصال</button>
                     ${s.CustomerPhone ? `<button class="btn btn-xs btn-whatsapp" data-posact="wa" data-saleid="${s.ID}" title="مشاركة الفاتورة عبر واتساب">${WA_ICON}</button>` : ''}
@@ -21052,6 +21326,12 @@ function renderPosSalesLog(main){
       const s = state.sales.find(x => x.ID === btn.dataset.saleid);
       if(!s) return;
       const act = btn.dataset.posact;
+      if(act === 'return'){
+        openPosReturnModal(s);
+      }
+      if(act === 'returnvoucher'){
+        openPosReturnVoucherPrint(s, s.ReturnDetails || {});
+      }
       if(act === 'taxinvoice'){
         convertSaleToInvoice(s.ID);
       }
@@ -21076,6 +21356,636 @@ function renderPosSalesLog(main){
       }
     };
   });
+}
+
+/* ---------------- POS Sales Returns & Refunds Engine (آلية الإرجاع والاسترداد الدقيقة) ---------------- */
+
+function openPosReturnModal(sale){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+
+  // 14-day policy calculation
+  const saleDateStr = cleanDate(sale.Date) || sale.Date;
+  const sDate = new Date(saleDateStr + 'T00:00:00');
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const diffTime = today - sDate;
+  const diffDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+  const isWithin14 = diffDays <= 14;
+
+  // Parse items from sale
+  let items = [];
+  if(sale.ItemsJSON){
+    try {
+      const p = typeof sale.ItemsJSON === 'string' ? JSON.parse(sale.ItemsJSON) : sale.ItemsJSON;
+      if(Array.isArray(p)) items = p;
+    } catch(e){}
+  }
+  if(!items.length){
+    items = [{ name: sale.ItemsSummary || 'مبيعات POS', qty: 1, price: Number(sale.Total||0), itemId: null }];
+  }
+
+  const refundMethod = sale.PaymentMethod || 'نقدي';
+
+  overlay.innerHTML = `
+    <div class="modal-content" style="max-width:720px;max-height:90vh;overflow-y:auto;">
+      <!-- Modal Header -->
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid var(--line);padding-bottom:10px;margin-bottom:12px;">
+        <div>
+          <h3 style="margin:0;font-size:16.5px;font-weight:900;color:var(--red);">↩️ استرجاع مبيعات POS (إشعار دائن وتسوية)</h3>
+          <div style="font-size:12px;color:var(--ink-secondary);margin-top:2px;">
+            فاتورة رقم: <b class="mono" style="color:var(--primary);">#${sale.ID.slice(-8)}</b> • العميل: <b>${sale.CustomerName || 'عميل زائر'}</b> (${sale.CustomerPhone || '-'})
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-xs" id="closePosReturnModalBtn" style="font-size:15px;">✕</button>
+      </div>
+
+      <!-- 1. 14-Day Limit Verification Box -->
+      <div style="margin-bottom:12px;">
+        ${isWithin14 ? `
+          <div style="background:#ecfdf5;border:1.5px solid #a7f3d0;border-radius:6px;padding:10px 14px;color:#065f46;font-size:12px;display:flex;align-items:center;gap:8px;">
+            <span style="font-size:16px;">✅</span>
+            <div>
+              <b style="font-size:13px;">العملية مؤهلة للاسترجاع قانونياً</b>
+              <div style="font-size:11px;color:#047857;margin-top:2px;">تاريخ الشراء: <span class="mono">${saleDateStr}</span> (مرّ ${diffDays} يوم من أصل مهلة الـ 14 يوماً المحددة).</div>
+            </div>
+          </div>
+        ` : `
+          <div style="background:#fef2f2;border:1.5px solid #fca5a5;border-radius:6px;padding:10px 14px;color:#991b1b;font-size:12px;">
+            <div style="display:flex;align-items:center;gap:8px;font-weight:900;font-size:13px;">
+              <span style="font-size:16px;">⚠️</span>
+              <span>تنبيه: انقضت مهلة الـ 14 يوماً القانونية للاسترجاع!</span>
+            </div>
+            <div style="font-size:11px;margin-top:3px;color:#7f1d1d;">
+              تاريخ الشراء: <span class="mono">${saleDateStr}</span> (مرّ <b>${diffDays}</b> يوماً على البيع). تتطلب اللائحة استثناءً وموافقة إدارية خاصة للمتابعة.
+            </div>
+            <label class="checkbox-row" style="margin-top:8px;font-weight:800;color:#991b1b;font-size:12px;background:#fff;padding:6px 10px;border-radius:4px;border:1px dashed #f87171;">
+              <input type="checkbox" id="posRetAdminOverride">
+              <span>أقر بوجود موافقة إدارية معتمدة لاستثناء مهلة الـ 14 يوماً</span>
+            </label>
+          </div>
+        `}
+      </div>
+
+      <!-- 2. Mandatory Verification Checkboxes -->
+      <div style="background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:6px;padding:10px 14px;margin-bottom:12px;">
+        <div style="font-weight:800;font-size:12px;margin-bottom:6px;color:var(--ink);">ضوابط وشروط الاسترجاع الإلزامية:</div>
+        <label class="checkbox-row" style="font-size:12px;margin-bottom:6px;">
+          <input type="checkbox" id="posRetHasReceipt">
+          <span>🧾 <b>التحقق من الفاتورة:</b> العميل يحمل أصل الفاتورة الضريبية أو بون الكاشير المطبوع.</span>
+        </label>
+        <label class="checkbox-row" style="font-size:12px;">
+          <input type="checkbox" id="posRetGoodCondition">
+          <span>✨ <b>حالة المنتج:</b> تم فحص السلعة والتأكد أنها بحالتها الأصلية غير مستخدمة وبالعبوة والملصقات السليمة.</span>
+        </label>
+      </div>
+
+      <!-- 3. Guaranteed Same Payment Method Refund Box -->
+      <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:6px;padding:10px 14px;margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="font-size:11px;font-weight:800;color:#1e40af;">💳 قناة الاسترداد الإلزامية (نفس وسيلة الدفع الأصلية):</div>
+            <div style="font-size:13.5px;font-weight:900;color:#1e3a8a;margin-top:2px;">
+              🔒 رد المبلغ عبر: <b>${refundMethod}</b>
+            </div>
+          </div>
+          <span class="badge" style="background:#dbeafe;color:#1e40af;font-size:11px;font-weight:800;padding:4px 8px;border-radius:4px;">مطابقة وسيلة الدفع الأصلية</span>
+        </div>
+        <div style="font-size:10.5px;color:#2563eb;margin-top:4px;">
+          ${(refundMethod.includes('فيزا') || refundMethod.includes('visa') || refundMethod.includes('بطاق')) ? 'سيتم رد المبلغ عكسياً إلى حساب البنك والبطاقة (ح/ 1102).' :
+            (refundMethod.includes('instapay') || refundMethod.includes('إنستاباي')) ? 'سيتم رد المبلغ عبر تحويل InstaPay لحساب العميل (ح/ 1102).' :
+            (refundMethod.includes('محفظ') || refundMethod.includes('wallet')) ? 'سيتم رد المبلغ لنفس رقم المحفظة الإلكترونية للعميل (ح/ 1102).' :
+            (refundMethod.includes('آجل') || refundMethod.includes('حساب')) ? 'سيتم قيد إشعار دائن وتسوية حساب العميل الآجل (ح/ 1103).' :
+            'سيتم استرداد المبلغ نقداً وخصمه من الخزينة الرئيسية بالدرج (ح/ 1101).'}
+        </div>
+      </div>
+
+      <!-- 4. Seller Commission Deduction Box -->
+      <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:6px;padding:10px 14px;margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <div style="font-size:12px;font-weight:800;color:#92400e;">
+            👤 مسؤول البيع الأصلي: <b>${sale.By || 'الكاشير'}</b>
+          </div>
+          <span style="font-size:11px;color:#b45309;">تصفية ومردودات العمولات</span>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <div style="flex:1;min-width:200px;">
+            <label style="font-size:11.5px;font-weight:700;color:#78350f;display:block;margin-bottom:3px;">
+              ✂️ عمولة / مكافأة البيع المراد خصمها من البائع (ج.م):
+            </label>
+            <input type="number" id="posRetCommission" min="0" step="0.5" value="0" style="background:#fff;border-color:#d97706;font-size:14px;font-weight:800;width:120px;" placeholder="0.00">
+          </div>
+          <div style="font-size:10.5px;color:#92400e;flex:2;min-width:220px;line-height:1.4;">
+            إذا استحق البائع عمولة أو مكافأة عن هذه الفاتورة، سيتم قيد خصم هذا المبلغ من مستحقاته وإثباته في سند الارتجاع ودفتر العمليات.
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. Items to Return Table -->
+      <div style="border:1px solid var(--line);border-radius:6px;overflow:hidden;margin-bottom:12px;">
+        <div style="background:var(--paper2);padding:8px 12px;font-weight:800;font-size:12px;color:var(--ink);border-bottom:1px solid var(--line);">
+          📦 حدد الأصناف والكميات المراد استرجاعها:
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:11.5px;">
+          <thead>
+            <tr style="background:#f1f5f9;color:#334155;border-bottom:1px solid #cbd5e1;">
+              <th style="padding:6px 10px;text-align:right;width:30px;"><input type="checkbox" id="posRetCheckAll" checked></th>
+              <th style="padding:6px 10px;text-align:right;">الصنف المباع</th>
+              <th style="padding:6px 10px;text-align:center;">الكمية المباعة</th>
+              <th style="padding:6px 10px;text-align:center;">الكمية المرتجعة</th>
+              <th style="padding:6px 10px;text-align:center;">سعر الوحدة</th>
+              <th style="padding:6px 10px;text-align:center;">إعادة للمخزن</th>
+              <th style="padding:6px 10px;text-align:center;">المبلغ المسترد</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${items.map((it, idx)=>{
+              return `
+                <tr style="border-bottom:1px solid #e2e8f0;">
+                  <td style="padding:6px 10px;text-align:right;">
+                    <input type="checkbox" class="ret-item-chk" data-idx="${idx}" checked>
+                  </td>
+                  <td style="padding:6px 10px;font-weight:700;">${it.name}</td>
+                  <td style="padding:6px 10px;text-align:center;" class="mono font-bold">${it.qty}</td>
+                  <td style="padding:6px 10px;text-align:center;">
+                    <input type="number" class="ret-item-qty mono font-bold" data-idx="${idx}" min="1" max="${it.qty}" value="${it.qty}" style="width:60px;padding:3px;text-align:center;">
+                  </td>
+                  <td style="padding:6px 10px;text-align:center;" class="mono">${Number(it.price).toLocaleString()} ج.م</td>
+                  <td style="padding:6px 10px;text-align:center;">
+                    <input type="checkbox" class="ret-item-restock" data-idx="${idx}" ${it.itemId ? 'checked' : 'disabled'} title="إعادة رصيد الصنف للمخزن">
+                  </td>
+                  <td style="padding:6px 10px;text-align:center;font-weight:900;color:var(--red);" class="ret-item-row-total mono" data-idx="${idx}">
+                    ${(it.qty * it.price).toLocaleString()} ج.م
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 6. Reason & Grand Refund Total -->
+      <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:12px;align-items:center;margin-bottom:16px;">
+        <div class="field" style="margin-bottom:0;">
+          <label style="font-size:11.5px;">سبب الإرجاع / ملاحظات:</label>
+          <input id="posRetReason" placeholder="مثال: رغبة العميل، عيب صناعة، عدم توافق مع الجهاز..." style="font-size:12px;">
+        </div>
+        <div style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:6px;padding:10px 14px;text-align:center;">
+          <div style="font-size:11px;color:#991b1b;font-weight:800;">إجمالي المبلغ المطلوب رده للعميل</div>
+          <div class="mono font-bold" style="font-size:20px;color:#dc2626;margin-top:2px;">
+            <span id="posRetGrandTotal">0.00</span> <span style="font-size:13px;">ج.م</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding-top:12px;">
+        <button class="btn btn-ghost btn-sm" id="btnCancelPosReturn">إلغاء</button>
+        <button class="btn btn-red btn-sm" id="btnConfirmPosReturn" disabled style="opacity:0.5;cursor:not-allowed;font-weight:800;padding:8px 16px;">
+          تأكيد الاسترجاع وإصدار إشعار دائن ↩️
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // Live Recalculation & Validation
+  function updateRefundSummary(){
+    let sumRefund = 0;
+    const chks = overlay.querySelectorAll('.ret-item-chk');
+    chks.forEach(chk => {
+      const idx = chk.dataset.idx;
+      const qtyInp = overlay.querySelector(`.ret-item-qty[data-idx="${idx}"]`);
+      const rowTotEl = overlay.querySelector(`.ret-item-row-total[data-idx="${idx}"]`);
+      if(chk.checked){
+        const maxQ = Number(items[idx].qty || 1);
+        let q = Number(qtyInp ? qtyInp.value : maxQ);
+        if(isNaN(q) || q < 1) q = 1;
+        if(q > maxQ) q = maxQ;
+        if(qtyInp && qtyInp.value != q) qtyInp.value = q;
+        const p = Number(items[idx].price || 0);
+        const rowTot = q * p;
+        sumRefund += rowTot;
+        if(rowTotEl) rowTotEl.textContent = rowTot.toLocaleString() + ' ج.م';
+      } else {
+        if(rowTotEl) rowTotEl.textContent = '0 ج.م';
+      }
+    });
+
+    const grandEl = overlay.querySelector('#posRetGrandTotal');
+    if(grandEl) grandEl.textContent = sumRefund.toLocaleString();
+
+    // Check conditions
+    const hasReceipt = overlay.querySelector('#posRetHasReceipt')?.checked;
+    const goodCondition = overlay.querySelector('#posRetGoodCondition')?.checked;
+    const adminOverride = !isWithin14 ? overlay.querySelector('#posRetAdminOverride')?.checked : true;
+    const hasSelectedItems = sumRefund > 0;
+
+    const btnConfirm = overlay.querySelector('#btnConfirmPosReturn');
+    if(btnConfirm){
+      const canSubmit = hasReceipt && goodCondition && adminOverride && hasSelectedItems;
+      btnConfirm.disabled = !canSubmit;
+      btnConfirm.style.opacity = canSubmit ? '1' : '0.5';
+      btnConfirm.style.cursor = canSubmit ? 'pointer' : 'not-allowed';
+    }
+  }
+
+  // Bind inputs
+  overlay.querySelectorAll('.ret-item-chk').forEach(c => c.onchange = updateRefundSummary);
+  overlay.querySelectorAll('.ret-item-qty').forEach(q => q.oninput = updateRefundSummary);
+  const chkReceipt = overlay.querySelector('#posRetHasReceipt');
+  if(chkReceipt) chkReceipt.onchange = updateRefundSummary;
+  const chkCondition = overlay.querySelector('#posRetGoodCondition');
+  if(chkCondition) chkCondition.onchange = updateRefundSummary;
+  const chkOverride = overlay.querySelector('#posRetAdminOverride');
+  if(chkOverride) chkOverride.onchange = updateRefundSummary;
+
+  const chkAll = overlay.querySelector('#posRetCheckAll');
+  if(chkAll){
+    chkAll.onchange = ()=>{
+      overlay.querySelectorAll('.ret-item-chk').forEach(c => c.checked = chkAll.checked);
+      updateRefundSummary();
+    };
+  }
+
+  updateRefundSummary();
+
+  // Close handlers
+  const closeBtn = overlay.querySelector('#closePosReturnModalBtn');
+  if(closeBtn) closeBtn.onclick = () => overlay.remove();
+  const cancelBtn = overlay.querySelector('#btnCancelPosReturn');
+  if(cancelBtn) cancelBtn.onclick = () => overlay.remove();
+
+  // Submit Handler
+  const confirmBtn = overlay.querySelector('#btnConfirmPosReturn');
+  if(confirmBtn){
+    confirmBtn.onclick = async ()=>{
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'جارٍ معالجة الارتجاع...';
+
+      try {
+        const returnedItems = [];
+        const chks = overlay.querySelectorAll('.ret-item-chk');
+        let totalRefund = 0;
+
+        for(const chk of chks){
+          if(chk.checked){
+            const idx = chk.dataset.idx;
+            const it = items[idx];
+            const qtyInp = overlay.querySelector(`.ret-item-qty[data-idx="${idx}"]`);
+            const restockChk = overlay.querySelector(`.ret-item-restock[data-idx="${idx}"]`);
+            const maxQ = Number(it.qty || 1);
+            let retQty = Number(qtyInp ? qtyInp.value : maxQ);
+            if(isNaN(retQty) || retQty < 1) retQty = 1;
+            if(retQty > maxQ) retQty = maxQ;
+            const shouldRestock = restockChk ? restockChk.checked : false;
+            const lineTot = retQty * Number(it.price || 0);
+            totalRefund += lineTot;
+
+            returnedItems.push({
+              name: it.name,
+              qty: retQty,
+              price: it.price,
+              itemId: it.itemId,
+              restocked: shouldRestock,
+              lineTotal: lineTot
+            });
+
+            // 1. Restock inventory
+            if(shouldRestock && it.itemId && !String(it.itemId).startsWith('srv_')){
+              try {
+                await adjustInventoryQtyRemote(it.itemId, retQty);
+              } catch(e){
+                console.warn('Restock error:', e);
+              }
+            }
+          }
+        }
+
+        const commInp = overlay.querySelector('#posRetCommission');
+        const commissionDeducted = Number(commInp ? commInp.value : 0) || 0;
+        const reasonInp = overlay.querySelector('#posRetReason');
+        const returnReason = (reasonInp ? reasonInp.value : '').trim() || 'مرتجع بناء على رغبة العميل';
+
+        // 2. Save Outflow Expense
+        const expId = 'exp_ret_' + Date.now();
+        const exp = {
+          ID: expId,
+          Date: new Date().toISOString().slice(0,10),
+          Category: 'مرتجع مبيعات POS',
+          Type: 'out',
+          Title: `مرتجع مبيعات POS: ${sale.CustomerName||'عميل زائر'} (فاتورة #${sale.ID.slice(-8)})`,
+          Amount: totalRefund,
+          PaymentMethod: refundMethod,
+          AccountCode: '4102-RET',
+          Reference: `RET-${sale.ID.slice(-8)}`,
+          By: state.user ? state.user.name : 'كاشير',
+          Notes: `رد بنفس وسيلة الدفع (${refundMethod}) • خصم عمولة بائع: ${commissionDeducted} ج.م من (${sale.By||'الكاشير'}) • سبب: ${returnReason}`
+        };
+        await saveExpenseRemote(exp);
+
+        // 3. Mark sale as returned
+        const returnDetails = {
+          voucherNumber: `RET-${sale.ID.slice(-8)}`,
+          returnDate: new Date().toISOString().slice(0,10),
+          returnTime: new Date().toLocaleTimeString('ar-EG'),
+          returnedItems: returnedItems,
+          totalRefund: totalRefund,
+          sellerCommissionDeducted: commissionDeducted,
+          sellerName: sale.By || 'الكاشير',
+          reason: returnReason,
+          processedBy: state.user ? state.user.name : 'كاشير',
+          hasReceipt: true,
+          goodCondition: true,
+          refundMethod: refundMethod,
+          diffDays: diffDays
+        };
+
+        sale.IsReturned = true;
+        sale.ReturnDetails = returnDetails;
+        setCache('sales', state.sales);
+
+        // 4. Auto Journal Entry
+        const isBank = (refundMethod.includes('فيزا') || refundMethod.includes('visa') || refundMethod.includes('card') || refundMethod.includes('instapay') || refundMethod.includes('محفظ') || refundMethod.includes('wallet'));
+        const isCredit = (refundMethod.includes('آجل') || refundMethod.includes('اجل') || refundMethod.includes('حساب'));
+        const creditAccCode = isBank ? '1102' : (isCredit ? '1103' : '1101');
+        const creditAccName = isBank ? 'البنك وحسابات الدفع الإلكتروني' : (isCredit ? 'حساب العميل (مدينون آجل)' : 'الخزينة الرئيسية (النقدية بالدرج)');
+
+        recordAutoJournalEntry(
+          `مرتجع مبيعات POS فاتورة #${sale.ID.slice(-8)} (رد عبر ${refundMethod})`,
+          'POS_Return',
+          sale.ID,
+          [
+            {AccountCode:'4102', AccountName:'مردودات ومسموحات مبيعات الأجهزة والإكسسوار', Debit:Number(totalRefund), Credit:0, Notes:`مرتجع أصناف للعميل ${sale.CustomerName||'عميل زائر'}`},
+            {AccountCode:creditAccCode, AccountName:creditAccName, Debit:0, Credit:Number(totalRefund), Notes:`رد واسترداد بنفس وسيلة الدفع الأصلية (${refundMethod})`}
+          ]
+        ).catch(e=>{});
+
+        // 5. Audit logs
+        if(commissionDeducted > 0){
+          recordAuditLog(
+            'خصم عمولة بائع لمرتجع',
+            'مبيعات',
+            `تم خصم عمولة/حافز بيع بقيمة ${commissionDeducted} ج.م من الموظف (${sale.By || 'الكاشير'}) نظير إرجاع فاتورة #${sale.ID.slice(-8)} للعميل (${sale.CustomerName||'عميل زائر'})`,
+            sale.ID
+          );
+        }
+
+        recordAuditLog(
+          'استرجاع مبيعات POS',
+          'مبيعات',
+          `تم استرجاع أصناف بقيمة ${totalRefund} ج.م من فاتورة #${sale.ID.slice(-8)} ورد المبلغ عبر (${refundMethod}) بعد فحص الفاتورة وحالة المنتج`,
+          sale.ID
+        );
+
+        overlay.remove();
+        showToast('تم إتمام عملية الاسترجاع بنجاح وتحديث الخزينة والمخزن ✅', 'success');
+
+        // Re-render
+        if(state.currentSection === 'pos'){
+          if(state.posTab === 'sales'){
+            renderPosSalesLog(document.getElementById('main'));
+          } else {
+            renderPosSell(document.getElementById('main'));
+          }
+        } else if(state.currentSection === 'daily'){
+          renderDailyJournalPage(document.getElementById('main'));
+        } else if(state.currentSection === 'cashdrawer'){
+          renderCashDrawerPage(document.getElementById('main'));
+        }
+
+        // Open Voucher Print
+        openPosReturnVoucherPrint(sale, returnDetails);
+
+      } catch(err){
+        showToast('حدث خطأ أثناء معالجة الارتجاع: ' + err.message, 'error');
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'تأكيد الاسترجاع وإصدار إشعار دائن ↩️';
+      }
+    };
+  }
+}
+
+function openPosReturnVoucherPrint(sale, returnDetails){
+  document.body.classList.remove('printing-sticker');
+  const old = document.getElementById('printMount');
+  if(old) old.remove();
+
+  const mount = document.createElement('div');
+  mount.id = 'printMount';
+
+  const shopName = (state.settings && state.settings.shopName) || 'صيانة ميكروتك';
+  const logoUrl = state.settings && state.settings.logoUrl;
+  const retItems = returnDetails.returnedItems || [];
+  const retDate = returnDetails.returnDate || new Date().toISOString().slice(0,10);
+  const retTime = returnDetails.returnTime || new Date().toLocaleTimeString('ar-EG');
+  const totalRef = Number(returnDetails.totalRefund || 0);
+
+  mount.innerHTML = `
+    <div style="width:100%;max-width:700px;margin:0 auto;background:#fff;padding:24px 28px;color:#0f172a;font-family:var(--font-main);border-radius:8px;box-sizing:border-box;">
+      <!-- Header -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #0f172a;padding-bottom:12px;margin-bottom:14px;">
+        <div>
+          ${logoUrl ? `<img src="${logoUrl}" style="max-height:36px;max-width:140px;object-fit:contain;margin-bottom:4px;">` : ''}
+          <h2 style="margin:0;font-size:19px;font-weight:900;color:#0f172a;">${shopName}</h2>
+          <div style="font-size:12px;color:#475569;margin-top:2px;">إشعار دائن وسند ارتجاع مبيعات (Sales Return & Credit Voucher)</div>
+        </div>
+        <div style="text-align:left;">
+          <div style="background:#dc2626;color:#fff;font-size:13px;font-weight:900;padding:4px 10px;border-radius:4px;display:inline-block;" class="mono">${returnDetails.voucherNumber || ('RET-' + sale.ID.slice(-8))}</div>
+          <div style="font-size:10.5px;color:#64748b;margin-top:4px;">التاريخ: <b>${retDate} ${retTime}</b></div>
+          <div style="font-size:10.5px;color:#64748b;">مسؤول الارتجاع: <b>${returnDetails.processedBy || (state.user ? state.user.name : 'الكاشير')}</b></div>
+        </div>
+      </div>
+
+      <!-- Reference & Customer Meta Grid -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:11.5px;">
+        <div>
+          <div><b>العميل:</b> ${sale.CustomerName || 'عميل زائر'}</div>
+          <div style="margin-top:4px;"><b>الهاتف:</b> <span class="mono">${sale.CustomerPhone || '-'}</span></div>
+          <div style="margin-top:4px;"><b>سبب الارتجاع:</b> ${returnDetails.reason || 'رغبة العميل'}</div>
+        </div>
+        <div>
+          <div><b>الفاتورة الأصلية:</b> <span class="mono font-bold" style="color:#0284c7;">#${sale.ID.slice(-8)}</span></div>
+          <div style="margin-top:4px;"><b>تاريخ البيع الأصلي:</b> <span class="mono">${cleanDate(sale.Date)}</span> (مرّ ${returnDetails.diffDays || 0} يوم)</div>
+          <div style="margin-top:4px;"><b>البائع الأصلي:</b> ${returnDetails.sellerName || sale.By || 'الكاشير'}</div>
+        </div>
+      </div>
+
+      <!-- Verification Badges -->
+      <div style="display:flex;gap:12px;flex-wrap:wrap;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:8px 12px;margin-bottom:14px;font-size:11px;color:#15803d;font-weight:700;">
+        <div>✓ تم التحقق من وجود الفاتورة الأصلية</div>
+        <div>✓ تم فحص الأصناف والتأكد من حالتها الأصلية</div>
+        <div>✓ ضمن مهلة الاسترجاع القانونية (14 يوماً)</div>
+      </div>
+
+      <!-- Items Table -->
+      <table style="width:100%;border-collapse:collapse;margin-bottom:14px;font-size:11px;">
+        <thead>
+          <tr style="background:#0f172a;color:#fff;">
+            <th style="padding:6px 10px;text-align:right;">#</th>
+            <th style="padding:6px 10px;text-align:right;">الصنف المرتجع</th>
+            <th style="padding:6px 10px;text-align:center;">الكمية المرتجعة</th>
+            <th style="padding:6px 10px;text-align:center;">سعر الوحدة</th>
+            <th style="padding:6px 10px;text-align:center;">إعادة للمخزن</th>
+            <th style="padding:6px 10px;text-align:center;">إجمالي المسترد</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${retItems.map((it, idx) => `
+            <tr style="border-bottom:1px solid #e2e8f0;">
+              <td style="padding:6px 10px;color:#64748b;" class="mono">${idx + 1}</td>
+              <td style="padding:6px 10px;font-weight:700;">${it.name}</td>
+              <td style="padding:6px 10px;text-align:center;font-weight:800;" class="mono">${it.qty}</td>
+              <td style="padding:6px 10px;text-align:center;" class="mono">${Number(it.price).toLocaleString()} ج.م</td>
+              <td style="padding:6px 10px;text-align:center;color:#16a34a;font-weight:700;">${it.restocked ? 'نعم ✓' : 'لا'}</td>
+              <td style="padding:6px 10px;text-align:center;font-weight:900;color:#dc2626;" class="mono">${Number(it.lineTotal || (it.qty * it.price)).toLocaleString()} ج.م</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+
+      <!-- Financial Totals & Refund Method -->
+      <div style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:6px;padding:12px 14px;margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="font-size:11px;color:#991b1b;font-weight:800;">طريقة الاسترداد المنفذة:</div>
+            <div style="font-size:13.5px;font-weight:900;color:#b91c1c;margin-top:2px;">
+              🔒 تم رد المبلغ عبر: <b>${returnDetails.refundMethod || sale.PaymentMethod || 'نقدي (كاش)'}</b> (نفس وسيلة الدفع الأصلية)
+            </div>
+            ${Number(returnDetails.sellerCommissionDeducted) > 0 ? `
+              <div style="font-size:11px;color:#78350f;margin-top:4px;font-weight:700;">
+                ✂️ تم خصم عمولة مبيعات بقيمة <b>${returnDetails.sellerCommissionDeducted} ج.م</b> من البائع (${returnDetails.sellerName || sale.By}).
+              </div>
+            ` : ''}
+          </div>
+          <div style="text-align:left;">
+            <div style="font-size:11px;color:#7f1d1d;">إجمالي المبلغ المسترد للعميل</div>
+            <div class="mono font-bold" style="font-size:20px;color:#b91c1c;margin-top:2px;">
+              ${totalRef.toLocaleString()} <span style="font-size:13px;">ج.م</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Signatures -->
+      <div style="display:flex;justify-content:space-between;margin-top:24px;font-size:11px;color:#475569;border-top:1px solid #cbd5e1;padding-top:12px;">
+        <div style="text-align:center;width:30%;">
+          <div>توقيع واستلام العميل</div>
+          <div style="margin-top:30px;border-bottom:1px dashed #94a3b8;width:80%;margin-left:auto;margin-right:auto;"></div>
+        </div>
+        <div style="text-align:center;width:30%;">
+          <div>توقيع مسؤول الخزينة / الكاشير</div>
+          <div style="margin-top:30px;border-bottom:1px dashed #94a3b8;width:80%;margin-left:auto;margin-right:auto;"></div>
+        </div>
+        <div style="text-align:center;width:30%;">
+          <div>اعتماد الإدارة / الحسابات</div>
+          <div style="margin-top:30px;border-bottom:1px dashed #94a3b8;width:80%;margin-left:auto;margin-right:auto;"></div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(mount);
+  setTimeout(()=>{ window.print(); mount.remove(); }, 250);
+}
+
+function openPosReturnLookupModal(){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-content" style="max-width:680px;max-height:85vh;overflow:hidden;display:flex;flex-direction:column;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:12px;">
+        <div>
+          <h3 style="margin:0;font-size:16.5px;font-weight:900;">↩️ استرجاع فاتورة مبيعات (POS Return)</h3>
+          <div style="font-size:11.5px;color:var(--ink-secondary);margin-top:2px;">امسح باركود البون أو ابحث برقم الفاتورة أو اسم وهاتف العميل</div>
+        </div>
+        <button class="btn btn-ghost btn-xs" id="closePosRetLookupModal">✕</button>
+      </div>
+      <div style="margin-bottom:12px;">
+        <input id="posRetLookupInp" placeholder="🔍 امسح الباركود أو اكتب رقم الفاتورة / اسم العميل / الهاتف..." style="width:100%;font-size:14px;padding:9px 12px;" autofocus>
+      </div>
+      <div id="posRetLookupResults" style="flex:1;overflow-y:auto;border:1px solid var(--line);border-radius:6px;padding:4px;"></div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const inp = overlay.querySelector('#posRetLookupInp');
+  const resultsDiv = overlay.querySelector('#posRetLookupResults');
+  const closeBtn = overlay.querySelector('#closePosRetLookupModal');
+  if(closeBtn) closeBtn.onclick = () => overlay.remove();
+
+  function renderList(q=''){
+    const query = q.trim().toLowerCase();
+    let salesList = [...(state.sales || [])];
+    if(query){
+      salesList = salesList.filter(s =>
+        (s.ID || '').toLowerCase().includes(query) ||
+        (s.CustomerName || '').toLowerCase().includes(query) ||
+        (s.CustomerPhone || '').includes(query) ||
+        (s.ItemsSummary || '').toLowerCase().includes(query)
+      );
+    }
+    salesList.sort((a,b) => String(b.ID||'').localeCompare(String(a.ID||'')));
+
+    if(!salesList.length){
+      resultsDiv.innerHTML = '<div class="empty" style="padding:24px;">لا توجد فواتير مبيعات مطابقة للبحث.</div>';
+      return;
+    }
+
+    resultsDiv.innerHTML = salesList.slice(0, 30).map(s => {
+      const sDate = cleanDate(s.Date) || s.Date;
+      const daysDiff = Math.max(0, Math.floor((new Date().setHours(0,0,0,0) - new Date(sDate + 'T00:00:00')) / (1000 * 60 * 60 * 24)));
+      const isOk14 = daysDiff <= 14;
+      return `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid #f1f5f9;transition:background 0.1s ease;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="mono font-bold" style="color:var(--primary);font-size:13px;">#${s.ID.slice(-8)}</span>
+              <span style="font-size:11px;color:var(--ink-secondary);">${sDate}</span>
+              ${isOk14 ? `<span class="badge" style="background:#ecfdf5;color:#047857;font-size:10px;">${daysDiff} يوم (ضمن 14 يوم)</span>` : `<span class="badge" style="background:#fef2f2;color:#b91c1c;font-size:10px;">${daysDiff} يوم (تجاوز 14 يوم)</span>`}
+              ${s.IsReturned ? `<span class="badge" style="background:#fee2e2;color:#b91c1c;font-size:10px;font-weight:800;">↩️ مرتجع</span>` : ''}
+            </div>
+            <div style="font-size:12.5px;font-weight:700;margin-top:2px;">
+              ${s.CustomerName || 'عميل زائر'} ${s.CustomerPhone ? `(${s.CustomerPhone})` : ''}
+            </div>
+            <div style="font-size:11px;color:var(--ink-secondary);max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+              ${s.ItemsSummary}
+            </div>
+          </div>
+          <div style="text-align:left;display:flex;align-items:center;gap:10px;">
+            <div>
+              <div class="mono font-bold" style="font-size:13.5px;color:var(--green);">${Number(s.Total||0).toLocaleString()} ج.م</div>
+              <div style="font-size:10px;color:var(--ink-secondary);">${s.PaymentMethod||'نقدي'}</div>
+            </div>
+            ${s.IsReturned ? `
+              <button class="btn btn-xs btn-purple" data-retlookupact="voucher" data-sid="${s.ID}">🧾 إشعار</button>
+            ` : `
+              <button class="btn btn-xs btn-amber" data-retlookupact="return" data-sid="${s.ID}">استرجاع ↩️</button>
+            `}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    resultsDiv.querySelectorAll('[data-retlookupact]').forEach(btn => {
+      btn.onclick = () => {
+        const sale = (state.sales || []).find(x => x.ID === btn.dataset.sid);
+        if(!sale) return;
+        overlay.remove();
+        if(btn.dataset.retlookupact === 'voucher'){
+          openPosReturnVoucherPrint(sale, sale.ReturnDetails || {});
+        } else {
+          openPosReturnModal(sale);
+        }
+      };
+    });
+  }
+
+  renderList();
+  inp.oninput = (e) => renderList(e.target.value);
+  inp.focus();
 }
 
 /* ---------------- Suppliers, Purchases ---------------- */

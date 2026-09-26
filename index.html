@@ -10533,10 +10533,10 @@ window.renderUnifiedSelectionBar = function(){
         <button class="unified-bar-btn btn-primary" style="background:linear-gradient(135deg, #4f46e5, #4338ca);color:#fff;font-weight:800;box-shadow:0 2px 6px rgba(79,70,229,0.3);" onclick="convertMultipleReceiptsToInvoice(state.selectedReceiptIds)" title="إنشاء فاتورة ضريبية مجمعة تجمع كافة الأجهزة والصيانات للإيصالات المحددة">
           🧾 إصدار فاتورة مجمعة (${count})
         </button>
-        <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="state.selectedReceiptIds = []; if(typeof renderArchive==='function') renderArchive(); if(typeof window.renderUnifiedSelectionBar==='function') window.renderUnifiedSelectionBar();" title="إلغاء التحديد">
+        <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="deselectCurrentSelection(); if(typeof renderArchive==='function') renderArchive();" title="إلغاء التحديد">
           إلغاء التحديد
         </button>
-        <button class="unified-bar-btn-close" onclick="state.selectedReceiptIds = []; if(typeof renderArchive==='function') renderArchive(); if(typeof window.renderUnifiedSelectionBar==='function') window.renderUnifiedSelectionBar();" title="إلغاء التحديد">
+        <button class="unified-bar-btn-close" onclick="deselectCurrentSelection(); if(typeof renderArchive==='function') renderArchive();" title="إلغاء التحديد">
           ✕
         </button>
       </div>
@@ -10575,6 +10575,9 @@ window.renderUnifiedSelectionBar = function(){
         </div>
 
         <div class="unified-bar-actions">
+          <button class="unified-bar-btn btn-primary" onclick="openReceiptActionSheet('${safeTargetId}', '${rNum}')" title="فتح لوحة إجراءات وخيارات الإيصال الموحدة">
+            ⚡ خيارات الإيصال
+          </button>
           <button class="unified-bar-btn btn-status-quick" style="background:var(--green-bg);color:var(--green-text);border-color:rgba(5,150,105,0.25);" onclick="openQuickStatusModalDirect('${safeTargetId}', '${rNum}')" title="تغيير سريع لحالة الجهاز">
             ⚡ الحالة
           </button>
@@ -10736,6 +10739,7 @@ window.renderUnifiedSelectionBar = function(){
         </div>
       </div>
       <div class="unified-bar-actions" style="opacity:0.55;pointer-events:none;">
+        <button class="unified-bar-btn btn-primary" disabled>⚡ خيارات الإيصال</button>
         <button class="unified-bar-btn btn-status-quick" disabled>⚡ الحالة</button>
         <button class="unified-bar-btn" disabled>💰 عرض التكلفة</button>
         <button class="unified-bar-btn btn-whatsapp" disabled>${WA_ICON} واتساب</button>
@@ -11296,7 +11300,14 @@ function archiveTable(list){
     <th style="width:36px;text-align:center;">
       <input type="checkbox" id="receiptSelectAllCb" ${allSelected ? 'checked' : ''} onchange="window.toggleSelectAllReceipts(this.checked)" title="تحديد الكل" style="cursor:pointer;width:16px;height:16px;" />
     </th>
-    <th>رقم الإيصال</th><th>العميل</th><th>الأجهزة</th><th>الفني</th><th>الحالة</th><th>التكلفة</th><th>المدفوع</th><th>المتبقي</th><th>الإجراءات الموحدة</th>
+    <th style="width:12%;">رقم الإيصال</th>
+    <th style="width:16%;">العميل</th>
+    <th style="width:22%;">الأجهزة والعطل</th>
+    <th style="width:10%;">الفني</th>
+    <th style="width:11%;text-align:center;">الحالة</th>
+    <th style="width:9%;text-align:center;">التكلفة</th>
+    <th style="width:9%;text-align:center;">المدفوع</th>
+    <th style="width:11%;text-align:center;">المتبقي</th>
   </tr></thead><tbody>
   ${list.map(rawR=>{
     const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
@@ -11334,7 +11345,7 @@ function archiveTable(list){
       <div>${dCat} - ${dBrand} <span style="color:var(--ink-secondary);">${dModel}</span></div>
     `;
 
-    return `<tr class="selectable-row ${isSelected ? 'selected-row' : ''}" data-receipt-id="${safeTargetId}" data-receipt-num="${rNum}" onclick="handleReceiptRowClick('${safeTargetId}', '${rNum}', event)" style="${isOverdue?'background:rgba(245,158,11,0.08);':''}">
+    return `<tr class="selectable-row ${isSelected ? 'selected-row' : ''}" data-receipt-id="${safeTargetId}" data-receipt-num="${rNum}" onclick="handleReceiptRowClick('${safeTargetId}', '${rNum}', event)" ondblclick="openReceiptDetailModal('${safeTargetId}', '${rNum}')" style="cursor:pointer;${isOverdue?'background:rgba(245,158,11,0.08);':''}" title="نقر لتحديد الإيصال وإجراء العمليات • نقر مزدوج لعرض التفاصيل والتعديل">
       <td style="text-align:center;" onclick="event.stopPropagation();">
         <input type="checkbox" class="receipt-select-cb" value="${safeTargetId}" ${isChecked ? 'checked' : ''} onchange="window.toggleReceiptMultiSelection('${safeTargetId}', this.checked, event)" style="cursor:pointer;width:16px;height:16px;" />
       </td>
@@ -11357,7 +11368,7 @@ function archiveTable(list){
         ${cPhone && cPhone !== '0000000000' ? `
           <div style="color:var(--ink-secondary);font-size:11.5px;display:flex;align-items:center;gap:4px;margin-top:2px;" class="mono">
             <span>${escapeHtml(cPhone)}</span>
-            <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" style="color:#22c55e;text-decoration:none;font-size:12px;" title="محادثة واتساب">💬</a>
+            <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" style="color:#22c55e;text-decoration:none;font-size:12px;" title="محادثة واتساب" onclick="event.stopPropagation();">💬</a>
           </div>
         ` : `
           <div style="color:var(--amber-text);font-size:10.5px;font-weight:700;cursor:pointer;margin-top:2px;" onclick="openQuickAddPhoneModal('${escapeHtml(cName)}', '${escapeHtml(cTitle)}', '${safeTargetId}', '${rNum}'); event.stopPropagation();">⚠️ هاتف غير مسجل (اضغط للإضافة)</div>
@@ -11365,32 +11376,21 @@ function archiveTable(list){
       </td>
       <td>${deviceHtml}</td>
       <td>${r.technician ? `<span style="font-weight:600;">${escapeHtml(r.technician)}</span>` : '<span style="color:var(--slate-400);">-</span>'}</td>
-      <td>
+      <td style="text-align:center;">
         <button class="btn-status-quick" onclick="openQuickStatusModalDirect('${safeTargetId}', '${rNum}'); event.stopPropagation();" title="اضغط لتغيير حالة الجهاز فورًا">
           <span class="status-badge ${st.cls}">${st.icon} ${escapeHtml(r.status)}</span>
           <span style="font-size:9.5px;color:var(--slate-400);">⚡</span>
         </button>
       </td>
-      <td class="mono" style="font-weight:700;color:var(--ink);">
+      <td class="mono" style="font-weight:700;color:var(--ink);text-align:center;">
         ${totalDue.toLocaleString()} ج.م
         ${otherAmt>0 ? `<div style="font-size:9.5px;color:var(--amber-text);font-weight:700;">(+${otherAmt} إضافي)</div>` : ''}
       </td>
-      <td class="mono" style="font-weight:700;color:var(--green);">
+      <td class="mono" style="font-weight:700;color:var(--green);text-align:center;">
         ${deposit.toLocaleString()} ج.م
       </td>
-      <td class="mono" style="font-weight:800;${remaining>0?'color:var(--red);':'color:var(--green);'}">
+      <td class="mono" style="font-weight:800;text-align:center;${remaining>0?'color:var(--red);':'color:var(--green);'}">
         ${remaining.toLocaleString()} ج.م
-      </td>
-      <td class="row-actions" onclick="event.stopPropagation()">
-        <button class="btn btn-xs btn-primary font-bold" onclick="openReceiptActionSheet('${safeTargetId}', '${rNum}'); event.stopPropagation();" title="عرض خيارات وإجراءات الإيصال الموحدة">
-          ⚡ خيارات الإيصال
-        </button>
-        <button class="btn btn-xs btn-status-quick" style="background:var(--green-bg);color:var(--green-text);" onclick="openQuickStatusModalDirect('${safeTargetId}', '${rNum}'); event.stopPropagation();" title="تغيير سريع لحالة الجهاز">
-          ⚡ الحالة
-        </button>
-        <button class="btn btn-xs btn-whatsapp" onclick="openWhatsappDirect('${safeTargetId}', '${rNum}'); event.stopPropagation();" title="محادثة واتساب">
-          ${WA_ICON}
-        </button>
       </td>
     </tr>`;
   }).join('')}
@@ -11493,18 +11493,6 @@ function archiveCards(list){
             <span class="lbl">المتبقي</span>
             <span class="val mono" style="${remaining>0?'color:var(--red);':'color:var(--green);'}">${remaining.toLocaleString()} <small style="font-size:9.5px;">ج.م</small></span>
           </div>
-        </div>
-
-        <div class="smart-card-actions" onclick="event.stopPropagation()">
-          <button class="btn btn-xs btn-primary font-bold" onclick="openReceiptActionSheet('${safeTargetId}', '${rNum}'); event.stopPropagation();" style="flex:2;" title="فتح لوحة الإجراءات الموحدة للوصل">
-            ⚡ خيارات وإجراءات الإيصال
-          </button>
-          <button class="btn btn-xs btn-status-quick" style="background:var(--green-bg);color:var(--green-text);flex:1;" onclick="openQuickStatusModalDirect('${safeTargetId}', '${rNum}'); event.stopPropagation();" title="تغيير سريع للحالة">
-            ⚡ الحالة
-          </button>
-          <button class="btn btn-xs btn-whatsapp" onclick="openWhatsappDirect('${safeTargetId}', '${rNum}'); event.stopPropagation();" style="flex:1;" title="محادثة واتساب">
-            ${WA_ICON} واتساب
-          </button>
         </div>
       </div>
     </div>`;

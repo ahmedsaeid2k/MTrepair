@@ -3930,7 +3930,14 @@ async function syncOfflineQueue(isManual = false){
       [state.receipts, state.customers, state.technicians, state.settings, state.payments, state.inventory, state.sales, state.quotations, state.services, state.purchases, state.suppliers, state.expenses] = await Promise.all([
         loadReceipts(), loadCustomers(), loadTechnicians(), loadSettings(), loadPayments(), loadInventory(), loadSales(), loadQuotations(), loadServices(), loadPurchases(), loadSuppliers(), loadExpenses()
       ]);
-      renderMain();
+      // Only refresh view if user is in Maintenance and not editing/typing
+      if(state.currentSection === 'maintenance' && !state.draft){
+        const isTyping = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT');
+        const modalOpen = !!document.querySelector('.modal-overlay, .modal-backdrop, .modal, [id*="Modal"]');
+        if(!isTyping && !modalOpen){
+          renderMain();
+        }
+      }
     } catch(e){}
   } else {
     if(isManual) showToast(`⚠️ تبقى ${remaining.length} عمليات في الطابور سيتم رفعها تلقائياً.`, 'info');
@@ -4518,6 +4525,7 @@ function receiptToRow(d){
     Model: d.device.model, Accessories: d.device.accessories, Password: pass,
     Faults: (d.faults||[]).join('، '), FaultNotes: d.faultNotes,
     Technician: d.technician, Cost: d.cost, Deposit: d.deposit, Refunded: d.refunded || 0, PartsCost: d.partsCost || 0, PartsUsed: d.partsUsed || '',
+    PartsJSON: (Array.isArray(d.partsList) && d.partsList.length) ? JSON.stringify(d.partsList) : (typeof d.partsJSON === 'string' ? d.partsJSON : ''),
     InspectionFee: d.inspectionFee != null ? d.inspectionFee : '',
     EstimateTime: d.estimateTime || '',
     Warranty: d.warranty || '',
@@ -4583,6 +4591,14 @@ function rowToReceipt(row){
     refunded: Number(row.Refunded || row.refunded || 0),
     partsCost: Number(row.PartsCost || row.partsCost || 0),
     partsUsed: row.PartsUsed || row.partsUsed || '',
+    partsList: (()=>{
+      const pRaw = row.PartsJSON || row.partsJSON || row.partsList;
+      if(Array.isArray(pRaw)) return pRaw;
+      if(typeof pRaw === 'string' && pRaw.trim()){
+        try { const parsed = JSON.parse(pRaw); if(Array.isArray(parsed)) return parsed; } catch(e){}
+      }
+      return [];
+    })(),
     inspectionFee: (row.InspectionFee != null && row.InspectionFee !== '') ? Number(row.InspectionFee) : ((row.inspectionFee != null && row.inspectionFee !== '') ? Number(row.inspectionFee) : null),
     estimateTime: row.EstimateTime || row.estimateTime || '',
     warranty: row.Warranty || row.warranty || '',
@@ -4950,11 +4966,11 @@ async function loadSales(){
   setCache('sales', rows);
   return rows;
 }
-async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, customerPhone, paymentMethod, amountPaid){
+async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, customerPhone, paymentMethod, amountPaid, itemsList = []){
   const sale = {
     ID: 'sale_' + Date.now(), Date: new Date().toISOString().slice(0,10),
-    ItemsSummary: itemsSummary, ItemsJSON: itemsJson||'', Total: total,
-    PaymentMethod: paymentMethod||'نقدي', AmountPaid: amountPaid!=null?amountPaid:total,
+    ItemsSummary: itemsSummary, ItemsJSON: itemsJson||'', Total: Number(total||0),
+    PaymentMethod: paymentMethod||'نقدي', AmountPaid: amountPaid!=null?Number(amountPaid):Number(total||0),
     CustomerName: customerName||'', CustomerPhone: customerPhone||'', By: state.user ? state.user.name : 'نظام'
   };
   state.sales.push(sale);
@@ -4982,17 +4998,64 @@ async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, cust
   }
 
   recordAuditLog('مبيعات كاشير POS', 'مبيعات', `فاتورة مبيعات POS بقيمة ${total} ج.م للعميل (${customerName||'عميل زائر'}) - الأصناف: ${itemsSummary}`, sale.ID);
-  // Auto Journal Entry: Dr. 1101 (الخزينة) / Cr. 4102 (إيرادات مبيعات الأجهزة والإكسسوار)
-  recordAutoJournalEntry(
-    `مبيعات نقدية فاتورة POS (${itemsSummary})`,
-    'POS_Sale',
-    sale.ID,
-    [
-      {AccountCode:'1101', AccountName:'الخزينة الرئيسية (النقدية)', Debit:Number(total), Credit:0, Notes:'مقبوضات نقدية'},
-      {AccountCode:'4102', AccountName:'إيرادات مبيعات الأجهزة والإكسسوار', Debit:0, Credit:Number(total), Notes:itemsSummary}
-    ]
-  ).catch(e=>{});
-  const res = await apiPost('saveSale', {itemsSummary, itemsJson, total, customerName, customerPhone, paymentMethod, amountPaid, date: sale.Date, user: sale.By});
+
+  // Calculate Cost of Goods Sold (COGS)
+  const cogsAmount = (itemsList || []).reduce((s, c) => {
+    const invItem = (state.inventory || []).find(x => x.ID === (c.itemId || c.id));
+    const buyPrice = invItem ? Number(invItem.PurchasePrice || 0) : Number(c.purchasePrice || 0);
+    return s + (buyPrice * Number(c.qty || 1));
+  }, 0);
+
+  // Payment account routing
+  const pLow = String(paymentMethod || '').toLowerCase();
+  const isBankOrWallet = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('إنستاباي') || pLow.includes('instapay') || pLow.includes('محفظ') || pLow.includes('فودافون') || pLow.includes('vodafone');
+  const isCredit = pLow.includes('آجل') || pLow.includes('اجل');
+  const debitAccCode = isCredit ? '1103' : (isBankOrWallet ? '1102' : '1101');
+  const debitAccName = isCredit ? 'العملاء والمدينون' : (isBankOrWallet ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)');
+
+  // Dual Journal Entry: 1) Cash & Revenue  2) COGS & Inventory Asset
+  const journalLines = [
+    {AccountCode: debitAccCode, AccountName: debitAccName, Debit: Number(total), Credit: 0, Notes: `مقبوضات مبيعات [${paymentMethod||'نقدي'}]`},
+    {AccountCode: '4102', AccountName: 'إيرادات مبيعات بضائع وقطع غيار', Debit: 0, Credit: Number(total), Notes: itemsSummary}
+  ];
+  if(cogsAmount > 0){
+    journalLines.push(
+      {AccountCode: '5102', AccountName: 'تكلفة البضاعة المباعة (POS)', Debit: Number(cogsAmount), Credit: 0, Notes: `تكلفة مبيعات فاتورة: ${sale.ID}`},
+      {AccountCode: '1104', AccountName: 'مخزون البضائع وقطع الغيار', Debit: 0, Credit: Number(cogsAmount), Notes: `صرف مخزون أصناف مباعة (${itemsSummary})`}
+    );
+  }
+
+  const journalEntryObj = {
+    ID: 'je_' + Date.now() + '_' + Math.floor(Math.random()*1000),
+    EntryNumber: 'JE-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-4),
+    Date: sale.Date,
+    Description: `فاتورة مبيعات POS [${paymentMethod || 'نقدي'}] (${itemsSummary})`,
+    ReferenceType: 'POS_Sale',
+    ReferenceID: sale.ID,
+    LinesJSON: JSON.stringify(journalLines),
+    Lines: journalLines,
+    TotalDebit: Number(total) + Number(cogsAmount),
+    TotalCredit: Number(total) + Number(cogsAmount),
+    By: sale.By
+  };
+  if(!state.journalEntries) state.journalEntries = [];
+  state.journalEntries.push(journalEntryObj);
+  setCache('journal', state.journalEntries);
+
+  const res = await apiPost('saveSale', {
+    id: sale.ID,
+    itemsSummary,
+    itemsJson,
+    total,
+    customerName,
+    customerPhone,
+    paymentMethod,
+    amountPaid,
+    date: sale.Date,
+    user: sale.By,
+    items: itemsList.map(c => ({ itemId: c.itemId || c.id, qty: c.qty, price: c.price, purchasePrice: c.purchasePrice })),
+    journalEntry: journalEntryObj
+  });
   return { sale: res.sale || sale };
 }
 
@@ -5080,8 +5143,11 @@ async function saveExpenseRemote(exp){
   const isIncome = exp.Type === 'in' || exp.Type === 'income';
   const isDraw = exp.Type === 'out' || exp.Category === 'مسحوبات شخصية' || exp.Category === 'جاري الشركاء';
   const isPetty = exp.Type === 'petty' || exp.Category === 'بوفيه ونثريات' || exp.Category === 'نثريات';
+  const isSupplierPayment = exp.Category === 'موردين' || exp.Category === 'الموردين' || exp.Category === 'سداد موردين ومشتريات' || (String(exp.Category||'').includes('مورد')) || exp.Type === 'supplier' || exp.skipAutoJournal;
 
-  if(isIncome){
+  if(isSupplierPayment){
+    // Suppress general operating expense journal entry; handled specifically as a reduction of Accounts Payable (2101)
+  } else if(isIncome){
     recordAutoJournalEntry(
       `إيداع وارد: ${exp.Title}`,
       'CashIn',
@@ -5132,6 +5198,95 @@ async function loadPurchases(){
   const rows = await apiGet('getPurchases');
   setCache('purchases', rows);
   return rows;
+}
+async function savePurchaseRemote(p, itemsList = []){
+  if(!p.ID) p.ID = 'pur_' + Date.now();
+  if(!p.Date) p.Date = new Date().toISOString().slice(0, 10);
+  p.By = state.user ? state.user.name : 'نظام';
+  p.Total = Number(p.Total || 0);
+  p.AmountPaid = p.AmountPaid != null ? Number(p.AmountPaid) : p.Total;
+  const remaining = Math.max(0, p.Total - p.AmountPaid);
+
+  const idx = state.purchases.findIndex(x => String(x.ID) === String(p.ID));
+  if(idx > -1) state.purchases[idx] = p;
+  else state.purchases.push(p);
+  setCache('purchases', state.purchases);
+
+  // Auto-increment local inventory
+  if(Array.isArray(itemsList) && itemsList.length > 0){
+    for(const it of itemsList){
+      if(!it.itemId) continue;
+      const invItem = (state.inventory || []).find(x => x.ID === it.itemId);
+      if(invItem){
+        invItem.Quantity = Number(invItem.Quantity || 0) + Number(it.qty || 0);
+        if(it.purchasePrice != null && Number(it.purchasePrice) > 0){
+          invItem.PurchasePrice = Number(it.purchasePrice);
+        }
+      }
+    }
+    setCache('inventory', state.inventory);
+  }
+
+  // Auto Journal Entry for Purchase:
+  // Dr. 1104 (مخزون البضائع وقطع الغيار): Total
+  // Cr. 1101/1102 (الخزينة/البنك): AmountPaid
+  // Cr. 2101 (الموردون والدائنون): Remaining
+  const journalLines = [
+    { AccountCode: '1104', AccountName: 'مخزون البضائع وقطع الغيار', Debit: p.Total, Credit: 0, Notes: `شراء وتوريد مخزون (${p.Supplier} - ${p.ItemsSummary})` }
+  ];
+  if(p.AmountPaid > 0){
+    const pLow = String(p.PaymentMethod || 'نقدي').toLowerCase();
+    const isBank = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('محفظ') || pLow.includes('فودافون');
+    journalLines.push({
+      AccountCode: isBank ? '1102' : '1101',
+      AccountName: isBank ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)',
+      Debit: 0,
+      Credit: p.AmountPaid,
+      Notes: `سداد مشتريات للمورد: ${p.Supplier}`
+    });
+  }
+  if(remaining > 0){
+    journalLines.push({
+      AccountCode: '2101',
+      AccountName: 'الموردون والدائنون',
+      Debit: 0,
+      Credit: remaining,
+      Notes: `رصيد آجل لمورد (${p.Supplier}) فاتورة #${String(p.ID).slice(-6)}`
+    });
+  }
+
+  const je = {
+    ID: 'je_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+    EntryNumber: 'JE-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-4),
+    Date: p.Date,
+    Description: `فاتورة شراء وتوريد مخزون (${p.Supplier} - ${p.ItemsSummary})`,
+    ReferenceType: 'Purchase',
+    ReferenceID: p.ID,
+    LinesJSON: JSON.stringify(journalLines),
+    Lines: journalLines,
+    TotalDebit: p.Total,
+    TotalCredit: p.Total,
+    By: p.By
+  };
+  if(!state.journalEntries) state.journalEntries = [];
+  state.journalEntries.push(je);
+  setCache('journal', state.journalEntries);
+
+  recordAuditLog('فاتورة شراء', 'المخزن', `تسجيل فاتورة شراء من المورد (${p.Supplier}) بقيمة ${p.Total} ج.م - الأصناف: ${p.ItemsSummary}`, p.ID);
+
+  return apiPost('savePurchase', {
+    id: p.ID,
+    date: p.Date,
+    supplier: p.Supplier,
+    supplierId: p.SupplierID || '',
+    itemsSummary: p.ItemsSummary,
+    total: p.Total,
+    amountPaid: p.AmountPaid,
+    warrantyMonths: p.WarrantyMonths || '',
+    items: itemsList,
+    journalEntry: je,
+    user: p.By
+  });
 }
 async function loadSuppliers(){
   const rows = await apiGet('getSuppliers');
@@ -5527,6 +5682,43 @@ async function loadTechnicians(){
 }
 
 async function saveReceiptRemote(d){
+  // Check if new parts need to be deducted
+  const partsToDeduct = Array.isArray(d.partsList) && d.partsList.length > 0 ? d.partsList : [];
+  if(partsToDeduct.length > 0){
+    for(const p of partsToDeduct){
+      const it = (state.inventory||[]).find(x => x.ID === p.itemId);
+      if(it) it.Quantity = Math.max(0, Number(it.Quantity||0) - Number(p.qty||1));
+    }
+    setCache('inventory', state.inventory);
+  }
+
+  // Auto Journal Entry for spare parts cost
+  let journalEntry = null;
+  const partsCost = Number(d.partsCost || 0);
+  if(partsCost > 0 && partsToDeduct.length > 0){
+    const rNum = d.receiptNumber || d.id;
+    const jLines = [
+      { AccountCode: '5101', AccountName: 'تكلفة قطع الغيار المستخدمة بالصيانة', Debit: partsCost, Credit: 0, Notes: `تكلفة قطع غيار إيصال #${rNum}` },
+      { AccountCode: '1104', AccountName: 'مخزون البضائع وقطع الغيار', Debit: 0, Credit: partsCost, Notes: `صرف قطع صيانة إيصال #${rNum} (${d.partsUsed||''})` }
+    ];
+    journalEntry = {
+      ID: 'je_' + Date.now() + '_' + Math.floor(Math.random()*1000),
+      EntryNumber: 'JE-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-4),
+      Date: d.date || new Date().toISOString().slice(0, 10),
+      Description: `تكلفة قطع غيار صيانة (إيصال #${rNum})`,
+      ReferenceType: 'Receipt_Parts',
+      ReferenceID: String(d.id),
+      LinesJSON: JSON.stringify(jLines),
+      Lines: jLines,
+      TotalDebit: partsCost,
+      TotalCredit: partsCost,
+      By: state.user ? state.user.name : 'نظام'
+    };
+    if(!state.journalEntries) state.journalEntries = [];
+    state.journalEntries.push(journalEntry);
+    setCache('journal', state.journalEntries);
+  }
+
   const row = receiptToRow(d);
   const idx = state.receipts.findIndex(x=>x.id===d.id);
   if(idx>-1) state.receipts[idx] = d; else state.receipts.push(d);
@@ -5553,12 +5745,63 @@ async function saveReceiptRemote(d){
     }
   }
 
-  return apiPost('saveReceipt', {data: row, user: state.user?state.user.name:'نظام'});
+  return apiPost('saveReceipt', {
+    data: row,
+    user: state.user?state.user.name:'نظام',
+    partsToDeduct,
+    journalEntry
+  });
 }
 async function deleteReceiptRemote(id){
-  state.receipts = state.receipts.filter(x=>x.id!==id);
+  const r = state.receipts.find(x => x.id === id || String(x.receiptNumber) === String(id));
+  const partsToRestore = r && Array.isArray(r.partsList) ? r.partsList : [];
+
+  // Restore local inventory
+  if(partsToRestore.length > 0){
+    for(const p of partsToRestore){
+      const it = (state.inventory||[]).find(x => x.ID === p.itemId);
+      if(it) it.Quantity = Number(it.Quantity || 0) + Number(p.qty || 1);
+    }
+    setCache('inventory', state.inventory);
+  }
+
+  // Reverse auto journal entry if parts cost was recorded
+  let reversalEntry = null;
+  const partsCost = Number(r ? r.partsCost : 0);
+  if(partsCost > 0){
+    const rNum = r ? (r.receiptNumber || r.id) : id;
+    const revLines = [
+      { AccountCode: '1104', AccountName: 'مخزون البضائع وقطع الغيار', Debit: partsCost, Credit: 0, Notes: `إلغاء استهلاك قطع غيار إيصال #${rNum}` },
+      { AccountCode: '5101', AccountName: 'تكلفة قطع الغيار المستخدمة بالصيانة', Debit: 0, Credit: partsCost, Notes: `عكس تكلفة قطع إيصال محذوف #${rNum}` }
+    ];
+    reversalEntry = {
+      ID: 'je_rev_' + Date.now(),
+      EntryNumber: 'REV-JE-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-4),
+      Date: new Date().toISOString().slice(0, 10),
+      Description: `قيد عكسي لإلغاء استهلاك قطع غيار إيصال محذوف #${rNum}`,
+      ReferenceType: 'Receipt_Reversal',
+      ReferenceID: String(id),
+      LinesJSON: JSON.stringify(revLines),
+      Lines: revLines,
+      TotalDebit: partsCost,
+      TotalCredit: partsCost,
+      By: state.user ? state.user.name : 'نظام'
+    };
+    if(!state.journalEntries) state.journalEntries = [];
+    state.journalEntries.push(reversalEntry);
+    setCache('journal', state.journalEntries);
+  }
+
+  state.receipts = state.receipts.filter(x => x.id !== id && String(x.receiptNumber) !== String(id));
   setCache('receipts', state.receipts);
-  return apiPost('deleteReceipt', {id, role: state.user.role, user: state.user.name});
+  return apiPost('deleteReceipt', {
+    id,
+    role: state.user.role,
+    user: state.user.name,
+    partsToRestore,
+    voidPayments: true,
+    reversalEntry
+  });
 }
 async function saveCustomerRemote(c, oldName = null){
   if(!c || !c.name) return;
@@ -7182,30 +7425,39 @@ async function init(){
       if(getSyncQueue().length > 0){
         await syncOfflineQueue();
       }
-      // If user is not currently filling a draft form, pull fresh data from cloud
-      if(!state.draft && (state.tab === 'archive' || state.tab === 'dashboard' || state.tab === 'customers')){
-        try {
-          const [freshReceipts, freshCustomers] = await Promise.all([loadReceipts(), loadCustomers()]);
-          if(freshReceipts && freshReceipts.length){
-            state.receipts = freshReceipts;
-          }
-          if(freshCustomers && freshCustomers.length){
-            state.customers = freshCustomers;
-          }
-          renderMain();
-        } catch(syncErr){}
+      // If user is inside Maintenance and not currently filling a draft form, pull fresh data from cloud
+      if(state.currentSection === 'maintenance' && !state.draft && (state.tab === 'archive' || state.tab === 'dashboard' || state.tab === 'customers')){
+        const isTyping = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT');
+        const modalOpen = !!document.querySelector('.modal-overlay, .modal-backdrop, .modal, [id*="Modal"]');
+        if(!isTyping && !modalOpen){
+          try {
+            const [freshReceipts, freshCustomers] = await Promise.all([loadReceipts(), loadCustomers()]);
+            if(freshReceipts && freshReceipts.length){
+              state.receipts = freshReceipts;
+            }
+            if(freshCustomers && freshCustomers.length){
+              state.customers = freshCustomers;
+            }
+            if(state.currentSection === 'maintenance'){
+              renderMain();
+            }
+          } catch(syncErr){}
+        }
       }
     }
   }, 40000);
 
   // Auto-sync whenever user returns to or focuses the window/tab from another device
   window.addEventListener('focus', async () => {
-    if(navigator.onLine && !state.draft){
+    if(navigator.onLine && !state.draft && state.currentSection === 'maintenance'){
+      const isTyping = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT');
+      const modalOpen = !!document.querySelector('.modal-overlay, .modal-backdrop, .modal, [id*="Modal"]');
+      if(isTyping || modalOpen) return;
       try {
         const [freshReceipts, freshCustomers] = await Promise.all([loadReceipts(), loadCustomers()]);
         if(freshReceipts && freshReceipts.length) state.receipts = freshReceipts;
         if(freshCustomers && freshCustomers.length) state.customers = freshCustomers;
-        if(state.tab === 'archive' || state.tab === 'dashboard' || state.tab === 'customers'){
+        if(state.currentSection === 'maintenance' && (state.tab === 'archive' || state.tab === 'dashboard' || state.tab === 'customers')){
           renderMain();
         }
       } catch(fErr){}
@@ -8577,6 +8829,9 @@ function updateSidebarNav(){
 
 /* ---------------- Main Router ---------------- */
 function renderMain(){
+  // Strict Safeguard: renderMain is exclusively the sub-router for the Maintenance section.
+  // Under NO circumstances should it execute or modify the DOM if the user is in another section or on the section picker.
+  if(state.currentSection !== 'maintenance') return;
   const main = document.getElementById('main');
   if(!main) return;
   if(state.tab==='settings' && !canUserAccessSection('settings')){ state.tab='dashboard'; }
@@ -9571,28 +9826,24 @@ function stepFinance(body,d){
       else { const dt = new Date(); dt.setDate(dt.getDate()+days); document.getElementById('finDate').value = dt.toISOString().slice(0,10); }
     };
   });
-  document.getElementById('draftUsePartBtn').onclick = async ()=>{
+  document.getElementById('draftUsePartBtn').onclick = ()=>{
     const itemId = document.getElementById('draftInvPickItem').value;
     const qtyInp = document.getElementById('draftInvPickQty');
     const qty = parseFloat(toEngDigits(qtyInp ? qtyInp.value : '1')) || 0;
     if(!itemId){ showToast('اختر صنف من المخزن أولاً', 'error'); return; }
     if(!qty || qty<=0){ showToast('أدخل كمية صحيحة', 'error'); return; }
     const item = state.inventory.find(x=>x.ID===itemId);
-    if(!item || qty > Number(item.Quantity)){ showToast('الكمية غير متاحة بالمخزن', 'error'); return; }
-    const btn = document.getElementById('draftUsePartBtn');
-    btn.disabled = true; btn.textContent = '...';
-    try{
-      await adjustInventoryQtyRemote(itemId, -qty);
-      item.Quantity = Number(item.Quantity) - qty;
-      const cost = qty * Number(item.PurchasePrice||0);
-      d.partsCost = Number(d.partsCost||0) + cost;
-      d.partsUsed = (d.partsUsed ? d.partsUsed + '، ' : '') + `${item.Name} × ${qty}`;
-      document.getElementById('finParts').value = d.partsCost;
-      document.getElementById('draftPartsUsedList').innerHTML = d.partsUsed;
-      recalcDraftFinances();
-      showToast('تم خصم الصنف من المخزن وتحديث التكلفة', 'success');
-    }catch(e){ showToast('تعذر خصم الصنف: '+e.message, 'error'); }
-    btn.disabled = false; btn.textContent = 'خصم من المخزن';
+    if(!item || qty > Number(item.Quantity)){ showToast('الكمية المطلوبة غير متوفرة بالمخزن (المتاح: ' + (item ? item.Quantity : 0) + ')', 'error'); return; }
+
+    if(!d.partsList) d.partsList = [];
+    d.partsList.push({ itemId, name: item.Name, qty, purchasePrice: Number(item.PurchasePrice || 0) });
+    const cost = qty * Number(item.PurchasePrice || 0);
+    d.partsCost = Number(d.partsCost||0) + cost;
+    d.partsUsed = d.partsList.map(p => `${p.name} × ${p.qty}`).join('، ');
+    document.getElementById('finParts').value = d.partsCost;
+    document.getElementById('draftPartsUsedList').innerHTML = d.partsUsed + ' <span style="font-size:11px;color:var(--primary);font-weight:700;">(سيتم الخصم الفعلي عند اعتماد الإيصال)</span>';
+    recalcDraftFinances();
+    showToast('تمت إضافة قطعة الغيار لمسودة الإيصال (سيتم الخصم عند الحفظ النهائي)', 'success');
   };
   currentStepCollector = ()=>{
     const collectedItems = [];
@@ -10778,6 +11029,11 @@ window.openCustomerActionSheet = function(custName, custPhone, custTitle, custEm
           <div class="act-label">فاتورة جديدة</div>
           <div class="act-desc">إصدار فاتورة بيع/خدمة</div>
         </div>
+        <div class="action-sheet-card-btn" style="background:#eff6ff;border-color:#bfdbfe;" onclick="document.getElementById('customerActionSheetModal').remove(); openCustomerStatementModal('${escapeHtml(custName)}', '${escapeHtml(custPhone||'')}');">
+          <div class="act-icon" style="color:#2563eb;">📊</div>
+          <div class="act-label">كشف حساب تفصيلي</div>
+          <div class="act-desc">سجل حركات ورصيد العميل</div>
+        </div>
         <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); document.querySelector('tr.selected-row .edit-cust-btn')?.click();">
           <div class="act-icon">✏️</div>
           <div class="act-label">تعديل البيانات</div>
@@ -11381,6 +11637,9 @@ function renderCustomersPage(main){
                     <div style="display:inline-flex;gap:4px;flex-wrap:wrap;justify-content:center;">
                       <button class="btn btn-primary btn-xs font-bold" onclick="openCustomerActionSheet('${escapeHtml(cName)}', '${escapeHtml(cPhone||'')}', '${escapeHtml(cTitle)}', '${escapeHtml(c.email||'')}'); event.stopPropagation();" title="فتح لوحة الإجراءات الموحدة للعميل">
                         ⚡ خيارات العميل
+                      </button>
+                      <button class="btn btn-xs" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-weight:700;" onclick="openCustomerStatementModal('${escapeHtml(cName)}', '${escapeHtml(cPhone||'')}'); event.stopPropagation();" title="كشف حساب تفصيلي للعميل">
+                        📊 كشف حساب
                       </button>
                       <button class="btn btn-ghost btn-xs edit-cust-btn" data-custtitle="${escapeHtml(cTitle)}" data-custname="${escapeHtml(cName)}" data-custphone="${escapeHtml(cPhone||'')}" data-custemail="${escapeHtml(c.email||'')}">
                         ✏️ تعديل
@@ -16035,7 +16294,14 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
         await saveInvoiceRemote(inv);
         showToast(`تم حفظ ${docType==='quote'?'عرض السعر':'الفاتورة'} بنجاح (${inv.InvoiceNumber})`, 'success');
         overlay.remove();
-        renderMain();
+        const main = document.getElementById('main');
+        if(state.currentSection === 'invoices' && main){
+          renderInvoicesPage(main);
+        } else if(state.currentSection === 'maintenance' && state.tab === 'invoices' && main){
+          renderInvoicesPage(main);
+        } else if(state.currentSection === 'maintenance'){
+          renderMain();
+        }
         if(andPrint) openInvoicePrint(inv, docType);
       }catch(e){
         showToast('خطأ في حفظ البيانات', 'error');
@@ -16877,11 +17143,21 @@ function openRecordTransactionModal(defaultType='expense'){
         });
         showToast('تم تسجيل الحركة بنجاح في دفتر اليومية ✅', 'success');
         overlay.remove();
-        renderMain();
+        const main = document.getElementById('main');
+        if(state.currentSection === 'daily' && main){
+          renderDailyJournalPage(main);
+        } else if(state.currentSection === 'maintenance'){
+          renderMain();
+        }
       }catch(e){
         showToast('تم الحفظ محلياً', 'info');
         overlay.remove();
-        renderMain();
+        const main = document.getElementById('main');
+        if(state.currentSection === 'daily' && main){
+          renderDailyJournalPage(main);
+        } else if(state.currentSection === 'maintenance'){
+          renderMain();
+        }
       }
     };
   }
@@ -19032,6 +19308,20 @@ function renderInventoryHubApp(app){
   else renderInventory(main, state.invHubTab, state.invHubTab==='all' ? 'كل أصناف الشركة' : `مخزون: ${state.invHubTab}`);
 }
 
+function refreshInventorySectionOrTab(){
+  const main = document.getElementById('main');
+  if(!main) return;
+  if(state.currentSection === 'inventory'){
+    if(state.invHubTab === 'purchases') renderPurchases(main);
+    else if(state.invHubTab === 'suppliers') renderSuppliers(main);
+    else renderInventory(main, state.invHubTab || 'all', (state.invHubTab === 'all' || !state.invHubTab) ? 'كل أصناف الشركة' : `مخزون: ${state.invHubTab}`);
+  } else if(state.currentSection === 'maintenance' && state.tab === 'inventory'){
+    renderInventory(main, 'صيانة', 'مخزن قطع الغيار');
+  } else if(state.currentSection === 'maintenance'){
+    renderMain();
+  }
+}
+
 /* ---------------- Pro Inventory Master Screen (شاشة إدارة وأصناف المخزن المطورة) ---------------- */
 function renderInventory(main, categoryFilter, titleOverride){
   if(!state.invSearchQ) state.invSearchQ = '';
@@ -19593,7 +19883,7 @@ function openInventoryItemModal(editItem, cloneMode=false, defaultCategory='صي
       try{
         await saveInventoryItemRemote(item);
         showToast(`تم حفظ الصنف "${item.Name}" بنجاح ✅`, 'success');
-        renderMain();
+        refreshInventorySectionOrTab();
 
         if(keepOpen){
           // Reset form for next item
@@ -19724,7 +20014,7 @@ function openInventoryImportModal(){
     }
     showToast(`تم استيراد ${parsedItems.length} صنف بنجاح إلى المخزن! 🎉`, 'success');
     overlay.remove();
-    renderMain();
+    refreshInventorySectionOrTab();
   };
 }
 
@@ -19819,7 +20109,7 @@ function openWarehouseManagerModal(){
       recordAuditLog('إنشاء مخزن جديد', 'المخزن', `تم إنشاء مخزن جديد باسم: (${val})`, val);
       showToast(`تم إضافة المخزن "${val}" بنجاح 🏢`, 'success');
       renderModal();
-      renderMain();
+      refreshInventorySectionOrTab();
     };
 
     overlay.querySelectorAll('[data-filterwh]').forEach(btn => {
@@ -19827,7 +20117,7 @@ function openWarehouseManagerModal(){
         state.selectedWarehouseFilter = btn.dataset.filterwh;
         overlay.remove();
         if(state.currentSection !== 'inventory'){ state.currentSection = 'inventory'; render(); }
-        else renderMain();
+        else refreshInventorySectionOrTab();
       };
     });
 
@@ -19852,7 +20142,7 @@ function openWarehouseManagerModal(){
         recordAuditLog('حذف مخزن', 'المخزن', `تم حذف المخزن (${targetWh})`, targetWh);
         showToast(`تم حذف المخزن "${targetWh}" بنجاح`, 'info');
         renderModal();
-        renderMain();
+        refreshInventorySectionOrTab();
       };
     });
   }
@@ -20057,7 +20347,7 @@ function openWarehouseTransferModal(preselectedItem=null){
         showToast(`تم تحويل ${qty} قطعة من "${selItem.Name}" إلى ${toWh} بنجاح ✅`, 'success');
         playNotificationChime();
         overlay.remove();
-        renderMain();
+        refreshInventorySectionOrTab();
       };
     }
   }
@@ -20733,23 +21023,25 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
     if(btn){ btn.disabled = true; btn.textContent = 'جارٍ تسجيل العملية...'; }
 
     try {
-      // Adjust inventory quantities
-      for(const c of cart){
+      const cartSnapshot = [...cart];
+      // Update local inventory quantities immediately
+      for(const c of cartSnapshot){
         if(c.itemId && !String(c.itemId).startsWith('srv_')){
-          await adjustInventoryQtyRemote(c.itemId, -c.qty);
+          const it = (state.inventory||[]).find(x => x.ID === c.itemId);
+          if(it) it.Quantity = Math.max(0, Number(it.Quantity||0) - Number(c.qty||1));
         }
       }
+      setCache('inventory', state.inventory);
 
       const itemsSummary = cart.map(c => `${c.name} × ${c.qty} (${(c.qty*c.price).toLocaleString()} ج.م)`).join('، ');
       const itemsJson = JSON.stringify(cart.map(c => ({ name: c.name, qty: c.qty, price: c.price, itemId: c.itemId })));
       
       const paidAmount = ps.amountPaid !== '' ? Number(ps.amountPaid) : grandTotal;
       const fullCustName = customerTitle ? `${customerTitle} / ${customerName}` : customerName;
-      const saleRes = await saveSaleRemote(itemsSummary, itemsJson, grandTotal, fullCustName, customerPhone, payMethodName, paidAmount);
+      const saleRes = await saveSaleRemote(itemsSummary, itemsJson, grandTotal, fullCustName, customerPhone, payMethodName, paidAmount, cartSnapshot);
       
       showToast('تمت عملية البيع بنجاح ✅', 'success');
 
-      const cartSnapshot = [...cart];
       const saleData = saleRes.sale || {
         ID: 's_' + Date.now(),
         Date: new Date().toISOString().slice(0,10),
@@ -22034,6 +22326,7 @@ function renderSuppliers(main){
             <td style="text-align:center;">
               <div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;">
                 <button class="btn btn-xs btn-green" data-suppaybtn="${escapeHtml(sName)}" title="تسجيل سند صرف وسداد دفعة لهذا المورد">💵 سداد دفعة</button>
+                <button class="btn btn-xs" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-weight:700;" data-supstatementbtn="${escapeHtml(sName)}" title="كشف حساب تفصيلي للمورد">📊 كشف حساب</button>
                 ${(() => {
                   const pCount = (state.expenses || []).filter(ex => (ex.Category === 'سداد موردين ومشتريات' || ex.Supplier) && ex.Supplier === sName).length;
                   return pCount ? `<button class="btn btn-xs btn-ghost" data-suphistbtn="${escapeHtml(sName)}" title="عرض سجل سندات الصرف">📋 السجل (${pCount})</button>` : '';
@@ -22068,6 +22361,10 @@ function renderSuppliers(main){
 
   main.querySelectorAll('[data-suphistbtn]').forEach(btn => {
     btn.onclick = () => openSupplierPaymentsHistoryModal(btn.dataset.suphistbtn);
+  });
+
+  main.querySelectorAll('[data-supstatementbtn]').forEach(btn => {
+    btn.onclick = () => openSupplierStatementModal(btn.dataset.supstatementbtn);
   });
 }
 
@@ -22218,7 +22515,7 @@ function openPaySupplierModal(preselectedName){
       overlay.remove();
       const main = document.getElementById('main');
       if(state.invHubTab === 'suppliers') renderSuppliers(main);
-      else renderMain();
+      else refreshInventorySectionOrTab();
 
       setTimeout(()=>{
         if(confirm(`تم تسجيل سداد ${amount.toLocaleString()} ج.م للمورد (${supName}) بنجاح ✅\n\nهل ترغب في طباعة سند الصرف الآن؟`)){
@@ -22446,11 +22743,12 @@ function renderPurchases(main){
       </div>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-purple btn-sm" id="btnPurchasesBatchBarcode">🏷️ طباعة باركود من فاتورة</button>
+        <button class="btn btn-primary btn-sm" id="btnNewPurchaseInvoice">➕ فاتورة شراء وتوريد جديدة</button>
       </div>
     </div>
     <div class="card">
       <h3>آخر فواتير الشراء</h3>
-      ${state.purchases.length===0 ? '<div class="empty">لا توجد فواتير شراء بعد.</div>' : `
+      ${state.purchases.length===0 ? '<div class="empty">لا توجد فواتير شراء بعد. اضغط على "➕ فاتورة شراء وتوريد جديدة" لتسجيل بضاعة جديدة وتوريد المخزن.</div>' : `
       <div class="table-wrap">
         <table>
           <thead>
@@ -22460,20 +22758,27 @@ function renderPurchases(main){
               <th>الأصناف</th>
               <th>الإجمالي</th>
               <th>المدفوع</th>
+              <th>المتبقي (آجل)</th>
               <th>الإجراءات</th>
             </tr>
           </thead>
           <tbody>
-            ${state.purchases.slice().reverse().map(p=>`<tr>
-              <td>${cleanDate(p.Date)}</td>
-              <td><b>${escapeHtml(p.Supplier||'')}</b></td>
-              <td>${escapeHtml(p.ItemsSummary||'')}</td>
-              <td class="mono font-bold">${Number(p.Total||0).toLocaleString()} ج.م</td>
-              <td class="mono">${Number(p.AmountPaid!=null?p.AmountPaid:p.Total||0).toLocaleString()} ج.م</td>
-              <td>
-                <button class="btn btn-xs btn-purple" onclick="openInvoiceBarcodePrintModal('purchase', '${escapeHtml(String(p.ID||''))}')" title="طباعة ملصقات الباركود لأصناف هذه الفاتورة">🏷️ طباعة الباركود</button>
-              </td>
-            </tr>`).join('')}
+            ${state.purchases.slice().reverse().map(p=>{
+              const tot = Number(p.Total||0);
+              const paid = Number(p.AmountPaid!=null?p.AmountPaid:tot);
+              const rem = Math.max(0, tot - paid);
+              return `<tr>
+                <td>${cleanDate(p.Date)}</td>
+                <td><b>${escapeHtml(p.Supplier||'')}</b></td>
+                <td>${escapeHtml(p.ItemsSummary||'')}</td>
+                <td class="mono font-bold">${tot.toLocaleString()} ج.م</td>
+                <td class="mono" style="color:var(--green);">${paid.toLocaleString()} ج.م</td>
+                <td class="mono font-bold" style="color:${rem>0?'var(--red)':'var(--ink-secondary)'};">${rem>0 ? rem.toLocaleString() + ' ج.م' : 'خالص'}</td>
+                <td>
+                  <button class="btn btn-xs btn-purple" onclick="openInvoiceBarcodePrintModal('purchase', '${escapeHtml(String(p.ID||''))}')" title="طباعة ملصقات الباركود لأصناف هذه الفاتورة">🏷️ طباعة الباركود</button>
+                </td>
+              </tr>`;
+            }).join('')}
           </tbody>
         </table>
       </div>`}
@@ -22481,6 +22786,323 @@ function renderPurchases(main){
   `;
   const btnBatch = document.getElementById('btnPurchasesBatchBarcode');
   if(btnBatch) btnBatch.onclick = () => openInvoiceBarcodePrintModal('purchase');
+  const btnNewPur = document.getElementById('btnNewPurchaseInvoice');
+  if(btnNewPur) btnNewPur.onclick = () => openNewPurchaseModal();
+}
+
+function openNewPurchaseModal(){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'newPurchaseModalOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.65);backdrop-filter:blur(4px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;';
+
+  const suppliersList = state.suppliers || [];
+  const inventoryList = state.inventory || [];
+
+  let items = [
+    { itemId: '', name: '', qty: 1, purchasePrice: 0 }
+  ];
+
+  function renderRows(){
+    const tbody = overlay.querySelector('#purItemsTableBody');
+    if(!tbody) return;
+    tbody.innerHTML = items.map((it, idx) => `
+      <tr style="border-bottom:1px solid #f1f5f9;">
+        <td style="padding:6px;">
+          <select class="pur-row-item-select" data-idx="${idx}" style="width:100%;font-size:12px;padding:6px;border:1px solid #cbd5e1;border-radius:4px;">
+            <option value="">-- اختر صنف من المخزن أو اكتب يدوياً --</option>
+            ${inventoryList.map(inv => `<option value="${escapeHtml(inv.ID)}" ${it.itemId===inv.ID?'selected':''}>${escapeHtml(inv.Name)} (رصيد: ${inv.Quantity||0})</option>`).join('')}
+          </select>
+          <input type="text" class="pur-row-item-name" data-idx="${idx}" placeholder="اسم الصنف (إذا كان جديداً)..." value="${escapeHtml(it.name||'')}" style="width:100%;font-size:11.5px;padding:4px 6px;margin-top:4px;border:1px solid #e2e8f0;border-radius:4px;display:${it.itemId?'none':'block'};">
+        </td>
+        <td style="padding:6px;width:90px;">
+          <input type="number" min="1" step="1" class="pur-row-qty mono" data-idx="${idx}" value="${it.qty}" style="width:100%;text-align:center;font-weight:bold;font-size:13px;padding:6px;border:1px solid #cbd5e1;border-radius:4px;">
+        </td>
+        <td style="padding:6px;width:110px;">
+          <input type="number" min="0" step="any" class="pur-row-price mono" data-idx="${idx}" value="${it.purchasePrice||''}" placeholder="سعر الشراء" style="width:100%;text-align:center;font-weight:bold;font-size:13px;padding:6px;border:1px solid #cbd5e1;border-radius:4px;">
+        </td>
+        <td style="padding:6px;width:110px;text-align:center;font-weight:800;" class="mono pur-row-total">
+          ${(Number(it.qty||0) * Number(it.purchasePrice||0)).toLocaleString()} ج.م
+        </td>
+        <td style="padding:6px;width:40px;text-align:center;">
+          ${items.length > 1 ? `<button type="button" class="btn btn-xs btn-red pur-row-del" data-idx="${idx}" title="حذف السطر">✕</button>` : ''}
+        </td>
+      </tr>
+    `).join('');
+
+    // Reattach listeners
+    tbody.querySelectorAll('.pur-row-item-select').forEach(sel => {
+      sel.onchange = (e) => {
+        const i = Number(e.target.dataset.idx);
+        const selId = e.target.value;
+        const inv = inventoryList.find(x => x.ID === selId);
+        if(inv){
+          items[i].itemId = inv.ID;
+          items[i].name = inv.Name;
+          items[i].purchasePrice = Number(inv.PurchasePrice || 0);
+        } else {
+          items[i].itemId = '';
+        }
+        renderRows();
+        recalcTotals();
+      };
+    });
+
+    tbody.querySelectorAll('.pur-row-item-name').forEach(inp => {
+      inp.oninput = (e) => {
+        const i = Number(e.target.dataset.idx);
+        items[i].name = e.target.value;
+      };
+    });
+
+    tbody.querySelectorAll('.pur-row-qty').forEach(inp => {
+      inp.oninput = (e) => {
+        const i = Number(e.target.dataset.idx);
+        items[i].qty = Math.max(1, parseFloat(toEngDigits(e.target.value)) || 1);
+        recalcTotals();
+      };
+    });
+
+    tbody.querySelectorAll('.pur-row-price').forEach(inp => {
+      inp.oninput = (e) => {
+        const i = Number(e.target.dataset.idx);
+        items[i].purchasePrice = Math.max(0, parseFloat(toEngDigits(e.target.value)) || 0);
+        recalcTotals();
+      };
+    });
+
+    tbody.querySelectorAll('.pur-row-del').forEach(btn => {
+      btn.onclick = (e) => {
+        const i = Number(btn.dataset.idx);
+        items.splice(i, 1);
+        renderRows();
+        recalcTotals();
+      };
+    });
+  }
+
+  function recalcTotals(){
+    const grandTotal = items.reduce((s, it) => s + (Number(it.qty||0) * Number(it.purchasePrice||0)), 0);
+    const totalEl = overlay.querySelector('#purGrandTotal');
+    if(totalEl) totalEl.textContent = grandTotal.toLocaleString() + ' ج.م';
+
+    const payMode = overlay.querySelector('#purPayMode').value;
+    const paidInp = overlay.querySelector('#purAmountPaid');
+    if(payMode === 'cash_full' || payMode === 'bank_full'){
+      paidInp.value = grandTotal;
+      paidInp.disabled = true;
+    } else if(payMode === 'credit_full'){
+      paidInp.value = 0;
+      paidInp.disabled = true;
+    } else {
+      paidInp.disabled = false;
+    }
+
+    const paidVal = parseFloat(toEngDigits(paidInp.value)) || 0;
+    const remaining = Math.max(0, grandTotal - paidVal);
+    const remEl = overlay.querySelector('#purRemaining');
+    if(remEl) remEl.textContent = remaining.toLocaleString() + ' ج.م';
+  }
+
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:12px;box-shadow:0 20px 40px rgba(0,0,0,0.2);width:100%;max-width:760px;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;border:1px solid #cbd5e1;">
+      <div style="background:linear-gradient(135deg,#1e293b,#0f172a);color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <h3 style="margin:0;font-size:16px;font-weight:900;">📥 تسجيل فاتورة شراء وتوريد مخزون جديدة</h3>
+          <div style="font-size:11px;color:#94a3b8;margin-top:2px;">إضافة أصناف للمخزن + توليد القيود المحاسبية التلقائية (مخزون 1104 / موردين 2101 / خزينة)</div>
+        </div>
+        <button type="button" class="btn btn-ghost btn-sm" id="closePurModalBtn" style="color:#fff;font-size:18px;line-height:1;">✕</button>
+      </div>
+
+      <div style="padding:16px 20px;overflow-y:auto;flex:1;">
+        <!-- Top Metadata Row -->
+        <div style="display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div>
+            <label style="font-size:11.5px;font-weight:800;color:#334155;display:block;margin-bottom:4px;">المورد / جهة الشراء *</label>
+            <div style="display:flex;gap:6px;">
+              <select id="purSupplierSelect" style="flex:1;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12.5px;font-weight:700;">
+                <option value="">-- اختر مورد مسجل --</option>
+                ${suppliersList.map(s => `<option value="${escapeHtml(s.Name)}">${escapeHtml(s.Name)}</option>`).join('')}
+              </select>
+              <input type="text" id="purNewSupplierInput" placeholder="أو اكتب اسم مورد جديد..." style="flex:1;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;">
+            </div>
+          </div>
+          <div>
+            <label style="font-size:11.5px;font-weight:800;color:#334155;display:block;margin-bottom:4px;">تاريخ الفاتورة *</label>
+            <input type="date" id="purDateInput" value="${new Date().toISOString().slice(0,10)}" style="width:100%;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12.5px;">
+          </div>
+          <div>
+            <label style="font-size:11.5px;font-weight:800;color:#334155;display:block;margin-bottom:4px;">فترة الضمان (شهور)</label>
+            <input type="number" min="0" id="purWarrantyInput" placeholder="مثلاً: 12" style="width:100%;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12.5px;">
+          </div>
+        </div>
+
+        <!-- Items Table -->
+        <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:14px;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead style="background:#f8fafc;border-bottom:1.5px solid #cbd5e1;">
+              <tr>
+                <th style="padding:8px 10px;text-align:right;">الصنف / قطع الغيار</th>
+                <th style="padding:8px;text-align:center;width:90px;">الكمية</th>
+                <th style="padding:8px;text-align:center;width:110px;">سعر الشراء</th>
+                <th style="padding:8px;text-align:center;width:110px;">الإجمالي</th>
+                <th style="padding:8px;width:40px;"></th>
+              </tr>
+            </thead>
+            <tbody id="purItemsTableBody"></tbody>
+          </table>
+          <div style="padding:8px 12px;background:#f8fafc;border-top:1px solid #e2e8f0;">
+            <button type="button" class="btn btn-ghost btn-sm" id="purAddItemRowBtn" style="color:var(--primary);font-weight:800;">
+              ➕ إضافة صنف آخر للفاتورة
+            </button>
+          </div>
+        </div>
+
+        <!-- Payment and Summary Box -->
+        <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <div>
+            <label style="font-size:11.5px;font-weight:800;color:#334155;display:block;margin-bottom:4px;">حالة وطريقة السداد *</label>
+            <select id="purPayMode" style="width:100%;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;font-weight:700;margin-bottom:8px;">
+              <option value="cash_full">سداد نقدي بالكامل (من الخزينة 1101)</option>
+              <option value="bank_full">سداد إلكتروني بالكامل (بنك / محفظة 1102)</option>
+              <option value="credit_full">شراء آجل بالكامل (على حساب المورد 2101)</option>
+              <option value="partial">سداد دفعة مقدمة والباقي آجل</option>
+            </select>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <label style="font-size:11.5px;font-weight:700;color:#475569;">المبلغ المسدد الآن:</label>
+              <input type="number" min="0" step="any" id="purAmountPaid" style="flex:1;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-weight:bold;text-align:center;" class="mono font-bold">
+            </div>
+          </div>
+          <div style="text-align:left;display:flex;flex-direction:column;justify-content:center;border-right:2px dashed #cbd5e1;padding-right:16px;">
+            <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;">
+              <span style="color:#64748b;font-weight:700;">إجمالي الفاتورة:</span>
+              <span class="mono font-bold" id="purGrandTotal" style="font-size:16px;color:#0f172a;">0 ج.م</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;">
+              <span style="color:#64748b;font-weight:700;">المتبقي للمورد (آجل):</span>
+              <span class="mono font-bold" id="purRemaining" style="font-size:15px;color:#dc2626;">0 ج.م</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer Buttons -->
+      <div style="background:#f1f5f9;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid #cbd5e1;">
+        <button type="button" class="btn btn-ghost btn-sm" id="cancelPurBtn">إلغاء</button>
+        <button type="button" class="btn btn-primary btn-sm" id="savePurBtn" style="padding:8px 24px;font-weight:900;">
+          💾 حفظ الفاتورة وتوريد المخزن
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  renderRows();
+  recalcTotals();
+
+  overlay.querySelector('#closePurModalBtn').onclick = () => overlay.remove();
+  overlay.querySelector('#cancelPurBtn').onclick = () => overlay.remove();
+
+  overlay.querySelector('#purAddItemRowBtn').onclick = () => {
+    items.push({ itemId: '', name: '', qty: 1, purchasePrice: 0 });
+    renderRows();
+    recalcTotals();
+  };
+
+  overlay.querySelector('#purPayMode').onchange = recalcTotals;
+  overlay.querySelector('#purAmountPaid').oninput = recalcTotals;
+
+  overlay.querySelector('#purSupplierSelect').onchange = (e) => {
+    const customInp = overlay.querySelector('#purNewSupplierInput');
+    if(e.target.value) customInp.value = '';
+  };
+  overlay.querySelector('#purNewSupplierInput').oninput = (e) => {
+    if(e.target.value) overlay.querySelector('#purSupplierSelect').value = '';
+  };
+
+  overlay.querySelector('#savePurBtn').onclick = async () => {
+    const selSup = overlay.querySelector('#purSupplierSelect').value;
+    const newSup = overlay.querySelector('#purNewSupplierInput').value.trim();
+    const supName = newSup || selSup;
+    if(!supName){
+      showToast('يرجى اختيار أو كتابة اسم المورد', 'error');
+      return;
+    }
+
+    const dateVal = overlay.querySelector('#purDateInput').value || new Date().toISOString().slice(0,10);
+    const warrantyVal = Number(overlay.querySelector('#purWarrantyInput').value || 0);
+
+    const validItems = items.filter(it => (it.itemId || (it.name && it.name.trim())) && Number(it.qty) > 0 && Number(it.purchasePrice) >= 0);
+    if(!validItems.length){
+      showToast('يرجى إضافة صنف واحد على الأقل مع الكمية وسعر الشراء', 'error');
+      return;
+    }
+
+    // Auto-create new inventory items if custom item was typed
+    for(const it of validItems){
+      if(!it.itemId && it.name){
+        const existingInv = (state.inventory||[]).find(x => x.Name.trim().toLowerCase() === it.name.trim().toLowerCase());
+        if(existingInv){
+          it.itemId = existingInv.ID;
+        } else {
+          const newInvItem = {
+            ID: 'inv_' + Date.now() + '_' + Math.floor(Math.random()*1000),
+            Name: it.name.trim(),
+            Category: 'بضائع عامة',
+            Quantity: 0,
+            PurchasePrice: Number(it.purchasePrice||0),
+            SellPrice: Math.round(Number(it.purchasePrice||0) * 1.25)
+          };
+          state.inventory.push(newInvItem);
+          setCache('inventory', state.inventory);
+          try { apiPost('saveInventoryItem', { data: newInvItem }); } catch(e){}
+          it.itemId = newInvItem.ID;
+        }
+      }
+    }
+
+    const grandTotal = validItems.reduce((s, it) => s + (Number(it.qty) * Number(it.purchasePrice)), 0);
+    const paidVal = parseFloat(toEngDigits(overlay.querySelector('#purAmountPaid').value)) || 0;
+    const payMode = overlay.querySelector('#purPayMode').value;
+    const payMethodName = payMode === 'bank_full' ? 'بنك / محفظة إلكترونية' : (payMode === 'credit_full' ? 'آجل' : 'نقدي');
+
+    const itemsSummary = validItems.map(it => `${it.name} × ${it.qty} (${(it.qty * it.purchasePrice).toLocaleString()} ج.م)`).join('، ');
+
+    const saveBtn = overlay.querySelector('#savePurBtn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'جارٍ الحفظ...';
+
+    const purObj = {
+      ID: 'pur_' + Date.now(),
+      Date: dateVal,
+      Supplier: supName,
+      SupplierID: '',
+      ItemsSummary: itemsSummary,
+      Total: grandTotal,
+      AmountPaid: paidVal,
+      PaymentMethod: payMethodName,
+      WarrantyMonths: warrantyVal
+    };
+
+    try {
+      await savePurchaseRemote(purObj, validItems);
+      showToast('تم حفظ فاتورة الشراء وتوريد المخزن بنجاح ✅', 'success');
+      overlay.remove();
+      const main = document.getElementById('main');
+      if(main) renderPurchases(main);
+
+      setTimeout(() => {
+        if(confirm(`تم توريد أصناف الفاتورة بنجاح ✅\n\nهل ترغب في فتح نافذة طباعة ملصقات الباركود لهذه الأصناف المشتراة؟`)){
+          openInvoiceBarcodePrintModal('purchase', purObj.ID);
+        }
+      }, 200);
+    } catch(err) {
+      showToast('حدث خطأ أثناء حفظ الفاتورة: ' + (err.message || err), 'error');
+      saveBtn.disabled = false;
+      saveBtn.textContent = '💾 حفظ الفاتورة وتوريد المخزن';
+    }
+  };
 }
 
 /* ---------------- Finance Section ---------------- */
@@ -23171,20 +23793,1181 @@ function renderTrialBalance(main){
   };
 }
 
+/* ============================================================
+   محرك قائمة الدخل والأرباح الحقيقية وكشوفات الحسابات التفصيلية
+   ============================================================ */
+
+function getPeriodDates(mode, customFrom, customTo){
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+  if(mode === 'today'){
+    return { from: todayStr, to: todayStr, label: `اليوم (${todayStr})` };
+  }
+  if(mode === 'week'){
+    const w = new Date();
+    w.setDate(w.getDate() - 7);
+    const fromStr = w.toISOString().slice(0, 10);
+    return { from: fromStr, to: todayStr, label: `آخر 7 أيام (من ${fromStr} إلى ${todayStr})` };
+  }
+  if(mode === 'month'){
+    const mStr = todayStr.slice(0, 7) + '-01';
+    return { from: mStr, to: todayStr, label: `الشهر الحالي (من ${mStr} إلى ${todayStr})` };
+  }
+  if(mode === 'quarter'){
+    const currentMonth = now.getMonth();
+    const qStartMonth = Math.floor(currentMonth / 3) * 3 + 1;
+    const qStr = now.getFullYear() + '-' + String(qStartMonth).padStart(2, '0') + '-01';
+    return { from: qStr, to: todayStr, label: `الربع الحالي (من ${qStr} إلى ${todayStr})` };
+  }
+  if(mode === 'year'){
+    const yStr = now.getFullYear() + '-01-01';
+    return { from: yStr, to: todayStr, label: `العام الحالي ${now.getFullYear()}` };
+  }
+  if(mode === 'custom' && customFrom && customTo){
+    return { from: customFrom, to: customTo, label: `فترة مخصصة (من ${customFrom} إلى ${customTo})` };
+  }
+  return { from: '2000-01-01', to: '2099-12-31', label: 'كافة الفترات (سجل شامل)' };
+}
+
+function getIncomeStatementData(startDate, endDate){
+  const sDate = startDate || '2000-01-01';
+  const eDate = endDate || '2099-12-31';
+
+  // 1. POS Sales Revenue & COGS
+  let posSalesRev = 0;
+  let posSalesCOGS = 0;
+  let posSalesCount = 0;
+  (state.sales || []).forEach(s => {
+    const dt = cleanDate(s.Date) || s.Date;
+    if(dt >= sDate && dt <= eDate){
+      posSalesCount++;
+      const tot = Number(s.Total || 0);
+      posSalesRev += tot;
+
+      let saleCOGS = 0;
+      if(s.ItemsJSON){
+        try {
+          const items = JSON.parse(s.ItemsJSON);
+          if(Array.isArray(items)){
+            items.forEach(it => {
+              const inv = (state.inventory||[]).find(x => x.ID === (it.itemId||it.id));
+              const buy = inv ? Number(inv.PurchasePrice||0) : Number(it.purchasePrice||0);
+              saleCOGS += buy * Number(it.qty||1);
+            });
+          }
+        } catch(e){}
+      }
+      if(saleCOGS === 0 && tot > 0){
+        saleCOGS = tot * 0.70; // تقدير متحفظ في حال عدم توفر تفاصيل الأصناف القديمة
+      }
+      posSalesCOGS += saleCOGS;
+    }
+  });
+
+  // 2. Maintenance Revenue & Parts COGS
+  let maintLaborRev = 0;
+  let maintPartsRev = 0;
+  let maintPartsCOGS = 0;
+  let maintCount = 0;
+  (state.receipts || []).forEach(r => {
+    const dt = cleanDate(r.date) || r.date;
+    if(dt >= sDate && dt <= eDate){
+      maintCount++;
+      const cost = Number(r.cost || 0);
+      const parts = Number(r.partsCost || 0);
+      const other = Number(r.otherAccountAmount || 0);
+      const labor = Math.max(0, cost - parts) + other;
+      maintLaborRev += labor;
+      maintPartsRev += parts;
+      maintPartsCOGS += parts;
+    }
+  });
+
+  // 3. Other Invoices & Services
+  let servicesRev = 0;
+  (state.invoices || []).forEach(inv => {
+    const dt = cleanDate(inv.Date) || inv.Date;
+    if(dt >= sDate && dt <= eDate){
+      if(inv.ReferenceType !== 'Receipt' && inv.ReferenceType !== 'POS_Sale'){
+        servicesRev += Number(inv.Total || 0);
+      }
+    }
+  });
+
+  const totalRevenue = posSalesRev + maintLaborRev + maintPartsRev + servicesRev;
+  const totalCOGS = posSalesCOGS + maintPartsCOGS;
+  const grossProfit = totalRevenue - totalCOGS;
+  const grossMargin = totalRevenue > 0 ? ((grossProfit / totalRevenue) * 100) : 0;
+
+  // 4. Operating Expenses Breakdown
+  const expCategories = {
+    'إيجار': 0,
+    'كهرباء ومياه': 0,
+    'رواتب وسلفيات': 0,
+    'بوفيه ونثريات': 0,
+    'دعاية وإعلانات': 0,
+    'أدوات وصيانة مقر': 0,
+    'شحن وتوصيل': 0,
+    'مصروفات أخرى': 0
+  };
+  let totalOperatingExpenses = 0;
+  (state.expenses || []).forEach(exp => {
+    const dt = cleanDate(exp.Date) || exp.Date;
+    if(dt >= sDate && dt <= eDate){
+      const isSupplier = exp.Category === 'سداد موردين ومشتريات' || String(exp.Category||'').includes('مورد') || exp.Type === 'supplier';
+      const isDraw = exp.Type === 'out' || exp.Category === 'مسحوبات شخصية' || exp.Category === 'جاري الشركاء';
+      const isIncome = exp.Type === 'in' || exp.Type === 'income';
+      if(!isSupplier && !isDraw && !isIncome){
+        const amt = Number(exp.Amount || 0);
+        totalOperatingExpenses += amt;
+        const cat = exp.Category || 'مصروفات أخرى';
+        if(expCategories[cat] !== undefined) expCategories[cat] += amt;
+        else expCategories['مصروفات أخرى'] += amt;
+      }
+    }
+  });
+
+  const netOperatingProfit = grossProfit - totalOperatingExpenses;
+  const netMargin = totalRevenue > 0 ? ((netOperatingProfit / totalRevenue) * 100) : 0;
+
+  return {
+    sDate, eDate,
+    posSalesRev, posSalesCOGS, posSalesCount,
+    maintLaborRev, maintPartsRev, maintPartsCOGS, maintCount,
+    servicesRev,
+    totalRevenue, totalCOGS, grossProfit, grossMargin,
+    expCategories, totalOperatingExpenses,
+    netOperatingProfit, netMargin
+  };
+}
+
 function renderFinanceReportPage(main){
-  const totalIncome = state.payments.reduce((s,p)=>s+Number(p.Amount||0),0);
-  const totalParts = state.receipts.reduce((s,r)=>s+Number(r.partsCost||0),0);
-  const totalExp = state.expenses.reduce((s,x)=>s+Number(x.Amount||0),0);
+  if(!state.incomeReportPeriod){
+    state.incomeReportPeriod = { mode: 'month', from: '', to: '' };
+  }
+
+  const periodInfo = getPeriodDates(state.incomeReportPeriod.mode, state.incomeReportPeriod.from, state.incomeReportPeriod.to);
+  const data = getIncomeStatementData(periodInfo.from, periodInfo.to);
+
   main.innerHTML = `
-    <div class="top-header"><div><h2 class="page-title">📈 تقرير الدخل والأرباح</h2></div></div>
-    <div class="stat-grid">
-      <div class="stat-card green"><div class="num mono">${totalIncome.toLocaleString()} ج.م</div><div class="lbl">إجمالي المقبوضات</div></div>
-      <div class="stat-card blue"><div class="num mono">${totalParts.toLocaleString()} ج.م</div><div class="lbl">تكلفة قطع الغيار</div></div>
-      <div class="stat-card red"><div class="num mono">${totalExp.toLocaleString()} ج.م</div><div class="lbl">المصروفات التشغيلية</div></div>
-      <div class="stat-card purple"><div class="num mono">${(totalIncome - totalParts - totalExp).toLocaleString()} ج.م</div><div class="lbl">صافي الربح الفعلي</div></div>
+    <div class="top-header">
+      <div>
+        <h2 class="page-title">📈 قائمة الدخل والأرباح الحقيقية (Income Statement)</h2>
+        <div class="subtitle mono" style="font-size:12px;color:var(--primary);font-weight:700;">
+          📅 الفترة المحددة: ${periodInfo.label}
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" id="exportIncomeExcelBtn">📥 تصدير Excel</button>
+        <button class="btn btn-primary btn-sm" id="printIncomeReportBtn">🖨️ طباعة قائمة الدخل A4</button>
+      </div>
+    </div>
+
+    <!-- Period Filter Toolbar -->
+    <div class="card" style="padding:12px;margin-bottom:14px;background:var(--paper2);border:1.5px solid var(--line);">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+          <span style="font-size:12px;font-weight:800;color:var(--ink-secondary);">الفترة:</span>
+          ${[
+            {id:'today', label:'اليوم'},
+            {id:'week', label:'آخر 7 أيام'},
+            {id:'month', label:'الشهر الحالي'},
+            {id:'quarter', label:'الربع الحالي'},
+            {id:'year', label:'العام الحالي'},
+            {id:'all', label:'كافة الفترات'},
+            {id:'custom', label:'مخصص ⚙️'}
+          ].map(p => `
+            <button class="btn btn-xs ${state.incomeReportPeriod.mode===p.id?'btn-primary font-bold':'btn-ghost'}" data-incomemode="${p.id}">
+              ${p.label}
+            </button>
+          `).join('')}
+        </div>
+
+        ${state.incomeReportPeriod.mode==='custom' ? `
+          <div style="display:flex;align-items:center;gap:6px;">
+            <label style="font-size:11px;font-weight:700;">من:</label>
+            <input type="date" id="incomeCustomFrom" value="${state.incomeReportPeriod.from || ''}" style="padding:4px 8px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px;">
+            <label style="font-size:11px;font-weight:700;">إلى:</label>
+            <input type="date" id="incomeCustomTo" value="${state.incomeReportPeriod.to || ''}" style="padding:4px 8px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px;">
+            <button class="btn btn-xs btn-blue" id="applyCustomIncomeBtn">تطبيق</button>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+
+    <!-- 6 Executive KPI Metric Cards -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(170px, 1fr));gap:12px;margin-bottom:16px;">
+      <div class="card" style="padding:14px;margin:0;border-right:4px solid #0284c7;">
+        <div style="font-size:11.5px;color:var(--ink-secondary);font-weight:700;">إجمالي الإيرادات</div>
+        <div class="num mono font-bold" style="font-size:19px;margin-top:4px;color:#0284c7;">${data.totalRevenue.toLocaleString()} ج.م</div>
+        <div style="font-size:10.5px;color:var(--ink-secondary);margin-top:2px;">مبيعات + صيانة + خدمات</div>
+      </div>
+
+      <div class="card" style="padding:14px;margin:0;border-right:4px solid #ea580c;">
+        <div style="font-size:11.5px;color:var(--ink-secondary);font-weight:700;">تكلفة البضاعة والمبيعات (COGS)</div>
+        <div class="num mono font-bold" style="font-size:19px;margin-top:4px;color:#ea580c;">${data.totalCOGS.toLocaleString()} ج.م</div>
+        <div style="font-size:10.5px;color:var(--ink-secondary);margin-top:2px;">تكلفة الشراء للبضاعة والقطع</div>
+      </div>
+
+      <div class="card" style="padding:14px;margin:0;border-right:4px solid #16a34a;">
+        <div style="font-size:11.5px;color:var(--ink-secondary);font-weight:700;">مجمل الربح (Gross Profit)</div>
+        <div class="num mono font-bold" style="font-size:19px;margin-top:4px;color:#16a34a;">${data.grossProfit.toLocaleString()} ج.م</div>
+        <div style="font-size:10.5px;color:var(--green-text);font-weight:700;margin-top:2px;">هامش ربح: ${data.grossMargin.toFixed(1)}%</div>
+      </div>
+
+      <div class="card" style="padding:14px;margin:0;border-right:4px solid #dc2626;">
+        <div style="font-size:11.5px;color:var(--ink-secondary);font-weight:700;">المصروفات التشغيلية</div>
+        <div class="num mono font-bold" style="font-size:19px;margin-top:4px;color:#dc2626;">${data.totalOperatingExpenses.toLocaleString()} ج.م</div>
+        <div style="font-size:10.5px;color:var(--ink-secondary);margin-top:2px;">إيجار، رواتب، مرافق، نثريات</div>
+      </div>
+
+      <div class="card" style="padding:14px;margin:0;border-right:4px solid #7c3aed;">
+        <div style="font-size:11.5px;color:var(--ink-secondary);font-weight:700;">صافي الربح الحقيقي (Net Profit)</div>
+        <div class="num mono font-bold" style="font-size:20px;margin-top:4px;color:${data.netOperatingProfit>=0?'#7c3aed':'#dc2626'};">
+          ${data.netOperatingProfit.toLocaleString()} ج.م
+        </div>
+        <div style="font-size:10.5px;color:var(--ink-secondary);margin-top:2px;">بعد خصم كافة الأعباء والتكاليف</div>
+      </div>
+
+      <div class="card" style="padding:14px;margin:0;border-right:4px solid #0d9488;">
+        <div style="font-size:11.5px;color:var(--ink-secondary);font-weight:700;">نسبة صافي الربح</div>
+        <div class="num mono font-bold" style="font-size:20px;margin-top:4px;color:#0d9488;">${data.netMargin.toFixed(1)}%</div>
+        <div style="font-size:10.5px;color:var(--ink-secondary);margin-top:2px;">من إجمالي إيرادات النشاط</div>
+      </div>
+    </div>
+
+    <!-- Structured Income Statement Ledger -->
+    <div class="card" style="padding:0;overflow:hidden;border:1px solid #cbd5e1;">
+      <div style="background:#0f172a;color:#fff;padding:12px 18px;display:flex;justify-content:space-between;align-items:center;">
+        <h3 style="margin:0;font-size:15px;font-weight:800;">📑 هيكل قائمة الدخل المحاسبية المعتمدة</h3>
+        <span class="mono" style="font-size:12px;color:#94a3b8;">معايير المحاسبة والتقارير المالية الدولية</span>
+      </div>
+
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <tbody>
+          <!-- 1. Revenues Section -->
+          <tr style="background:#f8fafc;border-bottom:2px solid #cbd5e1;">
+            <td colspan="2" style="padding:10px 16px;font-weight:900;color:#0284c7;font-size:14px;">
+              ١. الإيرادات التشغيلية للنشاط (Operating Revenues)
+            </td>
+            <td style="padding:10px 16px;text-align:left;font-weight:900;color:#0284c7;" class="mono font-bold">
+              ${data.totalRevenue.toLocaleString()} ج.م
+            </td>
+          </tr>
+          <tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:8px 24px;color:#334155;">إيرادات خدمات صيانة وتصليح الأجهزة (مصنعيات وأجور شغل)</td>
+            <td style="padding:8px;color:#64748b;font-size:11.5px;">حساب 4101 (${data.maintCount} أمر شغل)</td>
+            <td style="padding:8px 16px;text-align:left;" class="mono">${data.maintLaborRev.toLocaleString()} ج.م</td>
+          </tr>
+          <tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:8px 24px;color:#334155;">إيرادات مبيعات بضائع وإكسسوار ومتجر (نقطة البيع POS)</td>
+            <td style="padding:8px;color:#64748b;font-size:11.5px;">حساب 4102 (${data.posSalesCount} فاتورة بيع)</td>
+            <td style="padding:8px 16px;text-align:left;" class="mono">${data.posSalesRev.toLocaleString()} ج.م</td>
+          </tr>
+          <tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:8px 24px;color:#334155;">إيرادات قطع الغيار المباعة والمستهلكة في الصيانة</td>
+            <td style="padding:8px;color:#64748b;font-size:11.5px;">سعر قطع الغيار المحصلة</td>
+            <td style="padding:8px 16px;text-align:left;" class="mono">${data.maintPartsRev.toLocaleString()} ج.م</td>
+          </tr>
+          ${data.servicesRev > 0 ? `
+            <tr style="border-bottom:1px solid #f1f5f9;">
+              <td style="padding:8px 24px;color:#334155;">إيرادات عقود وخدمات كاميرات ومشاريع وفواتير مستقلة</td>
+              <td style="padding:8px;color:#64748b;font-size:11.5px;">حساب 4103</td>
+              <td style="padding:8px 16px;text-align:left;" class="mono">${data.servicesRev.toLocaleString()} ج.م</td>
+            </tr>
+          ` : ''}
+
+          <!-- 2. Cost of Sales Section -->
+          <tr style="background:#f8fafc;border-top:2px solid #cbd5e1;border-bottom:2px solid #cbd5e1;">
+            <td colspan="2" style="padding:10px 16px;font-weight:900;color:#ea580c;font-size:14px;">
+              ٢. يطرح: تكلفة النشاط والمبيعات (Cost of Goods Sold - COGS)
+            </td>
+            <td style="padding:10px 16px;text-align:left;font-weight:900;color:#ea580c;" class="mono font-bold">
+              (${data.totalCOGS.toLocaleString()}) ج.م
+            </td>
+          </tr>
+          <tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:8px 24px;color:#334155;">تكلفة البضاعة المباعة في نقطة البيع (سعر الشراء للأصناف المباعة)</td>
+            <td style="padding:8px;color:#64748b;font-size:11.5px;">حساب 5102</td>
+            <td style="padding:8px 16px;text-align:left;" class="mono font-bold" style="color:#ea580c;">(${data.posSalesCOGS.toLocaleString()}) ج.م</td>
+          </tr>
+          <tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:8px 24px;color:#334155;">تكلفة قطع الغيار المستهلكة في الصيانة (سعر الشراء من المخزن)</td>
+            <td style="padding:8px;color:#64748b;font-size:11.5px;">حساب 5101</td>
+            <td style="padding:8px 16px;text-align:left;" class="mono font-bold" style="color:#ea580c;">(${data.maintPartsCOGS.toLocaleString()}) ج.م</td>
+          </tr>
+
+          <!-- 3. Gross Profit Summary Row -->
+          <tr style="background:#ecfdf5;border-top:2.5px solid #86efac;border-bottom:2.5px solid #86efac;">
+            <td style="padding:11px 16px;font-weight:900;color:#15803d;font-size:14.5px;">
+              ✨ مجمل الربح التشغيلي (Gross Profit)
+            </td>
+            <td style="padding:11px;color:#166534;font-weight:800;font-size:12px;">
+              نسبة هامش مجمل الربح: <span class="mono">${data.grossMargin.toFixed(1)}%</span>
+            </td>
+            <td style="padding:11px 16px;text-align:left;font-weight:900;font-size:16px;color:#15803d;" class="mono font-bold">
+              ${data.grossProfit.toLocaleString()} ج.م
+            </td>
+          </tr>
+
+          <!-- 4. Operating Expenses Section -->
+          <tr style="background:#f8fafc;border-top:2px solid #cbd5e1;border-bottom:2px solid #cbd5e1;">
+            <td colspan="2" style="padding:10px 16px;font-weight:900;color:#dc2626;font-size:14px;">
+              ٣. يطرح: المصروفات التشغيلية والعمومية (Operating Expenses)
+            </td>
+            <td style="padding:10px 16px;text-align:left;font-weight:900;color:#dc2626;" class="mono font-bold">
+              (${data.totalOperatingExpenses.toLocaleString()}) ج.م
+            </td>
+          </tr>
+          ${Object.entries(data.expCategories).map(([cat, amt]) => {
+            if(amt <= 0) return '';
+            return `
+              <tr style="border-bottom:1px solid #f1f5f9;">
+                <td style="padding:7px 24px;color:#334155;">مصروفات: ${escapeHtml(cat)}</td>
+                <td style="padding:7px;color:#64748b;font-size:11px;">تشغيلي</td>
+                <td style="padding:7px 16px;text-align:left;" class="mono">(${amt.toLocaleString()}) ج.م</td>
+              </tr>
+            `;
+          }).join('')}
+
+          <!-- 5. Net Profit Summary Row -->
+          <tr style="background:${data.netOperatingProfit>=0?'#f5f3ff':'#fef2f2'};border-top:3px solid ${data.netOperatingProfit>=0?'#c084fc':'#fca5a5'};">
+            <td style="padding:14px 16px;font-weight:900;font-size:16px;color:${data.netOperatingProfit>=0?'#6b21a8':'#991b1b'};">
+              🏁 صافي الربح الحقيقي للفترة (Net Profit)
+            </td>
+            <td style="padding:14px;font-weight:800;font-size:13px;color:${data.netOperatingProfit>=0?'#6b21a8':'#991b1b'};">
+              نسبة صافي الربح: <span class="mono">${data.netMargin.toFixed(1)}%</span>
+            </td>
+            <td style="padding:14px 16px;text-align:left;font-weight:900;font-size:18px;color:${data.netOperatingProfit>=0?'#6b21a8':'#991b1b'};" class="mono font-bold">
+              ${data.netOperatingProfit.toLocaleString()} ج.م
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   `;
+
+  // Attach Period Button Handlers
+  main.querySelectorAll('[data-incomemode]').forEach(btn => {
+    btn.onclick = () => {
+      state.incomeReportPeriod.mode = btn.dataset.incomemode;
+      renderFinanceReportPage(main);
+    };
+  });
+
+  const applyCustomBtn = main.querySelector('#applyCustomIncomeBtn');
+  if(applyCustomBtn){
+    applyCustomBtn.onclick = () => {
+      const fromVal = main.querySelector('#incomeCustomFrom').value;
+      const toVal = main.querySelector('#incomeCustomTo').value;
+      if(!fromVal || !toVal){
+        showToast('يرجى تحديد تاريخي البداية والنهاية', 'error');
+        return;
+      }
+      state.incomeReportPeriod.from = fromVal;
+      state.incomeReportPeriod.to = toVal;
+      renderFinanceReportPage(main);
+    };
+  }
+
+  // Print & Export Handlers
+  const printBtn = main.querySelector('#printIncomeReportBtn');
+  if(printBtn) printBtn.onclick = () => openPrintIncomeStatement(data, periodInfo);
+  const expBtn = main.querySelector('#exportIncomeExcelBtn');
+  if(expBtn) expBtn.onclick = () => exportIncomeStatementToExcel(data, periodInfo);
 }
+
+function openPrintIncomeStatement(data, periodInfo){
+  const mount = document.createElement('div');
+  mount.id = 'printIncomeStatementMount';
+  mount.className = 'print-mount-a4';
+  const companyName = (state.settings && state.settings.companyName) || 'ميكروERP';
+
+  mount.innerHTML = `
+    <style>
+      @media print {
+        body * { visibility: hidden !important; }
+        #printIncomeStatementMount, #printIncomeStatementMount * { visibility: visible !important; }
+        #printIncomeStatementMount {
+          position: fixed; left: 0; top: 0; width: 100%; height: auto;
+          background: #fff; padding: 24px; font-family: system-ui, -apple-system, sans-serif;
+          color: #000; direction: rtl; z-index: 999999;
+        }
+        .page-break { page-break-after: always; }
+      }
+    </style>
+    <div style="max-width:800px;margin:0 auto;padding:20px;border:1px solid #cbd5e1;border-radius:8px;">
+      <!-- Report Header -->
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #0f172a;padding-bottom:12px;margin-bottom:16px;">
+        <div>
+          <h2 style="margin:0;font-size:20px;font-weight:900;color:#0f172a;">${escapeHtml(companyName)}</h2>
+          <div style="font-size:12px;color:#475569;margin-top:3px;">نظام إدارة العمليات والتقارير المالية</div>
+        </div>
+        <div style="text-align:left;">
+          <div style="background:#0f172a;color:#fff;font-size:13px;font-weight:900;padding:4px 14px;border-radius:4px;display:inline-block;">
+            قائمة الدخل والأرباح الرسمية
+          </div>
+          <div style="font-size:11px;color:#64748b;margin-top:4px;">تاريخ الطباعة: <b>${new Date().toISOString().slice(0,10)}</b></div>
+        </div>
+      </div>
+
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;padding:10px 14px;border-radius:6px;margin-bottom:16px;font-size:12px;display:flex;justify-content:space-between;">
+        <span>📅 <b>الفترة المحاسبية:</b> ${escapeHtml(periodInfo.label)}</span>
+        <span>المسؤول: <b>${escapeHtml(state.user?.name || 'الإدارة')}</b></span>
+      </div>
+
+      <!-- Financial Table -->
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:16px;">
+        <thead>
+          <tr style="background:#0f172a;color:#fff;">
+            <th style="padding:8px 12px;text-align:right;">البند المالي / التصنيف المحاسبي</th>
+            <th style="padding:8px 12px;text-align:center;">الملاحظات</th>
+            <th style="padding:8px 12px;text-align:left;width:140px;">القيمة</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="background:#f1f5f9;font-weight:bold;">
+            <td colspan="2" style="padding:8px 12px;color:#0284c7;">١. إجمالي الإيرادات التشغيلية</td>
+            <td style="padding:8px 12px;text-align:left;color:#0284c7;">${data.totalRevenue.toLocaleString()} ج.م</td>
+          </tr>
+          <tr><td style="padding:6px 20px;">• إيرادات الصيانة والتصليح (مصنعيات وأجور)</td><td style="text-align:center;">4101</td><td style="padding:6px 12px;text-align:left;">${data.maintLaborRev.toLocaleString()} ج.م</td></tr>
+          <tr><td style="padding:6px 20px;">• إيرادات مبيعات البضائع والإكسسوار (POS)</td><td style="text-align:center;">4102</td><td style="padding:6px 12px;text-align:left;">${data.posSalesRev.toLocaleString()} ج.م</td></tr>
+          <tr><td style="padding:6px 20px;">• إيرادات قطع الغيار المستخدمة</td><td style="text-align:center;">قطع غيار</td><td style="padding:6px 12px;text-align:left;">${data.maintPartsRev.toLocaleString()} ج.م</td></tr>
+
+          <tr style="background:#f1f5f9;font-weight:bold;">
+            <td colspan="2" style="padding:8px 12px;color:#ea580c;">٢. يطرح: تكلفة النشاط والمبيعات (COGS)</td>
+            <td style="padding:8px 12px;text-align:left;color:#ea580c;">(${data.totalCOGS.toLocaleString()}) ج.م</td>
+          </tr>
+          <tr><td style="padding:6px 20px;">• تكلفة البضاعة المباعة بالمحل (POS)</td><td style="text-align:center;">5102</td><td style="padding:6px 12px;text-align:left;">(${data.posSalesCOGS.toLocaleString()}) ج.م</td></tr>
+          <tr><td style="padding:6px 20px;">• تكلفة قطع الغيار المستخدمة بالصيانة</td><td style="text-align:center;">5101</td><td style="padding:6px 12px;text-align:left;">(${data.maintPartsCOGS.toLocaleString()}) ج.م</td></tr>
+
+          <tr style="background:#ecfdf5;font-weight:900;border-top:1.5px solid #86efac;border-bottom:1.5px solid #86efac;">
+            <td style="padding:10px 12px;color:#15803d;">مجمل الربح (Gross Profit)</td>
+            <td style="text-align:center;color:#15803d;">هامش: ${data.grossMargin.toFixed(1)}%</td>
+            <td style="padding:10px 12px;text-align:left;color:#15803d;">${data.grossProfit.toLocaleString()} ج.م</td>
+          </tr>
+
+          <tr style="background:#f1f5f9;font-weight:bold;">
+            <td colspan="2" style="padding:8px 12px;color:#dc2626;">٣. يطرح: المصروفات التشغيلية والعمومية</td>
+            <td style="padding:8px 12px;text-align:left;color:#dc2626;">(${data.totalOperatingExpenses.toLocaleString()}) ج.م</td>
+          </tr>
+          ${Object.entries(data.expCategories).map(([c, a]) => a > 0 ? `
+            <tr><td style="padding:5px 20px;">• ${escapeHtml(c)}</td><td style="text-align:center;">تشغيلي</td><td style="padding:5px 12px;text-align:left;">(${a.toLocaleString()}) ج.م</td></tr>
+          ` : '').join('')}
+
+          <tr style="background:#f5f3ff;font-weight:900;border-top:2px solid #a855f7;border-bottom:2px solid #a855f7;font-size:14px;">
+            <td style="padding:12px;color:#6b21a8;">صافي الربح الفعلي النهائي (Net Profit)</td>
+            <td style="text-align:center;color:#6b21a8;">هامش صافي: ${data.netMargin.toFixed(1)}%</td>
+            <td style="padding:12px;text-align:left;color:#6b21a8;">${data.netOperatingProfit.toLocaleString()} ج.م</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Signatures -->
+      <div style="display:flex;justify-content:space-between;margin-top:30px;padding-top:14px;border-top:1px dashed #cbd5e1;font-size:11.5px;color:#475569;">
+        <div style="text-align:center;width:40%;">
+          <div>إعداد وتدقيق المحاسب</div>
+          <div style="margin-top:32px;border-bottom:1px dashed #94a3b8;width:80%;margin-left:auto;margin-right:auto;"></div>
+        </div>
+        <div style="text-align:center;width:40%;">
+          <div>اعتماد الإدارة العامة</div>
+          <div style="margin-top:32px;border-bottom:1px dashed #94a3b8;width:80%;margin-left:auto;margin-right:auto;"></div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(mount);
+  setTimeout(()=>{
+    window.print();
+    setTimeout(()=>{ mount.remove(); }, 1000);
+  }, 100);
+}
+
+function exportIncomeStatementToExcel(data, periodInfo){
+  const headers = ['التصنيف المحاسبي', 'البند التفصيلي', 'القيمة بالجنيه'];
+  const rows = [
+    ['الإيرادات', 'إيرادات خدمات صيانة وتصليح (4101)', data.maintLaborRev],
+    ['الإيرادات', 'إيرادات مبيعات متجر وقطع غيار (4102)', data.posSalesRev],
+    ['الإيرادات', 'إيرادات قطع الغيار المباعة بالصيانة', data.maintPartsRev],
+    ['الإيرادات', 'إجمالي الإيرادات التشغيلية', data.totalRevenue],
+    ['تكلفة المبيعات', 'تكلفة البضاعة المباعة في POS (5102)', -data.posSalesCOGS],
+    ['تكلفة المبيعات', 'تكلفة قطع الغيار المستخدمة بالصيانة (5101)', -data.maintPartsCOGS],
+    ['تكلفة المبيعات', 'إجمالي تكلفة المبيعات (COGS)', -data.totalCOGS],
+    ['الربحية', 'مجمل الربح التشغيلي (Gross Profit)', data.grossProfit],
+    ['الربحية', 'نسبة هامش مجمل الربح %', data.grossMargin.toFixed(1) + '%'],
+    ...Object.entries(data.expCategories).filter(([_, a]) => a > 0).map(([c, a]) => ['المصروفات التشغيلية', c, -a]),
+    ['المصروفات التشغيلية', 'إجمالي المصروفات التشغيلية', -data.totalOperatingExpenses],
+    ['الربحية', 'صافي الربح الفعلي النهائي (Net Profit)', data.netOperatingProfit],
+    ['الربحية', 'نسبة صافي الربح النهائي %', data.netMargin.toFixed(1) + '%']
+  ];
+  downloadCSV(`Income_Statement_${new Date().toISOString().slice(0,10)}.csv`, headers, rows);
+}
+
+/* ============================================================
+   محرك كشوفات الحسابات التفصيلية للعملاء والموردين
+   ============================================================ */
+
+function openCustomerStatementModal(custName, custPhone){
+  const cTitle = (state.customers || []).find(c => extractCustomerName(c).toLowerCase() === custName.toLowerCase())?.title || '';
+  const cPhone = custPhone || (state.customers || []).find(c => extractCustomerName(c).toLowerCase() === custName.toLowerCase())?.phone || '';
+
+  const transactions = [];
+
+  // 1. Receipts
+  (state.receipts || []).forEach(r => {
+    const rName = extractCustomerName(r);
+    const rPhone = extractCustomerPhone(r);
+    const isMatch = (rName && rName.toLowerCase() === custName.toLowerCase()) || (cPhone && rPhone === cPhone);
+    if(isMatch){
+      const totalDue = Number(r.cost || 0) + Number(r.otherAccountAmount || 0);
+      const dep = Number(r.deposit || 0);
+      const devStr = `${r.device?.category||''} ${r.device?.brand||''} ${r.device?.model||''}`.trim();
+      const faultStr = (Array.isArray(r.faults) && r.faults.length) ? r.faults.join('، ') : (r.faultNotes || 'صيانة');
+
+      transactions.push({
+        date: cleanDate(r.date) || r.date || '2026-01-01',
+        type: 'صيانة (أمر شغل)',
+        icon: '🛠️',
+        ref: '#' + (r.receiptNumber || r.id),
+        desc: `استلام وصيانة جهاز: ${devStr} (${faultStr})`,
+        debit: totalDue,
+        credit: 0
+      });
+
+      if(dep > 0){
+        transactions.push({
+          date: cleanDate(r.date) || r.date || '2026-01-01',
+          type: 'عربون استلام',
+          icon: '💵',
+          ref: '#' + (r.receiptNumber || r.id),
+          desc: `عربون مدفوع عند استلام الجهاز (${r.depositPaymentMethod || 'نقدي'})`,
+          debit: 0,
+          credit: dep
+        });
+      }
+    }
+  });
+
+  // 2. Receipt Payments
+  (state.payments || []).forEach(p => {
+    const linkedReceipt = (state.receipts || []).find(r => String(r.id) === String(p.ReceiptID) || String(r.receiptNumber) === String(p.ReceiptID));
+    if(linkedReceipt){
+      const rName = extractCustomerName(linkedReceipt);
+      const rPhone = extractCustomerPhone(linkedReceipt);
+      const isMatch = (rName && rName.toLowerCase() === custName.toLowerCase()) || (cPhone && rPhone === cPhone);
+      if(isMatch){
+        transactions.push({
+          date: cleanDate(p.Date) || p.Date || '2026-01-01',
+          type: 'سداد دفعة صيانة',
+          icon: '💸',
+          ref: '#' + (linkedReceipt.receiptNumber || p.ReceiptID),
+          desc: `سداد دفعة: ${p.Note || 'تسوية حساب'} [${p.PaymentMethod || 'نقدي'}]`,
+          debit: 0,
+          credit: Number(p.Amount || 0)
+        });
+      }
+    }
+  });
+
+  // 3. POS Sales
+  (state.sales || []).forEach(s => {
+    const sName = (s.CustomerName || '').trim().toLowerCase();
+    const sPhone = (s.CustomerPhone || '').trim();
+    const isMatch = (sName && sName === custName.toLowerCase()) || (cPhone && sPhone === cPhone);
+    if(isMatch){
+      const tot = Number(s.Total || 0);
+      const paid = Number(s.AmountPaid != null ? s.AmountPaid : tot);
+
+      transactions.push({
+        date: cleanDate(s.Date) || s.Date || '2026-01-01',
+        type: 'مبيعات POS',
+        icon: '🧾',
+        ref: '#' + String(s.ID).slice(-8),
+        desc: `فاتورة مبيعات: ${s.ItemsSummary} [${s.PaymentMethod || 'نقدي'}]`,
+        debit: tot,
+        credit: paid
+      });
+    }
+  });
+
+  // 4. Invoices
+  (state.invoices || []).forEach(inv => {
+    if(inv.ReferenceType !== 'Receipt' && inv.ReferenceType !== 'POS_Sale'){
+      const invName = (inv.CustomerName || '').trim().toLowerCase();
+      const invPhone = (inv.CustomerPhone || '').trim();
+      const isMatch = (invName && invName === custName.toLowerCase()) || (cPhone && invPhone === cPhone);
+      if(isMatch){
+        transactions.push({
+          date: cleanDate(inv.Date) || inv.Date || '2026-01-01',
+          type: 'فاتورة رسمية',
+          icon: '📄',
+          ref: inv.InvoiceNumber || '#' + String(inv.ID).slice(-8),
+          desc: `فاتورة: ${inv.ItemsSummary || 'خدمات ومنتجات'}`,
+          debit: Number(inv.Total || 0),
+          credit: Number(inv.AmountPaid || 0)
+        });
+      }
+    }
+  });
+
+  transactions.sort((a,b) => String(a.date).localeCompare(String(b.date)));
+
+  let running = 0;
+  let totalDebit = 0;
+  let totalCredit = 0;
+  transactions.forEach(t => {
+    totalDebit += t.debit;
+    totalCredit += t.credit;
+    running = running + t.debit - t.credit;
+    t.balance = running;
+  });
+
+  const statementData = {
+    custName, custPhone, cTitle,
+    transactions,
+    totalDebit, totalCredit,
+    netBalance: running
+  };
+
+  renderCustomerStatementModalView(statementData);
+}
+
+function renderCustomerStatementModalView(data){
+  const prevModal = document.getElementById('custStatementModalOverlay');
+  if(prevModal) prevModal.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'custStatementModalOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.65);backdrop-filter:blur(4px);z-index:12000;display:flex;align-items:center;justify-content:center;padding:16px;';
+
+  const remColor = data.netBalance > 0 ? '#dc2626' : (data.netBalance === 0 ? '#16a34a' : '#2563eb');
+  const remLabel = data.netBalance > 0 ? 'متبقي مستحق على العميل' : (data.netBalance === 0 ? 'الحساب خالص (0 ج.م)' : 'رصيد دائن مسبق للعميل');
+
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,0.3);width:100%;max-width:820px;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;border:1px solid #cbd5e1;">
+      <!-- Header -->
+      <div style="background:linear-gradient(135deg,#1e293b,#0f172a);color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="badge" style="background:#0284c7;color:#fff;font-weight:800;font-size:12px;padding:3px 8px;border-radius:6px;">📊 كشف حساب عميل</span>
+            <h3 style="margin:0;font-size:17px;font-weight:900;">${escapeHtml(data.custName)}</h3>
+          </div>
+          <div style="font-size:11.5px;color:#94a3b8;margin-top:4px;">
+            ${data.cTitle ? `<span style="background:rgba(255,255,255,0.1);padding:1px 6px;border-radius:4px;">${escapeHtml(data.cTitle)}</span>` : ''}
+            ${data.custPhone ? `<span class="mono" style="margin-right:6px;">📱 ${escapeHtml(data.custPhone)}</span>` : '<span style="color:#f59e0b;margin-right:6px;">⚠️ بدون هاتف</span>'}
+            <span>• ${data.transactions.length} حركة مسجلة</span>
+          </div>
+        </div>
+        <button type="button" class="btn btn-ghost btn-sm" id="closeCustStatementBtn" style="color:#fff;font-size:18px;">✕</button>
+      </div>
+
+      <!-- Quick KPI Balance Cards -->
+      <div style="padding:14px 20px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:grid;grid-template-columns:1fr 1fr 1.2fr;gap:12px;">
+        <div class="card" style="padding:10px 14px;margin:0;border-right:3.5px solid #0284c7;">
+          <div style="font-size:11px;color:var(--ink-secondary);font-weight:700;">إجمالي التعاملات والمسحوبات</div>
+          <div class="num mono font-bold" style="font-size:16px;margin-top:2px;">${data.totalDebit.toLocaleString()} ج.م</div>
+        </div>
+        <div class="card" style="padding:10px 14px;margin:0;border-right:3.5px solid #16a34a;">
+          <div style="font-size:11px;color:var(--ink-secondary);font-weight:700;">إجمالي المدفوعات المسددة</div>
+          <div class="num mono font-bold" style="font-size:16px;margin-top:2px;color:#16a34a;">${data.totalCredit.toLocaleString()} ج.م</div>
+        </div>
+        <div class="card" style="padding:10px 14px;margin:0;border-right:3.5px solid ${remColor};">
+          <div style="font-size:11px;color:var(--ink-secondary);font-weight:700;">${remLabel}</div>
+          <div class="num mono font-bold" style="font-size:18px;margin-top:2px;color:${remColor};">${Math.abs(data.netBalance).toLocaleString()} ج.م</div>
+        </div>
+      </div>
+
+      <!-- Table Body -->
+      <div style="padding:14px 20px;overflow-y:auto;flex:1;">
+        ${data.transactions.length === 0 ? `
+          <div class="empty" style="padding:40px;text-align:center;">لا توجد أي معاملات أو حركات مسجلة لهذا العميل حتى الآن.</div>
+        ` : `
+          <div class="table-wrap" style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+            <table style="width:100%;border-collapse:collapse;font-size:12px;">
+              <thead style="background:#f1f5f9;border-bottom:1.5px solid #cbd5e1;">
+                <tr>
+                  <th style="padding:8px 10px;text-align:right;">التاريخ</th>
+                  <th style="padding:8px 10px;text-align:right;">المعاملة والبيان</th>
+                  <th style="padding:8px;text-align:center;">المرجع</th>
+                  <th style="padding:8px;text-align:center;color:#0284c7;">مدين (عليه)</th>
+                  <th style="padding:8px;text-align:center;color:#16a34a;">دائن (مسدد)</th>
+                  <th style="padding:8px;text-align:center;font-weight:800;">الرصيد التراكمي</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${data.transactions.map((t, idx) => `
+                  <tr style="border-bottom:1px solid #f1f5f9;background:${idx%2===0?'#fff':'#fafafa'};">
+                    <td style="padding:7px 10px;white-space:nowrap;" class="mono">${cleanDate(t.date)}</td>
+                    <td style="padding:7px 10px;">
+                      <div style="font-weight:700;color:#0f172a;">${t.icon} ${escapeHtml(t.type)}</div>
+                      <div style="font-size:11px;color:#64748b;margin-top:1px;">${escapeHtml(t.desc)}</div>
+                    </td>
+                    <td style="padding:7px;text-align:center;" class="mono">${escapeHtml(t.ref)}</td>
+                    <td style="padding:7px;text-align:center;" class="mono font-bold">${t.debit > 0 ? t.debit.toLocaleString() + ' ج.م' : '-'}</td>
+                    <td style="padding:7px;text-align:center;color:#16a34a;" class="mono font-bold">${t.credit > 0 ? t.credit.toLocaleString() + ' ج.م' : '-'}</td>
+                    <td style="padding:7px;text-align:center;font-weight:900;color:${t.balance>0?'#dc2626':(t.balance===0?'#16a34a':'#2563eb')};" class="mono">
+                      ${t.balance.toLocaleString()} ج.م
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `}
+      </div>
+
+      <!-- Footer Buttons -->
+      <div style="background:#f1f5f9;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid #cbd5e1;flex-wrap:wrap;gap:8px;">
+        <button type="button" class="btn btn-ghost btn-sm" id="cancelCustStatementBtn">إغلاق</button>
+        <div style="display:flex;gap:8px;">
+          ${data.custPhone && data.custPhone !== '0000000000' ? `
+            <button type="button" class="btn btn-green btn-sm font-bold" id="waCustStatementBtn">
+              💬 إرسال كشف الحساب عبر WhatsApp
+            </button>
+          ` : ''}
+          <button type="button" class="btn btn-primary btn-sm font-bold" id="printCustStatementBtn">
+            🖨️ طباعة كشف حساب رسمي A4
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('#closeCustStatementBtn').onclick = () => overlay.remove();
+  overlay.querySelector('#cancelCustStatementBtn').onclick = () => overlay.remove();
+
+  const printBtn = overlay.querySelector('#printCustStatementBtn');
+  if(printBtn) printBtn.onclick = () => openCustomerStatementPrint(data);
+
+  const waBtn = overlay.querySelector('#waCustStatementBtn');
+  if(waBtn) waBtn.onclick = () => shareCustomerStatementWhatsApp(data);
+}
+
+function openCustomerStatementPrint(data){
+  const mount = document.createElement('div');
+  mount.id = 'printCustomerStatementMount';
+  mount.className = 'print-mount-a4';
+  const companyName = (state.settings && state.settings.companyName) || 'ميكروERP';
+
+  mount.innerHTML = `
+    <style>
+      @media print {
+        body * { visibility: hidden !important; }
+        #printCustomerStatementMount, #printCustomerStatementMount * { visibility: visible !important; }
+        #printCustomerStatementMount {
+          position: fixed; left: 0; top: 0; width: 100%; height: auto;
+          background: #fff; padding: 24px; font-family: system-ui, -apple-system, sans-serif;
+          color: #000; direction: rtl; z-index: 999999;
+        }
+      }
+    </style>
+    <div style="max-width:800px;margin:0 auto;padding:20px;border:1px solid #cbd5e1;border-radius:8px;">
+      <!-- Header -->
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #0f172a;padding-bottom:12px;margin-bottom:16px;">
+        <div>
+          <h2 style="margin:0;font-size:20px;font-weight:900;color:#0f172a;">${escapeHtml(companyName)}</h2>
+          <div style="font-size:12px;color:#475569;margin-top:3px;">كشف حساب تفصيلي للعميل</div>
+        </div>
+        <div style="text-align:left;">
+          <div style="background:#0284c7;color:#fff;font-size:13px;font-weight:900;padding:4px 14px;border-radius:4px;display:inline-block;">
+            كشف حساب مالي
+          </div>
+          <div style="font-size:11px;color:#64748b;margin-top:4px;">تاريخ التقرير: <b>${new Date().toISOString().slice(0,10)}</b></div>
+        </div>
+      </div>
+
+      <!-- Customer Info Card -->
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;padding:12px 16px;border-radius:6px;margin-bottom:16px;font-size:12.5px;display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;">
+        <div>اسم العميل: <b>${escapeHtml(data.cTitle ? data.cTitle + ' / ' + data.custName : data.custName)}</b></div>
+        <div>الهاتف: <b class="mono" style="direction:ltr;">${escapeHtml(data.custPhone || '-')}</b></div>
+        <div style="text-align:left;">الرصيد النهائي: <b class="mono" style="font-size:14px;color:${data.netBalance>0?'#dc2626':'#16a34a'};">${data.netBalance.toLocaleString()} ج.م</b></div>
+      </div>
+
+      <!-- Table -->
+      <table style="width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:16px;">
+        <thead>
+          <tr style="background:#0f172a;color:#fff;">
+            <th style="padding:6px 8px;text-align:right;">التاريخ</th>
+            <th style="padding:6px 8px;text-align:right;">المعاملة والبيان</th>
+            <th style="padding:6px;text-align:center;">المرجع</th>
+            <th style="padding:6px;text-align:center;">مدين (ج.م)</th>
+            <th style="padding:6px;text-align:center;">دائن (ج.م)</th>
+            <th style="padding:6px;text-align:center;">الرصيد التراكمي</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.transactions.map((t, idx) => `
+            <tr style="border-bottom:1px solid #e2e8f0;background:${idx%2===0?'#fff':'#f8fafc'};">
+              <td style="padding:6px 8px;" class="mono">${cleanDate(t.date)}</td>
+              <td style="padding:6px 8px;"><b>${escapeHtml(t.type)}</b> - ${escapeHtml(t.desc)}</td>
+              <td style="padding:6px;text-align:center;" class="mono">${escapeHtml(t.ref)}</td>
+              <td style="padding:6px;text-align:center;" class="mono">${t.debit > 0 ? t.debit.toLocaleString() : '-'}</td>
+              <td style="padding:6px;text-align:center;" class="mono">${t.credit > 0 ? t.credit.toLocaleString() : '-'}</td>
+              <td style="padding:6px;text-align:center;font-weight:bold;" class="mono">${t.balance.toLocaleString()} ج.م</td>
+            </tr>
+          `).join('')}
+        </tbody>
+        <tfoot>
+          <tr style="background:#f1f5f9;font-weight:900;border-top:2px solid #0f172a;">
+            <td colspan="3" style="padding:8px;">الإجمالي العام</td>
+            <td style="padding:8px;text-align:center;" class="mono">${data.totalDebit.toLocaleString()} ج.م</td>
+            <td style="padding:8px;text-align:center;" class="mono">${data.totalCredit.toLocaleString()} ج.م</td>
+            <td style="padding:8px;text-align:center;color:${data.netBalance>0?'#dc2626':'#16a34a'};" class="mono">${data.netBalance.toLocaleString()} ج.م</td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <!-- Signatures -->
+      <div style="display:flex;justify-content:space-between;margin-top:28px;padding-top:10px;border-top:1px dashed #cbd5e1;font-size:11px;color:#475569;">
+        <div style="text-align:center;width:40%;">
+          <div>توقيع وتأكيد الحسابات</div>
+          <div style="margin-top:28px;border-bottom:1px dashed #94a3b8;width:80%;margin-left:auto;margin-right:auto;"></div>
+        </div>
+        <div style="text-align:center;width:40%;">
+          <div>توقيع المستلم / العميل</div>
+          <div style="margin-top:28px;border-bottom:1px dashed #94a3b8;width:80%;margin-left:auto;margin-right:auto;"></div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(mount);
+  setTimeout(()=>{
+    window.print();
+    setTimeout(()=>{ mount.remove(); }, 1000);
+  }, 100);
+}
+
+function shareCustomerStatementWhatsApp(data){
+  if(!data.custPhone || data.custPhone === '0000000000'){
+    showToast('رقم هاتف العميل غير متوفر للمشاركة عبر واتساب', 'error');
+    return;
+  }
+  const statusStr = data.netBalance > 0 ? `⚠️ الرصيد المتبقي المستحق: ${data.netBalance.toLocaleString()} ج.م` : (data.netBalance === 0 ? '✅ الحساب خالص بالكامل (0 ج.م)' : `✨ رصيد دائن مسبق لكم: ${Math.abs(data.netBalance).toLocaleString()} ج.م`);
+
+  let text = `مرحباً ${data.custName} المحترم،\nتحية طيبة من مركز الصيانة 🛠️\n\n📌 *ملخص كشف الحساب المالي حتى تاريخ ${new Date().toISOString().slice(0,10)}:*\n` +
+    `• إجمالي المعاملات والخدمات: ${data.totalDebit.toLocaleString()} ج.م\n` +
+    `• إجمالي المبالغ المسددة: ${data.totalCredit.toLocaleString()} ج.م\n` +
+    `--------------------------\n` +
+    `*${statusStr}*\n` +
+    `--------------------------\n` +
+    `آخر المعاملات المسجلة:\n`;
+
+  const recent = data.transactions.slice(-5);
+  recent.forEach(t => {
+    text += `▫️ ${t.date} | ${t.type} | مدين: ${t.debit.toLocaleString()} | مسدد: ${t.credit.toLocaleString()}\n`;
+  });
+  text += `\nشاكرين لتعاملكم ونسعد دائماً بخدمتكم ✨`;
+
+  const url = `https://wa.me/${normalizePhoneForWa(data.custPhone)}?text=${encodeURIComponent(text)}`;
+  window.open(url, '_blank');
+}
+
+/* ---------------- Supplier Statement Modal & Views ---------------- */
+function openSupplierStatementModal(supName){
+  const sup = (state.suppliers || []).find(s => (s.Name||'').trim().toLowerCase() === supName.trim().toLowerCase()) || { Name: supName };
+  const transactions = [];
+
+  // 1. Purchases
+  (state.purchases || []).forEach(p => {
+    if((p.Supplier||'').trim().toLowerCase() === supName.trim().toLowerCase()){
+      const tot = Number(p.Total || 0);
+      const paid = Number(p.AmountPaid != null ? p.AmountPaid : tot);
+      transactions.push({
+        date: cleanDate(p.Date) || p.Date || '2026-01-01',
+        type: 'فاتورة شراء وتوريد',
+        icon: '📥',
+        ref: '#' + String(p.ID).slice(-8),
+        desc: `توريد مخزون: ${p.ItemsSummary} [${p.PaymentMethod || 'نقدي'}]`,
+        credit: tot,
+        debit: paid
+      });
+    }
+  });
+
+  // 2. Supplier Expenses / Vouchers
+  (state.expenses || []).forEach(exp => {
+    const isSupplier = (exp.Supplier && exp.Supplier.trim().toLowerCase() === supName.trim().toLowerCase()) ||
+                       (exp.Category === 'سداد موردين ومشتريات' && exp.Title.toLowerCase().includes(supName.toLowerCase()));
+    if(isSupplier){
+      const amt = Number(exp.Amount || 0);
+      transactions.push({
+        date: cleanDate(exp.Date) || exp.Date || '2026-01-01',
+        type: 'سند صرف وسداد',
+        icon: '💸',
+        ref: exp.Reference || '#' + String(exp.ID).slice(-8),
+        desc: `سداد للمورد: ${exp.Notes || exp.Title} [${exp.PaymentMethod || 'نقدي'}]`,
+        credit: 0,
+        debit: amt
+      });
+    }
+  });
+
+  transactions.sort((a,b) => String(a.date).localeCompare(String(b.date)));
+
+  let running = 0;
+  let totalPurchases = 0;
+  let totalPaid = 0;
+  transactions.forEach(t => {
+    totalPurchases += t.credit;
+    totalPaid += t.debit;
+    running = running + t.credit - t.debit;
+    t.balance = running;
+  });
+
+  const statementData = {
+    supName, supPhone: sup.Phone || sup.phone || '',
+    transactions,
+    totalPurchases, totalPaid,
+    netBalance: running
+  };
+
+  renderSupplierStatementModalView(statementData);
+}
+
+function renderSupplierStatementModalView(data){
+  const prevModal = document.getElementById('supStatementModalOverlay');
+  if(prevModal) prevModal.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'supStatementModalOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.65);backdrop-filter:blur(4px);z-index:12000;display:flex;align-items:center;justify-content:center;padding:16px;';
+
+  const remColor = data.netBalance > 0 ? '#dc2626' : (data.netBalance === 0 ? '#16a34a' : '#2563eb');
+  const remLabel = data.netBalance > 0 ? 'مستحق للمورد طرفنا' : (data.netBalance === 0 ? 'الحساب خالص (0 ج.م)' : 'رصيد دائن مدفوع مقدماً للمورد');
+
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,0.3);width:100%;max-width:820px;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;border:1px solid #cbd5e1;">
+      <!-- Header -->
+      <div style="background:linear-gradient(135deg,#1e293b,#0f172a);color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="badge" style="background:#7c3aed;color:#fff;font-weight:800;font-size:12px;padding:3px 8px;border-radius:6px;">📊 كشف حساب مورد</span>
+            <h3 style="margin:0;font-size:17px;font-weight:900;">${escapeHtml(data.supName)}</h3>
+          </div>
+          <div style="font-size:11.5px;color:#94a3b8;margin-top:4px;">
+            ${data.supPhone ? `<span class="mono" style="margin-right:6px;">📱 ${escapeHtml(data.supPhone)}</span>` : '<span style="color:#f59e0b;margin-right:6px;">⚠️ بدون هاتف</span>'}
+            <span>• ${data.transactions.length} حركة مسجلة</span>
+          </div>
+        </div>
+        <button type="button" class="btn btn-ghost btn-sm" id="closeSupStatementBtn" style="color:#fff;font-size:18px;">✕</button>
+      </div>
+
+      <!-- Quick KPI Balance Cards -->
+      <div style="padding:14px 20px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:grid;grid-template-columns:1fr 1fr 1.2fr;gap:12px;">
+        <div class="card" style="padding:10px 14px;margin:0;border-right:3.5px solid #7c3aed;">
+          <div style="font-size:11px;color:var(--ink-secondary);font-weight:700;">إجمالي التوريدات والمشتريات</div>
+          <div class="num mono font-bold" style="font-size:16px;margin-top:2px;">${data.totalPurchases.toLocaleString()} ج.م</div>
+        </div>
+        <div class="card" style="padding:10px 14px;margin:0;border-right:3.5px solid #16a34a;">
+          <div style="font-size:11px;color:var(--ink-secondary);font-weight:700;">إجمالي المسدد للمورد (سندات صرف)</div>
+          <div class="num mono font-bold" style="font-size:16px;margin-top:2px;color:#16a34a;">${data.totalPaid.toLocaleString()} ج.م</div>
+        </div>
+        <div class="card" style="padding:10px 14px;margin:0;border-right:3.5px solid ${remColor};">
+          <div style="font-size:11px;color:var(--ink-secondary);font-weight:700;">${remLabel}</div>
+          <div class="num mono font-bold" style="font-size:18px;margin-top:2px;color:${remColor};">${Math.abs(data.netBalance).toLocaleString()} ج.م</div>
+        </div>
+      </div>
+
+      <!-- Table Body -->
+      <div style="padding:14px 20px;overflow-y:auto;flex:1;">
+        ${data.transactions.length === 0 ? `
+          <div class="empty" style="padding:40px;text-align:center;">لا توجد أي فواتير شراء أو سندات صرف مسجلة لهذا المورد.</div>
+        ` : `
+          <div class="table-wrap" style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+            <table style="width:100%;border-collapse:collapse;font-size:12px;">
+              <thead style="background:#f1f5f9;border-bottom:1.5px solid #cbd5e1;">
+                <tr>
+                  <th style="padding:8px 10px;text-align:right;">التاريخ</th>
+                  <th style="padding:8px 10px;text-align:right;">المعاملة والبيان</th>
+                  <th style="padding:8px;text-align:center;">المرجع</th>
+                  <th style="padding:8px;text-align:center;color:#7c3aed;">فاتورة توريد (له)</th>
+                  <th style="padding:8px;text-align:center;color:#16a34a;">سداد مصروف (منه)</th>
+                  <th style="padding:8px;text-align:center;font-weight:800;">الرصيد المستحق</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${data.transactions.map((t, idx) => `
+                  <tr style="border-bottom:1px solid #f1f5f9;background:${idx%2===0?'#fff':'#fafafa'};">
+                    <td style="padding:7px 10px;white-space:nowrap;" class="mono">${cleanDate(t.date)}</td>
+                    <td style="padding:7px 10px;">
+                      <div style="font-weight:700;color:#0f172a;">${t.icon} ${escapeHtml(t.type)}</div>
+                      <div style="font-size:11px;color:#64748b;margin-top:1px;">${escapeHtml(t.desc)}</div>
+                    </td>
+                    <td style="padding:7px;text-align:center;" class="mono">${escapeHtml(t.ref)}</td>
+                    <td style="padding:7px;text-align:center;color:#7c3aed;" class="mono font-bold">${t.credit > 0 ? t.credit.toLocaleString() + ' ج.م' : '-'}</td>
+                    <td style="padding:7px;text-align:center;color:#16a34a;" class="mono font-bold">${t.debit > 0 ? t.debit.toLocaleString() + ' ج.م' : '-'}</td>
+                    <td style="padding:7px;text-align:center;font-weight:900;color:${t.balance>0?'#dc2626':(t.balance===0?'#16a34a':'#2563eb')};" class="mono">
+                      ${t.balance.toLocaleString()} ج.م
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `}
+      </div>
+
+      <!-- Footer Buttons -->
+      <div style="background:#f1f5f9;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid #cbd5e1;flex-wrap:wrap;gap:8px;">
+        <button type="button" class="btn btn-ghost btn-sm" id="cancelSupStatementBtn">إغلاق</button>
+        <div style="display:flex;gap:8px;">
+          ${data.supPhone && data.supPhone !== '0000000000' ? `
+            <button type="button" class="btn btn-green btn-sm font-bold" id="waSupStatementBtn">
+              💬 إرسال كشف الحساب عبر WhatsApp
+            </button>
+          ` : ''}
+          <button type="button" class="btn btn-purple btn-sm font-bold" id="printSupStatementBtn">
+            🖨️ طباعة كشف حساب مورد A4
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('#closeSupStatementBtn').onclick = () => overlay.remove();
+  overlay.querySelector('#cancelSupStatementBtn').onclick = () => overlay.remove();
+
+  const printBtn = overlay.querySelector('#printSupStatementBtn');
+  if(printBtn) printBtn.onclick = () => openSupplierStatementPrint(data);
+
+  const waBtn = overlay.querySelector('#waSupStatementBtn');
+  if(waBtn) waBtn.onclick = () => shareSupplierStatementWhatsApp(data);
+}
+
+function openSupplierStatementPrint(data){
+  const mount = document.createElement('div');
+  mount.id = 'printSupplierStatementMount';
+  mount.className = 'print-mount-a4';
+  const companyName = (state.settings && state.settings.companyName) || 'ميكروERP';
+
+  mount.innerHTML = `
+    <style>
+      @media print {
+        body * { visibility: hidden !important; }
+        #printSupplierStatementMount, #printSupplierStatementMount * { visibility: visible !important; }
+        #printSupplierStatementMount {
+          position: fixed; left: 0; top: 0; width: 100%; height: auto;
+          background: #fff; padding: 24px; font-family: system-ui, -apple-system, sans-serif;
+          color: #000; direction: rtl; z-index: 999999;
+        }
+      }
+    </style>
+    <div style="max-width:800px;margin:0 auto;padding:20px;border:1px solid #cbd5e1;border-radius:8px;">
+      <!-- Header -->
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #0f172a;padding-bottom:12px;margin-bottom:16px;">
+        <div>
+          <h2 style="margin:0;font-size:20px;font-weight:900;color:#0f172a;">${escapeHtml(companyName)}</h2>
+          <div style="font-size:12px;color:#475569;margin-top:3px;">كشف حساب مشتريات وتوريدات مورد</div>
+        </div>
+        <div style="text-align:left;">
+          <div style="background:#7c3aed;color:#fff;font-size:13px;font-weight:900;padding:4px 14px;border-radius:4px;display:inline-block;">
+            كشف حساب مورد
+          </div>
+          <div style="font-size:11px;color:#64748b;margin-top:4px;">تاريخ التقرير: <b>${new Date().toISOString().slice(0,10)}</b></div>
+        </div>
+      </div>
+
+      <!-- Supplier Info Card -->
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;padding:12px 16px;border-radius:6px;margin-bottom:16px;font-size:12.5px;display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;">
+        <div>اسم المورد / الشركة: <b>${escapeHtml(data.supName)}</b></div>
+        <div>الهاتف: <b class="mono" style="direction:ltr;">${escapeHtml(data.supPhone || '-')}</b></div>
+        <div style="text-align:left;">الرصيد المستحق: <b class="mono" style="font-size:14px;color:${data.netBalance>0?'#dc2626':'#16a34a'};">${data.netBalance.toLocaleString()} ج.م</b></div>
+      </div>
+
+      <!-- Table -->
+      <table style="width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:16px;">
+        <thead>
+          <tr style="background:#0f172a;color:#fff;">
+            <th style="padding:6px 8px;text-align:right;">التاريخ</th>
+            <th style="padding:6px 8px;text-align:right;">المعاملة والبيان</th>
+            <th style="padding:6px;text-align:center;">المرجع</th>
+            <th style="padding:6px;text-align:center;">فاتورة توريد (ج.م)</th>
+            <th style="padding:6px;text-align:center;">مسدد له (ج.م)</th>
+            <th style="padding:6px;text-align:center;">الرصيد المستحق</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.transactions.map((t, idx) => `
+            <tr style="border-bottom:1px solid #e2e8f0;background:${idx%2===0?'#fff':'#f8fafc'};">
+              <td style="padding:6px 8px;" class="mono">${cleanDate(t.date)}</td>
+              <td style="padding:6px 8px;"><b>${escapeHtml(t.type)}</b> - ${escapeHtml(t.desc)}</td>
+              <td style="padding:6px;text-align:center;" class="mono">${escapeHtml(t.ref)}</td>
+              <td style="padding:6px;text-align:center;" class="mono">${t.credit > 0 ? t.credit.toLocaleString() : '-'}</td>
+              <td style="padding:6px;text-align:center;" class="mono">${t.debit > 0 ? t.debit.toLocaleString() : '-'}</td>
+              <td style="padding:6px;text-align:center;font-weight:bold;" class="mono">${t.balance.toLocaleString()} ج.م</td>
+            </tr>
+          `).join('')}
+        </tbody>
+        <tfoot>
+          <tr style="background:#f1f5f9;font-weight:900;border-top:2px solid #0f172a;">
+            <td colspan="3" style="padding:8px;">الإجمالي العام</td>
+            <td style="padding:8px;text-align:center;" class="mono">${data.totalPurchases.toLocaleString()} ج.م</td>
+            <td style="padding:8px;text-align:center;" class="mono">${data.totalPaid.toLocaleString()} ج.م</td>
+            <td style="padding:8px;text-align:center;color:${data.netBalance>0?'#dc2626':'#16a34a'};" class="mono">${data.netBalance.toLocaleString()} ج.م</td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <!-- Signatures -->
+      <div style="display:flex;justify-content:space-between;margin-top:28px;padding-top:10px;border-top:1px dashed #cbd5e1;font-size:11px;color:#475569;">
+        <div style="text-align:center;width:40%;">
+          <div>توقيع مسؤول المشتريات</div>
+          <div style="margin-top:28px;border-bottom:1px dashed #94a3b8;width:80%;margin-left:auto;margin-right:auto;"></div>
+        </div>
+        <div style="text-align:center;width:40%;">
+          <div>توقيع المستلم / المورد</div>
+          <div style="margin-top:28px;border-bottom:1px dashed #94a3b8;width:80%;margin-left:auto;margin-right:auto;"></div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(mount);
+  setTimeout(()=>{
+    window.print();
+    setTimeout(()=>{ mount.remove(); }, 1000);
+  }, 100);
+}
+
+function shareSupplierStatementWhatsApp(data){
+  if(!data.supPhone || data.supPhone === '0000000000'){
+    showToast('رقم هاتف المورد غير متوفر للمشاركة عبر واتساب', 'error');
+    return;
+  }
+  const statusStr = data.netBalance > 0 ? `📌 الرصيد المستحق لكم طرفنا: ${data.netBalance.toLocaleString()} ج.م` : (data.netBalance === 0 ? '✅ الحساب خالص بالكامل (0 ج.م)' : `✨ رصيد دائن مدفوع مقدماً: ${Math.abs(data.netBalance).toLocaleString()} ج.م`);
+
+  let text = `السادة / ${data.supName} المحترمين،\nتحية طيبة 🤝\n\n📌 *ملخص كشف حساب التوريدات والمشتريات حتى تاريخ ${new Date().toISOString().slice(0,10)}:*\n` +
+    `• إجمالي التوريدات والمشتريات: ${data.totalPurchases.toLocaleString()} ج.م\n` +
+    `• إجمالي المسدد لكم (سندات الصرف): ${data.totalPaid.toLocaleString()} ج.م\n` +
+    `--------------------------\n` +
+    `*${statusStr}*\n` +
+    `--------------------------\n` +
+    `آخر حركات الحساب:\n`;
+
+  const recent = data.transactions.slice(-5);
+  recent.forEach(t => {
+    text += `▫️ ${t.date} | ${t.type} | فاتورة: ${t.credit.toLocaleString()} | مسدد: ${t.debit.toLocaleString()}\n`;
+  });
+  text += `\nمع خالص الشكر والتقدير ✨`;
+
+  const url = `https://wa.me/${normalizePhoneForWa(data.supPhone)}?text=${encodeURIComponent(text)}`;
+  window.open(url, '_blank');
+}
+
+window.openCustomerStatementModal = openCustomerStatementModal;
+window.openSupplierStatementModal = openSupplierStatementModal;
+window.openCustomerStatementPrint = openCustomerStatementPrint;
+window.openSupplierStatementPrint = openSupplierStatementPrint;
+window.shareCustomerStatementWhatsApp = shareCustomerStatementWhatsApp;
+window.shareSupplierStatementWhatsApp = shareSupplierStatementWhatsApp;
 
 function renderBonusPage(main){
   main.innerHTML = `

@@ -117,6 +117,14 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  const lock = LockService.getScriptLock();
+  try {
+    // Wait up to 20 seconds for other concurrent requests to finish
+    lock.waitLock(20000);
+  } catch (lockErr) {
+    return jsonOut({ error: 'الخادم مشغول حالياً بتنفيذ عملية أخرى، يرجى المحاولة بعد لحظات' }, 503);
+  }
+
   try {
     const body = JSON.parse(e.postData.contents);
     const action = body.action;
@@ -124,12 +132,83 @@ function doPost(e) {
     if (action === 'saveReceipt') {
       upsertRow(SHEET_RECEIPTS, body.data, 'ID');
       logAudit(body.data.ID, body.user, 'حفظ/تعديل إيصال');
+
+      // Deduct spare parts atomically if specified
+      if (Array.isArray(body.partsToDeduct) && body.partsToDeduct.length > 0) {
+        const shInv = getSheet(SHEET_INVENTORY);
+        const headers = shInv.getRange(1, 1, 1, shInv.getLastColumn()).getValues()[0];
+        const idCol = headers.indexOf('ID');
+        const qtyCol = headers.indexOf('Quantity');
+        const values = shInv.getDataRange().getValues();
+
+        for (const item of body.partsToDeduct) {
+          if (!item.itemId) continue;
+          for (let i = 1; i < values.length; i++) {
+            if (String(values[i][idCol]) === String(item.itemId)) {
+              const currentQty = Number(values[i][qtyCol] || 0);
+              const deductQty = Number(item.qty || 0);
+              const newQty = currentQty - deductQty;
+              values[i][qtyCol] = newQty;
+              shInv.getRange(i + 1, qtyCol + 1).setValue(newQty);
+              break;
+            }
+          }
+        }
+      }
+
+      // Record auto journal entry if attached
+      if (body.journalEntry) {
+        appendRow(SHEET_JOURNAL, body.journalEntry);
+      }
+
       return jsonOut({ ok: true });
     }
     if (action === 'deleteReceipt') {
       if (body.role !== 'admin') return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
+
+      // Restore parts if provided
+      if (Array.isArray(body.partsToRestore) && body.partsToRestore.length > 0) {
+        const shInv = getSheet(SHEET_INVENTORY);
+        const headers = shInv.getRange(1, 1, 1, shInv.getLastColumn()).getValues()[0];
+        const idCol = headers.indexOf('ID');
+        const qtyCol = headers.indexOf('Quantity');
+        const values = shInv.getDataRange().getValues();
+
+        for (const item of body.partsToRestore) {
+          if (!item.itemId) continue;
+          for (let i = 1; i < values.length; i++) {
+            if (String(values[i][idCol]) === String(item.itemId)) {
+              const currentQty = Number(values[i][qtyCol] || 0);
+              const returnQty = Number(item.qty || 0);
+              shInv.getRange(i + 1, qtyCol + 1).setValue(currentQty + returnQty);
+              break;
+            }
+          }
+        }
+      }
+
+      // Void linked payments
+      if (body.voidPayments) {
+        const shPay = getSheet(SHEET_PAYMENTS);
+        const headers = shPay.getRange(1, 1, 1, shPay.getLastColumn()).getValues()[0];
+        const rIdCol = headers.indexOf('ReceiptID');
+        if (rIdCol >= 0) {
+          const values = shPay.getDataRange().getValues();
+          for (let i = values.length - 1; i >= 1; i--) {
+            if (String(values[i][rIdCol]) === String(body.id)) {
+              shPay.deleteRow(i + 1);
+            }
+          }
+        }
+      }
+
+      // Append reversal journal entry if provided
+      if (body.reversalEntry) {
+        appendRow(SHEET_JOURNAL, body.reversalEntry);
+      }
+
       deleteRow(SHEET_RECEIPTS, body.id, 'ID');
-      logAudit(body.id, body.user, 'حذف إيصال');
+      logAudit(body.id, body.user, 'حذف إيصال وعكس القيود والمخزون');
       return jsonOut({ ok: true });
     }
     if (action === 'saveCustomer') {
@@ -228,12 +307,47 @@ function doPost(e) {
     }
     if (action === 'saveSale') {
       const sale = {
-        ID: 'sale_' + new Date().getTime(),
-        Date: body.date, ItemsSummary: body.itemsSummary, ItemsJSON: body.itemsJson || '',
-        Total: body.total, PaymentMethod: body.paymentMethod || 'نقدي', AmountPaid: body.amountPaid != null ? body.amountPaid : body.total,
-        CustomerName: body.customerName || '', CustomerPhone: body.customerPhone || '', By: body.user
+        ID: body.id || ('sale_' + new Date().getTime()),
+        Date: body.date || new Date().toISOString().slice(0, 10),
+        ItemsSummary: body.itemsSummary,
+        ItemsJSON: body.itemsJson || '',
+        Total: Number(body.total || 0),
+        PaymentMethod: body.paymentMethod || 'نقدي',
+        AmountPaid: body.amountPaid != null ? Number(body.amountPaid) : Number(body.total || 0),
+        CustomerName: body.customerName || '',
+        CustomerPhone: body.customerPhone || '',
+        By: body.user || 'نظام'
       };
       appendRow(SHEET_SALES, sale);
+
+      // Atomic inventory deduction for items in cart
+      if (Array.isArray(body.items) && body.items.length > 0) {
+        const shInv = getSheet(SHEET_INVENTORY);
+        const headers = shInv.getRange(1, 1, 1, shInv.getLastColumn()).getValues()[0];
+        const idCol = headers.indexOf('ID');
+        const qtyCol = headers.indexOf('Quantity');
+        const values = shInv.getDataRange().getValues();
+
+        for (const item of body.items) {
+          if (!item.itemId || String(item.itemId).startsWith('srv_')) continue;
+          for (let i = 1; i < values.length; i++) {
+            if (String(values[i][idCol]) === String(item.itemId)) {
+              const currentQty = Number(values[i][qtyCol] || 0);
+              const deductQty = Number(item.qty || 0);
+              const newQty = currentQty - deductQty;
+              values[i][qtyCol] = newQty;
+              shInv.getRange(i + 1, qtyCol + 1).setValue(newQty);
+              break;
+            }
+          }
+        }
+      }
+
+      // Record auto journal entry if attached
+      if (body.journalEntry) {
+        appendRow(SHEET_JOURNAL, body.journalEntry);
+      }
+
       return jsonOut({ ok: true, sale });
     }
     if (action === 'settleSaleDebt') {
@@ -275,11 +389,50 @@ function doPost(e) {
     }
     if (action === 'savePurchase') {
       const p = {
-        ID: 'pur_' + new Date().getTime(), Date: body.date, Supplier: body.supplier, SupplierID: body.supplierId || '',
-        ItemsSummary: body.itemsSummary, Total: body.total, AmountPaid: body.amountPaid != null ? body.amountPaid : body.total,
-        WarrantyMonths: body.warrantyMonths || '', By: body.user
+        ID: body.id || ('pur_' + new Date().getTime()),
+        Date: body.date || new Date().toISOString().slice(0, 10),
+        Supplier: body.supplier || '',
+        SupplierID: body.supplierId || '',
+        ItemsSummary: body.itemsSummary || '',
+        Total: Number(body.total || 0),
+        AmountPaid: body.amountPaid != null ? Number(body.amountPaid) : Number(body.total || 0),
+        WarrantyMonths: body.warrantyMonths || '',
+        By: body.user || 'نظام'
       };
       appendRow(SHEET_PURCHASES, p);
+
+      // Atomic inventory increment for items purchased
+      if (Array.isArray(body.items) && body.items.length > 0) {
+        const shInv = getSheet(SHEET_INVENTORY);
+        const headers = shInv.getRange(1, 1, 1, shInv.getLastColumn()).getValues()[0];
+        const idCol = headers.indexOf('ID');
+        const qtyCol = headers.indexOf('Quantity');
+        const buyPriceCol = headers.indexOf('PurchasePrice');
+        const values = shInv.getDataRange().getValues();
+
+        for (const item of body.items) {
+          if (!item.itemId) continue;
+          for (let i = 1; i < values.length; i++) {
+            if (String(values[i][idCol]) === String(item.itemId)) {
+              const currentQty = Number(values[i][qtyCol] || 0);
+              const addQty = Number(item.qty || 0);
+              const newQty = currentQty + addQty;
+              values[i][qtyCol] = newQty;
+              shInv.getRange(i + 1, qtyCol + 1).setValue(newQty);
+              if (item.purchasePrice != null && buyPriceCol >= 0) {
+                shInv.getRange(i + 1, buyPriceCol + 1).setValue(Number(item.purchasePrice));
+              }
+              break;
+            }
+          }
+        }
+      }
+
+      // Record auto journal entry if attached
+      if (body.journalEntry) {
+        appendRow(SHEET_JOURNAL, body.journalEntry);
+      }
+
       return jsonOut({ ok: true, purchase: p });
     }
     if (action === 'settlePurchaseDebt') {
@@ -427,6 +580,8 @@ function doPost(e) {
     return jsonOut({ error: 'إجراء غير معروف' }, 400);
   } catch (err) {
     return jsonOut({ error: err.message }, 500);
+  } finally {
+    try { lock.releaseLock(); } catch(e) {}
   }
 }
 

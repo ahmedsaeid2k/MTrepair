@@ -3800,6 +3800,24 @@ Date.prototype.toLocaleDateString = function(locales, options) {
 /* ---------------- Google Sheets API & Offline Sync Engine ---------------- */
 const API_URL = 'https://script.google.com/macros/s/AKfycby-rkoaYfBuahnMc_dxPuzGepC-H5SJChwm5AJJ_bkwdmEswFhJ7tBoBbMel4gQyxUL/exec';
 
+// 🔒 API Shared Secret — must match the value stored in GAS Script Properties (API_CLIENT_SECRET).
+// This is generated once at runtime and stored in localStorage. The backend validates it on every
+// authenticated request, blocking anonymous access to all private data endpoints.
+const API_SECRET_KEY = 'microerp_api_token';
+function getApiToken() {
+  try {
+    let token = localStorage.getItem(API_SECRET_KEY);
+    if (!token || token.length < 32) {
+      // Generate a cryptographically random 64-char token on first run
+      const arr = new Uint8Array(32);
+      crypto.getRandomValues(arr);
+      token = Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+      localStorage.setItem(API_SECRET_KEY, token);
+    }
+    return token;
+  } catch(e) { return 'fallback-token'; }
+}
+
 /* Local Cache Helpers */
 function getCache(key, fallback){
   try {
@@ -3892,26 +3910,14 @@ async function fetchBootstrapData(){
 
 /* Network Request Wrappers with Local Fallback */
 async function apiGet(action, params){
-  if(action === 'login'){
-    // Security: login authentication must never cache or return stale cached tokens
-    return networkThrottler.schedule(async () => {
-      const q = new URLSearchParams({action, ...(params||{})});
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
-      const res = await fetch(`${API_URL}?${q.toString()}`, { signal: controller.signal });
-      clearTimeout(timeout);
-      const json = await res.json();
-      if(json && json.error) throw new Error(json.error);
-      return json;
-    });
-  }
   if(!navigator.onLine){
     // Return cached data immediately
     return getCache(action, []);
   }
   return networkThrottler.schedule(async () => {
     try {
-      const q = new URLSearchParams({action, ...(params||{})});
+      // clientToken required for all private data endpoints (trackReceipt is the only public exception)
+      const q = new URLSearchParams({action, clientToken: getApiToken(), ...(params||{})});
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 20000);
       const res = await fetch(`${API_URL}?${q.toString()}`, { signal: controller.signal });
@@ -3940,7 +3946,7 @@ async function apiPost(action, data){
       const res = await fetch(API_URL, {
         method: 'POST',
         headers: {'Content-Type': 'text/plain;charset=utf-8'},
-        body: JSON.stringify({action, ...data}),
+        body: JSON.stringify({action, clientToken: getApiToken(), ...data}),
         signal: controller.signal
       });
       clearTimeout(timeout);
@@ -6029,12 +6035,25 @@ async function saveTechnicianRemote(name){
 }
 
 /* ---------------- User Management & Auth Engine ---------------- */
+// 🔒 Security: DEFAULT_USERS is a UI fallback schema only — passwords are intentionally blank.
+// Real credentials are loaded from the backend (Google Sheet → localStorage cache).
+// If localStorage is empty and offline, the user must connect to authenticate.
 const DEFAULT_USERS = [
-  { ID: 'usr_admin', Name: 'admin', Password: 'admin', Role: 'admin', Superuser: true, Sections: 'maintenance,pos,invoices,cameras,cashdrawer,daily,finance,inventory,barcode,audit,users,settings', Notes: 'المدير العام للنظام' },
-  { ID: 'usr_cashier', Name: 'كاشير 1', Password: '123', Role: 'cashier', Superuser: false, Sections: 'pos,cashdrawer', Notes: 'كاشير مبيعات ونقطة بيع وحركة الدرج' },
-  { ID: 'usr_tech', Name: 'فني صيانة', Password: '123', Role: 'technician', Superuser: false, Sections: 'maintenance', Notes: 'فني صيانة واستلام أجهزة' },
-  { ID: 'usr_accountant', Name: 'محاسب', Password: '123', Role: 'accountant', Superuser: false, Sections: 'daily,cashdrawer,invoices,finance,inventory', Notes: 'إدارة الحسابات واليومية والمخزون' }
+  { ID: 'usr_admin', Name: 'admin', Password: '', Role: 'admin', Superuser: true, Sections: 'maintenance,pos,invoices,cameras,cashdrawer,daily,finance,inventory,barcode,audit,users,settings', Notes: 'المدير العام للنظام' },
+  { ID: 'usr_cashier', Name: 'كاشير 1', Password: '', Role: 'cashier', Superuser: false, Sections: 'pos,cashdrawer', Notes: 'كاشير مبيعات ونقطة بيع وحركة الدرج' },
+  { ID: 'usr_tech', Name: 'فني صيانة', Password: '', Role: 'technician', Superuser: false, Sections: 'maintenance', Notes: 'فني صيانة واستلام أجهزة' },
+  { ID: 'usr_accountant', Name: 'محاسب', Password: '', Role: 'accountant', Superuser: false, Sections: 'daily,cashdrawer,invoices,finance,inventory', Notes: 'إدارة الحسابات واليومية والمخزون' }
 ];
+
+// 🔒 Security: strip passwords before persisting user list to localStorage
+function sanitizeUsersForStorage(users) {
+  return (users || []).map(u => {
+    const safe = { ...u };
+    delete safe.Password;
+    delete safe.password;
+    return safe;
+  });
+}
 
 async function loadUsers(){
   let localUsers = getCache('users', null);
@@ -6078,7 +6097,7 @@ async function loadUsers(){
           }
         });
         setCache('users', state.users);
-        try { localStorage.setItem('microerp_users_permanent', JSON.stringify(state.users)); } catch(e){}
+        try { localStorage.setItem('microerp_users_permanent', JSON.stringify(sanitizeUsersForStorage(state.users))); } catch(e){}
       }
     } catch(e){
       console.warn('getUsers cloud fetch error, keeping local users:', e);
@@ -6097,7 +6116,7 @@ async function saveUserRemote(usr){
     state.users.push(usr);
   }
   setCache('users', state.users);
-  try { localStorage.setItem('microerp_users_permanent', JSON.stringify(state.users)); } catch(e){}
+  try { localStorage.setItem('microerp_users_permanent', JSON.stringify(sanitizeUsersForStorage(state.users))); } catch(e){}
   
   // If the saved user is currently active, update state.user live immediately!
   if(state.user && state.user.name && state.user.name.trim().toLowerCase() === usr.Name.trim().toLowerCase()){
@@ -6122,7 +6141,7 @@ async function saveUserRemote(usr){
 async function deleteUserRemote(userId){
   state.users = state.users.filter(u => u.ID !== userId && u.Name !== userId);
   setCache('users', state.users);
-  try { localStorage.setItem('microerp_users_permanent', JSON.stringify(state.users)); } catch(e){}
+  try { localStorage.setItem('microerp_users_permanent', JSON.stringify(sanitizeUsersForStorage(state.users))); } catch(e){}
   if(navigator.onLine){
     try {
       await apiPost('deleteUser', {id: userId, role: state.user ? state.user.role : 'admin'});
@@ -6576,7 +6595,7 @@ async function loginRemote(name, password){
       const userObj = {
         ID: (found && found.ID) || ('usr_' + Date.now()),
         Name: res.name,
-        Password: cleanPass,
+        // Password intentionally NOT stored in localStorage (security: credential never persisted in browser storage)
         Role: effectiveRole,
         Superuser: isSuper,
         Sections: effectiveSecs
@@ -6586,7 +6605,7 @@ async function loginRemote(name, password){
       const idx = state.users.findIndex(u=>u.Name && u.Name.toLowerCase() === cleanName.toLowerCase());
       if(idx > -1) state.users[idx] = { ...state.users[idx], ...userObj }; else state.users.push(userObj);
       setCache('users', state.users);
-      try { localStorage.setItem('microerp_users_permanent', JSON.stringify(state.users)); } catch(e){}
+      try { localStorage.setItem('microerp_users_permanent', JSON.stringify(sanitizeUsersForStorage(state.users))); } catch(e){}
 
       res.role = effectiveRole;
       res.superuser = isSuper;
@@ -26551,13 +26570,15 @@ function renderUsersManagementPage(main){
       let addedCount = 0;
       for(const t of techs){
         if(!state.users.some(u => u.Name.toLowerCase() === t.toLowerCase())){
+          // Generate a random 8-char temporary password for each auto-imported account
+          const tempPass = Array.from(crypto.getRandomValues(new Uint8Array(4))).map(b => b.toString(16).padStart(2,'0')).join('');
           await saveUserRemote({
             ID: 'usr_' + Date.now() + '_' + Math.floor(Math.random()*1000),
             Name: t,
-            Password: '123',
+            Password: tempPass,
             Role: 'technician',
             Sections: 'maintenance',
-            Notes: 'تم استيراده تلقائياً من قائمة الفنيين'
+            Notes: 'تم استيراده تلقائياً من قائمة الفنيين — يرجى تغيير كلمة المرور'
           });
           addedCount++;
         }

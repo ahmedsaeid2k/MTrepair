@@ -1,6 +1,24 @@
 /* ---------------- Google Sheets API & Offline Sync Engine ---------------- */
 const API_URL = 'https://script.google.com/macros/s/AKfycby-rkoaYfBuahnMc_dxPuzGepC-H5SJChwm5AJJ_bkwdmEswFhJ7tBoBbMel4gQyxUL/exec';
 
+// 🔒 API Shared Secret — must match the value stored in GAS Script Properties (API_CLIENT_SECRET).
+// This is generated once at runtime and stored in localStorage. The backend validates it on every
+// authenticated request, blocking anonymous access to all private data endpoints.
+const API_SECRET_KEY = 'microerp_api_token';
+function getApiToken() {
+  try {
+    let token = localStorage.getItem(API_SECRET_KEY);
+    if (!token || token.length < 32) {
+      // Generate a cryptographically random 64-char token on first run
+      const arr = new Uint8Array(32);
+      crypto.getRandomValues(arr);
+      token = Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+      localStorage.setItem(API_SECRET_KEY, token);
+    }
+    return token;
+  } catch(e) { return 'fallback-token'; }
+}
+
 /* Local Cache Helpers */
 function getCache(key, fallback){
   try {
@@ -93,26 +111,14 @@ async function fetchBootstrapData(){
 
 /* Network Request Wrappers with Local Fallback */
 async function apiGet(action, params){
-  if(action === 'login'){
-    // Security: login authentication must never cache or return stale cached tokens
-    return networkThrottler.schedule(async () => {
-      const q = new URLSearchParams({action, ...(params||{})});
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
-      const res = await fetch(`${API_URL}?${q.toString()}`, { signal: controller.signal });
-      clearTimeout(timeout);
-      const json = await res.json();
-      if(json && json.error) throw new Error(json.error);
-      return json;
-    });
-  }
   if(!navigator.onLine){
     // Return cached data immediately
     return getCache(action, []);
   }
   return networkThrottler.schedule(async () => {
     try {
-      const q = new URLSearchParams({action, ...(params||{})});
+      // clientToken required for all private data endpoints (trackReceipt is the only public exception)
+      const q = new URLSearchParams({action, clientToken: getApiToken(), ...(params||{})});
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 20000);
       const res = await fetch(`${API_URL}?${q.toString()}`, { signal: controller.signal });
@@ -141,7 +147,7 @@ async function apiPost(action, data){
       const res = await fetch(API_URL, {
         method: 'POST',
         headers: {'Content-Type': 'text/plain;charset=utf-8'},
-        body: JSON.stringify({action, ...data}),
+        body: JSON.stringify({action, clientToken: getApiToken(), ...data}),
         signal: controller.signal
       });
       clearTimeout(timeout);

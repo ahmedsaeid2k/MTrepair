@@ -1,10 +1,23 @@
 /* ---------------- User Management & Auth Engine ---------------- */
+// 🔒 Security: DEFAULT_USERS is a UI fallback schema only — passwords are intentionally blank.
+// Real credentials are loaded from the backend (Google Sheet → localStorage cache).
+// If localStorage is empty and offline, the user must connect to authenticate.
 const DEFAULT_USERS = [
-  { ID: 'usr_admin', Name: 'admin', Password: 'admin', Role: 'admin', Superuser: true, Sections: 'maintenance,pos,invoices,cameras,cashdrawer,daily,finance,inventory,barcode,audit,users,settings', Notes: 'المدير العام للنظام' },
-  { ID: 'usr_cashier', Name: 'كاشير 1', Password: '123', Role: 'cashier', Superuser: false, Sections: 'pos,cashdrawer', Notes: 'كاشير مبيعات ونقطة بيع وحركة الدرج' },
-  { ID: 'usr_tech', Name: 'فني صيانة', Password: '123', Role: 'technician', Superuser: false, Sections: 'maintenance', Notes: 'فني صيانة واستلام أجهزة' },
-  { ID: 'usr_accountant', Name: 'محاسب', Password: '123', Role: 'accountant', Superuser: false, Sections: 'daily,cashdrawer,invoices,finance,inventory', Notes: 'إدارة الحسابات واليومية والمخزون' }
+  { ID: 'usr_admin', Name: 'admin', Password: '', Role: 'admin', Superuser: true, Sections: 'maintenance,pos,invoices,cameras,cashdrawer,daily,finance,inventory,barcode,audit,users,settings', Notes: 'المدير العام للنظام' },
+  { ID: 'usr_cashier', Name: 'كاشير 1', Password: '', Role: 'cashier', Superuser: false, Sections: 'pos,cashdrawer', Notes: 'كاشير مبيعات ونقطة بيع وحركة الدرج' },
+  { ID: 'usr_tech', Name: 'فني صيانة', Password: '', Role: 'technician', Superuser: false, Sections: 'maintenance', Notes: 'فني صيانة واستلام أجهزة' },
+  { ID: 'usr_accountant', Name: 'محاسب', Password: '', Role: 'accountant', Superuser: false, Sections: 'daily,cashdrawer,invoices,finance,inventory', Notes: 'إدارة الحسابات واليومية والمخزون' }
 ];
+
+// 🔒 Security: strip passwords before persisting user list to localStorage
+function sanitizeUsersForStorage(users) {
+  return (users || []).map(u => {
+    const safe = { ...u };
+    delete safe.Password;
+    delete safe.password;
+    return safe;
+  });
+}
 
 async function loadUsers(){
   let localUsers = getCache('users', null);
@@ -48,7 +61,7 @@ async function loadUsers(){
           }
         });
         setCache('users', state.users);
-        try { localStorage.setItem('microerp_users_permanent', JSON.stringify(state.users)); } catch(e){}
+        try { localStorage.setItem('microerp_users_permanent', JSON.stringify(sanitizeUsersForStorage(state.users))); } catch(e){}
       }
     } catch(e){
       console.warn('getUsers cloud fetch error, keeping local users:', e);
@@ -67,7 +80,7 @@ async function saveUserRemote(usr){
     state.users.push(usr);
   }
   setCache('users', state.users);
-  try { localStorage.setItem('microerp_users_permanent', JSON.stringify(state.users)); } catch(e){}
+  try { localStorage.setItem('microerp_users_permanent', JSON.stringify(sanitizeUsersForStorage(state.users))); } catch(e){}
   
   // If the saved user is currently active, update state.user live immediately!
   if(state.user && state.user.name && state.user.name.trim().toLowerCase() === usr.Name.trim().toLowerCase()){
@@ -92,7 +105,7 @@ async function saveUserRemote(usr){
 async function deleteUserRemote(userId){
   state.users = state.users.filter(u => u.ID !== userId && u.Name !== userId);
   setCache('users', state.users);
-  try { localStorage.setItem('microerp_users_permanent', JSON.stringify(state.users)); } catch(e){}
+  try { localStorage.setItem('microerp_users_permanent', JSON.stringify(sanitizeUsersForStorage(state.users))); } catch(e){}
   if(navigator.onLine){
     try {
       await apiPost('deleteUser', {id: userId, role: state.user ? state.user.role : 'admin'});
@@ -546,7 +559,7 @@ async function loginRemote(name, password){
       const userObj = {
         ID: (found && found.ID) || ('usr_' + Date.now()),
         Name: res.name,
-        Password: cleanPass,
+        // Password intentionally NOT stored in localStorage (security: credential never persisted in browser storage)
         Role: effectiveRole,
         Superuser: isSuper,
         Sections: effectiveSecs
@@ -556,7 +569,7 @@ async function loginRemote(name, password){
       const idx = state.users.findIndex(u=>u.Name && u.Name.toLowerCase() === cleanName.toLowerCase());
       if(idx > -1) state.users[idx] = { ...state.users[idx], ...userObj }; else state.users.push(userObj);
       setCache('users', state.users);
-      try { localStorage.setItem('microerp_users_permanent', JSON.stringify(state.users)); } catch(e){}
+      try { localStorage.setItem('microerp_users_permanent', JSON.stringify(sanitizeUsersForStorage(state.users))); } catch(e){}
 
       res.role = effectiveRole;
       res.superuser = isSuper;

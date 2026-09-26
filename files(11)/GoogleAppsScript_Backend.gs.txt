@@ -102,16 +102,36 @@ function verifyAdminRole(body) {
   if (reqRole !== 'admin') return false;
 
   const reqUser = String(body.user || '').trim().toLowerCase();
-  if (reqUser) {
-    try {
-      const users = getAllRows(SHEET_USERS);
-      const matched = users.find(u => u.Name && u.Name.trim().toLowerCase() === reqUser);
-      if (matched) {
-        return (String(matched.Role).toLowerCase() === 'admin' || !!matched.Superuser);
-      }
-    } catch(e) {}
+  if (!reqUser) return false; // must supply a username
+
+  try {
+    const users = getAllRows(SHEET_USERS);
+    const matched = users.find(u => u.Name && u.Name.trim().toLowerCase() === reqUser);
+    if (matched) {
+      return (String(matched.Role).toLowerCase() === 'admin' || !!matched.Superuser);
+    }
+  } catch(e) {}
+
+  // User not found in sheet → deny by default (fail-closed)
+  return false;
+}
+
+
+/**
+ * API Token Verification
+ * All private data endpoints must present this token.
+ * The token is stored in Script Properties (not hardcoded) and sent by
+ * the frontend on every authenticated request.
+ */
+function checkApiToken(token) {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const secret = props.getProperty('API_CLIENT_SECRET');
+    if (!secret) return true; // Not configured yet → allow (backward compat during deploy)
+    return String(token || '').trim() === secret;
+  } catch(e) {
+    return true; // Fail-open if props unavailable (deploy window)
   }
-  return true;
 }
 
 function doGet(e) {
@@ -129,6 +149,37 @@ function doGet(e) {
   }
 
   try {
+    // ✅ PUBLIC endpoint — no auth required (customer public tracking portal)
+    if (action === 'trackReceipt') {
+      const qNum = String(e.parameter.receiptNumber || e.parameter.r || '').trim();
+      if (!qNum) return jsonOut({ error: 'رقم الإيصال مطلوب' }, 400);
+      const rows = getAllRows(SHEET_RECEIPTS);
+      const r = rows.find(x => String(x.ReceiptNumber || '').trim().toLowerCase() === qNum.toLowerCase() || String(x.ID || '').trim() === qNum);
+      if (!r) return jsonOut({ found: false }, 404);
+      return jsonOut({
+        found: true,
+        receipt: {
+          id: r.ID,
+          receiptNumber: r.ReceiptNumber,
+          date: r.Date,
+          customer: { name: r.CustomerName || '' },
+          device: { category: r.Category || '', brand: r.Brand || '', brandOther: '', model: r.Model || '' },
+          faults: (r.Faults ? String(r.Faults).split('،') : []),
+          status: r.Status || 'قيد الفحص',
+          cost: Number(r.Cost || 0),
+          partsCost: Number(r.PartsCost || 0),
+          deposit: Number(r.Deposit || 0),
+          refunded: Number(r.Refunded || 0),
+          deliveryDate: r.DeliveryDate || ''
+        }
+      });
+    }
+
+    // 🔒 All remaining GET endpoints require valid API token
+    if (!checkApiToken(e.parameter.clientToken)) {
+      return jsonOut({ error: 'غير مصرح: رمز الوصول غير صحيح أو مفقود' }, 403);
+    }
+
     // 🚀 Unified Bootstrap Endpoint: Reads all sheets in a single roundtrip (93% request reduction)
     if (action === 'getBootstrapData') {
       const receipts = getAllRows(SHEET_RECEIPTS);
@@ -177,36 +228,6 @@ function doGet(e) {
       });
     }
 
-    if (action === 'trackReceipt') {
-      const qNum = String(e.parameter.receiptNumber || e.parameter.r || '').trim();
-      if (!qNum) return jsonOut({ error: 'رقم الإيصال مطلوب' }, 400);
-      const rows = getAllRows(SHEET_RECEIPTS);
-      const r = rows.find(x => String(x.ReceiptNumber || '').trim().toLowerCase() === qNum.toLowerCase() || String(x.ID || '').trim() === qNum);
-      if (!r) return jsonOut({ found: false }, 404);
-      return jsonOut({
-        found: true,
-        receipt: {
-          id: r.ID,
-          receiptNumber: r.ReceiptNumber,
-          date: r.Date,
-          customer: { name: r.CustomerName || '' },
-          device: {
-            category: r.Category || '',
-            brand: r.Brand || '',
-            brandOther: '',
-            model: r.Model || ''
-          },
-          faults: (r.Faults ? String(r.Faults).split('،') : []),
-          status: r.Status || 'قيد الفحص',
-          cost: Number(r.Cost || 0),
-          partsCost: Number(r.PartsCost || 0),
-          deposit: Number(r.Deposit || 0),
-          refunded: Number(r.Refunded || 0),
-          deliveryDate: r.DeliveryDate || ''
-        }
-      });
-    }
-
     if (action === 'getReceipts') return jsonOut(getAllRows(SHEET_RECEIPTS));
     if (action === 'getCustomers') return jsonOut(getAllRows(SHEET_CUSTOMERS));
     if (action === 'getTechnicians') return jsonOut(getAllRows(SHEET_TECHNICIANS));
@@ -239,14 +260,8 @@ function doGet(e) {
     if (action === 'getAccounts') return jsonOut(getAllRows(SHEET_ACCOUNTS));
     if (action === 'getJournalEntries') return jsonOut(getAllRows(SHEET_JOURNAL));
     if (action === 'getInvoices') return jsonOut(getAllRows(SHEET_INVOICES));
-    if (action === 'login') {
-      const name = String(e.parameter.name || '').trim();
-      const pass = String(e.parameter.password || '').trim();
-      const users = getAllRows(SHEET_USERS);
-      const found = users.find(u => u.Name && u.Name.trim().toLowerCase() === name.toLowerCase() && String(u.Password || '').trim() === pass);
-      if (!found) return jsonOut({ error: 'بيانات الدخول غير صحيحة' }, 401);
-      return jsonOut({ name: found.Name, role: found.Role, sections: found.Sections || '', superuser: !!found.Superuser });
-    }
+    // NOTE: GET-based login is intentionally removed — passwords must never appear in URL or server logs.
+    //       Login is handled exclusively via POST (doPost → action === 'login').
     return jsonOut({ error: 'إجراء غير معروف' }, 400);
   } catch (err) {
     return jsonOut({ error: err.message }, 500);
@@ -285,6 +300,11 @@ function doPost(e) {
       const found = users.find(u => u.Name && u.Name.trim().toLowerCase() === name.toLowerCase() && String(u.Password || '').trim() === pass);
       if (!found) return jsonOut({ error: 'بيانات الدخول غير صحيحة' }, 401);
       return jsonOut({ ok: true, name: found.Name, role: found.Role, sections: found.Sections || '', superuser: !!found.Superuser });
+    }
+
+    // 🔒 All write operations require a valid API token (login above is exempt — it's the credential exchange itself)
+    if (!checkApiToken(body.clientToken)) {
+      return jsonOut({ error: 'غير مصرح: رمز الوصول غير صحيح أو مفقود في طلب الكتابة' }, 403);
     }
 
     if (action === 'saveReceipt') {

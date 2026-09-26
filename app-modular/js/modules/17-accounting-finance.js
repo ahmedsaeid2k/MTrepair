@@ -2481,13 +2481,15 @@ function renderUsersManagementPage(main){
       let addedCount = 0;
       for(const t of techs){
         if(!state.users.some(u => u.Name.toLowerCase() === t.toLowerCase())){
+          // Generate a random 8-char temporary password for each auto-imported account
+          const tempPass = Array.from(crypto.getRandomValues(new Uint8Array(4))).map(b => b.toString(16).padStart(2,'0')).join('');
           await saveUserRemote({
             ID: 'usr_' + Date.now() + '_' + Math.floor(Math.random()*1000),
             Name: t,
-            Password: '123',
+            Password: tempPass,
             Role: 'technician',
             Sections: 'maintenance',
-            Notes: 'تم استيراده تلقائياً من قائمة الفنيين'
+            Notes: 'تم استيراده تلقائياً من قائمة الفنيين — يرجى تغيير كلمة المرور'
           });
           addedCount++;
         }

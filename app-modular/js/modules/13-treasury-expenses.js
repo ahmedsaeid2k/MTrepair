@@ -100,8 +100,9 @@ function renderDailyJournalPage(main){
   const walletNet = filtered.filter(t => isMethodMatch(t.method, 'wallet')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
   const creditNet = filtered.filter(t => isMethodMatch(t.method, 'credit')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
 
-  // Overall Cash Balance in Drawer (from all time)
-  const currentTotalCashInDrawer = allTx.length ? allTx[allTx.length - 1].runningBalance : 0;
+  // Overall Cash Balance in Drawer (from all time - Cash Only)
+  const currentTotalCashInDrawer = allTx.filter(t => isMethodMatch(t.method, 'cash')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
+  const totalAllLiquidity = allTx.filter(t => !isMethodMatch(t.method, 'credit')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
 
   main.innerHTML = `
     <div class="top-header">
@@ -145,7 +146,7 @@ function renderDailyJournalPage(main){
       <div class="stat-card" style="border-top:3px solid #8b5cf6;background:linear-gradient(180deg, #f5f3ff 0%, #fff 100%);">
         <div class="top-row"><span class="lbl" style="color:#6d28d9;font-weight:800;">💰 رصيد الخزينة بالدرج</span><div class="icon-box" style="background:#ede9fe;">💵</div></div>
         <div class="num mono" style="font-weight:900;color:#6d28d9;">${currentTotalCashInDrawer.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
-        <div style="font-size:11px;color:var(--ink-secondary);margin-top:3px;">الرصيد الفعلي الحاضر بالدرج</div>
+        <div style="font-size:11px;color:var(--ink-secondary);margin-top:3px;">النقدية الحاضرة بالدرج (إجمالي السيولة: ${totalAllLiquidity.toLocaleString()} ج.م)</div>
       </div>
     </div>
 
@@ -630,15 +631,16 @@ function renderCashDrawerPage(main){
   const totalOut = filtered.reduce((s,t)=>s+Number(t.out||0), 0);
   const totalPetty = filtered.filter(t=>t.type==='petty'||(t.category||'').includes('نثريات')).reduce((s,t)=>s+Number(t.out||0), 0);
   const netShiftCash = totalIn - totalOut;
-  const currentTotalCashInDrawer = allTx.length ? allTx[allTx.length - 1].runningBalance : 0;
-  const posCashIn = filtered.filter(t => t.sourceType==='pos').reduce((s,t)=>s+Number(t.in||0), 0);
-  const maintCashIn = filtered.filter(t => t.sourceType==='maintenance').reduce((s,t)=>s+Number(t.in||0), 0);
+  const currentTotalCashInDrawer = allTx.filter(t => isMethodMatch(t.method, 'cash')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
+  const totalAllLiquidity = allTx.filter(t => !isMethodMatch(t.method, 'credit')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
+  const posCashIn = filtered.filter(t => t.sourceType==='pos' && isMethodMatch(t.method, 'cash')).reduce((s,t)=>s+Number(t.in||0), 0);
+  const maintCashIn = filtered.filter(t => t.sourceType==='maintenance' && isMethodMatch(t.method, 'cash')).reduce((s,t)=>s+Number(t.in||0), 0);
 
   main.innerHTML = `
     <div class="top-header">
       <div>
         <h2 class="page-title">💵 حركة الخزينة والدرج (Cash Drawer & Shift Settlement)</h2>
-        <div class="subtitle mono" style="font-size:12px;color:var(--ink-secondary);">${filtered.length} حركة نقدية مسجلة بالدرج • رصيد الدرج الحي: <b>${currentTotalCashInDrawer.toLocaleString()} ج.م</b></div>
+        <div class="subtitle mono" style="font-size:12px;color:var(--ink-secondary);">${filtered.length} حركة نقدية مسجلة بالدرج • رصيد الدرج الحي (كاش): <b>${currentTotalCashInDrawer.toLocaleString()} ج.م</b> • إجمالي السيولة الشاملة: <b>${totalAllLiquidity.toLocaleString()} ج.م</b></div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn btn-blue btn-sm" id="drawerClosePrintBtn">🖨️ طباعة تقفيل الدرج والوردية</button>
@@ -654,9 +656,9 @@ function renderCashDrawerPage(main){
     <!-- Drawer KPIs Grid -->
     <div class="stat-grid" style="grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;margin-bottom:16px;">
       <div class="stat-card" style="border-top:3px solid #10b981;background:linear-gradient(180deg, #ecfdf5 0%, #fff 100%);">
-        <div class="top-row"><span class="lbl" style="color:#047857;font-weight:900;">💵 الرصيد الحي الفعلي بالدرج</span><div class="icon-box" style="background:#d1fae5;">💰</div></div>
+        <div class="top-row"><span class="lbl" style="color:#047857;font-weight:900;">💵 الرصيد الحي الفعلي بالدرج (كاش)</span><div class="icon-box" style="background:#d1fae5;">💰</div></div>
         <div class="num mono" style="color:#047857;font-weight:900;">${currentTotalCashInDrawer.toLocaleString()} <span style="font-size:12px;">ج.م</span></div>
-        <div style="font-size:11px;color:var(--ink-secondary);margin-top:3px;">السيولة النقدية الحاضرة بالخزينة الآن</div>
+        <div style="font-size:11px;color:var(--ink-secondary);margin-top:3px;">السيولة النقدية الحاضرة بالخزينة الآن (إجمالي السيولة: ${totalAllLiquidity.toLocaleString()} ج.م)</div>
       </div>
       <div class="stat-card" style="border-top:3px solid #0284c7;background:linear-gradient(180deg, #f0f9ff 0%, #fff 100%);">
         <div class="top-row"><span class="lbl" style="color:#0369a1;font-weight:800;">📥 وارد الدرج (المقبوضات)</span><div class="icon-box" style="background:#e0f2fe;">📥</div></div>

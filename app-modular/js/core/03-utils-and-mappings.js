@@ -1156,42 +1156,55 @@ async function saveExpenseRemote(exp){
 
   // Auto Journal
   const isIncome = exp.Type === 'in' || exp.Type === 'income';
-  const isDraw = exp.Type === 'out' || exp.Category === 'مسحوبات شخصية' || exp.Category === 'جاري الشركاء';
+  const isDraw = !isIncome && (exp.Type === 'out' && (exp.Category === 'مسحوبات شخصية' || exp.Category === 'جاري الشركاء' || String(exp.Title||'').includes('مسحوبات')));
   const isPetty = exp.Type === 'petty' || exp.Category === 'بوفيه ونثريات' || exp.Category === 'نثريات';
-  const isSupplierPayment = exp.Category === 'موردين' || exp.Category === 'الموردين' || exp.Category === 'سداد موردين ومشتريات' || (String(exp.Category||'').includes('مورد')) || exp.Type === 'supplier' || exp.skipAutoJournal;
+  const isPosReturn = exp.Category === 'مرتجع مبيعات POS' || exp.AccountCode === '4102-RET' || exp.Type === 'pos_return';
+  const isSupplierPayment = exp.Category === 'موردين' || exp.Category === 'الموردين' || exp.Category === 'سداد موردين ومشتريات' || (String(exp.Category||'').includes('مورد')) || exp.Type === 'supplier' || exp.skipAutoJournal || isPosReturn;
 
-  if(isSupplierPayment){
-    // Suppress general operating expense journal entry; handled specifically as a reduction of Accounts Payable (2101)
+  if(isSupplierPayment || isPosReturn || exp.skipAutoJournal){
+    // Suppress general operating expense journal entry; handled specifically by the dedicated module (Supplier Payments, POS Returns, etc.)
   } else if(isIncome){
+    const pLow = String(exp.PaymentMethod || 'نقدي').toLowerCase();
+    const isBank = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('إنستاباي') || pLow.includes('محفظ') || pLow.includes('فودافون');
+    const debitCode = isBank ? '1102' : '1101';
+    const debitName = isBank ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)';
     recordAutoJournalEntry(
       `إيداع وارد: ${exp.Title}`,
       'CashIn',
       exp.ID,
       [
-        {AccountCode:'1101', AccountName:'الخزينة الرئيسية (النقدية)', Debit:Number(exp.Amount), Credit:0, Notes:exp.Title},
-        {AccountCode:'4102', AccountName:'إيرادات أخرى متنوعة', Debit:0, Credit:Number(exp.Amount), Notes:exp.Notes||exp.Title}
+        {AccountCode:debitCode, AccountName:debitName, Debit:Number(exp.Amount), Credit:0, Notes:exp.Title},
+        {AccountCode:'42', AccountName:'إيرادات أخرى متنوعة', Debit:0, Credit:Number(exp.Amount), Notes:exp.Notes||exp.Title}
       ]
     ).catch(e=>{});
   } else if(isDraw){
+    const pLow = String(exp.PaymentMethod || 'نقدي').toLowerCase();
+    const isBank = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('إنستاباي') || pLow.includes('محفظ') || pLow.includes('فودافون');
+    const creditCode = isBank ? '1102' : '1101';
+    const creditName = isBank ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)';
     recordAutoJournalEntry(
       `منصرف مسحوبات: ${exp.Title}`,
       'CashOut',
       exp.ID,
       [
         {AccountCode:'3103', AccountName:'جاري الشركاء والمسحوبات', Debit:Number(exp.Amount), Credit:0, Notes:exp.Title},
-        {AccountCode:'1101', AccountName:'الخزينة الرئيسية (النقدية)', Debit:0, Credit:Number(exp.Amount), Notes:exp.Notes||exp.Title}
+        {AccountCode:creditCode, AccountName:creditName, Debit:0, Credit:Number(exp.Amount), Notes:exp.Notes||exp.Title}
       ]
     ).catch(e=>{});
   } else {
-    const expAccCode = EXPENSE_ACCOUNT_MAP[exp.Category] || (isPetty ? '5203' : '52');
+    const expAccCode = EXPENSE_ACCOUNT_MAP[exp.Category] || (isPetty ? '5204' : '52');
     const expAcc = state.accounts.find(a=>a.Code===expAccCode) || {Name: isPetty ? 'بوفيه ونثريات وضيافة' : 'المصروفات التشغيلية'};
+    const pLow = String(exp.PaymentMethod || 'نقدي').toLowerCase();
+    const isBank = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('إنستاباي') || pLow.includes('محفظ') || pLow.includes('فودافون');
+    const creditCode = isBank ? '1102' : '1101';
+    const creditName = isBank ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)';
     recordAutoJournalEntry(
       `${isPetty?'نثريات':'مصروف'}: ${exp.Title} (${exp.Category})`,
       'Expense',
       exp.ID,
       [
         {AccountCode:expAccCode, AccountName:expAcc.Name, Debit:Number(exp.Amount), Credit:0, Notes:exp.Notes||exp.Title},
-        {AccountCode:'1101', AccountName:'الخزينة الرئيسية (النقدية)', Debit:0, Credit:Number(exp.Amount), Notes:'سداد نقدي من الدرج'}
+        {AccountCode:creditCode, AccountName:creditName, Debit:0, Credit:Number(exp.Amount), Notes: `سداد عبر ${exp.PaymentMethod || 'نقدي'}`}
       ]
     ).catch(e=>{});
   }

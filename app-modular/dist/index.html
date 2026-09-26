@@ -5159,42 +5159,55 @@ async function saveExpenseRemote(exp){
 
   // Auto Journal
   const isIncome = exp.Type === 'in' || exp.Type === 'income';
-  const isDraw = exp.Type === 'out' || exp.Category === 'مسحوبات شخصية' || exp.Category === 'جاري الشركاء';
+  const isDraw = !isIncome && (exp.Type === 'out' && (exp.Category === 'مسحوبات شخصية' || exp.Category === 'جاري الشركاء' || String(exp.Title||'').includes('مسحوبات')));
   const isPetty = exp.Type === 'petty' || exp.Category === 'بوفيه ونثريات' || exp.Category === 'نثريات';
-  const isSupplierPayment = exp.Category === 'موردين' || exp.Category === 'الموردين' || exp.Category === 'سداد موردين ومشتريات' || (String(exp.Category||'').includes('مورد')) || exp.Type === 'supplier' || exp.skipAutoJournal;
+  const isPosReturn = exp.Category === 'مرتجع مبيعات POS' || exp.AccountCode === '4102-RET' || exp.Type === 'pos_return';
+  const isSupplierPayment = exp.Category === 'موردين' || exp.Category === 'الموردين' || exp.Category === 'سداد موردين ومشتريات' || (String(exp.Category||'').includes('مورد')) || exp.Type === 'supplier' || exp.skipAutoJournal || isPosReturn;
 
-  if(isSupplierPayment){
-    // Suppress general operating expense journal entry; handled specifically as a reduction of Accounts Payable (2101)
+  if(isSupplierPayment || isPosReturn || exp.skipAutoJournal){
+    // Suppress general operating expense journal entry; handled specifically by the dedicated module (Supplier Payments, POS Returns, etc.)
   } else if(isIncome){
+    const pLow = String(exp.PaymentMethod || 'نقدي').toLowerCase();
+    const isBank = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('إنستاباي') || pLow.includes('محفظ') || pLow.includes('فودافون');
+    const debitCode = isBank ? '1102' : '1101';
+    const debitName = isBank ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)';
     recordAutoJournalEntry(
       `إيداع وارد: ${exp.Title}`,
       'CashIn',
       exp.ID,
       [
-        {AccountCode:'1101', AccountName:'الخزينة الرئيسية (النقدية)', Debit:Number(exp.Amount), Credit:0, Notes:exp.Title},
-        {AccountCode:'4102', AccountName:'إيرادات أخرى متنوعة', Debit:0, Credit:Number(exp.Amount), Notes:exp.Notes||exp.Title}
+        {AccountCode:debitCode, AccountName:debitName, Debit:Number(exp.Amount), Credit:0, Notes:exp.Title},
+        {AccountCode:'42', AccountName:'إيرادات أخرى متنوعة', Debit:0, Credit:Number(exp.Amount), Notes:exp.Notes||exp.Title}
       ]
     ).catch(e=>{});
   } else if(isDraw){
+    const pLow = String(exp.PaymentMethod || 'نقدي').toLowerCase();
+    const isBank = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('إنستاباي') || pLow.includes('محفظ') || pLow.includes('فودافون');
+    const creditCode = isBank ? '1102' : '1101';
+    const creditName = isBank ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)';
     recordAutoJournalEntry(
       `منصرف مسحوبات: ${exp.Title}`,
       'CashOut',
       exp.ID,
       [
         {AccountCode:'3103', AccountName:'جاري الشركاء والمسحوبات', Debit:Number(exp.Amount), Credit:0, Notes:exp.Title},
-        {AccountCode:'1101', AccountName:'الخزينة الرئيسية (النقدية)', Debit:0, Credit:Number(exp.Amount), Notes:exp.Notes||exp.Title}
+        {AccountCode:creditCode, AccountName:creditName, Debit:0, Credit:Number(exp.Amount), Notes:exp.Notes||exp.Title}
       ]
     ).catch(e=>{});
   } else {
-    const expAccCode = EXPENSE_ACCOUNT_MAP[exp.Category] || (isPetty ? '5203' : '52');
+    const expAccCode = EXPENSE_ACCOUNT_MAP[exp.Category] || (isPetty ? '5204' : '52');
     const expAcc = state.accounts.find(a=>a.Code===expAccCode) || {Name: isPetty ? 'بوفيه ونثريات وضيافة' : 'المصروفات التشغيلية'};
+    const pLow = String(exp.PaymentMethod || 'نقدي').toLowerCase();
+    const isBank = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('إنستاباي') || pLow.includes('محفظ') || pLow.includes('فودافون');
+    const creditCode = isBank ? '1102' : '1101';
+    const creditName = isBank ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)';
     recordAutoJournalEntry(
       `${isPetty?'نثريات':'مصروف'}: ${exp.Title} (${exp.Category})`,
       'Expense',
       exp.ID,
       [
         {AccountCode:expAccCode, AccountName:expAcc.Name, Debit:Number(exp.Amount), Credit:0, Notes:exp.Notes||exp.Title},
-        {AccountCode:'1101', AccountName:'الخزينة الرئيسية (النقدية)', Debit:0, Credit:Number(exp.Amount), Notes:'سداد نقدي من الدرج'}
+        {AccountCode:creditCode, AccountName:creditName, Debit:0, Credit:Number(exp.Amount), Notes: `سداد عبر ${exp.PaymentMethod || 'نقدي'}`}
       ]
     ).catch(e=>{});
   }
@@ -5449,10 +5462,21 @@ const EXPENSE_ACCOUNT_MAP = {
   'إيجار': '5201',
   'كهرباء ومياه': '5202',
   'رواتب وسلفيات': '5203',
+  'رواتب': '5203',
+  'سلفيات': '5203',
   'بوفيه ونثريات': '5204',
+  'نثريات': '5204',
+  'بوفيه': '5204',
+  'ضيافة': '5204',
   'دعاية وإعلانات': '5205',
+  'تسويق': '5205',
   'أدوات وصيانة مقر': '5206',
-  'شحن وتوصيل': '5207'
+  'أدوات ومستهلكات': '5206',
+  'شحن وتوصيل': '5207',
+  'مسحوبات شخصية': '3103',
+  'جاري الشركاء': '3103',
+  'سداد موردين ومشتريات': '2101',
+  'سداد موردين': '2101'
 };
 
 async function loadAccounts(){
@@ -17369,8 +17393,9 @@ function renderDailyJournalPage(main){
   const walletNet = filtered.filter(t => isMethodMatch(t.method, 'wallet')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
   const creditNet = filtered.filter(t => isMethodMatch(t.method, 'credit')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
 
-  // Overall Cash Balance in Drawer (from all time)
-  const currentTotalCashInDrawer = allTx.length ? allTx[allTx.length - 1].runningBalance : 0;
+  // Overall Cash Balance in Drawer (from all time - Cash Only)
+  const currentTotalCashInDrawer = allTx.filter(t => isMethodMatch(t.method, 'cash')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
+  const totalAllLiquidity = allTx.filter(t => !isMethodMatch(t.method, 'credit')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
 
   main.innerHTML = `
     <div class="top-header">
@@ -17414,7 +17439,7 @@ function renderDailyJournalPage(main){
       <div class="stat-card" style="border-top:3px solid #8b5cf6;background:linear-gradient(180deg, #f5f3ff 0%, #fff 100%);">
         <div class="top-row"><span class="lbl" style="color:#6d28d9;font-weight:800;">💰 رصيد الخزينة بالدرج</span><div class="icon-box" style="background:#ede9fe;">💵</div></div>
         <div class="num mono" style="font-weight:900;color:#6d28d9;">${currentTotalCashInDrawer.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
-        <div style="font-size:11px;color:var(--ink-secondary);margin-top:3px;">الرصيد الفعلي الحاضر بالدرج</div>
+        <div style="font-size:11px;color:var(--ink-secondary);margin-top:3px;">النقدية الحاضرة بالدرج (إجمالي السيولة: ${totalAllLiquidity.toLocaleString()} ج.م)</div>
       </div>
     </div>
 
@@ -17899,15 +17924,16 @@ function renderCashDrawerPage(main){
   const totalOut = filtered.reduce((s,t)=>s+Number(t.out||0), 0);
   const totalPetty = filtered.filter(t=>t.type==='petty'||(t.category||'').includes('نثريات')).reduce((s,t)=>s+Number(t.out||0), 0);
   const netShiftCash = totalIn - totalOut;
-  const currentTotalCashInDrawer = allTx.length ? allTx[allTx.length - 1].runningBalance : 0;
-  const posCashIn = filtered.filter(t => t.sourceType==='pos').reduce((s,t)=>s+Number(t.in||0), 0);
-  const maintCashIn = filtered.filter(t => t.sourceType==='maintenance').reduce((s,t)=>s+Number(t.in||0), 0);
+  const currentTotalCashInDrawer = allTx.filter(t => isMethodMatch(t.method, 'cash')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
+  const totalAllLiquidity = allTx.filter(t => !isMethodMatch(t.method, 'credit')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
+  const posCashIn = filtered.filter(t => t.sourceType==='pos' && isMethodMatch(t.method, 'cash')).reduce((s,t)=>s+Number(t.in||0), 0);
+  const maintCashIn = filtered.filter(t => t.sourceType==='maintenance' && isMethodMatch(t.method, 'cash')).reduce((s,t)=>s+Number(t.in||0), 0);
 
   main.innerHTML = `
     <div class="top-header">
       <div>
         <h2 class="page-title">💵 حركة الخزينة والدرج (Cash Drawer & Shift Settlement)</h2>
-        <div class="subtitle mono" style="font-size:12px;color:var(--ink-secondary);">${filtered.length} حركة نقدية مسجلة بالدرج • رصيد الدرج الحي: <b>${currentTotalCashInDrawer.toLocaleString()} ج.م</b></div>
+        <div class="subtitle mono" style="font-size:12px;color:var(--ink-secondary);">${filtered.length} حركة نقدية مسجلة بالدرج • رصيد الدرج الحي (كاش): <b>${currentTotalCashInDrawer.toLocaleString()} ج.م</b> • إجمالي السيولة الشاملة: <b>${totalAllLiquidity.toLocaleString()} ج.م</b></div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn btn-blue btn-sm" id="drawerClosePrintBtn">🖨️ طباعة تقفيل الدرج والوردية</button>
@@ -17923,9 +17949,9 @@ function renderCashDrawerPage(main){
     <!-- Drawer KPIs Grid -->
     <div class="stat-grid" style="grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;margin-bottom:16px;">
       <div class="stat-card" style="border-top:3px solid #10b981;background:linear-gradient(180deg, #ecfdf5 0%, #fff 100%);">
-        <div class="top-row"><span class="lbl" style="color:#047857;font-weight:900;">💵 الرصيد الحي الفعلي بالدرج</span><div class="icon-box" style="background:#d1fae5;">💰</div></div>
+        <div class="top-row"><span class="lbl" style="color:#047857;font-weight:900;">💵 الرصيد الحي الفعلي بالدرج (كاش)</span><div class="icon-box" style="background:#d1fae5;">💰</div></div>
         <div class="num mono" style="color:#047857;font-weight:900;">${currentTotalCashInDrawer.toLocaleString()} <span style="font-size:12px;">ج.م</span></div>
-        <div style="font-size:11px;color:var(--ink-secondary);margin-top:3px;">السيولة النقدية الحاضرة بالخزينة الآن</div>
+        <div style="font-size:11px;color:var(--ink-secondary);margin-top:3px;">السيولة النقدية الحاضرة بالخزينة الآن (إجمالي السيولة: ${totalAllLiquidity.toLocaleString()} ج.م)</div>
       </div>
       <div class="stat-card" style="border-top:3px solid #0284c7;background:linear-gradient(180deg, #f0f9ff 0%, #fff 100%);">
         <div class="top-row"><span class="lbl" style="color:#0369a1;font-weight:800;">📥 وارد الدرج (المقبوضات)</span><div class="icon-box" style="background:#e0f2fe;">📥</div></div>
@@ -21942,11 +21968,12 @@ function openPosReturnModal(sale){
           AccountCode: '4102-RET',
           Reference: `RET-${sale.ID.slice(-8)}`,
           By: state.user ? state.user.name : 'كاشير',
-          Notes: `رد بنفس وسيلة الدفع (${refundMethod}) • خصم عمولة بائع: ${commissionDeducted} ج.م من (${sale.By||'الكاشير'}) • سبب: ${returnReason}`
+          Notes: `رد بنفس وسيلة الدفع (${refundMethod}) • خصم عمولة بائع: ${commissionDeducted} ج.م من (${sale.By||'الكاشير'}) • سبب: ${returnReason}`,
+          skipAutoJournal: true
         };
         await saveExpenseRemote(exp);
 
-        // 3. Mark sale as returned
+        // 3. Mark sale as returned & persist to backend
         const returnDetails = {
           voucherNumber: `RET-${sale.ID.slice(-8)}`,
           returnDate: new Date().toISOString().slice(0,10),
@@ -21967,20 +21994,48 @@ function openPosReturnModal(sale){
         sale.ReturnDetails = returnDetails;
         setCache('sales', state.sales);
 
-        // 4. Auto Journal Entry
+        // Sync return to remote Google Apps Script backend
+        apiPost('saveReturn', {
+          saleId: sale.ID,
+          date: returnDetails.returnDate,
+          itemsSummary: returnedItems.map(x => `${x.qty}x ${x.name}`).join('، '),
+          refundAmount: totalRefund,
+          refundMethod: refundMethod,
+          returnDetails: returnDetails,
+          user: returnDetails.processedBy
+        }).catch(e => console.warn('Sync return to remote warning:', e));
+
+        // 4. Auto Journal Entry with dual reversal (Revenue & COGS)
         const isBank = (refundMethod.includes('فيزا') || refundMethod.includes('visa') || refundMethod.includes('card') || refundMethod.includes('instapay') || refundMethod.includes('محفظ') || refundMethod.includes('wallet'));
         const isCredit = (refundMethod.includes('آجل') || refundMethod.includes('اجل') || refundMethod.includes('حساب'));
         const creditAccCode = isBank ? '1102' : (isCredit ? '1103' : '1101');
         const creditAccName = isBank ? 'البنك وحسابات الدفع الإلكتروني' : (isCredit ? 'حساب العميل (مدينون آجل)' : 'الخزينة الرئيسية (النقدية بالدرج)');
 
+        let restockedCOGS = 0;
+        returnedItems.forEach(it => {
+          if(it.restocked && it.itemId && !String(it.itemId).startsWith('srv_')){
+            const inv = (state.inventory||[]).find(x => x.ID === it.itemId);
+            const cost = inv ? Number(inv.PurchasePrice||0) : 0;
+            restockedCOGS += cost * Number(it.qty||1);
+          }
+        });
+
+        const retJournalLines = [
+          {AccountCode:'4102', AccountName:'مردودات ومسموحات مبيعات الأجهزة والإكسسوار', Debit:Number(totalRefund), Credit:0, Notes:`مرتجع أصناف للعميل ${sale.CustomerName||'عميل زائر'}`},
+          {AccountCode:creditAccCode, AccountName:creditAccName, Debit:0, Credit:Number(totalRefund), Notes:`رد واسترداد بنفس وسيلة الدفع الأصلية (${refundMethod})`}
+        ];
+        if(restockedCOGS > 0){
+          retJournalLines.push(
+            {AccountCode:'1104', AccountName:'مخزون البضائع وقطع الغيار', Debit:Number(restockedCOGS), Credit:0, Notes:`إعادة إدخال مخزون أصناف مرتجعة (فاتورة #${sale.ID.slice(-8)})`},
+            {AccountCode:'5102', AccountName:'تكلفة البضاعة المباعة (POS)', Debit:0, Credit:Number(restockedCOGS), Notes:`عكس تكلفة بضاعة مباعة لمرتجع`}
+          );
+        }
+
         recordAutoJournalEntry(
           `مرتجع مبيعات POS فاتورة #${sale.ID.slice(-8)} (رد عبر ${refundMethod})`,
           'POS_Return',
           sale.ID,
-          [
-            {AccountCode:'4102', AccountName:'مردودات ومسموحات مبيعات الأجهزة والإكسسوار', Debit:Number(totalRefund), Credit:0, Notes:`مرتجع أصناف للعميل ${sale.CustomerName||'عميل زائر'}`},
-            {AccountCode:creditAccCode, AccountName:creditAccName, Debit:0, Credit:Number(totalRefund), Notes:`رد واسترداد بنفس وسيلة الدفع الأصلية (${refundMethod})`}
-          ]
+          retJournalLines
         ).catch(e=>{});
 
         // 5. Audit logs
@@ -23431,14 +23486,28 @@ function openAccountLedgerModal(acc){
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
 
+  // Gather all descendant codes if this account has sub-accounts
+  function getAllSubAccountCodes(code){
+    const res = [String(code).trim()];
+    (state.accounts || []).forEach(a => {
+      if(String(a.ParentCode).trim() === String(code).trim()){
+        res.push(...getAllSubAccountCodes(a.Code));
+      }
+    });
+    return res;
+  }
+  const targetCodes = new Set(getAllSubAccountCodes(acc.Code));
+
   // Gather all transactions
   const lines = [];
   (state.journalEntries||[]).forEach(je=>{
     (je.Lines||[]).forEach(l=>{
-      if(String(l.AccountCode).trim()===String(acc.Code).trim()){
+      if(targetCodes.has(String(l.AccountCode).trim())){
         lines.push({
           date: cleanDate(je.Date),
           entryNum: je.EntryNumber||je.ID,
+          accountCode: l.AccountCode,
+          accountName: l.AccountName,
           desc: l.Notes || je.Description,
           debit: Number(l.Debit||0),
           credit: Number(l.Credit||0)
@@ -23702,10 +23771,15 @@ function renderTrialBalance(main){
 
   const rows = state.accounts.map(acc=>{
     const stats = getAccountStats(acc.Code);
-    grandDebit += stats.totalDebit;
-    grandCredit += stats.totalCredit;
-    return { acc, stats };
+    const hasChildren = state.accounts.some(a => String(a.ParentCode) === String(acc.Code));
+    if(!hasChildren){
+      grandDebit += stats.totalDebit;
+      grandCredit += stats.totalCredit;
+    }
+    return { acc, stats, hasChildren };
   });
+
+  const isBalanced = Math.abs(grandDebit - grandCredit) < 0.01;
 
   main.innerHTML = `
     <div class="top-header">
@@ -23733,9 +23807,9 @@ function renderTrialBalance(main){
             </tr>
           </thead>
           <tbody>
-            ${rows.map(r=>`<tr>
+            ${rows.map(r=>`<tr style="${r.hasChildren ? 'background:var(--paper2);font-weight:700;' : ''}">
               <td class="mono font-bold">${r.acc.Code}</td>
-              <td><b>${r.acc.Name}</b></td>
+              <td><b>${r.acc.Name}</b> ${r.hasChildren ? '<span class="badge" style="font-size:10px;margin-right:4px;">تجميعي</span>' : ''}</td>
               <td>${r.acc.Type}</td>
               <td><span class="nature-pill ${r.stats.nature==='مدين'?'debit':'credit'}">${r.stats.nature}</span></td>
               <td class="mono">${(r.acc.Balance||0).toLocaleString()} ج.م</td>
@@ -23746,10 +23820,10 @@ function renderTrialBalance(main){
           </tbody>
           <tfoot>
             <tr style="background:var(--paper3);font-weight:900;font-size:13.5px;">
-              <td colspan="5" style="text-align:left;">الإجمالي العام لميزان المراجعة:</td>
+              <td colspan="5" style="text-align:left;">الإجمالي العام لميزان المراجعة (الحسابات الفرعية القابلة للقيد):</td>
               <td class="mono font-bold" style="color:var(--blue);">${grandDebit.toLocaleString()} ج.م</td>
               <td class="mono font-bold" style="color:var(--green);">${grandCredit.toLocaleString()} ج.م</td>
-              <td><span class="status-badge st-done">✅ متزن</span></td>
+              <td>${isBalanced ? '<span class="status-badge st-done">✅ متزن</span>' : `<span class="status-badge st-red">⚠️ غير متزن (${Math.abs(grandDebit - grandCredit).toLocaleString()} ج.م)</span>`}</td>
             </tr>
           </tfoot>
         </table>
@@ -23806,10 +23880,12 @@ function getIncomeStatementData(startDate, endDate){
   const sDate = startDate || '2000-01-01';
   const eDate = endDate || '2099-12-31';
 
-  // 1. POS Sales Revenue & COGS
+  // 1. POS Sales Revenue, Returns & COGS
   let posSalesRev = 0;
+  let posSalesReturns = 0;
   let posSalesCOGS = 0;
   let posSalesCount = 0;
+  let posReturnsCount = 0;
   (state.sales || []).forEach(s => {
     const dt = cleanDate(s.Date) || s.Date;
     if(dt >= sDate && dt <= eDate){
@@ -23818,6 +23894,7 @@ function getIncomeStatementData(startDate, endDate){
       posSalesRev += tot;
 
       let saleCOGS = 0;
+      let returnedCOGS = 0;
       if(s.ItemsJSON){
         try {
           const items = JSON.parse(s.ItemsJSON);
@@ -23833,28 +23910,57 @@ function getIncomeStatementData(startDate, endDate){
       if(saleCOGS === 0 && tot > 0){
         saleCOGS = tot * 0.70; // تقدير متحفظ في حال عدم توفر تفاصيل الأصناف القديمة
       }
-      posSalesCOGS += saleCOGS;
+
+      if(s.IsReturned){
+        posReturnsCount++;
+        const retDetails = s.ReturnDetails || {};
+        const retAmt = Number(retDetails.totalRefund != null ? retDetails.totalRefund : tot);
+        posSalesReturns += retAmt;
+
+        if(Array.isArray(retDetails.returnedItems)){
+          retDetails.returnedItems.forEach(it => {
+            if(it.restocked && it.itemId && !String(it.itemId).startsWith('srv_')){
+              const inv = (state.inventory||[]).find(x => x.ID === it.itemId);
+              const buy = inv ? Number(inv.PurchasePrice||0) : 0;
+              returnedCOGS += buy * Number(it.qty||1);
+            }
+          });
+        }
+        if(returnedCOGS === 0 && retAmt > 0 && saleCOGS > 0){
+          returnedCOGS = (retAmt / tot) * saleCOGS;
+        }
+      }
+
+      posSalesCOGS += Math.max(0, saleCOGS - returnedCOGS);
     }
   });
+
+  const netPosSalesRev = Math.max(0, posSalesRev - posSalesReturns);
 
   // 2. Maintenance Revenue & Parts COGS
   let maintLaborRev = 0;
   let maintPartsRev = 0;
   let maintPartsCOGS = 0;
+  let maintRefunds = 0;
   let maintCount = 0;
   (state.receipts || []).forEach(r => {
     const dt = cleanDate(r.date) || r.date;
     if(dt >= sDate && dt <= eDate){
+      const isCancelled = r.status === 'ملغي' || r.status === 'رفض العميل' || r.status === 'لا يمكن إصلاحه';
+      const cost = isCancelled ? 0 : Number(r.cost || 0);
+      const parts = isCancelled ? 0 : Number(r.partsCost || 0);
+      const other = isCancelled ? 0 : Number(r.otherAccountAmount || 0);
+      const refAmt = Number(r.refunded || 0);
       maintCount++;
-      const cost = Number(r.cost || 0);
-      const parts = Number(r.partsCost || 0);
-      const other = Number(r.otherAccountAmount || 0);
       const labor = Math.max(0, cost - parts) + other;
       maintLaborRev += labor;
       maintPartsRev += parts;
       maintPartsCOGS += parts;
+      maintRefunds += refAmt;
     }
   });
+
+  const netMaintRev = Math.max(0, (maintLaborRev + maintPartsRev) - maintRefunds);
 
   // 3. Other Invoices & Services
   let servicesRev = 0;
@@ -23867,12 +23973,12 @@ function getIncomeStatementData(startDate, endDate){
     }
   });
 
-  const totalRevenue = posSalesRev + maintLaborRev + maintPartsRev + servicesRev;
+  const totalRevenue = netPosSalesRev + netMaintRev + servicesRev;
   const totalCOGS = posSalesCOGS + maintPartsCOGS;
   const grossProfit = totalRevenue - totalCOGS;
   const grossMargin = totalRevenue > 0 ? ((grossProfit / totalRevenue) * 100) : 0;
 
-  // 4. Operating Expenses Breakdown
+  // 4. Operating Expenses Breakdown (Excluding POS returns, drawings, and supplier pay)
   const expCategories = {
     'إيجار': 0,
     'كهرباء ومياه': 0,
@@ -23890,7 +23996,8 @@ function getIncomeStatementData(startDate, endDate){
       const isSupplier = exp.Category === 'سداد موردين ومشتريات' || String(exp.Category||'').includes('مورد') || exp.Type === 'supplier';
       const isDraw = exp.Type === 'out' || exp.Category === 'مسحوبات شخصية' || exp.Category === 'جاري الشركاء';
       const isIncome = exp.Type === 'in' || exp.Type === 'income';
-      if(!isSupplier && !isDraw && !isIncome){
+      const isPosReturn = exp.Category === 'مرتجع مبيعات POS' || exp.AccountCode === '4102-RET' || exp.Type === 'pos_return';
+      if(!isSupplier && !isDraw && !isIncome && !isPosReturn){
         const amt = Number(exp.Amount || 0);
         totalOperatingExpenses += amt;
         const cat = exp.Category || 'مصروفات أخرى';
@@ -23905,8 +24012,8 @@ function getIncomeStatementData(startDate, endDate){
 
   return {
     sDate, eDate,
-    posSalesRev, posSalesCOGS, posSalesCount,
-    maintLaborRev, maintPartsRev, maintPartsCOGS, maintCount,
+    posSalesRev, posSalesReturns, netPosSalesRev, posSalesCOGS, posSalesCount, posReturnsCount,
+    maintLaborRev, maintPartsRev, maintPartsCOGS, maintRefunds, netMaintRev, maintCount,
     servicesRev,
     totalRevenue, totalCOGS, grossProfit, grossMargin,
     expCategories, totalOperatingExpenses,
@@ -24293,7 +24400,7 @@ function openCustomerStatementModal(custName, custPhone){
     const rPhone = extractCustomerPhone(r);
     const isMatch = (rName && rName.toLowerCase() === custName.toLowerCase()) || (cPhone && rPhone === cPhone);
     if(isMatch){
-      const totalDue = Number(r.cost || 0) + Number(r.otherAccountAmount || 0);
+      const totalDue = Number(r.cost || 0) + Number(r.partsCost || 0) + Number(r.otherAccountAmount || 0);
       const dep = Number(r.deposit || 0);
       const devStr = `${r.device?.category||''} ${r.device?.brand||''} ${r.device?.model||''}`.trim();
       const faultStr = (Array.isArray(r.faults) && r.faults.length) ? r.faults.join('، ') : (r.faultNotes || 'صيانة');
@@ -24317,6 +24424,18 @@ function openCustomerStatementModal(custName, custPhone){
           desc: `عربون مدفوع عند استلام الجهاز (${r.depositPaymentMethod || 'نقدي'})`,
           debit: 0,
           credit: dep
+        });
+      }
+
+      if(Number(r.refunded || 0) > 0){
+        transactions.push({
+          date: cleanDate(r.updatedAt || r.date) || r.date || '2026-01-01',
+          type: 'استرداد مبالغ صيانة',
+          icon: '↩️',
+          ref: '#' + (r.receiptNumber || r.id),
+          desc: `مبلغ مسترد للعميل عن إيصال صيانة #${r.receiptNumber || r.id}`,
+          debit: Number(r.refunded),
+          credit: 0
         });
       }
     }
@@ -24361,6 +24480,35 @@ function openCustomerStatementModal(custName, custPhone){
         debit: tot,
         credit: paid
       });
+
+      if(s.IsReturned){
+        const retDetails = s.ReturnDetails || {};
+        const retAmt = Number(retDetails.totalRefund != null ? retDetails.totalRefund : tot);
+        const retMethod = retDetails.refundMethod || s.PaymentMethod || 'نقدي';
+
+        transactions.push({
+          date: cleanDate(retDetails.returnDate || s.Date) || s.Date || '2026-01-01',
+          type: 'مرتجع مبيعات POS',
+          icon: '↩️',
+          ref: retDetails.voucherNumber || ('#' + String(s.ID).slice(-8) + '-RET'),
+          desc: `مرتجع أصناف مبيعات (${retDetails.reason || 'إرجاع فاتورة'})`,
+          debit: 0,
+          credit: retAmt
+        });
+
+        const isDebtSettlementOnly = (retMethod.includes('آجل') || retMethod.includes('حساب'));
+        if(!isDebtSettlementOnly && paid > 0){
+          transactions.push({
+            date: cleanDate(retDetails.returnDate || s.Date) || s.Date || '2026-01-01',
+            type: 'استرداد نقدي لمرتجع',
+            icon: '💵',
+            ref: retDetails.voucherNumber || ('#' + String(s.ID).slice(-8) + '-RET'),
+            desc: `استرداد مبلغ المرتجع للعميل عبر [${retMethod}]`,
+            debit: Math.min(paid, retAmt),
+            credit: 0
+          });
+        }
+      }
     }
   });
 

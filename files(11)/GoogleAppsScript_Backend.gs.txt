@@ -367,10 +367,41 @@ function doPost(e) {
     }
     if (action === 'saveReturn') {
       const ret = {
-        ID: 'ret_' + new Date().getTime(), SaleID: body.saleId, Date: body.date,
-        ItemsSummary: body.itemsSummary, RefundAmount: body.refundAmount, By: body.user
+        ID: 'ret_' + new Date().getTime(),
+        SaleID: body.saleId,
+        Date: body.date || new Date().toISOString().slice(0, 10),
+        ItemsSummary: body.itemsSummary || '',
+        RefundAmount: Number(body.refundAmount || 0),
+        RefundMethod: body.refundMethod || 'نقدي',
+        By: body.user || 'كاشير'
       };
       appendRow(SHEET_RETURNS, ret);
+
+      // Also mark the original sale as returned in the Sales sheet
+      try {
+        const shSales = getSheet(SHEET_SALES);
+        const headers = shSales.getRange(1, 1, 1, shSales.getLastColumn()).getValues()[0];
+        let isRetCol = headers.indexOf('IsReturned');
+        if(isRetCol === -1){
+          ensureHeaders(shSales, { IsReturned: '', ReturnDetails: '' });
+          isRetCol = shSales.getRange(1, 1, 1, shSales.getLastColumn()).getValues()[0].indexOf('IsReturned');
+        }
+        const retDetCol = shSales.getRange(1, 1, 1, shSales.getLastColumn()).getValues()[0].indexOf('ReturnDetails');
+        const idCol = headers.indexOf('ID');
+        if(idCol >= 0 && isRetCol >= 0){
+          const values = shSales.getDataRange().getValues();
+          for(let i = 1; i < values.length; i++){
+            if(String(values[i][idCol]) === String(body.saleId)){
+              shSales.getRange(i + 1, isRetCol + 1).setValue(true);
+              if(retDetCol >= 0 && body.returnDetails){
+                shSales.getRange(i + 1, retDetCol + 1).setValue(JSON.stringify(body.returnDetails));
+              }
+              break;
+            }
+          }
+        }
+      } catch(e) {}
+
       return jsonOut({ ok: true, ret });
     }
     if (action === 'saveQuotation') {
@@ -396,6 +427,7 @@ function doPost(e) {
         ItemsSummary: body.itemsSummary || '',
         Total: Number(body.total || 0),
         AmountPaid: body.amountPaid != null ? Number(body.amountPaid) : Number(body.total || 0),
+        PaymentMethod: body.paymentMethod || 'نقدي',
         WarrantyMonths: body.warrantyMonths || '',
         By: body.user || 'نظام'
       };
@@ -498,6 +530,11 @@ function doPost(e) {
         Category: body.data.Category || 'عام',
         Title: body.data.Title,
         Amount: body.data.Amount,
+        Type: body.data.Type || 'out',
+        PaymentMethod: body.data.PaymentMethod || 'نقدي',
+        Supplier: body.data.Supplier || '',
+        Reference: body.data.Reference || '',
+        AccountCode: body.data.AccountCode || '',
         Notes: body.data.Notes || '',
         By: body.user
       };

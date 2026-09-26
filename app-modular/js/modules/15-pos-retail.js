@@ -1615,11 +1615,12 @@ function openPosReturnModal(sale){
           AccountCode: '4102-RET',
           Reference: `RET-${sale.ID.slice(-8)}`,
           By: state.user ? state.user.name : 'كاشير',
-          Notes: `رد بنفس وسيلة الدفع (${refundMethod}) • خصم عمولة بائع: ${commissionDeducted} ج.م من (${sale.By||'الكاشير'}) • سبب: ${returnReason}`
+          Notes: `رد بنفس وسيلة الدفع (${refundMethod}) • خصم عمولة بائع: ${commissionDeducted} ج.م من (${sale.By||'الكاشير'}) • سبب: ${returnReason}`,
+          skipAutoJournal: true
         };
         await saveExpenseRemote(exp);
 
-        // 3. Mark sale as returned
+        // 3. Mark sale as returned & persist to backend
         const returnDetails = {
           voucherNumber: `RET-${sale.ID.slice(-8)}`,
           returnDate: new Date().toISOString().slice(0,10),
@@ -1640,20 +1641,48 @@ function openPosReturnModal(sale){
         sale.ReturnDetails = returnDetails;
         setCache('sales', state.sales);
 
-        // 4. Auto Journal Entry
+        // Sync return to remote Google Apps Script backend
+        apiPost('saveReturn', {
+          saleId: sale.ID,
+          date: returnDetails.returnDate,
+          itemsSummary: returnedItems.map(x => `${x.qty}x ${x.name}`).join('، '),
+          refundAmount: totalRefund,
+          refundMethod: refundMethod,
+          returnDetails: returnDetails,
+          user: returnDetails.processedBy
+        }).catch(e => console.warn('Sync return to remote warning:', e));
+
+        // 4. Auto Journal Entry with dual reversal (Revenue & COGS)
         const isBank = (refundMethod.includes('فيزا') || refundMethod.includes('visa') || refundMethod.includes('card') || refundMethod.includes('instapay') || refundMethod.includes('محفظ') || refundMethod.includes('wallet'));
         const isCredit = (refundMethod.includes('آجل') || refundMethod.includes('اجل') || refundMethod.includes('حساب'));
         const creditAccCode = isBank ? '1102' : (isCredit ? '1103' : '1101');
         const creditAccName = isBank ? 'البنك وحسابات الدفع الإلكتروني' : (isCredit ? 'حساب العميل (مدينون آجل)' : 'الخزينة الرئيسية (النقدية بالدرج)');
 
+        let restockedCOGS = 0;
+        returnedItems.forEach(it => {
+          if(it.restocked && it.itemId && !String(it.itemId).startsWith('srv_')){
+            const inv = (state.inventory||[]).find(x => x.ID === it.itemId);
+            const cost = inv ? Number(inv.PurchasePrice||0) : 0;
+            restockedCOGS += cost * Number(it.qty||1);
+          }
+        });
+
+        const retJournalLines = [
+          {AccountCode:'4102', AccountName:'مردودات ومسموحات مبيعات الأجهزة والإكسسوار', Debit:Number(totalRefund), Credit:0, Notes:`مرتجع أصناف للعميل ${sale.CustomerName||'عميل زائر'}`},
+          {AccountCode:creditAccCode, AccountName:creditAccName, Debit:0, Credit:Number(totalRefund), Notes:`رد واسترداد بنفس وسيلة الدفع الأصلية (${refundMethod})`}
+        ];
+        if(restockedCOGS > 0){
+          retJournalLines.push(
+            {AccountCode:'1104', AccountName:'مخزون البضائع وقطع الغيار', Debit:Number(restockedCOGS), Credit:0, Notes:`إعادة إدخال مخزون أصناف مرتجعة (فاتورة #${sale.ID.slice(-8)})`},
+            {AccountCode:'5102', AccountName:'تكلفة البضاعة المباعة (POS)', Debit:0, Credit:Number(restockedCOGS), Notes:`عكس تكلفة بضاعة مباعة لمرتجع`}
+          );
+        }
+
         recordAutoJournalEntry(
           `مرتجع مبيعات POS فاتورة #${sale.ID.slice(-8)} (رد عبر ${refundMethod})`,
           'POS_Return',
           sale.ID,
-          [
-            {AccountCode:'4102', AccountName:'مردودات ومسموحات مبيعات الأجهزة والإكسسوار', Debit:Number(totalRefund), Credit:0, Notes:`مرتجع أصناف للعميل ${sale.CustomerName||'عميل زائر'}`},
-            {AccountCode:creditAccCode, AccountName:creditAccName, Debit:0, Credit:Number(totalRefund), Notes:`رد واسترداد بنفس وسيلة الدفع الأصلية (${refundMethod})`}
-          ]
+          retJournalLines
         ).catch(e=>{});
 
         // 5. Audit logs

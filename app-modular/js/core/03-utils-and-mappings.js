@@ -1348,8 +1348,8 @@ async function saveInvoiceRemote(inv){
 
   // Auto-ensure invoice customer is saved to directory
   if(inv.CustomerName && inv.CustomerName !== 'عميل زائر' && inv.CustomerName !== 'عميل' && inv.CustomerName !== 'زبون'){
-    const cPhone = (inv.CustomerPhone || '').trim();
-    const cNameLow = inv.CustomerName.trim().toLowerCase();
+    const cPhone = String(inv.CustomerPhone || '').trim();
+    const cNameLow = String(inv.CustomerName).trim().toLowerCase();
     const existing = (state.customers || []).find(c => {
       if(cPhone && cPhone !== '0000000000' && c.phone === cPhone) return true;
       if((c.name||'').trim().toLowerCase() === cNameLow) return true;

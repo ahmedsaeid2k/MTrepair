@@ -1,3 +1,105 @@
+/* ---------------- Spotlight Search Normalization & Matching ---------------- */
+function normalizeSearchText(str){
+  if(!str) return '';
+  return String(str)
+    .replace(/[\u064B-\u065F\u0670]/g, '') // remove tashkeel
+    .replace(/[أإآء]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/[ى]/g, 'ي')
+    .replace(/[\u0660-\u0669]/g, d => String.fromCharCode(d.charCodeAt(0) - 0x0660 + 48))
+    .replace(/[\u06F0-\u06F9]/g, d => String.fromCharCode(d.charCodeAt(0) - 0x06F0 + 48))
+    .toLowerCase()
+    .trim();
+}
+
+function highlightSpotlightMatch(originalText, query){
+  if(!originalText) return '';
+  if(!query || !query.trim()) return escapeHtml(originalText);
+  const qClean = normalizeSearchText(query);
+  if(!qClean) return escapeHtml(originalText);
+
+  const tokens = qClean.split(/\s+/).filter(Boolean);
+  if(!tokens.length) return escapeHtml(originalText);
+
+  try {
+    const pattern = tokens.map(tok => {
+      let p = '';
+      for(const ch of tok){
+        if(ch === 'ا') p += '[اأإآء]';
+        else if(ch === 'ه') p += '[هة]';
+        else if(ch === 'ي') p += '[ييى]';
+        else p += ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      }
+      return p;
+    }).join('|');
+    const regex = new RegExp(`(${pattern})`, 'gi');
+    return escapeHtml(originalText).replace(regex, '<mark class="spotlight-mark" style="background:#fef08a;color:#854d0e;padding:0 2px;border-radius:2px;font-weight:900;">$1</mark>');
+  } catch(e) {
+    return escapeHtml(originalText);
+  }
+}
+
+function filterCustomersSpotlight(allCusts, searchStr){
+  if(!searchStr || !searchStr.trim()) return allCusts;
+  const qClean = normalizeSearchText(searchStr);
+  const tokens = qClean.split(/\s+/).filter(Boolean);
+
+  const scored = [];
+
+  allCusts.forEach(c => {
+    const cName = extractCustomerName(c) || '';
+    const cPhone = extractCustomerPhone(c) || '';
+    const cNotes = c.notes || c.Notes || c.email || c.address || '';
+    
+    const clientReceipts = (state.receipts||[]).filter(r => {
+      const rName = extractCustomerName(r);
+      const rPhone = extractCustomerPhone(r);
+      return (rName && rName.toLowerCase() === cName.toLowerCase()) || (cPhone && rPhone === cPhone);
+    });
+
+    const normName = normalizeSearchText(cName);
+    const normPhone = normalizeSearchText(cPhone);
+    const normNotes = normalizeSearchText(cNotes);
+
+    const devStrings = clientReceipts.map(r => {
+      const d = r.device || (r.devices && r.devices[0]) || {};
+      return normalizeSearchText(`${d.category || ''} ${d.brand || ''} ${d.model || ''} ${r.receiptNumber || ''}`);
+    }).join(' ');
+
+    const fullTarget = `${normName} ${normPhone} ${normNotes} ${devStrings}`;
+
+    // 1. All tokens match target
+    const allTokensMatch = tokens.every(tok => fullTarget.includes(tok));
+
+    // 2. Sequential letters match (Spotlight: "مح عل" matches "محمد علي")
+    let seqMatch = false;
+    if(qClean.length >= 2){
+      let idx = 0;
+      for(let i = 0; i < normName.length && idx < qClean.length; i++){
+        if(normName[i] === qClean[idx] || (qClean[idx] === ' ' && normName[i] === ' ')) idx++;
+      }
+      if(idx === qClean.length) seqMatch = true;
+    }
+
+    if(!allTokensMatch && !seqMatch) return;
+
+    let score = 10;
+    if(normName === qClean) score += 100;
+    else if(normName.startsWith(qClean)) score += 80;
+    else if(normName.includes(qClean)) score += 60;
+    else if(allTokensMatch) score += 50;
+    if(seqMatch) score += 35;
+
+    if(normPhone.startsWith(qClean)) score += 75;
+    else if(normPhone.includes(qClean)) score += 45;
+
+    scored.push({ customer: c, score });
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.map(x => x.customer);
+}
+
 /* ---------------- Customer Directory & Phone Management Hub ---------------- */
 function renderCustomersPage(main){
   if(!state.custSearch) state.custSearch = '';
@@ -63,11 +165,10 @@ function renderCustomersPage(main){
         <table>
           <thead>
             <tr>
-              <th style="text-align:right;">اسم العميل</th>
-              <th style="text-align:right;">رقم الهاتف والاتصال</th>
-              <th style="text-align:center;">أجهزة الصيانة</th>
-              <th style="text-align:right;">البريد / الملاحظات</th>
-              <th style="text-align:center;min-width:220px;">الإجراءات السريعة</th>
+              <th style="text-align:right;width:32%;">اسم العميل</th>
+              <th style="text-align:right;width:24%;">رقم الهاتف والاتصال</th>
+              <th style="text-align:center;width:14%;">أجهزة الصيانة</th>
+              <th style="text-align:right;width:30%;">البريد / الملاحظات</th>
             </tr>
           </thead>
           <tbody>
@@ -83,7 +184,7 @@ function renderCustomersPage(main){
               const isSelectedCust = String(cName) === String(state.selectedCustomerId);
 
               return `
-                <tr class="selectable-row ${isSelectedCust ? 'selected-row' : ''}" data-cust-name="${escapeHtml(cName)}" data-cust-phone="${escapeHtml(cPhone||'')}" onclick="handleCustomerRowClick('${escapeHtml(cName)}', '${escapeHtml(cPhone||'')}', event)">
+                <tr class="selectable-row ${isSelectedCust ? 'selected-row' : ''}" data-cust-name="${escapeHtml(cName)}" data-cust-phone="${escapeHtml(cPhone||'')}" onclick="handleCustomerRowClick('${escapeHtml(cName)}', '${escapeHtml(cPhone||'')}', event)" style="cursor:pointer;">
                   <td>
                     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                       ${isSelectedCust ? '<span class="selected-badge-indicator">✓</span>' : ''}
@@ -99,44 +200,20 @@ function renderCustomersPage(main){
                         <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" class="btn btn-ghost btn-xs" style="padding:2px 6px;color:#22c55e;" title="محادثة واتساب" onclick="event.stopPropagation();">💬</a>
                       </div>
                     ` : `
-                      <button class="btn btn-ghost btn-xs edit-cust-quick-phone-btn" data-custtitle="${escapeHtml(cTitle)}" data-custname="${escapeHtml(cName)}" style="color:var(--amber-text);border-color:var(--amber);font-weight:700;" onclick="event.stopPropagation();">
+                      <button class="btn btn-ghost btn-xs edit-cust-quick-phone-btn" style="color:var(--amber-text);border-color:var(--amber);font-weight:700;" onclick="event.stopPropagation(); openQuickAddPhoneModal('${escapeHtml(cName)}', '${escapeHtml(cTitle||'')}');" title="إضافة رقم هاتف للعميل">
                         ⚠️ إضافة رقم الهاتف
                       </button>
                     `}
                   </td>
                   <td style="text-align:center;">
                     ${clientReceipts.length > 0 ? `
-                      <button class="btn btn-ghost btn-xs view-cust-receipts-btn" data-custname="${escapeHtml(cName)}" style="font-weight:800;color:var(--primary);" onclick="event.stopPropagation();">
+                      <button class="btn btn-ghost btn-xs view-cust-receipts-btn" style="font-weight:800;color:var(--primary);" onclick="event.stopPropagation(); viewCustomerReceiptsInArchive('${escapeHtml(cName)}');" title="استعراض أجهزة العميل بالأرشيف">
                         🛠️ ${clientReceipts.length} جهاز
                       </button>
                     ` : `<span style="color:var(--ink-secondary);font-size:11px;">-</span>`}
                   </td>
                   <td style="font-size:11.5px;color:var(--ink-secondary);">
                     ${highlightSpotlightMatch(c.email || c.address || '-', state.custSearch)}
-                  </td>
-                  <td style="text-align:center;" onclick="event.stopPropagation();">
-                    <div style="display:inline-flex;gap:4px;flex-wrap:wrap;justify-content:center;">
-                      <button class="btn btn-primary btn-xs font-bold" onclick="openCustomerActionSheet('${escapeHtml(cName)}', '${escapeHtml(cPhone||'')}', '${escapeHtml(cTitle)}', '${escapeHtml(c.email||'')}'); event.stopPropagation();" title="فتح لوحة الإجراءات الموحدة للعميل">
-                        ⚡ خيارات العميل
-                      </button>
-                      <button class="btn btn-xs" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-weight:700;" onclick="openCustomerStatementModal('${escapeHtml(cName)}', '${escapeHtml(cPhone||'')}'); event.stopPropagation();" title="كشف حساب تفصيلي للعميل">
-                        📊 كشف حساب
-                      </button>
-                      <button class="btn btn-ghost btn-xs edit-cust-btn" data-custtitle="${escapeHtml(cTitle)}" data-custname="${escapeHtml(cName)}" data-custphone="${escapeHtml(cPhone||'')}" data-custemail="${escapeHtml(c.email||'')}">
-                        ✏️ تعديل
-                      </button>
-                      <button class="btn btn-ghost btn-xs cust-new-receipt-btn" data-custtitle="${escapeHtml(cTitle)}" data-custname="${escapeHtml(cName)}" data-custphone="${escapeHtml(cPhone||'')}" style="color:var(--blue-text);">
-                        ➕ صيانة
-                      </button>
-                      <button class="btn btn-ghost btn-xs cust-new-inv-btn" data-custtitle="${escapeHtml(cTitle)}" data-custname="${escapeHtml(cName)}" data-custphone="${escapeHtml(cPhone||'')}" style="color:var(--purple);">
-                        🧾 فاتورة
-                      </button>
-                      ${clientReceipts.length > 1 ? `
-                        <button class="btn btn-xs" style="background:#ede9fe;color:#6d28d9;border:1px solid #c4b5fd;font-weight:800;" onclick="openCustomerConsolidatedInvoiceModal('${escapeHtml(cName)}'); event.stopPropagation();" title="إصدار فاتورة مجمعة لكافة أجهزة هذا العميل">
-                          📑 مجمعة
-                        </button>
-                      ` : ''}
-                    </div>
                   </td>
                 </tr>
               `;
@@ -184,56 +261,6 @@ function renderCustomersPage(main){
   // Export Excel
   document.getElementById('exportCustsExcelBtn').onclick = ()=>exportCustomersToExcel(allCusts);
 
-  // Edit Customer
-  main.querySelectorAll('.edit-cust-btn, .edit-cust-quick-phone-btn').forEach(btn => {
-    btn.onclick = ()=>{
-      const title = btn.dataset.custtitle || '';
-      const name = btn.dataset.custname;
-      const phone = btn.dataset.custphone || '';
-      const email = btn.dataset.custemail || '';
-      openEditCustomerModal({ title, name, phone, email });
-    };
-  });
-
-  // View Customer Receipts in Archive
-  main.querySelectorAll('.view-cust-receipts-btn').forEach(btn => {
-    btn.onclick = ()=>{
-      state.tab = 'archive';
-      state.archiveFilter.q = btn.dataset.custname;
-      renderMain();
-    };
-  });
-
-  // New Receipt for customer
-  main.querySelectorAll('.cust-new-receipt-btn').forEach(btn => {
-    btn.onclick = ()=>{
-      startNewDraft();
-      state.draft.customer.title = btn.dataset.custtitle || '';
-      state.draft.customer.name = btn.dataset.custname;
-      state.draft.customer.phone = btn.dataset.custphone || '';
-      state.tab = 'new';
-      renderMain();
-    };
-  });
-
-  // New Invoice for customer
-  main.querySelectorAll('.cust-new-inv-btn').forEach(btn => {
-    btn.onclick = ()=>{
-      const newInv = {
-        InvoiceNumber: typeof nextInvoiceNumber === 'function' ? nextInvoiceNumber() : '',
-        Date: typeof todayISO === 'function' ? todayISO() : new Date().toISOString().slice(0, 10),
-        DueDate: typeof todayISO === 'function' ? todayISO() : new Date().toISOString().slice(0, 10),
-        CustomerTitle: btn.dataset.custtitle || '',
-        CustomerName: btn.dataset.custname || '',
-        CustomerPhone: btn.dataset.custphone || '',
-        Type: 'مبيعات',
-        Items: [],
-        Subtotal: 0, TaxPercent: 0, TaxAmount: 0, Discount: 0, Total: 0, AmountPaid: 0, Remaining: 0,
-        Status: 'غير مدفوعة (آجلة)', PaymentMethod: 'نقدي'
-      };
-      openInvoiceModal(newInv, true);
-    };
-  });
   if(typeof window.renderUnifiedSelectionBar === 'function'){
     window.renderUnifiedSelectionBar();
   }

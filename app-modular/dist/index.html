@@ -5351,8 +5351,8 @@ async function saveInvoiceRemote(inv){
 
   // Auto-ensure invoice customer is saved to directory
   if(inv.CustomerName && inv.CustomerName !== 'عميل زائر' && inv.CustomerName !== 'عميل' && inv.CustomerName !== 'زبون'){
-    const cPhone = (inv.CustomerPhone || '').trim();
-    const cNameLow = inv.CustomerName.trim().toLowerCase();
+    const cPhone = String(inv.CustomerPhone || '').trim();
+    const cNameLow = String(inv.CustomerName).trim().toLowerCase();
     const existing = (state.customers || []).find(c => {
       if(cPhone && cPhone !== '0000000000' && c.phone === cPhone) return true;
       if((c.name||'').trim().toLowerCase() === cNameLow) return true;
@@ -10204,6 +10204,37 @@ window.deleteReceiptDirect = function(receiptId, receiptNum){
    UNIFIED ACTIONS & SELECTION ENGINE (المحرك الموحد للاختيار وإجراءات البرنامج)
    ========================================================================== */
 
+window.startNewReceiptForCustomer = function(name, phone, title=''){
+  startNewDraft();
+  state.draft.customer.title = title || '';
+  state.draft.customer.name = name || '';
+  state.draft.customer.phone = phone || '';
+  state.tab = 'new';
+  renderMain();
+};
+
+window.startNewInvoiceForCustomer = function(name, phone, title=''){
+  const newInv = {
+    InvoiceNumber: typeof nextInvoiceNumber === 'function' ? nextInvoiceNumber() : '',
+    Date: typeof todayISO === 'function' ? todayISO() : new Date().toISOString().slice(0, 10),
+    DueDate: typeof todayISO === 'function' ? todayISO() : new Date().toISOString().slice(0, 10),
+    CustomerTitle: title || '',
+    CustomerName: name || '',
+    CustomerPhone: phone || '',
+    Type: 'مبيعات',
+    Items: [],
+    Subtotal: 0, TaxPercent: 0, TaxAmount: 0, Discount: 0, Total: 0, AmountPaid: 0, Remaining: 0,
+    Status: 'غير مدفوعة (آجلة)', PaymentMethod: 'نقدي'
+  };
+  openInvoiceModal(newInv, true);
+};
+
+window.viewCustomerReceiptsInArchive = function(custName){
+  state.tab = 'archive';
+  state.archiveFilter.q = custName || '';
+  renderMain();
+};
+
 function getOrCreateUnifiedSelectionBar(){
   let bar = document.getElementById('unifiedSelectionBar');
   if(!bar){
@@ -10420,8 +10451,10 @@ window.renderUnifiedSelectionBar = function(){
   if(state.tab === 'customers' && state.selectedCustomerId){
     const custName = state.selectedCustomerId;
     const allCusts = state.customers || [];
-    const cust = allCusts.find(c => extractCustomerName(c) === custName);
-    const cPhone = (cust && extractCustomerPhone(cust)) || '';
+    const cust = allCusts.find(c => extractCustomerName(c) === custName) || {};
+    const cTitle = extractCustomerTitle(cust) || '';
+    const cPhone = extractCustomerPhone(cust) || '';
+    const cEmail = cust.email || '';
     const clientReceipts = (state.receipts || []).filter(r => {
       const rName = extractCustomerName(r);
       const rPhone = extractCustomerPhone(r);
@@ -10436,29 +10469,50 @@ window.renderUnifiedSelectionBar = function(){
         </div>
         <div style="font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
           <span style="font-weight:800;color:var(--ink);">${escapeHtml(custName)}</span>
+          ${cTitle ? `<span class="badge" style="background:var(--paper2);color:var(--primary);font-size:11px;font-weight:700;border:1px solid var(--line);padding:1px 6px;border-radius:4px;">${escapeHtml(cTitle)}</span>` : ''}
           ${cPhone && cPhone !== '0000000000' ? `<span class="mono" style="color:var(--ink-secondary);font-size:11.5px;direction:ltr;">${escapeHtml(cPhone)}</span>` : ''}
           <span class="badge badge-blue" style="font-size:10.5px;">🛠️ ${clientReceipts.length} جهاز مسجل</span>
         </div>
       </div>
 
       <div class="unified-bar-actions">
-        <button class="unified-bar-btn btn-primary" onclick="openCustomerActionSheet('${escapeHtml(custName)}', '${escapeHtml(cPhone)}');" title="فتح لوحة إجراءات العميل الموحدة">
+        <button class="unified-bar-btn btn-primary" onclick="openCustomerActionSheet('${escapeHtml(custName)}', '${escapeHtml(cPhone)}', '${escapeHtml(cTitle)}', '${escapeHtml(cEmail)}');" title="فتح لوحة إجراءات وخيارات العميل الموحدة">
           ⚡ خيارات العميل
         </button>
-        <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="document.querySelector('tr.selected-row .edit-cust-btn')?.click();" title="تعديل بيانات العميل">
+        <button class="unified-bar-btn" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-weight:700;" onclick="openCustomerStatementModal('${escapeHtml(custName)}', '${escapeHtml(cPhone)}');" title="كشف حساب تفصيلي للعميل والمبيعات والتحصيلات">
+          📊 كشف حساب
+        </button>
+        <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="openEditCustomerModal({ title: '${escapeHtml(cTitle)}', name: '${escapeHtml(custName)}', phone: '${escapeHtml(cPhone)}', email: '${escapeHtml(cEmail)}' });" title="تعديل بيانات العميل">
           ✏️ تعديل
         </button>
-        <button class="unified-bar-btn btn-blue" onclick="document.querySelector('tr.selected-row .cust-new-receipt-btn')?.click();" title="إنشاء إيصال صيانة جديد لهذا العميل">
+        <button class="unified-bar-btn btn-blue" onclick="startNewReceiptForCustomer('${escapeHtml(custName)}', '${escapeHtml(cPhone)}', '${escapeHtml(cTitle)}');" title="إنشاء إيصال صيانة جديد لهذا العميل">
           ➕ إيصال صيانة
         </button>
-        <button class="unified-bar-btn btn-ghost" style="background:#faf5ff;color:#7c3aed;border:1px solid #ddd6fe;" onclick="document.querySelector('tr.selected-row .cust-new-inv-btn')?.click();" title="إنشاء فاتورة جديدة">
+        <button class="unified-bar-btn btn-ghost" style="background:#faf5ff;color:#7c3aed;border:1px solid #ddd6fe;" onclick="startNewInvoiceForCustomer('${escapeHtml(custName)}', '${escapeHtml(cPhone)}', '${escapeHtml(cTitle)}');" title="إنشاء فاتورة جديدة">
           🧾 فاتورة
         </button>
+        ${clientReceipts.length > 0 ? `
+          <button class="unified-bar-btn btn-ghost" style="color:var(--primary);font-weight:800;border:1px solid var(--line);" onclick="viewCustomerReceiptsInArchive('${escapeHtml(custName)}');" title="استعراض أجهزة العميل بالأرشيف">
+            📁 الأجهزة (${clientReceipts.length})
+          </button>
+        ` : ''}
+        ${clientReceipts.length > 1 ? `
+          <button class="unified-bar-btn btn-ghost" style="background:#ede9fe;color:#6d28d9;border:1px solid #c4b5fd;font-weight:800;" onclick="openCustomerConsolidatedInvoiceModal('${escapeHtml(custName)}');" title="إصدار فاتورة مجمعة لكافة أجهزة هذا العميل">
+            📑 فاتورة مجمعة
+          </button>
+        ` : ''}
         ${cPhone && cPhone !== '0000000000' ? `
-          <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" class="unified-bar-btn btn-whatsapp" style="text-decoration:none;">
+          <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" class="unified-bar-btn btn-whatsapp" style="text-decoration:none;" title="محادثة واتساب">
             ${WA_ICON} واتساب
           </a>
-        ` : ''}
+          <a href="tel:${cPhone}" class="unified-bar-btn btn-ghost" style="text-decoration:none;border:1px solid var(--line);" title="اتصال هاتفي">
+            📞 اتصال
+          </a>
+        ` : `
+          <button class="unified-bar-btn btn-amber" onclick="openQuickAddPhoneModal('${escapeHtml(custName)}', '');" title="إضافة رقم هاتف للعميل">
+            ⚠️ إضافة هاتف
+          </button>
+        `}
         <button class="unified-bar-btn-close" onclick="deselectCurrentSelection()" title="إلغاء التحديد">
           ✕
         </button>
@@ -10495,11 +10549,12 @@ window.renderUnifiedSelectionBar = function(){
           <span>📌 شريط إجراءات العملاء الموحد</span>
         </div>
         <div style="font-size:12px;color:var(--ink-secondary);">
-          اضغط على أي عميل لتفعيل خيارات التعديل والمراسلة وإيصالات الصيانة
+          اضغط على أي عميل من الجدول أدناه لتفعيل خيارات التعديل والمراسلة وإيصالات الصيانة وكشف الحساب
         </div>
       </div>
       <div class="unified-bar-actions" style="opacity:0.55;pointer-events:none;">
         <button class="unified-bar-btn btn-primary" disabled>⚡ خيارات العميل</button>
+        <button class="unified-bar-btn" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-weight:700;" disabled>📊 كشف حساب</button>
         <button class="unified-bar-btn btn-ghost" disabled>✏️ تعديل</button>
         <button class="unified-bar-btn btn-blue" disabled>➕ إيصال صيانة</button>
         <button class="unified-bar-btn btn-ghost" disabled>🧾 فاتورة</button>
@@ -10948,62 +11003,9 @@ window.selectCustomer = function(custName, custPhone){
     }
   });
 
-  const cPhone = custPhone || '';
-  const clientReceipts = (state.receipts || []).filter(r => {
-    const rName = extractCustomerName(r);
-    const rPhone = extractCustomerPhone(r);
-    return (rName && rName.toLowerCase() === custName.toLowerCase()) || (cPhone && rPhone === cPhone);
-  });
-
-  const bar = getOrCreateUnifiedSelectionBar();
-  bar.innerHTML = `
-    <div class="unified-bar-info">
-      <div class="unified-bar-badge" style="background:#eff6ff;color:#2563eb;">
-        <span>👤 عميل مختار</span>
-      </div>
-      <div style="font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-        <span style="font-weight:800;color:var(--ink);">${escapeHtml(custName)}</span>
-        ${cPhone && cPhone !== '0000000000' ? `<span class="mono" style="color:var(--ink-secondary);font-size:11.5px;direction:ltr;">${escapeHtml(cPhone)}</span>` : ''}
-        <span class="badge badge-blue" style="font-size:10.5px;">🛠️ ${clientReceipts.length} جهاز مسجل</span>
-      </div>
-    </div>
-
-    <div class="unified-bar-actions">
-      <button class="unified-bar-btn btn-primary" onclick="openCustomerActionSheet('${escapeHtml(custName)}', '${escapeHtml(cPhone)}');" title="فتح لوحة إجراءات العميل الموحدة">
-        ⚡ خيارات العميل
-      </button>
-      <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="document.querySelector('tr.selected-row .edit-cust-btn')?.click();" title="تعديل بيانات العميل">
-        ✏️ تعديل
-      </button>
-      <button class="unified-bar-btn btn-blue" onclick="document.querySelector('tr.selected-row .cust-new-receipt-btn')?.click();" title="إنشاء إيصال صيانة جديد لهذا العميل">
-        ➕ إيصال صيانة
-      </button>
-      <button class="unified-bar-btn btn-ghost" style="background:#faf5ff;color:#7c3aed;border:1px solid #ddd6fe;" onclick="document.querySelector('tr.selected-row .cust-new-inv-btn')?.click();" title="إنشاء فاتورة جديدة">
-        🧾 فاتورة
-      </button>
-      ${clientReceipts.length > 0 ? `
-        <button class="unified-bar-btn btn-ghost" style="color:var(--primary);font-weight:800;border:1px solid var(--line);" onclick="document.querySelector('tr.selected-row .view-cust-receipts-btn')?.click();" title="استعراض أجهزة العميل بالأرشيف">
-          📁 أجهزة العميل (${clientReceipts.length})
-        </button>
-      ` : ''}
-      ${cPhone && cPhone !== '0000000000' ? `
-        <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" class="unified-bar-btn btn-whatsapp" style="text-decoration:none;">
-          ${WA_ICON} واتساب
-        </a>
-        <a href="tel:${cPhone}" class="unified-bar-btn btn-ghost" style="text-decoration:none;border:1px solid var(--line);" title="اتصال هاتفي">
-          📞 اتصال
-        </a>
-      ` : `
-        <button class="unified-bar-btn btn-amber" onclick="openQuickAddPhoneModal('${escapeHtml(custName)}', '')">
-          ⚠️ إضافة هاتف
-        </button>
-      `}
-      <button class="unified-bar-btn-close" onclick="deselectCurrentSelection()" title="إلغاء التحديد">
-        ✕
-      </button>
-    </div>
-  `;
-  bar.classList.add('active');
+  if(typeof window.renderUnifiedSelectionBar === 'function'){
+    window.renderUnifiedSelectionBar();
+  }
 };
 
 window.handleCustomerRowClick = function(custName, custPhone, evt){
@@ -11051,12 +11053,12 @@ window.openCustomerActionSheet = function(custName, custPhone, custTitle, custEm
 
       <div class="action-sheet-section-title">⚡ العمليات والمعاملات المباشرة</div>
       <div class="action-sheet-grid">
-        <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); document.querySelector('tr.selected-row .cust-new-receipt-btn')?.click();">
+        <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); startNewReceiptForCustomer('${escapeHtml(custName)}', '${escapeHtml(custPhone||'')}', '${escapeHtml(custTitle||'')}');">
           <div class="act-icon">➕</div>
           <div class="act-label">إيصال صيانة جديد</div>
           <div class="act-desc">استلام جهاز للعميل</div>
         </div>
-        <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); document.querySelector('tr.selected-row .cust-new-inv-btn')?.click();">
+        <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); startNewInvoiceForCustomer('${escapeHtml(custName)}', '${escapeHtml(custPhone||'')}', '${escapeHtml(custTitle||'')}');">
           <div class="act-icon">🧾</div>
           <div class="act-label">فاتورة جديدة</div>
           <div class="act-desc">إصدار فاتورة بيع/خدمة</div>
@@ -11066,7 +11068,7 @@ window.openCustomerActionSheet = function(custName, custPhone, custTitle, custEm
           <div class="act-label">كشف حساب تفصيلي</div>
           <div class="act-desc">سجل حركات ورصيد العميل</div>
         </div>
-        <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); document.querySelector('tr.selected-row .edit-cust-btn')?.click();">
+        <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); openEditCustomerModal({ title: '${escapeHtml(custTitle||'')}', name: '${escapeHtml(custName)}', phone: '${escapeHtml(custPhone||'')}', email: '${escapeHtml(custEmail||'')}' });">
           <div class="act-icon">✏️</div>
           <div class="act-label">تعديل البيانات</div>
           <div class="act-desc">تحديث الهاتف والاسم</div>
@@ -11101,7 +11103,7 @@ window.openCustomerActionSheet = function(custName, custPhone, custTitle, custEm
           </div>
         `}
         ${clientReceipts.length > 0 ? `
-          <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); document.querySelector('tr.selected-row .view-cust-receipts-btn')?.click();">
+          <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); viewCustomerReceiptsInArchive('${escapeHtml(custName)}');">
             <div class="act-icon" style="color:var(--primary);">📁</div>
             <div class="act-label">سجل أجهزة العميل</div>
             <div class="act-desc">${clientReceipts.length} جهاز في الأرشيف</div>
@@ -11447,6 +11449,8 @@ function renderArchive(main){
   }
 }
 
+
+/* === [Module: js/modules/11-customers-crm.js] === */
 /* ---------------- Spotlight Search Normalization & Matching ---------------- */
 function normalizeSearchText(str){
   if(!str) return '';
@@ -11549,8 +11553,6 @@ function filterCustomersSpotlight(allCusts, searchStr){
   return scored.map(x => x.customer);
 }
 
-
-/* === [Module: js/modules/11-customers-crm.js] === */
 /* ---------------- Customer Directory & Phone Management Hub ---------------- */
 function renderCustomersPage(main){
   if(!state.custSearch) state.custSearch = '';
@@ -11616,11 +11618,10 @@ function renderCustomersPage(main){
         <table>
           <thead>
             <tr>
-              <th style="text-align:right;">اسم العميل</th>
-              <th style="text-align:right;">رقم الهاتف والاتصال</th>
-              <th style="text-align:center;">أجهزة الصيانة</th>
-              <th style="text-align:right;">البريد / الملاحظات</th>
-              <th style="text-align:center;min-width:220px;">الإجراءات السريعة</th>
+              <th style="text-align:right;width:32%;">اسم العميل</th>
+              <th style="text-align:right;width:24%;">رقم الهاتف والاتصال</th>
+              <th style="text-align:center;width:14%;">أجهزة الصيانة</th>
+              <th style="text-align:right;width:30%;">البريد / الملاحظات</th>
             </tr>
           </thead>
           <tbody>
@@ -11636,7 +11637,7 @@ function renderCustomersPage(main){
               const isSelectedCust = String(cName) === String(state.selectedCustomerId);
 
               return `
-                <tr class="selectable-row ${isSelectedCust ? 'selected-row' : ''}" data-cust-name="${escapeHtml(cName)}" data-cust-phone="${escapeHtml(cPhone||'')}" onclick="handleCustomerRowClick('${escapeHtml(cName)}', '${escapeHtml(cPhone||'')}', event)">
+                <tr class="selectable-row ${isSelectedCust ? 'selected-row' : ''}" data-cust-name="${escapeHtml(cName)}" data-cust-phone="${escapeHtml(cPhone||'')}" onclick="handleCustomerRowClick('${escapeHtml(cName)}', '${escapeHtml(cPhone||'')}', event)" style="cursor:pointer;">
                   <td>
                     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                       ${isSelectedCust ? '<span class="selected-badge-indicator">✓</span>' : ''}
@@ -11652,44 +11653,20 @@ function renderCustomersPage(main){
                         <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" class="btn btn-ghost btn-xs" style="padding:2px 6px;color:#22c55e;" title="محادثة واتساب" onclick="event.stopPropagation();">💬</a>
                       </div>
                     ` : `
-                      <button class="btn btn-ghost btn-xs edit-cust-quick-phone-btn" data-custtitle="${escapeHtml(cTitle)}" data-custname="${escapeHtml(cName)}" style="color:var(--amber-text);border-color:var(--amber);font-weight:700;" onclick="event.stopPropagation();">
+                      <button class="btn btn-ghost btn-xs edit-cust-quick-phone-btn" style="color:var(--amber-text);border-color:var(--amber);font-weight:700;" onclick="event.stopPropagation(); openQuickAddPhoneModal('${escapeHtml(cName)}', '${escapeHtml(cTitle||'')}');" title="إضافة رقم هاتف للعميل">
                         ⚠️ إضافة رقم الهاتف
                       </button>
                     `}
                   </td>
                   <td style="text-align:center;">
                     ${clientReceipts.length > 0 ? `
-                      <button class="btn btn-ghost btn-xs view-cust-receipts-btn" data-custname="${escapeHtml(cName)}" style="font-weight:800;color:var(--primary);" onclick="event.stopPropagation();">
+                      <button class="btn btn-ghost btn-xs view-cust-receipts-btn" style="font-weight:800;color:var(--primary);" onclick="event.stopPropagation(); viewCustomerReceiptsInArchive('${escapeHtml(cName)}');" title="استعراض أجهزة العميل بالأرشيف">
                         🛠️ ${clientReceipts.length} جهاز
                       </button>
                     ` : `<span style="color:var(--ink-secondary);font-size:11px;">-</span>`}
                   </td>
                   <td style="font-size:11.5px;color:var(--ink-secondary);">
                     ${highlightSpotlightMatch(c.email || c.address || '-', state.custSearch)}
-                  </td>
-                  <td style="text-align:center;" onclick="event.stopPropagation();">
-                    <div style="display:inline-flex;gap:4px;flex-wrap:wrap;justify-content:center;">
-                      <button class="btn btn-primary btn-xs font-bold" onclick="openCustomerActionSheet('${escapeHtml(cName)}', '${escapeHtml(cPhone||'')}', '${escapeHtml(cTitle)}', '${escapeHtml(c.email||'')}'); event.stopPropagation();" title="فتح لوحة الإجراءات الموحدة للعميل">
-                        ⚡ خيارات العميل
-                      </button>
-                      <button class="btn btn-xs" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-weight:700;" onclick="openCustomerStatementModal('${escapeHtml(cName)}', '${escapeHtml(cPhone||'')}'); event.stopPropagation();" title="كشف حساب تفصيلي للعميل">
-                        📊 كشف حساب
-                      </button>
-                      <button class="btn btn-ghost btn-xs edit-cust-btn" data-custtitle="${escapeHtml(cTitle)}" data-custname="${escapeHtml(cName)}" data-custphone="${escapeHtml(cPhone||'')}" data-custemail="${escapeHtml(c.email||'')}">
-                        ✏️ تعديل
-                      </button>
-                      <button class="btn btn-ghost btn-xs cust-new-receipt-btn" data-custtitle="${escapeHtml(cTitle)}" data-custname="${escapeHtml(cName)}" data-custphone="${escapeHtml(cPhone||'')}" style="color:var(--blue-text);">
-                        ➕ صيانة
-                      </button>
-                      <button class="btn btn-ghost btn-xs cust-new-inv-btn" data-custtitle="${escapeHtml(cTitle)}" data-custname="${escapeHtml(cName)}" data-custphone="${escapeHtml(cPhone||'')}" style="color:var(--purple);">
-                        🧾 فاتورة
-                      </button>
-                      ${clientReceipts.length > 1 ? `
-                        <button class="btn btn-xs" style="background:#ede9fe;color:#6d28d9;border:1px solid #c4b5fd;font-weight:800;" onclick="openCustomerConsolidatedInvoiceModal('${escapeHtml(cName)}'); event.stopPropagation();" title="إصدار فاتورة مجمعة لكافة أجهزة هذا العميل">
-                          📑 مجمعة
-                        </button>
-                      ` : ''}
-                    </div>
                   </td>
                 </tr>
               `;
@@ -11737,56 +11714,6 @@ function renderCustomersPage(main){
   // Export Excel
   document.getElementById('exportCustsExcelBtn').onclick = ()=>exportCustomersToExcel(allCusts);
 
-  // Edit Customer
-  main.querySelectorAll('.edit-cust-btn, .edit-cust-quick-phone-btn').forEach(btn => {
-    btn.onclick = ()=>{
-      const title = btn.dataset.custtitle || '';
-      const name = btn.dataset.custname;
-      const phone = btn.dataset.custphone || '';
-      const email = btn.dataset.custemail || '';
-      openEditCustomerModal({ title, name, phone, email });
-    };
-  });
-
-  // View Customer Receipts in Archive
-  main.querySelectorAll('.view-cust-receipts-btn').forEach(btn => {
-    btn.onclick = ()=>{
-      state.tab = 'archive';
-      state.archiveFilter.q = btn.dataset.custname;
-      renderMain();
-    };
-  });
-
-  // New Receipt for customer
-  main.querySelectorAll('.cust-new-receipt-btn').forEach(btn => {
-    btn.onclick = ()=>{
-      startNewDraft();
-      state.draft.customer.title = btn.dataset.custtitle || '';
-      state.draft.customer.name = btn.dataset.custname;
-      state.draft.customer.phone = btn.dataset.custphone || '';
-      state.tab = 'new';
-      renderMain();
-    };
-  });
-
-  // New Invoice for customer
-  main.querySelectorAll('.cust-new-inv-btn').forEach(btn => {
-    btn.onclick = ()=>{
-      const newInv = {
-        InvoiceNumber: typeof nextInvoiceNumber === 'function' ? nextInvoiceNumber() : '',
-        Date: typeof todayISO === 'function' ? todayISO() : new Date().toISOString().slice(0, 10),
-        DueDate: typeof todayISO === 'function' ? todayISO() : new Date().toISOString().slice(0, 10),
-        CustomerTitle: btn.dataset.custtitle || '',
-        CustomerName: btn.dataset.custname || '',
-        CustomerPhone: btn.dataset.custphone || '',
-        Type: 'مبيعات',
-        Items: [],
-        Subtotal: 0, TaxPercent: 0, TaxAmount: 0, Discount: 0, Total: 0, AmountPaid: 0, Remaining: 0,
-        Status: 'غير مدفوعة (آجلة)', PaymentMethod: 'نقدي'
-      };
-      openInvoiceModal(newInv, true);
-    };
-  });
   if(typeof window.renderUnifiedSelectionBar === 'function'){
     window.renderUnifiedSelectionBar();
   }
@@ -17338,6 +17265,8 @@ function getAccountBadgeHtml(t){
   return '<span class="badge" style="background:#fee2e2;color:#b91c1c;font-weight:800;border:1px solid #fecaca;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;">💸 ' + (t.accountTag || '5200 مصروف') + '</span>';
 }
 
+
+/* === [Module: js/modules/13-treasury-expenses.js] === */
 /* ---------------- Daily Journal Page View (شاشة اليومية وحركة الخزينة العامة) ---------------- */
 function renderDailyJournalPage(main){
   if(!state.dailyDateFilter) state.dailyDateFilter = 'today'; // 'today' | 'yesterday' | 'week' | 'month' | 'all' | 'custom'
@@ -17809,8 +17738,6 @@ function renderDailyJournalSectionApp(app){
   renderDailyJournalPage(document.getElementById('main'));
 }
 
-
-/* === [Module: js/modules/13-treasury-expenses.js] === */
 /* ---------------- Cash Drawer & Treasury Application (حركة الخزينة والدرج وتقفيل الوردية) ---------------- */
 function renderCashDrawerSectionApp(app){
   if(!canUserAccessSection('cashdrawer')){
@@ -24418,8 +24345,8 @@ function openCustomerStatementModal(custName, custPhone){
 
   // 3. POS Sales
   (state.sales || []).forEach(s => {
-    const sName = (s.CustomerName || '').trim().toLowerCase();
-    const sPhone = (s.CustomerPhone || '').trim();
+    const sName = String(s.CustomerName || '').trim().toLowerCase();
+    const sPhone = String(s.CustomerPhone || '').trim();
     const isMatch = (sName && sName === custName.toLowerCase()) || (cPhone && sPhone === cPhone);
     if(isMatch){
       const tot = Number(s.Total || 0);
@@ -24440,8 +24367,8 @@ function openCustomerStatementModal(custName, custPhone){
   // 4. Invoices
   (state.invoices || []).forEach(inv => {
     if(inv.ReferenceType !== 'Receipt' && inv.ReferenceType !== 'POS_Sale'){
-      const invName = (inv.CustomerName || '').trim().toLowerCase();
-      const invPhone = (inv.CustomerPhone || '').trim();
+      const invName = String(inv.CustomerName || '').trim().toLowerCase();
+      const invPhone = String(inv.CustomerPhone || '').trim();
       const isMatch = (invName && invName === custName.toLowerCase()) || (cPhone && invPhone === cPhone);
       if(isMatch){
         transactions.push({

@@ -1102,6 +1102,37 @@ window.deleteReceiptDirect = function(receiptId, receiptNum){
    UNIFIED ACTIONS & SELECTION ENGINE (المحرك الموحد للاختيار وإجراءات البرنامج)
    ========================================================================== */
 
+window.startNewReceiptForCustomer = function(name, phone, title=''){
+  startNewDraft();
+  state.draft.customer.title = title || '';
+  state.draft.customer.name = name || '';
+  state.draft.customer.phone = phone || '';
+  state.tab = 'new';
+  renderMain();
+};
+
+window.startNewInvoiceForCustomer = function(name, phone, title=''){
+  const newInv = {
+    InvoiceNumber: typeof nextInvoiceNumber === 'function' ? nextInvoiceNumber() : '',
+    Date: typeof todayISO === 'function' ? todayISO() : new Date().toISOString().slice(0, 10),
+    DueDate: typeof todayISO === 'function' ? todayISO() : new Date().toISOString().slice(0, 10),
+    CustomerTitle: title || '',
+    CustomerName: name || '',
+    CustomerPhone: phone || '',
+    Type: 'مبيعات',
+    Items: [],
+    Subtotal: 0, TaxPercent: 0, TaxAmount: 0, Discount: 0, Total: 0, AmountPaid: 0, Remaining: 0,
+    Status: 'غير مدفوعة (آجلة)', PaymentMethod: 'نقدي'
+  };
+  openInvoiceModal(newInv, true);
+};
+
+window.viewCustomerReceiptsInArchive = function(custName){
+  state.tab = 'archive';
+  state.archiveFilter.q = custName || '';
+  renderMain();
+};
+
 function getOrCreateUnifiedSelectionBar(){
   let bar = document.getElementById('unifiedSelectionBar');
   if(!bar){
@@ -1318,8 +1349,10 @@ window.renderUnifiedSelectionBar = function(){
   if(state.tab === 'customers' && state.selectedCustomerId){
     const custName = state.selectedCustomerId;
     const allCusts = state.customers || [];
-    const cust = allCusts.find(c => extractCustomerName(c) === custName);
-    const cPhone = (cust && extractCustomerPhone(cust)) || '';
+    const cust = allCusts.find(c => extractCustomerName(c) === custName) || {};
+    const cTitle = extractCustomerTitle(cust) || '';
+    const cPhone = extractCustomerPhone(cust) || '';
+    const cEmail = cust.email || '';
     const clientReceipts = (state.receipts || []).filter(r => {
       const rName = extractCustomerName(r);
       const rPhone = extractCustomerPhone(r);
@@ -1334,29 +1367,50 @@ window.renderUnifiedSelectionBar = function(){
         </div>
         <div style="font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
           <span style="font-weight:800;color:var(--ink);">${escapeHtml(custName)}</span>
+          ${cTitle ? `<span class="badge" style="background:var(--paper2);color:var(--primary);font-size:11px;font-weight:700;border:1px solid var(--line);padding:1px 6px;border-radius:4px;">${escapeHtml(cTitle)}</span>` : ''}
           ${cPhone && cPhone !== '0000000000' ? `<span class="mono" style="color:var(--ink-secondary);font-size:11.5px;direction:ltr;">${escapeHtml(cPhone)}</span>` : ''}
           <span class="badge badge-blue" style="font-size:10.5px;">🛠️ ${clientReceipts.length} جهاز مسجل</span>
         </div>
       </div>
 
       <div class="unified-bar-actions">
-        <button class="unified-bar-btn btn-primary" onclick="openCustomerActionSheet('${escapeHtml(custName)}', '${escapeHtml(cPhone)}');" title="فتح لوحة إجراءات العميل الموحدة">
+        <button class="unified-bar-btn btn-primary" onclick="openCustomerActionSheet('${escapeHtml(custName)}', '${escapeHtml(cPhone)}', '${escapeHtml(cTitle)}', '${escapeHtml(cEmail)}');" title="فتح لوحة إجراءات وخيارات العميل الموحدة">
           ⚡ خيارات العميل
         </button>
-        <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="document.querySelector('tr.selected-row .edit-cust-btn')?.click();" title="تعديل بيانات العميل">
+        <button class="unified-bar-btn" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-weight:700;" onclick="openCustomerStatementModal('${escapeHtml(custName)}', '${escapeHtml(cPhone)}');" title="كشف حساب تفصيلي للعميل والمبيعات والتحصيلات">
+          📊 كشف حساب
+        </button>
+        <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="openEditCustomerModal({ title: '${escapeHtml(cTitle)}', name: '${escapeHtml(custName)}', phone: '${escapeHtml(cPhone)}', email: '${escapeHtml(cEmail)}' });" title="تعديل بيانات العميل">
           ✏️ تعديل
         </button>
-        <button class="unified-bar-btn btn-blue" onclick="document.querySelector('tr.selected-row .cust-new-receipt-btn')?.click();" title="إنشاء إيصال صيانة جديد لهذا العميل">
+        <button class="unified-bar-btn btn-blue" onclick="startNewReceiptForCustomer('${escapeHtml(custName)}', '${escapeHtml(cPhone)}', '${escapeHtml(cTitle)}');" title="إنشاء إيصال صيانة جديد لهذا العميل">
           ➕ إيصال صيانة
         </button>
-        <button class="unified-bar-btn btn-ghost" style="background:#faf5ff;color:#7c3aed;border:1px solid #ddd6fe;" onclick="document.querySelector('tr.selected-row .cust-new-inv-btn')?.click();" title="إنشاء فاتورة جديدة">
+        <button class="unified-bar-btn btn-ghost" style="background:#faf5ff;color:#7c3aed;border:1px solid #ddd6fe;" onclick="startNewInvoiceForCustomer('${escapeHtml(custName)}', '${escapeHtml(cPhone)}', '${escapeHtml(cTitle)}');" title="إنشاء فاتورة جديدة">
           🧾 فاتورة
         </button>
+        ${clientReceipts.length > 0 ? `
+          <button class="unified-bar-btn btn-ghost" style="color:var(--primary);font-weight:800;border:1px solid var(--line);" onclick="viewCustomerReceiptsInArchive('${escapeHtml(custName)}');" title="استعراض أجهزة العميل بالأرشيف">
+            📁 الأجهزة (${clientReceipts.length})
+          </button>
+        ` : ''}
+        ${clientReceipts.length > 1 ? `
+          <button class="unified-bar-btn btn-ghost" style="background:#ede9fe;color:#6d28d9;border:1px solid #c4b5fd;font-weight:800;" onclick="openCustomerConsolidatedInvoiceModal('${escapeHtml(custName)}');" title="إصدار فاتورة مجمعة لكافة أجهزة هذا العميل">
+            📑 فاتورة مجمعة
+          </button>
+        ` : ''}
         ${cPhone && cPhone !== '0000000000' ? `
-          <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" class="unified-bar-btn btn-whatsapp" style="text-decoration:none;">
+          <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" class="unified-bar-btn btn-whatsapp" style="text-decoration:none;" title="محادثة واتساب">
             ${WA_ICON} واتساب
           </a>
-        ` : ''}
+          <a href="tel:${cPhone}" class="unified-bar-btn btn-ghost" style="text-decoration:none;border:1px solid var(--line);" title="اتصال هاتفي">
+            📞 اتصال
+          </a>
+        ` : `
+          <button class="unified-bar-btn btn-amber" onclick="openQuickAddPhoneModal('${escapeHtml(custName)}', '');" title="إضافة رقم هاتف للعميل">
+            ⚠️ إضافة هاتف
+          </button>
+        `}
         <button class="unified-bar-btn-close" onclick="deselectCurrentSelection()" title="إلغاء التحديد">
           ✕
         </button>
@@ -1393,11 +1447,12 @@ window.renderUnifiedSelectionBar = function(){
           <span>📌 شريط إجراءات العملاء الموحد</span>
         </div>
         <div style="font-size:12px;color:var(--ink-secondary);">
-          اضغط على أي عميل لتفعيل خيارات التعديل والمراسلة وإيصالات الصيانة
+          اضغط على أي عميل من الجدول أدناه لتفعيل خيارات التعديل والمراسلة وإيصالات الصيانة وكشف الحساب
         </div>
       </div>
       <div class="unified-bar-actions" style="opacity:0.55;pointer-events:none;">
         <button class="unified-bar-btn btn-primary" disabled>⚡ خيارات العميل</button>
+        <button class="unified-bar-btn" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-weight:700;" disabled>📊 كشف حساب</button>
         <button class="unified-bar-btn btn-ghost" disabled>✏️ تعديل</button>
         <button class="unified-bar-btn btn-blue" disabled>➕ إيصال صيانة</button>
         <button class="unified-bar-btn btn-ghost" disabled>🧾 فاتورة</button>
@@ -1846,62 +1901,9 @@ window.selectCustomer = function(custName, custPhone){
     }
   });
 
-  const cPhone = custPhone || '';
-  const clientReceipts = (state.receipts || []).filter(r => {
-    const rName = extractCustomerName(r);
-    const rPhone = extractCustomerPhone(r);
-    return (rName && rName.toLowerCase() === custName.toLowerCase()) || (cPhone && rPhone === cPhone);
-  });
-
-  const bar = getOrCreateUnifiedSelectionBar();
-  bar.innerHTML = `
-    <div class="unified-bar-info">
-      <div class="unified-bar-badge" style="background:#eff6ff;color:#2563eb;">
-        <span>👤 عميل مختار</span>
-      </div>
-      <div style="font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-        <span style="font-weight:800;color:var(--ink);">${escapeHtml(custName)}</span>
-        ${cPhone && cPhone !== '0000000000' ? `<span class="mono" style="color:var(--ink-secondary);font-size:11.5px;direction:ltr;">${escapeHtml(cPhone)}</span>` : ''}
-        <span class="badge badge-blue" style="font-size:10.5px;">🛠️ ${clientReceipts.length} جهاز مسجل</span>
-      </div>
-    </div>
-
-    <div class="unified-bar-actions">
-      <button class="unified-bar-btn btn-primary" onclick="openCustomerActionSheet('${escapeHtml(custName)}', '${escapeHtml(cPhone)}');" title="فتح لوحة إجراءات العميل الموحدة">
-        ⚡ خيارات العميل
-      </button>
-      <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="document.querySelector('tr.selected-row .edit-cust-btn')?.click();" title="تعديل بيانات العميل">
-        ✏️ تعديل
-      </button>
-      <button class="unified-bar-btn btn-blue" onclick="document.querySelector('tr.selected-row .cust-new-receipt-btn')?.click();" title="إنشاء إيصال صيانة جديد لهذا العميل">
-        ➕ إيصال صيانة
-      </button>
-      <button class="unified-bar-btn btn-ghost" style="background:#faf5ff;color:#7c3aed;border:1px solid #ddd6fe;" onclick="document.querySelector('tr.selected-row .cust-new-inv-btn')?.click();" title="إنشاء فاتورة جديدة">
-        🧾 فاتورة
-      </button>
-      ${clientReceipts.length > 0 ? `
-        <button class="unified-bar-btn btn-ghost" style="color:var(--primary);font-weight:800;border:1px solid var(--line);" onclick="document.querySelector('tr.selected-row .view-cust-receipts-btn')?.click();" title="استعراض أجهزة العميل بالأرشيف">
-          📁 أجهزة العميل (${clientReceipts.length})
-        </button>
-      ` : ''}
-      ${cPhone && cPhone !== '0000000000' ? `
-        <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" class="unified-bar-btn btn-whatsapp" style="text-decoration:none;">
-          ${WA_ICON} واتساب
-        </a>
-        <a href="tel:${cPhone}" class="unified-bar-btn btn-ghost" style="text-decoration:none;border:1px solid var(--line);" title="اتصال هاتفي">
-          📞 اتصال
-        </a>
-      ` : `
-        <button class="unified-bar-btn btn-amber" onclick="openQuickAddPhoneModal('${escapeHtml(custName)}', '')">
-          ⚠️ إضافة هاتف
-        </button>
-      `}
-      <button class="unified-bar-btn-close" onclick="deselectCurrentSelection()" title="إلغاء التحديد">
-        ✕
-      </button>
-    </div>
-  `;
-  bar.classList.add('active');
+  if(typeof window.renderUnifiedSelectionBar === 'function'){
+    window.renderUnifiedSelectionBar();
+  }
 };
 
 window.handleCustomerRowClick = function(custName, custPhone, evt){
@@ -1949,12 +1951,12 @@ window.openCustomerActionSheet = function(custName, custPhone, custTitle, custEm
 
       <div class="action-sheet-section-title">⚡ العمليات والمعاملات المباشرة</div>
       <div class="action-sheet-grid">
-        <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); document.querySelector('tr.selected-row .cust-new-receipt-btn')?.click();">
+        <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); startNewReceiptForCustomer('${escapeHtml(custName)}', '${escapeHtml(custPhone||'')}', '${escapeHtml(custTitle||'')}');">
           <div class="act-icon">➕</div>
           <div class="act-label">إيصال صيانة جديد</div>
           <div class="act-desc">استلام جهاز للعميل</div>
         </div>
-        <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); document.querySelector('tr.selected-row .cust-new-inv-btn')?.click();">
+        <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); startNewInvoiceForCustomer('${escapeHtml(custName)}', '${escapeHtml(custPhone||'')}', '${escapeHtml(custTitle||'')}');">
           <div class="act-icon">🧾</div>
           <div class="act-label">فاتورة جديدة</div>
           <div class="act-desc">إصدار فاتورة بيع/خدمة</div>
@@ -1964,7 +1966,7 @@ window.openCustomerActionSheet = function(custName, custPhone, custTitle, custEm
           <div class="act-label">كشف حساب تفصيلي</div>
           <div class="act-desc">سجل حركات ورصيد العميل</div>
         </div>
-        <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); document.querySelector('tr.selected-row .edit-cust-btn')?.click();">
+        <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); openEditCustomerModal({ title: '${escapeHtml(custTitle||'')}', name: '${escapeHtml(custName)}', phone: '${escapeHtml(custPhone||'')}', email: '${escapeHtml(custEmail||'')}' });">
           <div class="act-icon">✏️</div>
           <div class="act-label">تعديل البيانات</div>
           <div class="act-desc">تحديث الهاتف والاسم</div>
@@ -1999,7 +2001,7 @@ window.openCustomerActionSheet = function(custName, custPhone, custTitle, custEm
           </div>
         `}
         ${clientReceipts.length > 0 ? `
-          <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); document.querySelector('tr.selected-row .view-cust-receipts-btn')?.click();">
+          <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); viewCustomerReceiptsInArchive('${escapeHtml(custName)}');">
             <div class="act-icon" style="color:var(--primary);">📁</div>
             <div class="act-label">سجل أجهزة العميل</div>
             <div class="act-desc">${clientReceipts.length} جهاز في الأرشيف</div>
@@ -2343,106 +2345,4 @@ function renderArchive(main){
   if(typeof window.renderUnifiedSelectionBar === 'function'){
     window.renderUnifiedSelectionBar();
   }
-}
-
-/* ---------------- Spotlight Search Normalization & Matching ---------------- */
-function normalizeSearchText(str){
-  if(!str) return '';
-  return String(str)
-    .replace(/[\u064B-\u065F\u0670]/g, '') // remove tashkeel
-    .replace(/[أإآء]/g, 'ا')
-    .replace(/ة/g, 'ه')
-    .replace(/[ى]/g, 'ي')
-    .replace(/[\u0660-\u0669]/g, d => String.fromCharCode(d.charCodeAt(0) - 0x0660 + 48))
-    .replace(/[\u06F0-\u06F9]/g, d => String.fromCharCode(d.charCodeAt(0) - 0x06F0 + 48))
-    .toLowerCase()
-    .trim();
-}
-
-function highlightSpotlightMatch(originalText, query){
-  if(!originalText) return '';
-  if(!query || !query.trim()) return escapeHtml(originalText);
-  const qClean = normalizeSearchText(query);
-  if(!qClean) return escapeHtml(originalText);
-
-  const tokens = qClean.split(/\s+/).filter(Boolean);
-  if(!tokens.length) return escapeHtml(originalText);
-
-  try {
-    const pattern = tokens.map(tok => {
-      let p = '';
-      for(const ch of tok){
-        if(ch === 'ا') p += '[اأإآء]';
-        else if(ch === 'ه') p += '[هة]';
-        else if(ch === 'ي') p += '[ييى]';
-        else p += ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      }
-      return p;
-    }).join('|');
-    const regex = new RegExp(`(${pattern})`, 'gi');
-    return escapeHtml(originalText).replace(regex, '<mark class="spotlight-mark" style="background:#fef08a;color:#854d0e;padding:0 2px;border-radius:2px;font-weight:900;">$1</mark>');
-  } catch(e) {
-    return escapeHtml(originalText);
-  }
-}
-
-function filterCustomersSpotlight(allCusts, searchStr){
-  if(!searchStr || !searchStr.trim()) return allCusts;
-  const qClean = normalizeSearchText(searchStr);
-  const tokens = qClean.split(/\s+/).filter(Boolean);
-
-  const scored = [];
-
-  allCusts.forEach(c => {
-    const cName = extractCustomerName(c) || '';
-    const cPhone = extractCustomerPhone(c) || '';
-    const cNotes = c.notes || c.Notes || c.email || c.address || '';
-    
-    const clientReceipts = (state.receipts||[]).filter(r => {
-      const rName = extractCustomerName(r);
-      const rPhone = extractCustomerPhone(r);
-      return (rName && rName.toLowerCase() === cName.toLowerCase()) || (cPhone && rPhone === cPhone);
-    });
-
-    const normName = normalizeSearchText(cName);
-    const normPhone = normalizeSearchText(cPhone);
-    const normNotes = normalizeSearchText(cNotes);
-
-    const devStrings = clientReceipts.map(r => {
-      const d = r.device || (r.devices && r.devices[0]) || {};
-      return normalizeSearchText(`${d.category || ''} ${d.brand || ''} ${d.model || ''} ${r.receiptNumber || ''}`);
-    }).join(' ');
-
-    const fullTarget = `${normName} ${normPhone} ${normNotes} ${devStrings}`;
-
-    // 1. All tokens match target
-    const allTokensMatch = tokens.every(tok => fullTarget.includes(tok));
-
-    // 2. Sequential letters match (Spotlight: "مح عل" matches "محمد علي")
-    let seqMatch = false;
-    if(qClean.length >= 2){
-      let idx = 0;
-      for(let i = 0; i < normName.length && idx < qClean.length; i++){
-        if(normName[i] === qClean[idx] || (qClean[idx] === ' ' && normName[i] === ' ')) idx++;
-      }
-      if(idx === qClean.length) seqMatch = true;
-    }
-
-    if(!allTokensMatch && !seqMatch) return;
-
-    let score = 10;
-    if(normName === qClean) score += 100;
-    else if(normName.startsWith(qClean)) score += 80;
-    else if(normName.includes(qClean)) score += 60;
-    else if(allTokensMatch) score += 50;
-    if(seqMatch) score += 35;
-
-    if(normPhone.startsWith(qClean)) score += 75;
-    else if(normPhone.includes(qClean)) score += 45;
-
-    scored.push({ customer: c, score });
-  });
-
-  scored.sort((a, b) => b.score - a.score);
-  return scored.map(x => x.customer);
 }

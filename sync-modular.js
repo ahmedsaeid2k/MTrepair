@@ -1,7 +1,9 @@
 /**
  * microERP Synchronizer & Build Automation
  * Keeps the monolithic index.html and the modular app-modular architecture in 100% perfect sync.
- * Run anytime changes are made:
+ * Dynamically computes module boundaries so it never breaks when code is added or removed.
+ *
+ * Usage:
  *   node sync-modular.js
  */
 
@@ -15,35 +17,71 @@ const indexPath = path.join(rootDir, 'index.html');
 const indexText = fs.readFileSync(indexPath, 'utf8');
 const lines = indexText.split('\n');
 
-// Exact module boundaries in index.html (1-indexed start lines)
+function findLine(predicate, startFrom = 0) {
+  for (let i = startFrom; i < lines.length; i++) {
+    if (predicate(lines[i], i)) return i + 1;
+  }
+  throw new Error(`Could not find boundary line starting from index ${startFrom}`);
+}
+
+// Dynamically compute exact module boundaries in index.html (1-indexed start lines)
+const cssVarStart = findLine(l => l.includes(':root {'));
+const cssBaseStart = findLine(l => l.trim() === '* {' || l.includes('* { box-sizing:'), cssVarStart);
+const cssCompStart = findLine(l => l.includes('Apple iOS Design System'), cssBaseStart);
+const cssPosStart = findLine(l => l.includes('Next-Gen POS Pro Terminal Styles'), cssCompStart);
+const cssPrintStart = findLine(l => l.includes('@media print {'), cssPosStart);
+const cssEnd = findLine(l => l.trim() === '</style>', cssPrintStart);
+
+const jsDigitsStart = findLine(l => l.includes('Universal Western Digits Enforcer'), cssEnd);
+const jsSyncStart = findLine(l => l.includes('Google Sheets API & Offline Sync Engine'), jsDigitsStart);
+const jsUtilsStart = findLine(l => l.includes('Toast Notification Utility') || l.includes('/* ---- Toast Notification'), jsSyncStart);
+const jsCoaStart = findLine(l => l.includes('Chart of Accounts & General Ledger'), jsUtilsStart);
+const jsAuthStart = findLine(l => l.includes('User Management & Auth Engine'), jsCoaStart);
+const jsConfigStart = findLine(l => l.includes('Static Config & Defaults'), jsAuthStart);
+const jsStateStart = findLine(l => l.includes('/* ---------------- State ----------------'), jsConfigStart);
+const jsTrackStart = findLine(l => l.includes('Check URL for Public Customer Tracking'), jsStateStart);
+const jsShellStart = findLine(l => l.includes('/* ---------------- Init ---------------- */'), jsTrackStart);
+const jsReceiptsStart = findLine(l => l.includes('/* ---------------- New Receipt Form ---------------- */'), jsShellStart);
+const jsCustStart = findLine(l => l.includes('Spotlight Search Normalization') || l.includes('Customer Directory & Phone Management Hub'), jsReceiptsStart);
+const jsInvoicesStart = findLine(l => l.includes('/* ---------------- Invoices Management Screen View'), jsCustStart);
+const jsTreasuryStart = findLine(l => l.includes('/* ---------------- Daily Journal Page View'), jsInvoicesStart);
+const jsInvStart = findLine(l => l.includes('/* ---------------- Inventory Hub ---------------- */'), jsTreasuryStart);
+const jsPosStart = findLine(l => l.includes('/* ---------------- POS Section ---------------- */'), jsInvStart);
+const jsSuppliersStart = findLine(l => l.includes('/* ---------------- Suppliers, Purchases ---------------- */'), jsPosStart);
+const jsFinanceStart = findLine(l => l.includes('/* ---------------- Finance Section ---------------- */'), jsSuppliersStart);
+const jsSettingsStart = findLine(l => l.includes('/* ---------------- Enterprise Settings & Customization Center'), jsFinanceStart);
+const jsLoginStart = findLine(l => l.includes('/* ---------------- Login Screen ---------------- */'), jsSettingsStart);
+const jsBootStart = findLine(l => l.includes('restoreSession()'), jsLoginStart);
+const jsEnd = findLine(l => l.trim() === '</script>', jsBootStart);
+
 const markers = [
-  { file: 'css/01-variables.css', start: 15 },
-  { file: 'css/02-base.css', start: 176 },
-  { file: 'css/03-components.css', start: 1177 },
-  { file: 'css/04-pos.css', start: 1940 },
-  { file: 'css/05-print.css', start: 2315 },
-  { cssEnd: true, start: 3692 },
-  { file: 'js/core/01-digits.js', start: 3699 },
-  { file: 'js/core/02-api-sync.js', start: 3800 },
-  { file: 'js/core/03-utils-and-mappings.js', start: 3986 },
-  { file: 'js/core/04-chart-of-accounts.js', start: 5378 },
-  { file: 'js/core/05-auth-and-audit.js', start: 5843 },
-  { file: 'js/core/06-config-defaults.js', start: 6426 },
-  { file: 'js/core/07-state.js', start: 7056 },
-  { file: 'js/core/08-public-tracking.js', start: 7285 },
-  { file: 'js/modules/09-shell-and-router.js', start: 7379 },
-  { file: 'js/modules/10-receipts-maintenance.js', start: 9071 },
-  { file: 'js/modules/11-customers-crm.js', start: 11520 },
-  { file: 'js/modules/12-invoices-quotes.js', start: 16501 },
-  { file: 'js/modules/13-treasury-expenses.js', start: 17776 },
-  { file: 'js/modules/14-inventory-warehouse.js', start: 19234 },
-  { file: 'js/modules/15-pos-retail.js', start: 20359 },
-  { file: 'js/modules/16-suppliers-purchases.js', start: 22283 },
-  { file: 'js/modules/17-accounting-finance.js', start: 23108 },
-  { file: 'js/modules/18-settings-admin.js', start: 26123 },
-  { file: 'js/modules/19-login.js', start: 29747 },
-  { file: 'js/modules/20-app-boot.js', start: 30113 },
-  { jsEnd: true, start: 30128 }
+  { file: 'css/01-variables.css', start: cssVarStart },
+  { file: 'css/02-base.css', start: cssBaseStart },
+  { file: 'css/03-components.css', start: cssCompStart },
+  { file: 'css/04-pos.css', start: cssPosStart },
+  { file: 'css/05-print.css', start: cssPrintStart },
+  { cssEnd: true, start: cssEnd },
+  { file: 'js/core/01-digits.js', start: jsDigitsStart },
+  { file: 'js/core/02-api-sync.js', start: jsSyncStart },
+  { file: 'js/core/03-utils-and-mappings.js', start: jsUtilsStart },
+  { file: 'js/core/04-chart-of-accounts.js', start: jsCoaStart },
+  { file: 'js/core/05-auth-and-audit.js', start: jsAuthStart },
+  { file: 'js/core/06-config-defaults.js', start: jsConfigStart },
+  { file: 'js/core/07-state.js', start: jsStateStart },
+  { file: 'js/core/08-public-tracking.js', start: jsTrackStart },
+  { file: 'js/modules/09-shell-and-router.js', start: jsShellStart },
+  { file: 'js/modules/10-receipts-maintenance.js', start: jsReceiptsStart },
+  { file: 'js/modules/11-customers-crm.js', start: jsCustStart },
+  { file: 'js/modules/12-invoices-quotes.js', start: jsInvoicesStart },
+  { file: 'js/modules/13-treasury-expenses.js', start: jsTreasuryStart },
+  { file: 'js/modules/14-inventory-warehouse.js', start: jsInvStart },
+  { file: 'js/modules/15-pos-retail.js', start: jsPosStart },
+  { file: 'js/modules/16-suppliers-purchases.js', start: jsSuppliersStart },
+  { file: 'js/modules/17-accounting-finance.js', start: jsFinanceStart },
+  { file: 'js/modules/18-settings-admin.js', start: jsSettingsStart },
+  { file: 'js/modules/19-login.js', start: jsLoginStart },
+  { file: 'js/modules/20-app-boot.js', start: jsBootStart },
+  { jsEnd: true, start: jsEnd }
 ];
 
 let updatedCount = 0;

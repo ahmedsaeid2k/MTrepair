@@ -1265,8 +1265,8 @@ function openCustomerStatementModal(custName, custPhone){
 
   // 3. POS Sales
   (state.sales || []).forEach(s => {
-    const sName = (s.CustomerName || '').trim().toLowerCase();
-    const sPhone = (s.CustomerPhone || '').trim();
+    const sName = String(s.CustomerName || '').trim().toLowerCase();
+    const sPhone = String(s.CustomerPhone || '').trim();
     const isMatch = (sName && sName === custName.toLowerCase()) || (cPhone && sPhone === cPhone);
     if(isMatch){
       const tot = Number(s.Total || 0);
@@ -1287,8 +1287,8 @@ function openCustomerStatementModal(custName, custPhone){
   // 4. Invoices
   (state.invoices || []).forEach(inv => {
     if(inv.ReferenceType !== 'Receipt' && inv.ReferenceType !== 'POS_Sale'){
-      const invName = (inv.CustomerName || '').trim().toLowerCase();
-      const invPhone = (inv.CustomerPhone || '').trim();
+      const invName = String(inv.CustomerName || '').trim().toLowerCase();
+      const invPhone = String(inv.CustomerPhone || '').trim();
       const isMatch = (invName && invName === custName.toLowerCase()) || (cPhone && invPhone === cPhone);
       if(isMatch){
         transactions.push({

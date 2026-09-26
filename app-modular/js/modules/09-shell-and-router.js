@@ -26,12 +26,15 @@ async function init(){
   render();
   updateSyncStatusPill();
 
-  // If online, fetch fresh updates in background
+  // If online, fetch fresh updates in background via unified bootstrap
   if(navigator.onLine){
     try {
-      [state.users, state.receipts, state.customers, state.technicians, state.settings, state.payments, state.inventory, state.sales, state.quotations, state.services, state.purchases, state.suppliers, state.expenses, state.accounts, state.journalEntries, state.invoices] = await Promise.all([
-        loadUsers(), loadReceipts(), loadCustomers(), loadTechnicians(), loadSettings(), loadPayments(), loadInventory(), loadSales(), loadQuotations(), loadServices(), loadPurchases(), loadSuppliers(), loadExpenses(), loadAccounts(), loadJournalEntries(), loadInvoices()
-      ]);
+      const bOk = await fetchBootstrapData();
+      if(!bOk){
+        [state.users, state.receipts, state.customers, state.technicians, state.settings, state.payments, state.inventory, state.sales, state.quotations, state.services, state.purchases, state.suppliers, state.expenses, state.accounts, state.journalEntries, state.invoices] = await Promise.all([
+          loadUsers(), loadReceipts(), loadCustomers(), loadTechnicians(), loadSettings(), loadPayments(), loadInventory(), loadSales(), loadQuotations(), loadServices(), loadPurchases(), loadSuppliers(), loadExpenses(), loadAccounts(), loadJournalEntries(), loadInvoices()
+        ]);
+      }
       recoverAndSyncAllCustomerPhones(false);
       if(state.user) normalizeUserSections(state.user);
       render();
@@ -41,8 +44,9 @@ async function init(){
     }
   }
 
-  // Periodic multi-device cloud synchronization every 40 seconds
+  // Smart multi-device cloud synchronization (Every 90s, throttled and paused when tab is hidden)
   setInterval(async ()=>{
+    if(document.hidden) return; // Do not waste bandwidth/quota if tab is in background
     if(navigator.onLine){
       if(getSyncQueue().length > 0){
         await syncOfflineQueue();
@@ -67,14 +71,18 @@ async function init(){
         }
       }
     }
-  }, 40000);
+  }, 90000);
 
-  // Auto-sync whenever user returns to or focuses the window/tab from another device
+  // Smart focus sync with 3-minute cooldown to prevent network flooding when switching tabs
+  let lastFocusSyncTime = Date.now();
   window.addEventListener('focus', async () => {
+    const now = Date.now();
+    if(now - lastFocusSyncTime < 180000) return; // 3-minute cooldown
     if(navigator.onLine && !state.draft && state.currentSection === 'maintenance'){
       const isTyping = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT');
       const modalOpen = !!document.querySelector('.modal-overlay, .modal-backdrop, .modal, [id*="Modal"]');
       if(isTyping || modalOpen) return;
+      lastFocusSyncTime = now;
       try {
         const [freshReceipts, freshCustomers] = await Promise.all([loadReceipts(), loadCustomers()]);
         if(freshReceipts && freshReceipts.length) state.receipts = freshReceipts;

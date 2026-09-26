@@ -62,6 +62,25 @@ const SHEET_INVOICES = 'Invoices';
               ItemsSummary | ItemsJSON | Subtotal | TaxPercent | TaxAmount | Discount | Total |
               AmountPaid | Remaining | Status | PaymentMethod | ReferenceType | ReferenceID | Notes | By */
 
+/**
+ * Anti-DoS & Quota Protection Rate Limiter
+ * Tracks requests per minute via ScriptCache. Allows up to 60 req/min.
+ */
+function checkRateLimit(clientId) {
+  try {
+    const cache = CacheService.getScriptCache();
+    const key = 'rl_' + String(clientId || 'anonymous').replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 30);
+    const count = Number(cache.get(key) || 0) + 1;
+    if (count > 60) {
+      return false; // Rate limit exceeded (Anti-DoS)
+    }
+    cache.put(key, String(count), 60); // 1 minute window
+    return true;
+  } catch (e) {
+    return true; // Graceful fallback
+  }
+}
+
 function doGet(e) {
   const action = e.parameter.action;
   if (!action) {
@@ -69,7 +88,62 @@ function doGet(e) {
       .setTitle('ميكروERP')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1');
   }
+
+  // Anti-DoS Rate Limit Check
+  const clientKey = e.parameter.clientToken || e.parameter.user || 'anon_get';
+  if (!checkRateLimit(clientKey)) {
+    return jsonOut({ error: 'تم تجاوز الحد الأقصى لمعدل الطلبات في الدقيقة (Rate Limit Exceeded). يرجى الانتظار قليلاً.' }, 429);
+  }
+
   try {
+    // 🚀 Unified Bootstrap Endpoint: Reads all sheets in a single roundtrip (93% request reduction)
+    if (action === 'getBootstrapData') {
+      const receipts = getAllRows(SHEET_RECEIPTS);
+      const customers = getAllRows(SHEET_CUSTOMERS);
+      const technicians = getAllRows(SHEET_TECHNICIANS);
+      const rawSettings = getAllRows(SHEET_SETTINGS);
+      const settings = {};
+      rawSettings.forEach(r => settings[r.Key] = r.Value);
+      const payments = getAllRows(SHEET_PAYMENTS);
+      const inventory = getAllRows(SHEET_INVENTORY);
+      const sales = getAllRows(SHEET_SALES);
+      const quotations = getAllRows(SHEET_QUOTATIONS);
+      const services = getAllRows(SHEET_SERVICES);
+      const purchases = getAllRows(SHEET_PURCHASES);
+      const suppliers = getAllRows(SHEET_SUPPLIERS);
+      const expenses = getAllRows(SHEET_EXPENSES);
+      const accounts = getAllRows(SHEET_ACCOUNTS);
+      const journalEntries = getAllRows(SHEET_JOURNAL);
+      const invoices = getAllRows(SHEET_INVOICES);
+      const users = getAllRows(SHEET_USERS).map(u => ({
+        Name: u.Name,
+        Role: u.Role,
+        Sections: u.Sections || '',
+        Superuser: !!u.Superuser
+      }));
+
+      return jsonOut({
+        ok: true,
+        timestamp: new Date().toISOString(),
+        users,
+        receipts,
+        customers,
+        technicians,
+        settings,
+        payments,
+        inventory,
+        sales,
+        quotations,
+        services,
+        purchases,
+        suppliers,
+        expenses,
+        accounts,
+        journalEntries,
+        invoices
+      });
+    }
+
     if (action === 'getReceipts') return jsonOut(getAllRows(SHEET_RECEIPTS));
     if (action === 'getCustomers') return jsonOut(getAllRows(SHEET_CUSTOMERS));
     if (action === 'getTechnicians') return jsonOut(getAllRows(SHEET_TECHNICIANS));
@@ -117,16 +191,28 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  let body = {};
+  try {
+    body = JSON.parse(e.postData.contents);
+  } catch (parseErr) {
+    return jsonOut({ error: 'محتوى الطلب غير صالح (Invalid JSON)' }, 400);
+  }
+
+  // Anti-DoS Rate Limit Check on Writes
+  const clientKey = body.user || 'anon_post';
+  if (!checkRateLimit(clientKey)) {
+    return jsonOut({ error: 'تم تجاوز الحد الأقصى لعمليات الحفظ المتزامنة (Rate Limit Exceeded). يرجى الانتظار لحظات.' }, 429);
+  }
+
   const lock = LockService.getScriptLock();
   try {
-    // Wait up to 20 seconds for other concurrent requests to finish
-    lock.waitLock(20000);
+    // Wait up to 15 seconds for other concurrent requests to finish
+    lock.waitLock(15000);
   } catch (lockErr) {
     return jsonOut({ error: 'الخادم مشغول حالياً بتنفيذ عملية أخرى، يرجى المحاولة بعد لحظات' }, 503);
   }
 
   try {
-    const body = JSON.parse(e.postData.contents);
     const action = body.action;
 
     if (action === 'saveReceipt') {

@@ -1,0 +1,629 @@
+/* ---------------- Static Config & Defaults ---------------- */
+const DEFAULT_BRANDS = {
+  'لابتوب': ['Apple','HP','Dell','Lenovo','Toshiba','Asus','Acer','Huawei','MSI','أخرى'],
+  'موبايل': ['iPhone','Samsung','Oppo','Xiaomi','Redmi','Realme','Infinix','Huawei','أخرى'],
+  'تابلت': ['Apple','Samsung','Lenovo','Huawei','أخرى'],
+  'كاميرات مراقبة': ['Hikvision','Dahua','EZVIZ','Uniview','أخرى'],
+  'كمبيوتر مكتبي': ['Dell','HP','Lenovo','تجميع','أخرى'],
+  'شاشات': ['Samsung','LG','Dell','HP','BenQ','أخرى'],
+  'طابعات': ['HP','Canon','Epson','Brother','أخرى'],
+  'اكسسوار': ['أخرى'],
+  'أخرى': ['أخرى']
+};
+const BRANDS = DEFAULT_BRANDS;
+
+const DEFAULT_COMMON_FAULTS = ['باور / لا يعمل','شاشة / كسر','شحن / سوكت','ماء / سوائل','سوفتوير / ويندوز','كاميرا / عدسة','بطارية','سماعة / مايك','لوحة مفاتيح','فيروسات','بطء في الأداء','تسخين / مروحة','داتا / هارد ديسك','أخرى'];
+const COMMON_FAULTS = DEFAULT_COMMON_FAULTS;
+
+const STATUSES = [
+  {v:'قيد الفحص', cls:'st-check', icon:'🔍', desc:'جاري الفحص والتشخيص'},
+  {v:'الصيانة', cls:'st-repair', icon:'🛠️', desc:'قيد الإصلاح الفعلي'},
+  {v:'مكتمل', cls:'st-done', icon:'✅', desc:'تم الانتهاء وجاهز للتسليم'},
+  {v:'تم التسليم', cls:'st-delivered', icon:'🤝', desc:'تم تسليم الجهاز للعميل بنجاح'},
+  {v:'تعذرت الصيانة', cls:'st-failed', icon:'🚫', desc:'تعذر الإصلاح'},
+  {v:'رفض العميل', cls:'st-rejected', icon:'❌', desc:'رفض العميل التكلفة/الإصلاح'}
+];
+const EXPENSE_CATEGORIES = ['إيجار','كهرباء ومياه','بوفيه ونثريات','أدوات وصيانة مقر','شحن وتوصيل','رواتب وسلفيات','دعاية وإعلانات','أخرى'];
+
+const DEFAULT_TERMS = `1) فترة الفحص: يتم فحص الجهاز وتسعير التكلفة خلال مدة أقصاها 48 ساعة من الاستلام، ولا يتم الإصلاح النهائي إلا بعد موافقة العميل.
+2) استلام الأجهزة: الشركة غير مسؤولة عن أي جهاز متروك أكثر من 30 يوماً من إشعار العميل بالانتهاء.
+3) الضمان: يسري على قطع الغيار المبدلة والخدمة لمدة محددة حسب نوع الإصلاح، ولا يشمل سوء الاستخدام أو السوائل أو الكسر.
+4) البيانات: الشركة غير مسؤولة عن فقدان البيانات، يرجى أخذ نسخة احتياطية مسبقاً.
+5) لا يُسلم الجهاز إلا بموجب هذا الإيصال الأصلي أو إثبات الهوية.`;
+const TERMS = DEFAULT_TERMS;
+
+const DEFAULT_INVOICE_TERMS = `• البضاعة المباعة تخضع للضمان المحدد بالفاتورة والشركة غير مسؤولة عن سوء الاستخدام أو التلف الناتج عن تذبذب التيار الكهربائي.
+• لا يُقبل الاسترجاع أو الاستبدال إلا بوجود أصل الفاتورة وخلال المدة القانونية المقررة.`;
+
+const DEFAULT_QUOTE_TERMS = `• هذا البيان يعتبر عرض أسعار رسمي صالح لمدة 14 يوماً من تاريخ إصداره.
+• الأسعار والكميات الموضحة تشمل التوريد والتركيب والبرمجة وفق المواصفات المحددة.
+• الضمان يسري لمدة عام كامل ضد عيوب الصناعة على الأجهزة والمعدات مع توفير الدعم الفني.
+• يشترط لبدء التنفيذ سداد الدفعة المقدمة المتفق عليها واعتماد موقع ومسارات التمديدات.`;
+
+const DEFAULT_QUOTE_AGREEMENT_TERMS = `بند (1): موضوع العقد: يلتزم الطرف الأول (المنفذ) بتوريد وتركيب وتشغيل وبرمجة المنظومة الموضحة بجدول البنود بعاليه طبقاً لأعلى معايير الجودة والأصول الفنية المعمول بها.
+بند (2): شروط وسداد الدفعات: يلتزم الطرف الثاني (العميل) بسداد القيمة الإجمالية على النحو التالي: (50% دفعة مقدمة عند توقيع العقد وبدء الأعمال، 30% عند توريد المهمات والأجهزة بالموقع، و20% دفعة ختامية عند التشغيل النهائي والتسليم).
+بند (3): التزامات العميل: يلتزم الطرف الثاني بتوفير مصادر التغذية الكهربائية والإنترنت اللازمة ومسارات التمديدات وتأمين فريق العمل وتسهيل الدخول للموقع.
+بند (4): فترة الضمان والدعم الفني: يضمن الطرف الأول جودة المهمات والأجهزة لمدة (12 شهراً) من تاريخ الاستلام، مع تقديم خدمات الدعم الفني والصيانة المجانية للأعطال الفنية غير الناتجة عن سوء الاستخدام أو الكوارث الطبيعية وتذبذب التيار.
+بند (5): الملكية ومحضر التسليم: تظل كافة المهمات والأجهزة ملكاً للطرف الأول حتى سداد كامل المستحقات المالية، ويحرر محضر تسليم وتشغيل رسمي موقع من الطرفين فور إتمام المشروع.`;
+
+const DEFAULT_WA_TEMPLATES = {
+  cost_estimate: `مرحبًا {customer_name} 👋
+بخصوص جهازكم المسجل لدينا بمركز {shop_name}:
+📱 الجهاز: {device}
+🔢 إيصال صيانة رقم: {receipt_no}
+📅 تاريخ الاستلام: {date}
+
+🔍 تقرير الفحص وتشخيص العطل:
+{faults_report}
+
+━━━━━━━━━━━━━━━━━━━━
+📊 عرض ومقايسة تكلفة الصيانة:
+
+✅ في حالة الموافقة على الإصلاح:
+• إجمالي تكلفة الصيانة وقطع الغيار: *{cost} ج.م*
+{deposit_info}
+• المبلغ المطلوب سداده عند الاستلام: *{remaining} ج.م*
+• مدة الإصلاح المتوقعة: *{estimate_time}*
+{warranty_info}
+
+❌ في حالة عدم الرغبة في الإصلاح (رفض الصيانة):
+• تكلفة فحص الجهاز وتشخيص العطل الفني: *{inspection_fee} ج.م* فقط.
+(ملاحظة: لا تُدفع أي رسوم فحص في حالة الموافقة على الإصلاح).
+━━━━━━━━━━━━━━━━━━━━
+
+💬 يرجى الرد على هذه الرسالة بتأكيد (موافق) للبدء في صيانة الجهاز فوراً، أو إبلاغنا في حال رغبتكم بالاستلام.
+
+🔗 تتبع حالة جهازك مباشرة عبر الرابط:
+{track_url}
+
+{shop_name}
+📞 {shop_phone}
+📍 {shop_address}`,
+  check: `مرحبًا {customer_name} 👋\nتم استلام جهازكم ({device}) وهو قيد الفحص والتشخيص الفني حالياً 🔍\nرقم الإيصال: {receipt_no}\n🔗 تتبع حالة جهازك: {track_url}\n{shop_name}`,
+  repair: `مرحبًا {customer_name} 👋\nنحيطكم علماً بأن جهازكم ({device}) قيد الصيانة والإصلاح حالياً في {shop_name} 🛠️\nرقم الإيصال: {receipt_no}\n🔗 تتبع حالة جهازك: {track_url}`,
+  done: `مرحبًا {customer_name} 👋\nنود إبلاغكم بأنه تم الانتهاء من صيانة جهازكم ({device}) بنجاح وجاهز للاستلام الآن في {shop_name} ✅\n\n📌 رقم الإيصال: {receipt_no}\n💵 المبلغ المتبقي المطلوب: {remaining} ج.م\n🔗 تتبع جهازك مباشرة: {track_url}\n\nشكراً لثقتكم بنا!`,
+  delivered: `مرحبًا {customer_name} 👋\nتم تسليم جهازكم ({device}) بنجاح بموجب الإيصال رقم {receipt_no} 🤝\nيسري الضمان على قطع الغيار المبدلة والخدمة وفقاً للشروط المحددة بالإيصال.\nسعدنا بخدمتكم في {shop_name}، شكراً لثقتكم بنا! ✨`,
+  overdue: `مرحبًا {customer_name} 👋\nنود تذكيركم بوجود جهازكم ({device}) جاهزاً للاستلام لدينا في {shop_name} بموجب الإيصال رقم {receipt_no}.\nالمتبقي المطلوب: {remaining} ج.م.\nيرجى التفضل بالاستلام خلال أوقات العمل الرسمية.`,
+  unrepairable: `مرحبًا {customer_name} 👋\nبخصوص جهازكم ({device}) بموجب الإيصال رقم {receipt_no}، نعتذر منك حيث تعذر الإصلاح لعدم توفر قطع الغيار أو طبيعة العطل. يمكنك التفضل لاستلام الجهاز في أي وقت من {shop_name}.`,
+  rejected: `مرحبًا {customer_name} 👋\nبناءً على طلبكم، تم إلغاء الصيانة لجهازكم ({device}) بموجب الإيصال رقم {receipt_no} والجهاز جاهز للاستلام في {shop_name}.`
+};
+
+/* Settings Getter Helpers */
+function getBrands(){ return (state.settings && state.settings.brands) || DEFAULT_BRANDS; }
+function getCommonFaults(){ return (state.settings && state.settings.commonFaults) || DEFAULT_COMMON_FAULTS; }
+function getTerms(){ return (state.settings && state.settings.terms) || DEFAULT_TERMS; }
+function getInvoiceTerms(){ return (state.settings && state.settings.invoiceTerms) || DEFAULT_INVOICE_TERMS; }
+function getQuoteTerms(){ return (state.settings && state.settings.quoteTerms) || DEFAULT_QUOTE_TERMS; }
+function getQuoteAgreementTerms(){ return (state.settings && state.settings.quoteAgreementTerms) || DEFAULT_QUOTE_AGREEMENT_TERMS; }
+function getWaTemplate(key){
+  if(state.settings && state.settings.waTemplates && state.settings.waTemplates[key]){
+    return state.settings.waTemplates[key];
+  }
+  return DEFAULT_WA_TEMPLATES[key] || '';
+}
+
+const DEFAULT_GEMINI_SETTINGS = {
+  enabled: true,
+  apiKey: '',
+  model: 'gemini-3.5-flash',
+  temperature: 0.7,
+  systemInstruction: 'أنت مهندس خبير ومساعد ذكي متخصص في صيانة أجهزة الكمبيوتر واللابتوب والهواتف الذكية والإلكترونيات لمركز صيانة ميكروتك (MicroTech). تقدم تحليلات فنية دقيقة ومباشرة باللغة العربية، وتقترح نقاط الفحص والقياس بالآفوميتر والقطع البديلة وخطوات الإصلاح، وتصيغ تقارير فحص احترافية للعملاء.'
+};
+
+function getGeminiSettings(){
+  const s = (state.settings && state.settings.gemini) || {};
+  return {
+    enabled: s.enabled !== false,
+    apiKey: (s.apiKey || localStorage.getItem('microtech_gemini_api_key') || '').trim(),
+    model: s.model || 'gemini-3.5-flash',
+    temperature: s.temperature ?? 0.7,
+    systemInstruction: s.systemInstruction || DEFAULT_GEMINI_SETTINGS.systemInstruction
+  };
+}
+
+const DEFAULT_POS_SETTINGS = {
+  shortcutItemIds: [],
+  paymentMethods: [
+    { id: 'cash', name: 'نقدي (كاش)', icon: '💵', enabled: true },
+    { id: 'vodafone', name: 'فودافون كاش ومحافظ', icon: '📱', enabled: true },
+    { id: 'card', name: 'فيزا وبطاقات بنكية', icon: '💳', enabled: true },
+    { id: 'instapay', name: 'إنستاباي InstaPay', icon: '⚡', enabled: true },
+    { id: 'credit', name: 'آجل / على الحساب', icon: '📝', enabled: true }
+  ],
+  quickServices: [
+    { name: 'صيانة وفحص سريع', price: 100, icon: '🛠️' },
+    { name: 'تنزيل ويندوز وبرامج', price: 150, icon: '💻' },
+    { name: 'تنظيف وتغيير معجون حراري', price: 120, icon: '💨' },
+    { name: 'تركيب حماية / اسكرينة', price: 50, icon: '🛡️' },
+    { name: 'شحن سوفت وير / باقة', price: 80, icon: '⚡' }
+  ],
+  allowNegativeStock: false,
+  autoPrintReceipt: true,
+  receiptPaperSize: '80mm',
+  showCashierName: true,
+  showLogoOnReceipt: true,
+  receiptFooter: 'شكراً لتعاملكم معنا • نسعد دائماً بخدمتكم',
+  enableTax: false,
+  taxRate: 14
+};
+
+function getPosSettings(){
+  if(!state.settings) state.settings = {};
+  if(!state.settings.pos) state.settings.pos = JSON.parse(JSON.stringify(DEFAULT_POS_SETTINGS));
+  else {
+    state.settings.pos = { ...DEFAULT_POS_SETTINGS, ...state.settings.pos };
+    if(!Array.isArray(state.settings.pos.shortcutItemIds)) state.settings.pos.shortcutItemIds = [];
+    if(!state.settings.pos.paymentMethods) state.settings.pos.paymentMethods = DEFAULT_POS_SETTINGS.paymentMethods;
+    if(!state.settings.pos.quickServices) state.settings.pos.quickServices = DEFAULT_POS_SETTINGS.quickServices;
+  }
+  return state.settings.pos;
+}
+
+function getActivePaymentMethods(){
+  const posSettings = getPosSettings();
+  const list = (posSettings.paymentMethods || []).filter(p => p.enabled !== false);
+  return list.length ? list : DEFAULT_POS_SETTINGS.paymentMethods;
+}
+
+function getPaymentMethodBadge(methodName){
+  if(!methodName) return '<span class="badge" style="background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;font-weight:700;">💵 نقدي (كاش)</span>';
+  const str = String(methodName).toLowerCase();
+  if(str.includes('فيزا') || str.includes('card') || str.includes('بطاق') || str.includes('visa')){
+    return '<span class="badge" style="background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;font-weight:700;">💳 فيزا وبطاقات</span>';
+  }
+  if(str.includes('إنستاباي') || str.includes('انستاباي') || str.includes('instapay')){
+    return '<span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;font-weight:700;">⚡ إنستاباي</span>';
+  }
+  if(str.includes('محفظ') || str.includes('فودافون') || str.includes('vodafone') || str.includes('wallet')){
+    return '<span class="badge" style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca;font-weight:700;">📱 محفظة نقدية</span>';
+  }
+  if(str.includes('آجل') || str.includes('اجل') || str.includes('حساب') || str.includes('credit')){
+    return '<span class="badge" style="background:#f3e8ff;color:#6b21a8;border:1px solid #e9d5ff;font-weight:700;">📝 آجل / على الحساب</span>';
+  }
+  return `<span class="badge" style="background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;font-weight:700;">💵 ${escapeHtml(methodName)}</span>`;
+}
+
+// ---------------- Pure Offline QR Code SVG Generator (0ms, Zero Network Dependency) ----------------
+const QRCodeGenerator = (function() {
+  const PAD0 = 0xEC, PAD1 = 0x11;
+  const EXP_TABLE = new Uint8Array(256);
+  const LOG_TABLE = new Uint8Array(256);
+  for (let i = 0, x = 1; i < 256; i++) {
+    EXP_TABLE[i] = x;
+    LOG_TABLE[x] = i;
+    x = (x << 1) ^ ((x & 0x80) ? 0x11d : 0);
+  }
+  function glog(n) { if (n < 1) return 0; return LOG_TABLE[n]; }
+  function gexp(n) { while (n < 0) n += 255; while (n >= 255) n -= 255; return EXP_TABLE[n]; }
+
+  function getRSGeneratorPoly(numEC) {
+    let poly = [1];
+    for (let i = 0; i < numEC; i++) {
+      let next = new Array(poly.length + 1).fill(0);
+      for (let j = 0; j < poly.length; j++) {
+        next[j] ^= poly[j];
+        next[j + 1] ^= gexp(glog(poly[j]) + i);
+      }
+      poly = next;
+    }
+    return poly;
+  }
+
+  function calculateEC(data, numEC) {
+    const gen = getRSGeneratorPoly(numEC);
+    const msg = new Array(data.length + numEC).fill(0);
+    for (let i = 0; i < data.length; i++) msg[i] = data[i];
+    for (let i = 0; i < data.length; i++) {
+      const coef = msg[i];
+      if (coef !== 0) {
+        const logCoef = glog(coef);
+        for (let j = 0; j < gen.length; j++) {
+          msg[i + j] ^= gexp(logCoef + glog(gen[j]));
+        }
+      }
+    }
+    return msg.slice(data.length);
+  }
+
+  const VERSIONS = [
+    null,
+    { ver: 1, size: 21, dataCap: 14, totalData: 16, ecPerBlock: 10, blocks: [[1, 16]] },
+    { ver: 2, size: 25, dataCap: 26, totalData: 28, ecPerBlock: 16, blocks: [[1, 28]], align: [6, 18] },
+    { ver: 3, size: 29, dataCap: 42, totalData: 44, ecPerBlock: 26, blocks: [[1, 44]], align: [6, 22] },
+    { ver: 4, size: 33, dataCap: 62, totalData: 64, ecPerBlock: 18, blocks: [[2, 32]], align: [6, 26] },
+    { ver: 5, size: 37, dataCap: 84, totalData: 86, ecPerBlock: 24, blocks: [[2, 43]], align: [6, 30] },
+    { ver: 6, size: 41, dataCap: 106, totalData: 108, ecPerBlock: 16, blocks: [[4, 27]], align: [6, 34] },
+    { ver: 7, size: 45, dataCap: 122, totalData: 124, ecPerBlock: 18, blocks: [[2, 31], [2, 32]], align: [6, 22, 38] },
+    { ver: 8, size: 49, dataCap: 152, totalData: 154, ecPerBlock: 22, blocks: [[2, 38], [2, 39]], align: [6, 24, 42] }
+  ];
+
+  function encodeData(text) {
+    const bytes = new TextEncoder().encode(text);
+    let verInfo = null;
+    for (let v = 1; v < VERSIONS.length; v++) {
+      if (bytes.length <= VERSIONS[v].dataCap) { verInfo = VERSIONS[v]; break; }
+    }
+    if (!verInfo) verInfo = VERSIONS[VERSIONS.length - 1];
+
+    const bits = [];
+    function putBits(val, len) {
+      for (let i = len - 1; i >= 0; i--) bits.push((val >> i) & 1);
+    }
+    putBits(0b0100, 4);
+    putBits(Math.min(bytes.length, verInfo.dataCap), 8);
+    for (let i = 0; i < Math.min(bytes.length, verInfo.dataCap); i++) putBits(bytes[i], 8);
+    while (bits.length < verInfo.totalData * 8 && bits.length % 8 !== 0) bits.push(0);
+    while (bits.length % 8 !== 0) bits.push(0);
+    let padToggle = false;
+    while (bits.length < verInfo.totalData * 8) {
+      putBits(padToggle ? PAD1 : PAD0, 8);
+      padToggle = !padToggle;
+    }
+
+    const dataCodewords = [];
+    for (let i = 0; i < bits.length; i += 8) {
+      let byte = 0;
+      for (let j = 0; j < 8; j++) byte = (byte << 1) | bits[i + j];
+      dataCodewords.push(byte);
+    }
+
+    const dataBlocks = [];
+    const ecBlocks = [];
+    let offset = 0;
+    for (let [numBlocks, blockSize] of verInfo.blocks) {
+      for (let b = 0; b < numBlocks; b++) {
+        const blockData = dataCodewords.slice(offset, offset + blockSize);
+        dataBlocks.push(blockData);
+        ecBlocks.push(calculateEC(blockData, verInfo.ecPerBlock));
+        offset += blockSize;
+      }
+    }
+
+    const finalCodewords = [];
+    let maxBlockLen = Math.max(...dataBlocks.map(b => b.length));
+    for (let i = 0; i < maxBlockLen; i++) {
+      for (let b = 0; b < dataBlocks.length; b++) {
+        if (i < dataBlocks[b].length) finalCodewords.push(dataBlocks[b][i]);
+      }
+    }
+    for (let i = 0; i < verInfo.ecPerBlock; i++) {
+      for (let b = 0; b < ecBlocks.length; b++) {
+        if (i < ecBlocks[b].length) finalCodewords.push(ecBlocks[b][i]);
+      }
+    }
+    return { verInfo, codewords: finalCodewords };
+  }
+
+  function createMatrix(verInfo, codewords) {
+    const size = verInfo.size;
+    const matrix = Array.from({ length: size }, () => new Array(size).fill(null));
+    const reserved = Array.from({ length: size }, () => new Array(size).fill(false));
+
+    function setModule(r, c, val) {
+      matrix[r][c] = val ? 1 : 0;
+      reserved[r][c] = true;
+    }
+
+    function addFinder(top, left) {
+      for (let r = 0; r < 7; r++) {
+        for (let c = 0; c < 7; c++) {
+          if (r === 0 || r === 6 || c === 0 || c === 6 || (r >= 2 && r <= 4 && c >= 2 && c <= 4)) {
+            setModule(top + r, left + c, true);
+          } else {
+            setModule(top + r, left + c, false);
+          }
+        }
+      }
+      for (let r = -1; r <= 7; r++) {
+        for (let c = -1; c <= 7; c++) {
+          if (r === -1 || r === 7 || c === -1 || c === 7) {
+            const row = top + r, col = left + c;
+            if (row >= 0 && row < size && col >= 0 && col < size) setModule(row, col, false);
+          }
+        }
+      }
+    }
+    addFinder(0, 0);
+    addFinder(0, size - 7);
+    addFinder(size - 7, 0);
+
+    if (verInfo.align) {
+      const coords = verInfo.align;
+      for (let r of coords) {
+        for (let c of coords) {
+          if (matrix[r][c] !== null) continue;
+          for (let dr = -2; dr <= 2; dr++) {
+            for (let dc = -2; dc <= 2; dc++) {
+              setModule(r + dr, c + dc, Math.max(Math.abs(dr), Math.abs(dc)) !== 1);
+            }
+          }
+        }
+      }
+    }
+
+    for (let i = 8; i < size - 8; i++) {
+      if (matrix[6][i] === null) setModule(6, i, i % 2 === 0);
+      if (matrix[i][6] === null) setModule(i, 6, i % 2 === 0);
+    }
+
+    setModule(4 * verInfo.ver + 9, 8, true);
+
+    for (let i = 0; i < 9; i++) {
+      reserved[8][i] = true;
+      reserved[i][8] = true;
+      if (size - 1 - i < size) {
+        reserved[8][size - 1 - i] = true;
+        reserved[size - 1 - i][8] = true;
+      }
+    }
+
+    const bits = [];
+    for (let cw of codewords) {
+      for (let i = 7; i >= 0; i--) bits.push((cw >> i) & 1);
+    }
+    let bitIdx = 0;
+    let up = true;
+    for (let right = size - 1; right > 0; right -= 2) {
+      if (right === 6) right--;
+      const cols = [right, right - 1];
+      const rows = up ? Array.from({ length: size }, (_, i) => size - 1 - i) : Array.from({ length: size }, (_, i) => i);
+      for (let r of rows) {
+        for (let c of cols) {
+          if (!reserved[r][c]) {
+            const dataBit = bitIdx < bits.length ? bits[bitIdx++] : 0;
+            const mask = (r + c) % 2 === 0;
+            matrix[r][c] = dataBit ^ (mask ? 1 : 0);
+          }
+        }
+      }
+      up = !up;
+    }
+
+    const formatBits = 0x5412;
+    for (let i = 0; i < 15; i++) {
+      const bit = (formatBits >> i) & 1;
+      if (i < 6) matrix[8][i] = bit;
+      else if (i < 8) matrix[8][i + 1] = bit;
+      else if (i === 8) matrix[7][8] = bit;
+      else matrix[14 - i][8] = bit;
+
+      if (i < 8) matrix[size - 1 - i][8] = bit;
+      else matrix[8][size - 15 + i] = bit;
+    }
+
+    return matrix;
+  }
+
+  function toSvg(text, pixelSize) {
+    try {
+      pixelSize = pixelSize || 70;
+      const { verInfo, codewords } = encodeData(String(text || ""));
+      const matrix = createMatrix(verInfo, codewords);
+      const size = matrix.length;
+      const border = 1;
+      const totalSize = size + border * 2;
+      let paths = "";
+      for (let r = 0; r < size; r++) {
+        for (let c = 0; c < size; c++) {
+          if (matrix[r][c] === 1) paths += `M${c + border},${r + border}h1v1h-1z `;
+        }
+      }
+      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalSize} ${totalSize}" width="${pixelSize}" height="${pixelSize}" shape-rendering="crispEdges" style="display:block;background:#fff;"><rect width="${totalSize}" height="${totalSize}" fill="#ffffff"/><path d="${paths.trim()}" fill="#000000"/></svg>`;
+    } catch(e) {
+      return `<div style="width:${pixelSize}px;height:${pixelSize}px;border:1px solid #000;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:bold;">QR</div>`;
+    }
+  }
+
+  return { toSvg };
+})();
+
+const DEFAULT_KNOWN_WINDOWS_PRINTERS = [
+  // طابعات البون والإيصالات الحرارية
+  { name: 'Xprinter XP-808 (Thermal 80mm Receipt)', category: 'receipt', isDefault: true },
+  { name: 'Xprinter XP-N160II / XP-Q800 (Thermal 80mm)', category: 'receipt' },
+  { name: 'POS-80C / XP-80C (Thermal 80mm Receipt)', category: 'receipt' },
+  { name: 'POS-58 / XP-58C (Thermal 58mm)', category: 'receipt' },
+  { name: 'Epson TM-T20 / TM-T88 (Thermal Receipt)', category: 'receipt' },
+  { name: 'Bixolon SRP-350 (Thermal 80mm)', category: 'receipt' },
+  
+  // طابعات ملصقات الباركود
+  { name: 'Xprinter XP-365B (Thermal Barcode Label)', category: 'barcode', isDefault: true },
+  { name: 'Xprinter XP-370B / XP-420B (Label Printer)', category: 'barcode' },
+  { name: 'Zebra ZD220 / GK420d (Barcode Label)', category: 'barcode' },
+  { name: 'TSC TE200 / DA200 (Thermal Label)', category: 'barcode' },
+  { name: 'Brother QL-800 / QL-820NWB', category: 'barcode' },
+
+  // طابعات الليزر والمستندات العادية (A4/A5)
+  { name: 'HP LaserJet Pro (Laser A4/A5)', category: 'laser', isDefault: true },
+  { name: 'HP LaserJet M102 / M402 / MFP Series', category: 'laser' },
+  { name: 'Canon LBP / imageCLASS Series (A4/A5)', category: 'laser' },
+  { name: 'Brother HL / DCP / MFC Laser Series', category: 'laser' },
+  { name: 'Epson EcoTank L3150 / L3250 Series', category: 'laser' },
+  { name: 'Microsoft Print to PDF', category: 'laser' },
+  { name: 'OneNote for Windows 10', category: 'laser' }
+];
+
+function getKnownWindowsPrinters(){
+  if(!state.settings) state.settings = {};
+  if(!Array.isArray(state.settings.knownWindowsPrinters) || state.settings.knownWindowsPrinters.length === 0){
+    try {
+      const saved = localStorage.getItem('microerp_known_printers');
+      if(saved) state.settings.knownWindowsPrinters = JSON.parse(saved);
+    } catch(e){}
+  }
+  if(!Array.isArray(state.settings.knownWindowsPrinters) || state.settings.knownWindowsPrinters.length === 0){
+    state.settings.knownWindowsPrinters = JSON.parse(JSON.stringify(DEFAULT_KNOWN_WINDOWS_PRINTERS));
+  }
+  return state.settings.knownWindowsPrinters;
+}
+
+async function detectWindowsPrinters(verbose = false){
+  let detected = [];
+  try {
+    if(typeof window.queryLocalPrinters === 'function'){
+      const printers = await window.queryLocalPrinters();
+      if(Array.isArray(printers) && printers.length > 0){
+        detected = printers.map(p => {
+          const pName = p.name || p.deviceName || String(p);
+          const lower = pName.toLowerCase();
+          const category = (lower.includes('barcode') || lower.includes('label') || lower.includes('365') || lower.includes('370') || lower.includes('zebra') || lower.includes('tsc')) ? 'barcode' :
+                           ((lower.includes('pos') || lower.includes('receipt') || lower.includes('808') || lower.includes('80c') || lower.includes('58') || lower.includes('xprinter')) ? 'receipt' : 'laser');
+          return { name: pName, category };
+        });
+      }
+    } else if(navigator.printers && typeof navigator.printers.getList === 'function'){
+      const printers = await navigator.printers.getList();
+      if(Array.isArray(printers) && printers.length > 0){
+        detected = printers.map(p => ({ name: p.name, category: 'laser' }));
+      }
+    }
+  } catch(e) {
+    console.log('Web Printer Querying notice:', e);
+  }
+
+  const current = getKnownWindowsPrinters();
+  let addedCount = 0;
+  if(detected.length > 0){
+    detected.forEach(d => {
+      if(!current.some(c => c.name.trim().toLowerCase() === d.name.trim().toLowerCase())){
+        current.push(d);
+        addedCount++;
+      }
+    });
+    state.settings.knownWindowsPrinters = current;
+    setCache('settings', state.settings);
+  }
+
+  if(verbose){
+    if(addedCount > 0){
+      showToast(`تم اكتشاف وإضافة (${addedCount}) طابعة جديدة معرفة على نظام ويندوز بنجاح ✅`, 'success');
+    } else {
+      showToast(`تم فحص وتحديث قائمة الطابعات المعرفة على ويندوز (${current.length} طابعة متاحة في القوائم) 🖨️`, 'info');
+    }
+  }
+  return current;
+}
+
+const DEFAULT_PRINTERS_SETTINGS = {
+  // 1. طابعة إيصالات الكاشير (Receipt / POS Thermal Printer)
+  receiptPrinter: {
+    name: 'Xprinter XP-808 (Thermal 80mm Receipt)',
+    paperSize: '80mm',
+    fontScale: 'compact', // 'compact' (مدمج نصف الحجم موفر للورق - موصى به), 'normal', 'large'
+    autoPrint: true,
+    cutterFeedMm: 4,
+    showLogo: true,
+    showCashier: true,
+    printBarcode: true,
+    footerText: 'شكراً لتعاملكم معنا • نسعد دائماً بخدمتكم'
+  },
+  // 2. طابعة ملصقات الباركود (Thermal Label / Barcode Sticker Printer)
+  barcodePrinter: {
+    name: 'Xprinter XP-365B (Thermal Barcode Label)',
+    defaultSize: '40x20', // '40x20', '40x10', '40x15', '50x25', '50x30', '38x25', '60x40', 'custom'
+    customWidthMm: 40,
+    customHeightMm: 20,
+    barcodeType: 'CODE128',
+    defaultCopies: 1,
+    showPrice: true,
+    showShopName: true,
+    showDate: false
+  },
+  // 3. طابعة الليزر والمستندات الرسمية (Standard Laser / Inkjet Printer - A4 / A5)
+  laserPrinter: {
+    name: 'HP LaserJet Pro (Laser A4/A5)',
+    maintenanceReceiptSize: 'A5', // A5 landscape (ورقة واحدة مدمجة)
+    invoiceSize: 'A4', // A4 portrait أو A5
+    quotationSize: 'A4',
+    reportsSize: 'A4',
+    barcodeSheetLayout: '30', // 24, 30, 40, 65 stickers per sheet
+    colorMode: 'bw_sharp', // 'bw_sharp' (أسود عالي التباين) أو 'color'
+    showWatermark: true,
+    showTerms: true
+  },
+  // 4. تعيين العمليات للطابعات (Workflow Assignments)
+  workflowAssignments: {
+    posSale: 'receiptPrinter', // إيصالات نقطة البيع السريعة
+    maintenanceReceipt: 'laserPrinter', // إيصال وضمان الصيانة
+    taxInvoice: 'laserPrinter', // الفواتير الضريبية الرسمية
+    quotation: 'laserPrinter', // عروض الأسعار
+    singleBarcode: 'barcodePrinter', // ملصقات الباركود الفردية للأصناف
+    deviceBarcode: 'barcodePrinter', // ملصقات باركود أجهزة الصيانة
+    sheetBarcode: 'laserPrinter', // ملصقات الباركود المجمعة A4
+    financialReports: 'laserPrinter' // اليومية وكشوف الحسابات وميزان المراجعة
+  }
+};
+
+function getPrintersSettings(){
+  if(!state.settings) state.settings = {};
+  if(!state.settings.printers){
+    try {
+      const saved = localStorage.getItem('microerp_printers_settings');
+      if(saved) state.settings.printers = JSON.parse(saved);
+    } catch(e){}
+  }
+  if(!state.settings.printers) state.settings.printers = JSON.parse(JSON.stringify(DEFAULT_PRINTERS_SETTINGS));
+  else {
+    state.settings.printers = { ...DEFAULT_PRINTERS_SETTINGS, ...state.settings.printers };
+    if(!state.settings.printers.receiptPrinter) state.settings.printers.receiptPrinter = JSON.parse(JSON.stringify(DEFAULT_PRINTERS_SETTINGS.receiptPrinter));
+    if(!state.settings.printers.barcodePrinter) state.settings.printers.barcodePrinter = JSON.parse(JSON.stringify(DEFAULT_PRINTERS_SETTINGS.barcodePrinter));
+    if(!state.settings.printers.laserPrinter) state.settings.printers.laserPrinter = JSON.parse(JSON.stringify(DEFAULT_PRINTERS_SETTINGS.laserPrinter));
+    if(!state.settings.printers.workflowAssignments) state.settings.printers.workflowAssignments = JSON.parse(JSON.stringify(DEFAULT_PRINTERS_SETTINGS.workflowAssignments));
+  }
+  return state.settings.printers;
+}
+
+/**
+ * Sanitizes and extracts the date string in YYYY-MM-DD format with English digits.
+ * @param {string|Date} val - The input date value.
+ * @returns {string} Clean date string.
+ */
+function cleanDate(val){ 
+  return val ? toEngDigits(String(val).slice(0, 10)) : ''; 
+}
+
+/**
+ * Escapes unsafe HTML characters to prevent XSS vulnerabilities.
+ * @param {string|number|null} str - Raw input text.
+ * @returns {string} Sanitized HTML string.
+ */
+function escapeHtml(str){
+  if(str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/**
+ * Safely parses any value to a finite number, returning fallback if invalid.
+ * @param {any} val - Value to parse.
+ * @param {number} fallback - Default value if parsing fails.
+ * @returns {number} Validated number.
+ */
+function parseSafeNumber(val, fallback = 0){
+  const parsed = Number(val);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+/**
+ * High-performance debounce utility for rapid input and search events.
+ * @param {Function} func - Function to debounce.
+ * @param {number} wait - Delay in milliseconds.
+ * @returns {Function} Debounced function.
+ */
+function debounce(func, wait = 250){
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+const WA_ICON = `<svg class="wa-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12c0 1.85.5 3.58 1.35 5.07L2 22l5.07-1.35C8.55 21.5 10.27 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm0 18c-1.5 0-2.9-.41-4.1-1.13l-.29-.17-3.02.8.8-3.02-.17-.29A7.94 7.94 0 0 1 4 12c0-4.41 3.59-8 8-8s8 3.59 8 8-3.59 8-8 8z"/></svg>`;

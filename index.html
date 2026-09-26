@@ -11101,7 +11101,10 @@ window.selectInventoryItem = function(itemId){
   state.selectedInventoryItemId = String(itemId);
   state.selectedReceiptId = null;
   state.selectedReceiptNum = null;
+  state.selectedReceiptIds = [];
   state.selectedCustomerId = null;
+  state.selectedInvoiceId = null;
+  state.selectedSaleId = null;
 
   document.querySelectorAll('.selected-row').forEach(el => el.classList.remove('selected-row'));
   document.querySelectorAll('.selected-badge-indicator').forEach(el => el.remove());
@@ -11112,10 +11115,11 @@ window.selectInventoryItem = function(itemId){
     const firstCell = el.querySelector('td:first-child > div');
     if(firstCell && !firstCell.querySelector('.selected-badge-indicator')){
       const b = document.createElement('span');
-      b.className = 'selected-badge-indicator';
-      b.title = 'صنف محدد';
-      b.textContent = '✓';
-      firstCell.prepend(b);
+      b.className = 'badge badge-primary selected-badge-indicator';
+      b.style.fontSize = '9.5px';
+      b.style.padding = '1px 5px';
+      b.textContent = 'محدد';
+      firstCell.appendChild(b);
     }
   });
 
@@ -19974,17 +19978,16 @@ function renderInventory(main, categoryFilter, titleOverride){
         <table>
           <thead>
             <tr>
-              <th>الصنف والموديل</th>
-              <th>المخزن / الفرع</th>
-              ${categoryFilter==='all'?'<th>القسم</th>':''}
-              <th>مكان الرف</th>
-              <th>الباركود</th>
-              <th>الكمية المتاحة</th>
-              <th>سعر الشراء</th>
-              <th>سعر البيع (قطاعي)</th>
-              <th>سعر الجملة</th>
-              <th>هامش الربح</th>
-              <th style="min-width:170px;">الإجراءات</th>
+              <th style="min-width:200px;">الصنف والموديل</th>
+              <th style="width:130px;">المخزن / الفرع</th>
+              ${categoryFilter==='all'?'<th style="width:90px;text-align:center;">القسم</th>':''}
+              <th style="width:100px;">مكان الرف</th>
+              <th style="width:125px;">الباركود</th>
+              <th style="width:95px;text-align:center;">الكمية المتاحة</th>
+              <th style="width:105px;text-align:center;">سعر الشراء</th>
+              <th style="width:110px;text-align:center;">سعر البيع (قطاعي)</th>
+              <th style="width:105px;text-align:center;">سعر الجملة</th>
+              <th style="width:115px;text-align:center;">هامش الربح</th>
             </tr>
           </thead>
           <tbody>
@@ -20001,11 +20004,11 @@ function renderInventory(main, categoryFilter, titleOverride){
               const isSelected = String(it.ID) === String(state.selectedInventoryItemId);
 
               return `
-                <tr class="selectable-row ${isSelected ? 'selected-row' : ''}" data-inv-id="${it.ID}" onclick="handleInventoryRowClick('${it.ID}', event)" style="${isLowStock ? 'background:rgba(239,68,68,0.05);' : ''}">
+                <tr class="selectable-row ${isSelected ? 'selected-row' : ''}" data-inv-id="${it.ID}" onclick="handleInventoryRowClick('${it.ID}', event)" ondblclick="openInventoryItemModalDirect('${it.ID}', false)" style="cursor:pointer;${isLowStock ? 'background:rgba(239,68,68,0.05);' : ''}" title="انقر لتحديد الصنف واستخدام الشريط العلوي، أو نقر مزدوج للتعديل">
                   <td>
                     <div style="display:flex;align-items:center;gap:6px;">
-                      ${isSelected ? '<span class="selected-badge-indicator" title="صنف محدد">✓</span>' : ''}
-                      <div style="font-weight:800;font-size:13px;color:var(--ink);cursor:pointer;">${escapeHtml(it.Name)}</div>
+                      <div style="font-weight:800;font-size:13px;color:var(--ink);">${escapeHtml(it.Name)}</div>
+                      ${isSelected ? '<span class="badge badge-primary selected-badge-indicator" style="font-size:9.5px;padding:1px 5px;">محدد</span>' : ''}
                     </div>
                     <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:var(--ink-secondary);margin-top:2px;">
                       ${it.SKU ? `<span class="mono" style="color:var(--primary);font-weight:700;">#${escapeHtml(it.SKU)}</span>` : ''}
@@ -20019,7 +20022,7 @@ function renderInventory(main, categoryFilter, titleOverride){
                       🏢 ${escapeHtml(whName)}
                     </span>
                   </td>
-                  ${categoryFilter==='all'?`<td><span class="status-badge st-check">${escapeHtml(it.Category||'صيانة')}</span></td>`:''}
+                  ${categoryFilter==='all'?`<td style="text-align:center;"><span class="status-badge st-check" style="font-size:10px;">${escapeHtml(it.Category||'صيانة')}</span></td>`:''}
                   <td>
                     ${it.ShelfLocation ? `<span style="background:var(--paper3);border:1px solid var(--line-strong);padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700;color:var(--ink);">📍 ${escapeHtml(it.ShelfLocation)}</span>` : '<span style="color:var(--slate-400);font-size:11px;">-</span>'}
                   </td>
@@ -20027,31 +20030,24 @@ function renderInventory(main, categoryFilter, titleOverride){
                     ${it.Barcode ? `
                       <div style="display:flex;align-items:center;gap:4px;">
                         <span class="mono" style="font-size:11px;font-weight:700;color:var(--ink-secondary);">${escapeHtml(it.Barcode)}</span>
-                        <button class="btn btn-xs btn-ghost" onclick="printInventoryStickerDirect('${it.ID}'); event.stopPropagation();" title="طباعة ملصق الباركود الحراري" style="padding:2px 5px;">🏷️</button>
+                        <button class="btn btn-xs btn-amber" onclick="printInventoryStickerDirect('${it.ID}'); event.stopPropagation();" title="طباعة ملصق الباركود الحراري" style="padding:2px 5px;line-height:1;">🏷️</button>
                       </div>
                     ` : '<span style="color:var(--slate-400);font-size:11px;">بدون</span>'}
                   </td>
-                  <td>
-                    <div style="display:flex;align-items:center;gap:4px;">
+                  <td style="text-align:center;">
+                    <div style="display:flex;align-items:center;justify-content:center;gap:4px;">
                       <span class="mono" style="font-weight:900;font-size:13.5px;color:${isLowStock?'var(--red)':'var(--ink)'};">${qty}</span>
                       <span style="font-size:11px;color:var(--ink-secondary);">${escapeHtml(it.Unit||'قطعة')}</span>
                       ${isLowStock ? '<span title="الكمية وصلت لحد الأمان أو نفدت" style="font-size:11px;">⚠️</span>' : ''}
                     </div>
                   </td>
-                  <td class="mono font-bold">${buy.toLocaleString()} ج.م</td>
-                  <td class="mono font-bold" style="color:var(--green);">${sell.toLocaleString()} ج.م</td>
-                  <td class="mono">${wholesale ? wholesale.toLocaleString() + ' ج.م' : '<span style="color:var(--slate-400);">-</span>'}</td>
-                  <td>
+                  <td class="mono font-bold" style="text-align:center;">${buy.toLocaleString()} ج.م</td>
+                  <td class="mono font-bold" style="color:var(--green);text-align:center;">${sell.toLocaleString()} ج.م</td>
+                  <td class="mono" style="text-align:center;">${wholesale ? wholesale.toLocaleString() + ' ج.م' : '<span style="color:var(--slate-400);">-</span>'}</td>
+                  <td style="text-align:center;">
                     <span class="mono font-bold" style="color:${profitAmt>=0?'var(--green-text)':'var(--red)'};font-size:11.5px;">
                       ${profitAmt >= 0 ? '+' : ''}${profitAmt.toLocaleString()} ج.م (${profitMarginPct}%)
                     </span>
-                  </td>
-                  <td class="row-actions" onclick="event.stopPropagation()">
-                    <button class="btn btn-xs btn-primary font-bold" onclick="selectInventoryItem('${it.ID}'); event.stopPropagation();" title="تحديد الصنف وتفعيل الإجراءات الموحدة بالأعلى">
-                      ⚡ خيارات الصنف
-                    </button>
-                    <button class="btn btn-xs btn-ghost" onclick="openInventoryItemModalDirect('${it.ID}', false); event.stopPropagation();" title="تعديل سريع">✏️</button>
-                    <button class="btn btn-xs btn-amber" onclick="printInventoryStickerDirect('${it.ID}'); event.stopPropagation();" title="طباعة ملصق">🏷️</button>
                   </td>
                 </tr>
               `;

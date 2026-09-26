@@ -1835,7 +1835,10 @@ window.selectInventoryItem = function(itemId){
   state.selectedInventoryItemId = String(itemId);
   state.selectedReceiptId = null;
   state.selectedReceiptNum = null;
+  state.selectedReceiptIds = [];
   state.selectedCustomerId = null;
+  state.selectedInvoiceId = null;
+  state.selectedSaleId = null;
 
   document.querySelectorAll('.selected-row').forEach(el => el.classList.remove('selected-row'));
   document.querySelectorAll('.selected-badge-indicator').forEach(el => el.remove());
@@ -1846,10 +1849,11 @@ window.selectInventoryItem = function(itemId){
     const firstCell = el.querySelector('td:first-child > div');
     if(firstCell && !firstCell.querySelector('.selected-badge-indicator')){
       const b = document.createElement('span');
-      b.className = 'selected-badge-indicator';
-      b.title = 'صنف محدد';
-      b.textContent = '✓';
-      firstCell.prepend(b);
+      b.className = 'badge badge-primary selected-badge-indicator';
+      b.style.fontSize = '9.5px';
+      b.style.padding = '1px 5px';
+      b.textContent = 'محدد';
+      firstCell.appendChild(b);
     }
   });
 

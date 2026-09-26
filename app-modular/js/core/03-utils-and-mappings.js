@@ -917,12 +917,24 @@ async function loadPayments(receiptId){
   }
   return state.payments;
 }
+// Dedup guard map to prevent duplicate payments within 15 seconds
+const _recentPaymentGuards = new Map();
+
 async function savePaymentRemote(receiptId, amount, note, paymentMethod){
   const payMethod = paymentMethod || 'نقدي (كاش)';
+  const numAmt = Number(amount);
+  const guardKey = `${String(receiptId).trim()}_${numAmt}_${payMethod}_${String(note||'').trim()}`;
+  const now = Date.now();
+  if(_recentPaymentGuards.has(guardKey) && (now - _recentPaymentGuards.get(guardKey)) < 15000){
+    console.warn(`[savePaymentRemote] Duplicate payment suppressed for guardKey: ${guardKey}`);
+    return { ok: true, duplicateSuppressed: true };
+  }
+  _recentPaymentGuards.set(guardKey, now);
+
   const payment = {
     ID: 'p_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
     ReceiptID: receiptId, Date: new Date().toISOString().slice(0,10),
-    Amount: Number(amount), Note: note || '', By: state.user ? state.user.name : 'نظام',
+    Amount: numAmt, Note: note || '', By: state.user ? state.user.name : 'نظام',
     PaymentMethod: payMethod
   };
   state.payments.push(payment);
@@ -942,11 +954,89 @@ async function savePaymentRemote(receiptId, amount, note, paymentMethod){
     'Receipt',
     receiptId,
     [
-      {AccountCode: debitAccCode, AccountName: debitAccName, Debit: Number(amount), Credit: 0, Notes: `تحصيل عبر ${payMethod}`},
-      {AccountCode: '4101', AccountName: 'إيرادات خدمات صيانة وتصليح', Debit: 0, Credit: Number(amount), Notes: `إيصال: ${receiptId}`}
+      {AccountCode: debitAccCode, AccountName: debitAccName, Debit: numAmt, Credit: 0, Notes: `تحصيل عبر ${payMethod}`},
+      {AccountCode: '4101', AccountName: 'إيرادات خدمات صيانة وتصليح', Debit: 0, Credit: numAmt, Notes: `إيصال: ${receiptId}`}
     ]
   ).catch(e=>{});
-  return apiPost('savePayment', {receiptId, amount: payment.Amount, note: payment.Note, paymentMethod: payMethod, date: payment.Date, user: payment.By});
+  return apiPost('savePayment', {id: payment.ID, receiptId, amount: payment.Amount, note: payment.Note, paymentMethod: payMethod, date: payment.Date, user: payment.By});
+}
+
+async function deletePaymentRemote(paymentId){
+  const p = (state.payments||[]).find(x => String(x.ID) === String(paymentId));
+  if(!p) return { ok: false, error: 'الدفعة غير موجودة' };
+  
+  // 1. Remove from state.payments and update cache
+  state.payments = state.payments.filter(x => String(x.ID) !== String(paymentId));
+  setCache('payments', state.payments);
+
+  // 2. Adjust corresponding receipt if it exists
+  const r = (state.receipts||[]).find(x => String(x.id) === String(p.ReceiptID) || String(x.receiptNumber) === String(p.ReceiptID));
+  if(r){
+    const totalDue = Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0);
+    r.deposit = Math.max(0, Number(r.deposit || 0) - Number(p.Amount || 0));
+    if(r.deposit < totalDue){
+      r.paid = false;
+    }
+    setCache('receipts', state.receipts);
+    try { await saveReceiptRemote(r); } catch(e){}
+  }
+
+  // 3. Reverse Auto-Journal Entry
+  const payMethod = p.PaymentMethod || 'نقدي (كاش)';
+  const pLow = String(payMethod).toLowerCase();
+  const isCredit = pLow.includes('آجل') || pLow.includes('اجل') || pLow.includes('credit');
+  const isBankOrWallet = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('إنستاباي') || pLow.includes('instapay') || pLow.includes('محفظ') || pLow.includes('فودافون') || pLow.includes('vodafone');
+  const debitAccCode = isCredit ? '1103' : (isBankOrWallet ? '1102' : '1101');
+  const debitAccName = isCredit ? 'العملاء والمدينون' : (isBankOrWallet ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)');
+
+  recordAutoJournalEntry(
+    `إلغاء / عكس تحصيل صيانة [${payMethod}] (${p.Note || 'دفعة إيصال'})`,
+    'Receipt_Void',
+    p.ReceiptID,
+    [
+      {AccountCode: '4101', AccountName: 'إيرادات خدمات صيانة وتصليح', Debit: Number(p.Amount), Credit: 0, Notes: `عكس تحصيل دفعة صيانة: ${p.ReceiptID}`},
+      {AccountCode: debitAccCode, AccountName: debitAccName, Debit: 0, Credit: Number(p.Amount), Notes: `عكس تحصيل عبر ${payMethod}`}
+    ]
+  ).catch(e=>{});
+
+  recordAuditLog('حذف دفعة مالية', 'الخزينة', `تم حذف دفعة بقيمة ${p.Amount} ج.م للإيصال (${p.ReceiptID}) بواسطة ${state.user ? state.user.name : 'المدير'} وتصحيح رصيد الخزينة والإيصال`, p.ReceiptID);
+
+  // 4. Send to backend
+  return apiPost('deletePayment', { id: p.ID, receiptId: p.ReceiptID, amount: p.Amount, date: p.Date, role: state.user ? state.user.role : 'admin' });
+}
+
+function detectDuplicatePayments(payments = state.payments || []){
+  const seen = new Map();
+  const duplicates = [];
+  (payments || []).forEach(p => {
+    const key = `${String(p.ReceiptID||'').trim()}_${Number(p.Amount||0)}_${String(p.Date||'').slice(0,10)}_${String(p.Note||'').trim()}_${String(p.PaymentMethod||'').trim()}`;
+    if(seen.has(key)){
+      duplicates.push({ original: seen.get(key), duplicate: p });
+    } else {
+      seen.set(key, p);
+    }
+  });
+  return duplicates;
+}
+
+async function cleanDuplicatePayments(){
+  const duplicates = detectDuplicatePayments(state.payments || []);
+  if(!duplicates.length){
+    showToast('لا توجد أي دفعات مكررة في النظام ✨', 'success');
+    return;
+  }
+  let count = 0;
+  for(const item of duplicates){
+    const dupP = item.duplicate;
+    await deletePaymentRemote(dupP.ID);
+    count++;
+  }
+  showToast(`تم تنظيف ${count} دفعة مكررة وتصحيح رصيد الخزينة والإيصالات بنجاح ✅`, 'success');
+  if(state.currentSection === 'daily'){
+    renderDailyJournalPage(document.getElementById('main'));
+  } else {
+    render();
+  }
 }
 
 async function loadInventory(){

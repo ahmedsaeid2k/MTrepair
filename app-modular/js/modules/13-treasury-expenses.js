@@ -232,6 +232,32 @@ function renderDailyJournalPage(main){
       ${(state.dailySearchQ || state.dailyTypeFilter!=='all' || (state.dailyMethodFilter && state.dailyMethodFilter!=='all') || state.dailyDateFilter!=='today') ? `<button class="btn btn-ghost btn-sm" id="clearDailyFilters">إعادة ضبط</button>` : ''}
     </div>
 
+    <!-- Detected Duplicates Alert Banner -->
+    ${(()=>{
+      const detectedDuplicates = detectDuplicatePayments(state.payments || []);
+      if(!detectedDuplicates.length) return '';
+      return `
+        <div style="background:#fef2f2;border:1.5px solid #f87171;border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:20px;">⚠️</span>
+            <div>
+              <div style="font-size:13px;font-weight:800;color:#991b1b;">
+                تنبيه تدقيق الخزينة: تم اكتشاف ${detectedDuplicates.length} دفعة صيانة مكررة مسجلة بالخزينة تؤثر على توازن الرصيد!
+              </div>
+              <div style="font-size:11px;color:#b91c1c;margin-top:2px;">
+                الدفعة مكررة لنفس الإيصال والمبلغ، اضغط على زر المعالجة أدناه لإلغاء الدفعة المكررة وتصحيح رصيد الخزينة والإيصال فوراً.
+              </div>
+            </div>
+          </div>
+          ${state.user.role==='admin' ? `
+            <button class="btn btn-sm btn-red font-bold" id="autoFixDuplicatePaymentsBtn" style="box-shadow:0 2px 6px rgba(220,38,38,0.25);">
+              🧹 تنظيف الدفعات المكررة وضبط الخزينة
+            </button>
+          ` : ''}
+        </div>
+      `;
+    })()}
+
     <!-- Ledger Table -->
     <div class="card">
       ${filtered.length===0 ? '<div class="empty">لا توجد حركات نقدية مسجلة في هذه الفترة أو مطابقة للفلتر.</div>' : `
@@ -287,7 +313,11 @@ function renderDailyJournalPage(main){
                   <td style="font-size:11.5px;">${t.by}</td>
                   <td style="text-align:center;">
                     ${t.canDelete && state.user.role==='admin' ? `
-                      <button class="btn btn-xs btn-red" data-txdel="${t.rawExpId}" title="حذف القيد اليدوي">🗑️</button>
+                      ${t.sourceType==='maintenance' ? `
+                        <button class="btn btn-xs btn-red" data-txpaydel="${t.rawPayId}" title="حذف دفعة الصيانة وتصحيح الخزينة والإيصال">🗑️</button>
+                      ` : `
+                        <button class="btn btn-xs btn-red" data-txdel="${t.rawExpId}" title="حذف القيد اليدوي">🗑️</button>
+                      `}
                     ` : ''}
                   </td>
                 </tr>
@@ -369,7 +399,37 @@ function renderDailyJournalPage(main){
     openDailyClosePrint(curDateStr, { totalIn, totalOut, totalPetty, netCash }, filtered);
   };
 
-  // Row Delete
+  const autoFixBtn = document.getElementById('autoFixDuplicatePaymentsBtn');
+  if(autoFixBtn){
+    autoFixBtn.onclick = async ()=>{
+      if(!confirm('هل أنت متأكد من رغبتك في إزالة الدفعات المتكررة تلقائياً وتصحيح رصيد الخزينة والإيصالات؟')) return;
+      await cleanDuplicatePayments();
+    };
+  }
+
+  // Row Delete for Payments
+  main.querySelectorAll('[data-txpaydel]').forEach(btn => {
+    btn.onclick = async ()=>{
+      const payId = btn.dataset.txpaydel;
+      const p = (state.payments || []).find(x => String(x.ID) === String(payId));
+      const title = p ? `تحصيل صيانة بمبلغ ${p.Amount} ج.م (إيصال #${p.ReceiptNumber || p.ReceiptID})` : 'دفعة صيانة';
+      requestAdminAuthorization({
+        action: 'حذف دفعة صيانة وتصحيح رصيد الخزينة',
+        entityType: 'دفعة صيانة',
+        entityId: payId,
+        entityTitle: title,
+        onApproved: async ()=>{
+          try{
+            await deletePaymentRemote(payId);
+            showToast('تم حذف الدفعة وتصحيح رصيد الخزينة والإيصال بنجاح ✅', 'success');
+            renderDailyJournalPage(main);
+          }catch(e){ showToast('تعذر حذف الدفعة: '+e.message, 'error'); }
+        }
+      });
+    };
+  });
+
+  // Row Delete for Expenses
   main.querySelectorAll('[data-txdel]').forEach(btn => {
     btn.onclick = async ()=>{
       const exp = (state.expenses || []).find(x=>x.ID === btn.dataset.txdel);

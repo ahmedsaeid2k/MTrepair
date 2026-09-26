@@ -3821,6 +3821,12 @@ function saveSyncQueue(q){
 }
 function addToSyncQueue(action, data){
   const q = getSyncQueue();
+  const serialized = JSON.stringify({action, data});
+  const alreadyInQueue = q.some(item => JSON.stringify({action: item.action, data: item.data}) === serialized);
+  if(alreadyInQueue){
+    console.warn(`[addToSyncQueue] Suppressed identical pending queue item for ${action}`);
+    return;
+  }
   q.push({ id: 'sync_' + Date.now() + '_' + Math.random().toString(36).slice(2,7), action, data, timestamp: new Date().toISOString() });
   saveSyncQueue(q);
 }
@@ -3831,7 +3837,7 @@ async function apiGet(action, params){
     // Security: login authentication must never cache or return stale cached tokens
     const q = new URLSearchParams({action, ...(params||{})});
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 9000);
+    const timeout = setTimeout(() => controller.abort(), 15000);
     const res = await fetch(`${API_URL}?${q.toString()}`, { signal: controller.signal });
     clearTimeout(timeout);
     const json = await res.json();
@@ -3845,7 +3851,7 @@ async function apiGet(action, params){
   try {
     const q = new URLSearchParams({action, ...(params||{})});
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 9000);
+    const timeout = setTimeout(() => controller.abort(), 20000);
     const res = await fetch(`${API_URL}?${q.toString()}`, { signal: controller.signal });
     clearTimeout(timeout);
     const json = await res.json();
@@ -3866,7 +3872,7 @@ async function apiPost(action, data){
   }
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 9000);
+    const timeout = setTimeout(() => controller.abort(), 25000);
     const res = await fetch(API_URL, {
       method: 'POST',
       headers: {'Content-Type': 'text/plain;charset=utf-8'},
@@ -4902,12 +4908,24 @@ async function loadPayments(receiptId){
   }
   return state.payments;
 }
+// Dedup guard map to prevent duplicate payments within 15 seconds
+const _recentPaymentGuards = new Map();
+
 async function savePaymentRemote(receiptId, amount, note, paymentMethod){
   const payMethod = paymentMethod || 'نقدي (كاش)';
+  const numAmt = Number(amount);
+  const guardKey = `${String(receiptId).trim()}_${numAmt}_${payMethod}_${String(note||'').trim()}`;
+  const now = Date.now();
+  if(_recentPaymentGuards.has(guardKey) && (now - _recentPaymentGuards.get(guardKey)) < 15000){
+    console.warn(`[savePaymentRemote] Duplicate payment suppressed for guardKey: ${guardKey}`);
+    return { ok: true, duplicateSuppressed: true };
+  }
+  _recentPaymentGuards.set(guardKey, now);
+
   const payment = {
     ID: 'p_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
     ReceiptID: receiptId, Date: new Date().toISOString().slice(0,10),
-    Amount: Number(amount), Note: note || '', By: state.user ? state.user.name : 'نظام',
+    Amount: numAmt, Note: note || '', By: state.user ? state.user.name : 'نظام',
     PaymentMethod: payMethod
   };
   state.payments.push(payment);
@@ -4927,11 +4945,89 @@ async function savePaymentRemote(receiptId, amount, note, paymentMethod){
     'Receipt',
     receiptId,
     [
-      {AccountCode: debitAccCode, AccountName: debitAccName, Debit: Number(amount), Credit: 0, Notes: `تحصيل عبر ${payMethod}`},
-      {AccountCode: '4101', AccountName: 'إيرادات خدمات صيانة وتصليح', Debit: 0, Credit: Number(amount), Notes: `إيصال: ${receiptId}`}
+      {AccountCode: debitAccCode, AccountName: debitAccName, Debit: numAmt, Credit: 0, Notes: `تحصيل عبر ${payMethod}`},
+      {AccountCode: '4101', AccountName: 'إيرادات خدمات صيانة وتصليح', Debit: 0, Credit: numAmt, Notes: `إيصال: ${receiptId}`}
     ]
   ).catch(e=>{});
-  return apiPost('savePayment', {receiptId, amount: payment.Amount, note: payment.Note, paymentMethod: payMethod, date: payment.Date, user: payment.By});
+  return apiPost('savePayment', {id: payment.ID, receiptId, amount: payment.Amount, note: payment.Note, paymentMethod: payMethod, date: payment.Date, user: payment.By});
+}
+
+async function deletePaymentRemote(paymentId){
+  const p = (state.payments||[]).find(x => String(x.ID) === String(paymentId));
+  if(!p) return { ok: false, error: 'الدفعة غير موجودة' };
+  
+  // 1. Remove from state.payments and update cache
+  state.payments = state.payments.filter(x => String(x.ID) !== String(paymentId));
+  setCache('payments', state.payments);
+
+  // 2. Adjust corresponding receipt if it exists
+  const r = (state.receipts||[]).find(x => String(x.id) === String(p.ReceiptID) || String(x.receiptNumber) === String(p.ReceiptID));
+  if(r){
+    const totalDue = Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0);
+    r.deposit = Math.max(0, Number(r.deposit || 0) - Number(p.Amount || 0));
+    if(r.deposit < totalDue){
+      r.paid = false;
+    }
+    setCache('receipts', state.receipts);
+    try { await saveReceiptRemote(r); } catch(e){}
+  }
+
+  // 3. Reverse Auto-Journal Entry
+  const payMethod = p.PaymentMethod || 'نقدي (كاش)';
+  const pLow = String(payMethod).toLowerCase();
+  const isCredit = pLow.includes('آجل') || pLow.includes('اجل') || pLow.includes('credit');
+  const isBankOrWallet = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('إنستاباي') || pLow.includes('instapay') || pLow.includes('محفظ') || pLow.includes('فودافون') || pLow.includes('vodafone');
+  const debitAccCode = isCredit ? '1103' : (isBankOrWallet ? '1102' : '1101');
+  const debitAccName = isCredit ? 'العملاء والمدينون' : (isBankOrWallet ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)');
+
+  recordAutoJournalEntry(
+    `إلغاء / عكس تحصيل صيانة [${payMethod}] (${p.Note || 'دفعة إيصال'})`,
+    'Receipt_Void',
+    p.ReceiptID,
+    [
+      {AccountCode: '4101', AccountName: 'إيرادات خدمات صيانة وتصليح', Debit: Number(p.Amount), Credit: 0, Notes: `عكس تحصيل دفعة صيانة: ${p.ReceiptID}`},
+      {AccountCode: debitAccCode, AccountName: debitAccName, Debit: 0, Credit: Number(p.Amount), Notes: `عكس تحصيل عبر ${payMethod}`}
+    ]
+  ).catch(e=>{});
+
+  recordAuditLog('حذف دفعة مالية', 'الخزينة', `تم حذف دفعة بقيمة ${p.Amount} ج.م للإيصال (${p.ReceiptID}) بواسطة ${state.user ? state.user.name : 'المدير'} وتصحيح رصيد الخزينة والإيصال`, p.ReceiptID);
+
+  // 4. Send to backend
+  return apiPost('deletePayment', { id: p.ID, receiptId: p.ReceiptID, amount: p.Amount, date: p.Date, role: state.user ? state.user.role : 'admin' });
+}
+
+function detectDuplicatePayments(payments = state.payments || []){
+  const seen = new Map();
+  const duplicates = [];
+  (payments || []).forEach(p => {
+    const key = `${String(p.ReceiptID||'').trim()}_${Number(p.Amount||0)}_${String(p.Date||'').slice(0,10)}_${String(p.Note||'').trim()}_${String(p.PaymentMethod||'').trim()}`;
+    if(seen.has(key)){
+      duplicates.push({ original: seen.get(key), duplicate: p });
+    } else {
+      seen.set(key, p);
+    }
+  });
+  return duplicates;
+}
+
+async function cleanDuplicatePayments(){
+  const duplicates = detectDuplicatePayments(state.payments || []);
+  if(!duplicates.length){
+    showToast('لا توجد أي دفعات مكررة في النظام ✨', 'success');
+    return;
+  }
+  let count = 0;
+  for(const item of duplicates){
+    const dupP = item.duplicate;
+    await deletePaymentRemote(dupP.ID);
+    count++;
+  }
+  showToast(`تم تنظيف ${count} دفعة مكررة وتصحيح رصيد الخزينة والإيصالات بنجاح ✅`, 'success');
+  if(state.currentSection === 'daily'){
+    renderDailyJournalPage(document.getElementById('main'));
+  } else {
+    render();
+  }
 }
 
 async function loadInventory(){
@@ -12010,8 +12106,14 @@ function promptDeliveryRemainingPayment(r, remaining, onProceed){
     };
   });
 
+  let isHandshakeHandled = false;
   pOverlay.querySelector('#promptBtnPayAndDeliver').onclick = ()=>{
-    pOverlay.remove();
+    if(isHandshakeHandled) return;
+    isHandshakeHandled = true;
+    const btn = pOverlay.querySelector('#promptBtnPayAndDeliver');
+    if(btn){ btn.disabled = true; btn.textContent = '⏳ جارٍ التحصيل والتسليم...'; }
+    pOverlay.querySelectorAll('button').forEach(b => b.disabled = true);
+    setTimeout(() => pOverlay.remove(), 100);
     const pmObj = getActivePaymentMethods().find(x=>x.id===curMethod) || {name:'نقدي (كاش)'};
     if(curMethod === 'credit'){
       onProceed(false, 'آجل / على الحساب');
@@ -12020,10 +12122,15 @@ function promptDeliveryRemainingPayment(r, remaining, onProceed){
     }
   };
   pOverlay.querySelector('#promptBtnDeliverOnly').onclick = ()=>{
-    pOverlay.remove();
+    if(isHandshakeHandled) return;
+    isHandshakeHandled = true;
+    pOverlay.querySelectorAll('button').forEach(b => b.disabled = true);
+    setTimeout(() => pOverlay.remove(), 100);
     onProceed(false, 'آجل / على الحساب');
   };
   pOverlay.querySelector('#promptBtnCancel').onclick = ()=>{
+    if(isHandshakeHandled) return;
+    isHandshakeHandled = true;
     pOverlay.remove();
   };
 }
@@ -12091,17 +12198,30 @@ function promptPaymentDeliveryStatus(r, amt, onProceed){
     };
   });
 
+  let isPayStatusHandled = false;
   pOverlay.querySelector('#promptBtnDeliver').onclick = ()=>{
-    pOverlay.remove();
+    if(isPayStatusHandled) return;
+    isPayStatusHandled = true;
+    const btn = pOverlay.querySelector('#promptBtnDeliver');
+    if(btn){ btn.disabled = true; btn.textContent = '⏳ جارٍ تسجيل السداد والتسليم...'; }
+    pOverlay.querySelectorAll('button').forEach(b => b.disabled = true);
+    setTimeout(() => pOverlay.remove(), 100);
     const pmObj = getActivePaymentMethods().find(x=>x.id===curMethod) || {name:'نقدي (كاش)'};
     onProceed(true, pmObj.name); // true = تغيير الحالة لتم التسليم
   };
   pOverlay.querySelector('#promptBtnKeepStatus').onclick = ()=>{
-    pOverlay.remove();
+    if(isPayStatusHandled) return;
+    isPayStatusHandled = true;
+    const btn = pOverlay.querySelector('#promptBtnKeepStatus');
+    if(btn){ btn.disabled = true; btn.textContent = '⏳ جارٍ تسجيل السداد...'; }
+    pOverlay.querySelectorAll('button').forEach(b => b.disabled = true);
+    setTimeout(() => pOverlay.remove(), 100);
     const pmObj = getActivePaymentMethods().find(x=>x.id===curMethod) || {name:'نقدي (كاش)'};
     onProceed(false, pmObj.name); // false = سداد فقط مع إبقاء الحالة
   };
   pOverlay.querySelector('#promptBtnCancelPay').onclick = ()=>{
+    if(isPayStatusHandled) return;
+    isPayStatusHandled = true;
     pOverlay.remove();
   };
 }
@@ -12174,15 +12294,19 @@ function openQuickStatusModal(rawR){
   const quickStatusCostEstBtn = overlay.querySelector('#quickStatusCostEstBtn');
   if(quickStatusCostEstBtn) quickStatusCostEstBtn.onclick = ()=>{ overlay.remove(); openCostEstimateModal(r); };
 
+  let isQuickStatusBusy = false;
   overlay.querySelectorAll('[data-setstatus]').forEach(btn=>{
     btn.onclick = async ()=>{
+      if(isQuickStatusBusy) return;
       const newStatus = btn.dataset.setstatus;
       const newTech = overlay.querySelector('#quickTechSelect').value;
       const sendWa = overlay.querySelector('#sendWaAfterStatus').checked;
-      const remaining = Number(r.cost||0) + Number(r.partsCost||0) - Number(r.deposit||0) + Number(r.refunded||0);
+      const remaining = Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0) - Number(r.deposit||0) + Number(r.refunded||0);
 
       // إذا كان التغيير إلى "تم التسليم" وهناك مبلغ متبقي غير مسدد
       if(newStatus === 'تم التسليم' && remaining > 0){
+        isQuickStatusBusy = true;
+        overlay.querySelectorAll('[data-setstatus]').forEach(b => b.disabled = true);
         promptDeliveryRemainingPayment(r, remaining, async (shouldPay, payMethodName)=>{
           if(newTech) r.technician = newTech;
           r.status = 'تم التسليم';
@@ -14257,9 +14381,9 @@ async function openReceiptDetail(rawR){
     const remainingNow = Math.max(0, totalDue - totalPaid + Number(r.refunded||0));
 
     if(r.status === 'تم التسليم' && remainingNow > 0){
+      const btn = overlay.querySelector('#saveEditBtn');
+      if(btn){ btn.disabled = true; btn.textContent = 'جارٍ الحفظ...'; }
       promptDeliveryRemainingPayment(r, remainingNow, async (shouldPay, payMethodName)=>{
-        const btn = overlay.querySelector('#saveEditBtn');
-        if(btn){ btn.disabled = true; btn.textContent = 'جارٍ الحفظ...'; }
         if(shouldPay){
           try{
             await savePaymentRemote(r.id, remainingNow, 'سداد المتبقي عند التسليم', payMethodName || 'نقدي (كاش)');
@@ -14295,7 +14419,10 @@ async function openReceiptDetail(rawR){
     }
   };
 
+  let isAddPaySubmitting = false;
   overlay.querySelector('#addPayBtn').onclick = async ()=>{
+    if(isAddPaySubmitting) return;
+    const addPayBtn = overlay.querySelector('#addPayBtn');
     const amt = Number(overlay.querySelector('#newPayAmt').value);
     const note = overlay.querySelector('#newPayNote').value.trim();
     const payMethodInp = overlay.querySelector('#newPayMethod');
@@ -14316,6 +14443,9 @@ async function openReceiptDetail(rawR){
       return;
     }
 
+    isAddPaySubmitting = true;
+    if(addPayBtn){ addPayBtn.disabled = true; addPayBtn.textContent = 'جارٍ التسجيل...'; }
+
     // إذا كانت الدفعة تغطي المبلغ المتبقي بالكامل والحالة لم تسلم بعد
     if(amt >= remainingBefore && r.status !== 'تم التسليم'){
       promptPaymentDeliveryStatus(r, amt, async (shouldDeliver, payMethodName)=>{
@@ -14335,7 +14465,11 @@ async function openReceiptDetail(rawR){
           overlay.remove();
           showToast(shouldDeliver ? 'تم سداد كامل المبلغ وتحديث الحالة إلى تم التسليم 🤝✅' : 'تم سداد كامل المبلغ وتحديث الحسابات بنجاح ✅', 'success');
           renderMain();
-        }catch(e){ showToast('تم الحفظ محلياً: '+e.message, 'info'); }
+        }catch(e){ 
+          showToast('تم الحفظ محلياً: '+e.message, 'info'); 
+          isAddPaySubmitting = false;
+          if(addPayBtn){ addPayBtn.disabled = false; addPayBtn.textContent = 'تسجيل دفعة'; }
+        }
       });
       return;
     }
@@ -14356,11 +14490,18 @@ async function openReceiptDetail(rawR){
       await refreshPayments();
       showToast('تم تسجيل الدفعة بنجاح', 'success');
       renderMain();
-    }catch(e){ showToast('تم تسجيل الدفعة محلياً', 'info'); }
+    }catch(e){ 
+      showToast('تم تسجيل الدفعة محلياً', 'info'); 
+    }finally{
+      isAddPaySubmitting = false;
+      if(addPayBtn){ addPayBtn.disabled = false; addPayBtn.textContent = 'تسجيل دفعة'; }
+    }
   };
 
+  let isPayBtnSubmitting = false;
   const payBtn = overlay.querySelector('#payBtn');
   if(payBtn) payBtn.onclick = async ()=>{
+    if(isPayBtnSubmitting) return;
     const totalDue = Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0);
     const remainingNow = Math.max(0, totalDue - Number(r.deposit||0) + Number(r.refunded||0));
     if(remainingNow <= 0){
@@ -14368,8 +14509,11 @@ async function openReceiptDetail(rawR){
       return;
     }
 
+    isPayBtnSubmitting = true;
+    payBtn.disabled = true;
+    payBtn.textContent = 'جارٍ السداد...';
+
     promptPaymentDeliveryStatus(r, remainingNow, async (shouldDeliver, payMethodName)=>{
-      payBtn.disabled = true;
       try{
         await savePaymentRemote(r.id, remainingNow, shouldDeliver ? 'سداد المتبقي عند التسليم' : 'سداد المتبقي بالكامل', payMethodName || 'نقدي (كاش)');
         r.deposit = Number(r.deposit||0) + remainingNow;
@@ -14390,6 +14534,8 @@ async function openReceiptDetail(rawR){
       }catch(e){
         showToast('تم السداد محلياً: '+e.message, 'info');
         payBtn.disabled = false;
+        payBtn.textContent = '✅ سداد المتبقي';
+        isPayBtnSubmitting = false;
       }
     });
   };
@@ -16743,6 +16889,8 @@ function getUnifiedDailyTransactions(){
     const custName = r ? r.customer.name : '';
     transactions.push({
       id: 'pay_' + (p.ID || p.ReceiptID),
+      rawPayId: p.ID,
+      rawReceiptId: p.ReceiptID,
       date: cleanDate(p.Date) || new Date().toISOString().slice(0,10),
       rawTime: p.Time || '',
       type: 'in',
@@ -16759,7 +16907,7 @@ function getUnifiedDailyTransactions(){
       by: p.By || 'نظام',
       method: p.PaymentMethod || 'نقدي (كاش)',
       notes: p.Note || '',
-      canDelete: false
+      canDelete: true
     });
   });
 
@@ -17487,6 +17635,32 @@ function renderDailyJournalPage(main){
       ${(state.dailySearchQ || state.dailyTypeFilter!=='all' || (state.dailyMethodFilter && state.dailyMethodFilter!=='all') || state.dailyDateFilter!=='today') ? `<button class="btn btn-ghost btn-sm" id="clearDailyFilters">إعادة ضبط</button>` : ''}
     </div>
 
+    <!-- Detected Duplicates Alert Banner -->
+    ${(()=>{
+      const detectedDuplicates = detectDuplicatePayments(state.payments || []);
+      if(!detectedDuplicates.length) return '';
+      return `
+        <div style="background:#fef2f2;border:1.5px solid #f87171;border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:20px;">⚠️</span>
+            <div>
+              <div style="font-size:13px;font-weight:800;color:#991b1b;">
+                تنبيه تدقيق الخزينة: تم اكتشاف ${detectedDuplicates.length} دفعة صيانة مكررة مسجلة بالخزينة تؤثر على توازن الرصيد!
+              </div>
+              <div style="font-size:11px;color:#b91c1c;margin-top:2px;">
+                الدفعة مكررة لنفس الإيصال والمبلغ، اضغط على زر المعالجة أدناه لإلغاء الدفعة المكررة وتصحيح رصيد الخزينة والإيصال فوراً.
+              </div>
+            </div>
+          </div>
+          ${state.user.role==='admin' ? `
+            <button class="btn btn-sm btn-red font-bold" id="autoFixDuplicatePaymentsBtn" style="box-shadow:0 2px 6px rgba(220,38,38,0.25);">
+              🧹 تنظيف الدفعات المكررة وضبط الخزينة
+            </button>
+          ` : ''}
+        </div>
+      `;
+    })()}
+
     <!-- Ledger Table -->
     <div class="card">
       ${filtered.length===0 ? '<div class="empty">لا توجد حركات نقدية مسجلة في هذه الفترة أو مطابقة للفلتر.</div>' : `
@@ -17542,7 +17716,11 @@ function renderDailyJournalPage(main){
                   <td style="font-size:11.5px;">${t.by}</td>
                   <td style="text-align:center;">
                     ${t.canDelete && state.user.role==='admin' ? `
-                      <button class="btn btn-xs btn-red" data-txdel="${t.rawExpId}" title="حذف القيد اليدوي">🗑️</button>
+                      ${t.sourceType==='maintenance' ? `
+                        <button class="btn btn-xs btn-red" data-txpaydel="${t.rawPayId}" title="حذف دفعة الصيانة وتصحيح الخزينة والإيصال">🗑️</button>
+                      ` : `
+                        <button class="btn btn-xs btn-red" data-txdel="${t.rawExpId}" title="حذف القيد اليدوي">🗑️</button>
+                      `}
                     ` : ''}
                   </td>
                 </tr>
@@ -17624,7 +17802,37 @@ function renderDailyJournalPage(main){
     openDailyClosePrint(curDateStr, { totalIn, totalOut, totalPetty, netCash }, filtered);
   };
 
-  // Row Delete
+  const autoFixBtn = document.getElementById('autoFixDuplicatePaymentsBtn');
+  if(autoFixBtn){
+    autoFixBtn.onclick = async ()=>{
+      if(!confirm('هل أنت متأكد من رغبتك في إزالة الدفعات المتكررة تلقائياً وتصحيح رصيد الخزينة والإيصالات؟')) return;
+      await cleanDuplicatePayments();
+    };
+  }
+
+  // Row Delete for Payments
+  main.querySelectorAll('[data-txpaydel]').forEach(btn => {
+    btn.onclick = async ()=>{
+      const payId = btn.dataset.txpaydel;
+      const p = (state.payments || []).find(x => String(x.ID) === String(payId));
+      const title = p ? `تحصيل صيانة بمبلغ ${p.Amount} ج.م (إيصال #${p.ReceiptNumber || p.ReceiptID})` : 'دفعة صيانة';
+      requestAdminAuthorization({
+        action: 'حذف دفعة صيانة وتصحيح رصيد الخزينة',
+        entityType: 'دفعة صيانة',
+        entityId: payId,
+        entityTitle: title,
+        onApproved: async ()=>{
+          try{
+            await deletePaymentRemote(payId);
+            showToast('تم حذف الدفعة وتصحيح رصيد الخزينة والإيصال بنجاح ✅', 'success');
+            renderDailyJournalPage(main);
+          }catch(e){ showToast('تعذر حذف الدفعة: '+e.message, 'error'); }
+        }
+      });
+    };
+  });
+
+  // Row Delete for Expenses
   main.querySelectorAll('[data-txdel]').forEach(btn => {
     btn.onclick = async ()=>{
       const exp = (state.expenses || []).find(x=>x.ID === btn.dataset.txdel);

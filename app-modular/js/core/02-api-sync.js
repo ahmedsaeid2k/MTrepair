@@ -22,6 +22,12 @@ function saveSyncQueue(q){
 }
 function addToSyncQueue(action, data){
   const q = getSyncQueue();
+  const serialized = JSON.stringify({action, data});
+  const alreadyInQueue = q.some(item => JSON.stringify({action: item.action, data: item.data}) === serialized);
+  if(alreadyInQueue){
+    console.warn(`[addToSyncQueue] Suppressed identical pending queue item for ${action}`);
+    return;
+  }
   q.push({ id: 'sync_' + Date.now() + '_' + Math.random().toString(36).slice(2,7), action, data, timestamp: new Date().toISOString() });
   saveSyncQueue(q);
 }
@@ -32,7 +38,7 @@ async function apiGet(action, params){
     // Security: login authentication must never cache or return stale cached tokens
     const q = new URLSearchParams({action, ...(params||{})});
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 9000);
+    const timeout = setTimeout(() => controller.abort(), 15000);
     const res = await fetch(`${API_URL}?${q.toString()}`, { signal: controller.signal });
     clearTimeout(timeout);
     const json = await res.json();
@@ -46,7 +52,7 @@ async function apiGet(action, params){
   try {
     const q = new URLSearchParams({action, ...(params||{})});
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 9000);
+    const timeout = setTimeout(() => controller.abort(), 20000);
     const res = await fetch(`${API_URL}?${q.toString()}`, { signal: controller.signal });
     clearTimeout(timeout);
     const json = await res.json();
@@ -67,7 +73,7 @@ async function apiPost(action, data){
   }
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 9000);
+    const timeout = setTimeout(() => controller.abort(), 25000);
     const res = await fetch(API_URL, {
       method: 'POST',
       headers: {'Content-Type': 'text/plain;charset=utf-8'},

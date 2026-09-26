@@ -567,8 +567,14 @@ function promptDeliveryRemainingPayment(r, remaining, onProceed){
     };
   });
 
+  let isHandshakeHandled = false;
   pOverlay.querySelector('#promptBtnPayAndDeliver').onclick = ()=>{
-    pOverlay.remove();
+    if(isHandshakeHandled) return;
+    isHandshakeHandled = true;
+    const btn = pOverlay.querySelector('#promptBtnPayAndDeliver');
+    if(btn){ btn.disabled = true; btn.textContent = '⏳ جارٍ التحصيل والتسليم...'; }
+    pOverlay.querySelectorAll('button').forEach(b => b.disabled = true);
+    setTimeout(() => pOverlay.remove(), 100);
     const pmObj = getActivePaymentMethods().find(x=>x.id===curMethod) || {name:'نقدي (كاش)'};
     if(curMethod === 'credit'){
       onProceed(false, 'آجل / على الحساب');
@@ -577,10 +583,15 @@ function promptDeliveryRemainingPayment(r, remaining, onProceed){
     }
   };
   pOverlay.querySelector('#promptBtnDeliverOnly').onclick = ()=>{
-    pOverlay.remove();
+    if(isHandshakeHandled) return;
+    isHandshakeHandled = true;
+    pOverlay.querySelectorAll('button').forEach(b => b.disabled = true);
+    setTimeout(() => pOverlay.remove(), 100);
     onProceed(false, 'آجل / على الحساب');
   };
   pOverlay.querySelector('#promptBtnCancel').onclick = ()=>{
+    if(isHandshakeHandled) return;
+    isHandshakeHandled = true;
     pOverlay.remove();
   };
 }
@@ -648,17 +659,30 @@ function promptPaymentDeliveryStatus(r, amt, onProceed){
     };
   });
 
+  let isPayStatusHandled = false;
   pOverlay.querySelector('#promptBtnDeliver').onclick = ()=>{
-    pOverlay.remove();
+    if(isPayStatusHandled) return;
+    isPayStatusHandled = true;
+    const btn = pOverlay.querySelector('#promptBtnDeliver');
+    if(btn){ btn.disabled = true; btn.textContent = '⏳ جارٍ تسجيل السداد والتسليم...'; }
+    pOverlay.querySelectorAll('button').forEach(b => b.disabled = true);
+    setTimeout(() => pOverlay.remove(), 100);
     const pmObj = getActivePaymentMethods().find(x=>x.id===curMethod) || {name:'نقدي (كاش)'};
     onProceed(true, pmObj.name); // true = تغيير الحالة لتم التسليم
   };
   pOverlay.querySelector('#promptBtnKeepStatus').onclick = ()=>{
-    pOverlay.remove();
+    if(isPayStatusHandled) return;
+    isPayStatusHandled = true;
+    const btn = pOverlay.querySelector('#promptBtnKeepStatus');
+    if(btn){ btn.disabled = true; btn.textContent = '⏳ جارٍ تسجيل السداد...'; }
+    pOverlay.querySelectorAll('button').forEach(b => b.disabled = true);
+    setTimeout(() => pOverlay.remove(), 100);
     const pmObj = getActivePaymentMethods().find(x=>x.id===curMethod) || {name:'نقدي (كاش)'};
     onProceed(false, pmObj.name); // false = سداد فقط مع إبقاء الحالة
   };
   pOverlay.querySelector('#promptBtnCancelPay').onclick = ()=>{
+    if(isPayStatusHandled) return;
+    isPayStatusHandled = true;
     pOverlay.remove();
   };
 }
@@ -731,15 +755,19 @@ function openQuickStatusModal(rawR){
   const quickStatusCostEstBtn = overlay.querySelector('#quickStatusCostEstBtn');
   if(quickStatusCostEstBtn) quickStatusCostEstBtn.onclick = ()=>{ overlay.remove(); openCostEstimateModal(r); };
 
+  let isQuickStatusBusy = false;
   overlay.querySelectorAll('[data-setstatus]').forEach(btn=>{
     btn.onclick = async ()=>{
+      if(isQuickStatusBusy) return;
       const newStatus = btn.dataset.setstatus;
       const newTech = overlay.querySelector('#quickTechSelect').value;
       const sendWa = overlay.querySelector('#sendWaAfterStatus').checked;
-      const remaining = Number(r.cost||0) + Number(r.partsCost||0) - Number(r.deposit||0) + Number(r.refunded||0);
+      const remaining = Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0) - Number(r.deposit||0) + Number(r.refunded||0);
 
       // إذا كان التغيير إلى "تم التسليم" وهناك مبلغ متبقي غير مسدد
       if(newStatus === 'تم التسليم' && remaining > 0){
+        isQuickStatusBusy = true;
+        overlay.querySelectorAll('[data-setstatus]').forEach(b => b.disabled = true);
         promptDeliveryRemainingPayment(r, remaining, async (shouldPay, payMethodName)=>{
           if(newTech) r.technician = newTech;
           r.status = 'تم التسليم';
@@ -2814,9 +2842,9 @@ async function openReceiptDetail(rawR){
     const remainingNow = Math.max(0, totalDue - totalPaid + Number(r.refunded||0));
 
     if(r.status === 'تم التسليم' && remainingNow > 0){
+      const btn = overlay.querySelector('#saveEditBtn');
+      if(btn){ btn.disabled = true; btn.textContent = 'جارٍ الحفظ...'; }
       promptDeliveryRemainingPayment(r, remainingNow, async (shouldPay, payMethodName)=>{
-        const btn = overlay.querySelector('#saveEditBtn');
-        if(btn){ btn.disabled = true; btn.textContent = 'جارٍ الحفظ...'; }
         if(shouldPay){
           try{
             await savePaymentRemote(r.id, remainingNow, 'سداد المتبقي عند التسليم', payMethodName || 'نقدي (كاش)');
@@ -2852,7 +2880,10 @@ async function openReceiptDetail(rawR){
     }
   };
 
+  let isAddPaySubmitting = false;
   overlay.querySelector('#addPayBtn').onclick = async ()=>{
+    if(isAddPaySubmitting) return;
+    const addPayBtn = overlay.querySelector('#addPayBtn');
     const amt = Number(overlay.querySelector('#newPayAmt').value);
     const note = overlay.querySelector('#newPayNote').value.trim();
     const payMethodInp = overlay.querySelector('#newPayMethod');
@@ -2873,6 +2904,9 @@ async function openReceiptDetail(rawR){
       return;
     }
 
+    isAddPaySubmitting = true;
+    if(addPayBtn){ addPayBtn.disabled = true; addPayBtn.textContent = 'جارٍ التسجيل...'; }
+
     // إذا كانت الدفعة تغطي المبلغ المتبقي بالكامل والحالة لم تسلم بعد
     if(amt >= remainingBefore && r.status !== 'تم التسليم'){
       promptPaymentDeliveryStatus(r, amt, async (shouldDeliver, payMethodName)=>{
@@ -2892,7 +2926,11 @@ async function openReceiptDetail(rawR){
           overlay.remove();
           showToast(shouldDeliver ? 'تم سداد كامل المبلغ وتحديث الحالة إلى تم التسليم 🤝✅' : 'تم سداد كامل المبلغ وتحديث الحسابات بنجاح ✅', 'success');
           renderMain();
-        }catch(e){ showToast('تم الحفظ محلياً: '+e.message, 'info'); }
+        }catch(e){ 
+          showToast('تم الحفظ محلياً: '+e.message, 'info'); 
+          isAddPaySubmitting = false;
+          if(addPayBtn){ addPayBtn.disabled = false; addPayBtn.textContent = 'تسجيل دفعة'; }
+        }
       });
       return;
     }
@@ -2913,11 +2951,18 @@ async function openReceiptDetail(rawR){
       await refreshPayments();
       showToast('تم تسجيل الدفعة بنجاح', 'success');
       renderMain();
-    }catch(e){ showToast('تم تسجيل الدفعة محلياً', 'info'); }
+    }catch(e){ 
+      showToast('تم تسجيل الدفعة محلياً', 'info'); 
+    }finally{
+      isAddPaySubmitting = false;
+      if(addPayBtn){ addPayBtn.disabled = false; addPayBtn.textContent = 'تسجيل دفعة'; }
+    }
   };
 
+  let isPayBtnSubmitting = false;
   const payBtn = overlay.querySelector('#payBtn');
   if(payBtn) payBtn.onclick = async ()=>{
+    if(isPayBtnSubmitting) return;
     const totalDue = Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0);
     const remainingNow = Math.max(0, totalDue - Number(r.deposit||0) + Number(r.refunded||0));
     if(remainingNow <= 0){
@@ -2925,8 +2970,11 @@ async function openReceiptDetail(rawR){
       return;
     }
 
+    isPayBtnSubmitting = true;
+    payBtn.disabled = true;
+    payBtn.textContent = 'جارٍ السداد...';
+
     promptPaymentDeliveryStatus(r, remainingNow, async (shouldDeliver, payMethodName)=>{
-      payBtn.disabled = true;
       try{
         await savePaymentRemote(r.id, remainingNow, shouldDeliver ? 'سداد المتبقي عند التسليم' : 'سداد المتبقي بالكامل', payMethodName || 'نقدي (كاش)');
         r.deposit = Number(r.deposit||0) + remainingNow;
@@ -2947,6 +2995,8 @@ async function openReceiptDetail(rawR){
       }catch(e){
         showToast('تم السداد محلياً: '+e.message, 'info');
         payBtn.disabled = false;
+        payBtn.textContent = '✅ سداد المتبقي';
+        isPayBtnSubmitting = false;
       }
     });
   };

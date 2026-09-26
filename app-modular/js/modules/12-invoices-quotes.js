@@ -292,6 +292,8 @@ function getUnifiedDailyTransactions(){
     const custName = r ? r.customer.name : '';
     transactions.push({
       id: 'pay_' + (p.ID || p.ReceiptID),
+      rawPayId: p.ID,
+      rawReceiptId: p.ReceiptID,
       date: cleanDate(p.Date) || new Date().toISOString().slice(0,10),
       rawTime: p.Time || '',
       type: 'in',
@@ -308,7 +310,7 @@ function getUnifiedDailyTransactions(){
       by: p.By || 'نظام',
       method: p.PaymentMethod || 'نقدي (كاش)',
       notes: p.Note || '',
-      canDelete: false
+      canDelete: true
     });
   });
 

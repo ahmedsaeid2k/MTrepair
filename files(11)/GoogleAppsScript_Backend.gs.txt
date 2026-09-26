@@ -253,8 +253,35 @@ function doPost(e) {
       return jsonOut({ ok: true });
     }
     if (action === 'savePayment') {
+      const pId = body.id || ('p_' + new Date().getTime() + '_' + Math.floor(Math.random() * 1000));
+      const shPay = getSheet(SHEET_PAYMENTS);
+      const headers = shPay.getRange(1, 1, 1, shPay.getLastColumn()).getValues()[0];
+      const idCol = headers.indexOf('ID');
+      const rIdCol = headers.indexOf('ReceiptID');
+      const amtCol = headers.indexOf('Amount');
+      const dateCol = headers.indexOf('Date');
+      const noteCol = headers.indexOf('Note');
+      const values = shPay.getDataRange().getValues();
+
+      // Idempotency: Check if payment already exists with same ID or exact same ReceiptID, Amount, Date & Note
+      for (let i = 1; i < values.length; i++) {
+        if (idCol >= 0 && String(values[i][idCol]) === String(pId)) {
+          return jsonOut({ ok: true, duplicateSuppressed: true });
+        }
+        if (rIdCol >= 0 && amtCol >= 0 && dateCol >= 0) {
+          const rowNote = noteCol >= 0 ? String(values[i][noteCol] || '').trim() : '';
+          const targetNote = String(body.note || '').trim();
+          if (String(values[i][rIdCol]) === String(body.receiptId) &&
+              Number(values[i][amtCol]) === Number(body.amount) &&
+              String(values[i][dateCol]).slice(0, 10) === String(body.date).slice(0, 10) &&
+              rowNote === targetNote) {
+            return jsonOut({ ok: true, duplicateSuppressed: true });
+          }
+        }
+      }
+
       const payment = {
-        ID: 'p_' + new Date().getTime() + '_' + Math.floor(Math.random() * 1000),
+        ID: pId,
         ReceiptID: body.receiptId, Date: body.date, Amount: body.amount,
         Note: body.note || '', By: body.user,
         PaymentMethod: body.paymentMethod || 'نقدي (كاش)'
@@ -262,6 +289,32 @@ function doPost(e) {
       appendRow(SHEET_PAYMENTS, payment);
       logAudit(body.receiptId, body.user, 'تسجيل دفعة: ' + body.amount + ' ج.م (' + (body.paymentMethod || 'نقدي') + ')');
       return jsonOut({ ok: true, payment });
+    }
+    if (action === 'deletePayment') {
+      if (body.role !== 'admin') return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
+      const shPay = getSheet(SHEET_PAYMENTS);
+      const headers = shPay.getRange(1, 1, 1, shPay.getLastColumn()).getValues()[0];
+      const idCol = headers.indexOf('ID');
+      const rIdCol = headers.indexOf('ReceiptID');
+      const amtCol = headers.indexOf('Amount');
+      const values = shPay.getDataRange().getValues();
+      let deleted = false;
+
+      for (let i = values.length - 1; i >= 1; i--) {
+        if (idCol >= 0 && body.id && String(values[i][idCol]) === String(body.id)) {
+          shPay.deleteRow(i + 1);
+          deleted = true;
+          break;
+        } else if (!body.id && rIdCol >= 0 && amtCol >= 0 &&
+                   String(values[i][rIdCol]) === String(body.receiptId) &&
+                   Number(values[i][amtCol]) === Number(body.amount)) {
+          shPay.deleteRow(i + 1);
+          deleted = true;
+          break;
+        }
+      }
+      logAudit(body.receiptId || body.id, body.user, 'حذف دفعة صيانة وتصحيح الخزينة: ' + (body.amount || '') + ' ج.م');
+      return jsonOut({ ok: true, deleted });
     }
     if (action === 'saveInventoryItem') {
       const item = {

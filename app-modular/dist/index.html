@@ -6582,14 +6582,11 @@ async function loginRemote(name, password){
       const effectiveSecs = getEffectiveSections(found);
       return { name: found.Name, role: effectiveRole, sections: effectiveSecs, superuser: isSuper, Superuser: isSuper };
     }
-    if(cleanName.toLowerCase()==='admin' && cleanPass==='admin'){
-      return { name:'admin', role:'admin', superuser: true, Superuser: true, sections:['maintenance', 'pos', 'invoices', 'cameras', 'cashdrawer', 'daily', 'finance', 'inventory', 'barcode', 'audit', 'users', 'settings'] };
-    }
     throw new Error('بيانات الدخول غير صحيحة (وضع غير متصل)');
   }
 
   try {
-    const res = await apiGet('login', {name: cleanName, password: cleanPass});
+    const res = await apiPost('login', {name: cleanName, password: cleanPass});
     if(res && !res.error && res.name && res.name.toLowerCase() === cleanName.toLowerCase()){
       // LOCAL USER CONFIGURATION SET BY ADMIN IS THE SOURCE OF TRUTH
       const effectiveRole = (found && found.Role) ? found.Role : res.role;
@@ -6626,9 +6623,6 @@ async function loginRemote(name, password){
     const isSuper = effectiveRole === 'admin' || !!found.Superuser || !!found.superuser;
     const effectiveSecs = getEffectiveSections(found);
     return { name: found.Name, role: effectiveRole, sections: effectiveSecs, superuser: isSuper, Superuser: isSuper };
-  }
-  if(cleanName.toLowerCase()==='admin' && cleanPass==='admin'){
-    return { name:'admin', role:'admin', superuser: true, Superuser: true, sections:['maintenance', 'pos', 'invoices', 'cameras', 'cashdrawer', 'daily', 'finance', 'inventory', 'barcode', 'audit', 'users', 'settings'] };
   }
   throw new Error('اسم المستخدم أو كلمة المرور غير صحيحة');
 }
@@ -7511,11 +7505,43 @@ function checkCustomerTrackingURL(){
 
 async function renderPublicTrackingPortal(receiptNum){
   const app = document.getElementById('app');
-  let receipts = state.receipts || [];
+  let r = null;
+  const cleanNum = String(receiptNum || '').trim();
+
   if(navigator.onLine){
-    try{ receipts = (await apiGet('getReceipts')).map(rowToReceipt); }catch(e){}
+    try{
+      const res = await apiGet('trackReceipt', { receiptNumber: cleanNum });
+      if(res && res.found && res.receipt){
+        r = res.receipt;
+      }
+    }catch(e){
+      console.warn('trackReceipt API call failed:', e);
+    }
   }
-  const r = receipts.find(x=>x.receiptNumber.trim()===receiptNum.trim());
+
+  // Fallback to local memory only if already loaded
+  if(!r && state.receipts && state.receipts.length){
+    const localMatch = state.receipts.find(x => String(x.receiptNumber || '').trim().toLowerCase() === cleanNum.toLowerCase());
+    if(localMatch) {
+      r = {
+        receiptNumber: localMatch.receiptNumber,
+        customer: { name: (localMatch.customer && localMatch.customer.name) || extractCustomerName(localMatch) || '' },
+        device: {
+          category: (localMatch.device && localMatch.device.category) || '',
+          brand: (localMatch.device && localMatch.device.brand) || '',
+          brandOther: (localMatch.device && localMatch.device.brandOther) || '',
+          model: (localMatch.device && localMatch.device.model) || ''
+        },
+        faults: Array.isArray(localMatch.faults) ? localMatch.faults : [String(localMatch.faults || '')],
+        deliveryDate: localMatch.deliveryDate || '',
+        status: localMatch.status || 'قيد الفحص',
+        cost: Number(localMatch.cost || 0),
+        partsCost: Number(localMatch.partsCost || 0),
+        deposit: Number(localMatch.deposit || 0),
+        refunded: Number(localMatch.refunded || 0)
+      };
+    }
+  }
   
   if(!r){
     app.innerHTML = `
@@ -7523,7 +7549,7 @@ async function renderPublicTrackingPortal(receiptNum){
         <div class="tracking-card" style="text-align:center;">
           <div style="font-size:40px;margin-bottom:12px;">🔍</div>
           <h2>لم يتم العثور على الإيصال</h2>
-          <p class="subtitle" style="margin-bottom:20px;">تأكد من رقم الإيصال المكتوب: <b>${receiptNum}</b></p>
+          <p class="subtitle" style="margin-bottom:20px;">تأكد من رقم الإيصال المكتوب: <b class="mono">${escapeHtml(cleanNum)}</b></p>
           <a href="${window.location.pathname}" class="btn btn-primary">العودة لتسجيل الدخول</a>
         </div>
       </div>
@@ -7537,13 +7563,22 @@ async function renderPublicTrackingPortal(receiptNum){
   const isRepair = r.status==='الصيانة';
   const isCheck = r.status==='قيد الفحص';
 
+  const custName = escapeHtml((r.customer && r.customer.name) || '');
+  const devCat = escapeHtml((r.device && r.device.category) || 'جهاز');
+  const devBrand = escapeHtml(r.device ? (r.device.brand==='أخرى' ? (r.device.brandOther || '') : (r.device.brand || '')) : '');
+  const devModel = escapeHtml((r.device && r.device.model) || '');
+  const faultsText = escapeHtml(Array.isArray(r.faults) ? r.faults.join('، ') : (r.faults || '-'));
+  const delDate = escapeHtml(r.deliveryDate || 'قيد التحديد');
+  const rStatus = escapeHtml(r.status || 'قيد الفحص');
+  const rNum = escapeHtml(String(r.receiptNumber || ''));
+
   app.innerHTML = `
     <div class="tracking-container">
       <div class="tracking-card">
         <div style="text-align:center;border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:16px;">
           <div style="font-size:28px;">⚡</div>
           <h2 style="margin:4px 0;">بوابة تتبع الصيانة — ميكروتك</h2>
-          <div class="subtitle">رقم الإيصال: <b class="mono" style="color:var(--primary);font-size:16px;">${r.receiptNumber}</b></div>
+          <div class="subtitle">رقم الإيصال: <b class="mono" style="color:var(--primary);font-size:16px;">#${rNum}</b></div>
         </div>
 
         <div class="tracking-timeline">
@@ -7570,11 +7605,11 @@ async function renderPublicTrackingPortal(receiptNum){
         </div>
 
         <div style="background:var(--paper3);border-radius:var(--radius);padding:16px;margin-bottom:16px;line-height:1.8;">
-          <div><b>👤 اسم العميل:</b> ${r.customer.name}</div>
-          <div><b>💻 الجهاز:</b> ${r.device.category} - ${r.device.brand==='أخرى'?r.device.brandOther:r.device.brand} ${r.device.model||''}</div>
-          <div><b>⚠️ العطل المبلغ عنه:</b> ${r.faults.join('، ')||'-'}</div>
-          <div><b>📅 موعد التسليم المتوقع:</b> ${r.deliveryDate||'قيد التحديد'}</div>
-          <div><b>📌 الحالة الحالية:</b> <span class="status-badge ${(STATUSES.find(s=>s.v===r.status)||{}).cls||'st-check'}">${r.status}</span></div>
+          <div><b>👤 اسم العميل:</b> ${custName}</div>
+          <div><b>💻 الجهاز:</b> ${devCat} - ${devBrand} ${devModel}</div>
+          <div><b>⚠️ العطل المبلغ عنه:</b> ${faultsText}</div>
+          <div><b>📅 موعد التسليم المتوقع:</b> ${delDate}</div>
+          <div><b>📌 الحالة الحالية:</b> <span class="status-badge ${(STATUSES.find(s=>s.v===r.status)||{}).cls||'st-check'}">${rStatus}</span></div>
         </div>
 
         <div class="fin-box" style="margin-bottom:20px;">
@@ -10069,7 +10104,7 @@ function stepFinance(body,d){
     d.partsCost = Number(d.partsCost||0) + cost;
     d.partsUsed = d.partsList.map(p => `${p.name} × ${p.qty}`).join('، ');
     document.getElementById('finParts').value = d.partsCost;
-    document.getElementById('draftPartsUsedList').innerHTML = d.partsUsed + ' <span style="font-size:11px;color:var(--primary);font-weight:700;">(سيتم الخصم الفعلي عند اعتماد الإيصال)</span>';
+    document.getElementById('draftPartsUsedList').innerHTML = escapeHtml(d.partsUsed) + ' <span style="font-size:11px;color:var(--primary);font-weight:700;">(سيتم الخصم الفعلي عند اعتماد الإيصال)</span>';
     recalcDraftFinances();
     showToast('تمت إضافة قطعة الغيار لمسودة الإيصال (سيتم الخصم عند الحفظ النهائي)', 'success');
   };
@@ -10133,10 +10168,10 @@ function stepReview(body,d){
     <div class="card">
       <h3>📋 مراجعة بيانات الإيصال قبل الحفظ</h3>
       <div class="grid2" style="font-size:13.5px;line-height:2;">
-        <div><b>👤 العميل:</b> ${d.customer.name} — <span class="mono">${d.customer.phone}</span></div>
+        <div><b>👤 العميل:</b> ${escapeHtml(d.customer.name)} — <span class="mono">${escapeHtml(d.customer.phone)}</span></div>
         <div><b>📅 تاريخ ووقت الاستلام:</b> <span class="mono" style="font-weight:bold;">${cleanDate(d.date)}</span> <span class="badge badge-blue mono" style="font-size:11.5px;margin-right:4px;">⏰ ${formatReceiptTime(d) || d.time || ''}</span></div>
         ${d.previousReceiptNumber ? `<div><b>🔄 صيانة راجعة / تكرارية:</b> <span class="badge badge-amber mono">#${escapeHtml(d.previousReceiptNumber)}</span> <span style="font-size:11.5px;color:var(--ink-secondary);">${d.reIntakeReason ? '('+escapeHtml(d.reIntakeReason)+')' : ''}</span></div>` : ''}
-        <div><b>👨‍🔧 الفني المسؤول:</b> ${d.technician||'غير محدد'}</div>
+        <div><b>👨‍🔧 الفني المسؤول:</b> ${escapeHtml(d.technician||'غير محدد')}</div>
         <div><b>💵 تكلفة الخدمة:</b> ${d.cost||0} ج.م</div>
         ${(d.serviceItems && d.serviceItems.length > 0) ? `<div style="grid-column:1/-1;background:var(--paper2);padding:6px 10px;border-radius:4px;border:1px solid var(--line);font-size:12px;line-height:1.5;"><b>🛠️ تفاصيل بنود الصيانة (${d.serviceItems.length}):</b> ${d.serviceItems.map(it=>`${escapeHtml(it.desc)} (<b class="mono">${it.price}</b> ج.م)`).join(' | ')}</div>` : ''}
         <div><b>⚙️ تكلفة قطع الغيار:</b> ${d.partsCost||0} ج.م</div>
@@ -10149,7 +10184,7 @@ function stepReview(body,d){
           </div>
         ` : `<div><b>📥 الدفعة المقدمة:</b> 0 ج.م</div>`}
         <div><b style="color:var(--primary);">المبلغ المتبقي المطلوب:</b> <span class="mono" style="font-size:17px;font-weight:900;color:var(--primary);">${remaining}</span> ج.م</div>
-        <div><b>📅 موعد التسليم:</b> ${d.deliveryDate||'غير محدد'}</div>
+        <div><b>📅 موعد التسليم:</b> ${escapeHtml(d.deliveryDate||'غير محدد')}</div>
       </div>
 
       ${isMultiDev ? `

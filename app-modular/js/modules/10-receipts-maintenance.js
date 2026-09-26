@@ -771,7 +771,7 @@ function stepFinance(body,d){
     d.partsCost = Number(d.partsCost||0) + cost;
     d.partsUsed = d.partsList.map(p => `${p.name} × ${p.qty}`).join('، ');
     document.getElementById('finParts').value = d.partsCost;
-    document.getElementById('draftPartsUsedList').innerHTML = d.partsUsed + ' <span style="font-size:11px;color:var(--primary);font-weight:700;">(سيتم الخصم الفعلي عند اعتماد الإيصال)</span>';
+    document.getElementById('draftPartsUsedList').innerHTML = escapeHtml(d.partsUsed) + ' <span style="font-size:11px;color:var(--primary);font-weight:700;">(سيتم الخصم الفعلي عند اعتماد الإيصال)</span>';
     recalcDraftFinances();
     showToast('تمت إضافة قطعة الغيار لمسودة الإيصال (سيتم الخصم عند الحفظ النهائي)', 'success');
   };
@@ -835,10 +835,10 @@ function stepReview(body,d){
     <div class="card">
       <h3>📋 مراجعة بيانات الإيصال قبل الحفظ</h3>
       <div class="grid2" style="font-size:13.5px;line-height:2;">
-        <div><b>👤 العميل:</b> ${d.customer.name} — <span class="mono">${d.customer.phone}</span></div>
+        <div><b>👤 العميل:</b> ${escapeHtml(d.customer.name)} — <span class="mono">${escapeHtml(d.customer.phone)}</span></div>
         <div><b>📅 تاريخ ووقت الاستلام:</b> <span class="mono" style="font-weight:bold;">${cleanDate(d.date)}</span> <span class="badge badge-blue mono" style="font-size:11.5px;margin-right:4px;">⏰ ${formatReceiptTime(d) || d.time || ''}</span></div>
         ${d.previousReceiptNumber ? `<div><b>🔄 صيانة راجعة / تكرارية:</b> <span class="badge badge-amber mono">#${escapeHtml(d.previousReceiptNumber)}</span> <span style="font-size:11.5px;color:var(--ink-secondary);">${d.reIntakeReason ? '('+escapeHtml(d.reIntakeReason)+')' : ''}</span></div>` : ''}
-        <div><b>👨‍🔧 الفني المسؤول:</b> ${d.technician||'غير محدد'}</div>
+        <div><b>👨‍🔧 الفني المسؤول:</b> ${escapeHtml(d.technician||'غير محدد')}</div>
         <div><b>💵 تكلفة الخدمة:</b> ${d.cost||0} ج.م</div>
         ${(d.serviceItems && d.serviceItems.length > 0) ? `<div style="grid-column:1/-1;background:var(--paper2);padding:6px 10px;border-radius:4px;border:1px solid var(--line);font-size:12px;line-height:1.5;"><b>🛠️ تفاصيل بنود الصيانة (${d.serviceItems.length}):</b> ${d.serviceItems.map(it=>`${escapeHtml(it.desc)} (<b class="mono">${it.price}</b> ج.م)`).join(' | ')}</div>` : ''}
         <div><b>⚙️ تكلفة قطع الغيار:</b> ${d.partsCost||0} ج.م</div>
@@ -851,7 +851,7 @@ function stepReview(body,d){
           </div>
         ` : `<div><b>📥 الدفعة المقدمة:</b> 0 ج.م</div>`}
         <div><b style="color:var(--primary);">المبلغ المتبقي المطلوب:</b> <span class="mono" style="font-size:17px;font-weight:900;color:var(--primary);">${remaining}</span> ج.م</div>
-        <div><b>📅 موعد التسليم:</b> ${d.deliveryDate||'غير محدد'}</div>
+        <div><b>📅 موعد التسليم:</b> ${escapeHtml(d.deliveryDate||'غير محدد')}</div>
       </div>
 
       ${isMultiDev ? `

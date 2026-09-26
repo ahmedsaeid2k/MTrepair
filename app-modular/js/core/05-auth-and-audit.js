@@ -530,14 +530,11 @@ async function loginRemote(name, password){
       const effectiveSecs = getEffectiveSections(found);
       return { name: found.Name, role: effectiveRole, sections: effectiveSecs, superuser: isSuper, Superuser: isSuper };
     }
-    if(cleanName.toLowerCase()==='admin' && cleanPass==='admin'){
-      return { name:'admin', role:'admin', superuser: true, Superuser: true, sections:['maintenance', 'pos', 'invoices', 'cameras', 'cashdrawer', 'daily', 'finance', 'inventory', 'barcode', 'audit', 'users', 'settings'] };
-    }
     throw new Error('بيانات الدخول غير صحيحة (وضع غير متصل)');
   }
 
   try {
-    const res = await apiGet('login', {name: cleanName, password: cleanPass});
+    const res = await apiPost('login', {name: cleanName, password: cleanPass});
     if(res && !res.error && res.name && res.name.toLowerCase() === cleanName.toLowerCase()){
       // LOCAL USER CONFIGURATION SET BY ADMIN IS THE SOURCE OF TRUTH
       const effectiveRole = (found && found.Role) ? found.Role : res.role;
@@ -574,9 +571,6 @@ async function loginRemote(name, password){
     const isSuper = effectiveRole === 'admin' || !!found.Superuser || !!found.superuser;
     const effectiveSecs = getEffectiveSections(found);
     return { name: found.Name, role: effectiveRole, sections: effectiveSecs, superuser: isSuper, Superuser: isSuper };
-  }
-  if(cleanName.toLowerCase()==='admin' && cleanPass==='admin'){
-    return { name:'admin', role:'admin', superuser: true, Superuser: true, sections:['maintenance', 'pos', 'invoices', 'cameras', 'cashdrawer', 'daily', 'finance', 'inventory', 'barcode', 'audit', 'users', 'settings'] };
   }
   throw new Error('اسم المستخدم أو كلمة المرور غير صحيحة');
 }

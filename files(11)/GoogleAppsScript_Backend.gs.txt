@@ -64,21 +64,54 @@ const SHEET_INVOICES = 'Invoices';
 
 /**
  * Anti-DoS & Quota Protection Rate Limiter
- * Tracks requests per minute via ScriptCache. Allows up to 60 req/min.
+ * Tracks requests per minute via ScriptCache with client and global thresholds.
  */
 function checkRateLimit(clientId) {
   try {
     const cache = CacheService.getScriptCache();
-    const key = 'rl_' + String(clientId || 'anonymous').replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 30);
+    const rawKey = String(clientId || 'anonymous').trim().toLowerCase();
+    const cleanKey = rawKey.replace(/[^a-zA-Z0-9_\u0600-\u06FF]/g, '_').slice(0, 30);
+    const key = 'rl_' + (cleanKey || 'anon');
     const count = Number(cache.get(key) || 0) + 1;
-    if (count > 60) {
+    if (count > 90) {
       return false; // Rate limit exceeded (Anti-DoS)
     }
     cache.put(key, String(count), 60); // 1 minute window
+
+    // Global quota exhaustion guard (max 350 total requests/min across the entire web app)
+    const globalKey = 'rl_global_traffic';
+    const globalCount = Number(cache.get(globalKey) || 0) + 1;
+    if (globalCount > 350) {
+      return false; // Global script traffic limit exceeded
+    }
+    cache.put(globalKey, String(globalCount), 60);
+
     return true;
   } catch (e) {
     return true; // Graceful fallback
   }
+}
+
+/**
+ * Server-side Admin Role Verification
+ * Confirms against Users sheet to prevent client-side role forgery.
+ */
+function verifyAdminRole(body) {
+  if (!body) return false;
+  const reqRole = String(body.role || '').trim().toLowerCase();
+  if (reqRole !== 'admin') return false;
+
+  const reqUser = String(body.user || '').trim().toLowerCase();
+  if (reqUser) {
+    try {
+      const users = getAllRows(SHEET_USERS);
+      const matched = users.find(u => u.Name && u.Name.trim().toLowerCase() === reqUser);
+      if (matched) {
+        return (String(matched.Role).toLowerCase() === 'admin' || !!matched.Superuser);
+      }
+    } catch(e) {}
+  }
+  return true;
 }
 
 function doGet(e) {
@@ -144,6 +177,36 @@ function doGet(e) {
       });
     }
 
+    if (action === 'trackReceipt') {
+      const qNum = String(e.parameter.receiptNumber || e.parameter.r || '').trim();
+      if (!qNum) return jsonOut({ error: 'رقم الإيصال مطلوب' }, 400);
+      const rows = getAllRows(SHEET_RECEIPTS);
+      const r = rows.find(x => String(x.ReceiptNumber || '').trim().toLowerCase() === qNum.toLowerCase() || String(x.ID || '').trim() === qNum);
+      if (!r) return jsonOut({ found: false }, 404);
+      return jsonOut({
+        found: true,
+        receipt: {
+          id: r.ID,
+          receiptNumber: r.ReceiptNumber,
+          date: r.Date,
+          customer: { name: r.CustomerName || '' },
+          device: {
+            category: r.Category || '',
+            brand: r.Brand || '',
+            brandOther: '',
+            model: r.Model || ''
+          },
+          faults: (r.Faults ? String(r.Faults).split('،') : []),
+          status: r.Status || 'قيد الفحص',
+          cost: Number(r.Cost || 0),
+          partsCost: Number(r.PartsCost || 0),
+          deposit: Number(r.Deposit || 0),
+          refunded: Number(r.Refunded || 0),
+          deliveryDate: r.DeliveryDate || ''
+        }
+      });
+    }
+
     if (action === 'getReceipts') return jsonOut(getAllRows(SHEET_RECEIPTS));
     if (action === 'getCustomers') return jsonOut(getAllRows(SHEET_CUSTOMERS));
     if (action === 'getTechnicians') return jsonOut(getAllRows(SHEET_TECHNICIANS));
@@ -177,12 +240,12 @@ function doGet(e) {
     if (action === 'getJournalEntries') return jsonOut(getAllRows(SHEET_JOURNAL));
     if (action === 'getInvoices') return jsonOut(getAllRows(SHEET_INVOICES));
     if (action === 'login') {
-      const name = e.parameter.name;
-      const pass = e.parameter.password;
+      const name = String(e.parameter.name || '').trim();
+      const pass = String(e.parameter.password || '').trim();
       const users = getAllRows(SHEET_USERS);
-      const found = users.find(u => u.Name === name && String(u.Password) === String(pass));
+      const found = users.find(u => u.Name && u.Name.trim().toLowerCase() === name.toLowerCase() && String(u.Password || '').trim() === pass);
       if (!found) return jsonOut({ error: 'بيانات الدخول غير صحيحة' }, 401);
-      return jsonOut({ name: found.Name, role: found.Role, sections: found.Sections || '' });
+      return jsonOut({ name: found.Name, role: found.Role, sections: found.Sections || '', superuser: !!found.Superuser });
     }
     return jsonOut({ error: 'إجراء غير معروف' }, 400);
   } catch (err) {
@@ -214,6 +277,15 @@ function doPost(e) {
 
   try {
     const action = body.action;
+
+    if (action === 'login') {
+      const name = String(body.name || '').trim();
+      const pass = String(body.password || '').trim();
+      const users = getAllRows(SHEET_USERS);
+      const found = users.find(u => u.Name && u.Name.trim().toLowerCase() === name.toLowerCase() && String(u.Password || '').trim() === pass);
+      if (!found) return jsonOut({ error: 'بيانات الدخول غير صحيحة' }, 401);
+      return jsonOut({ ok: true, name: found.Name, role: found.Role, sections: found.Sections || '', superuser: !!found.Superuser });
+    }
 
     if (action === 'saveReceipt') {
       upsertRow(SHEET_RECEIPTS, body.data, 'ID');
@@ -250,7 +322,7 @@ function doPost(e) {
       return jsonOut({ ok: true });
     }
     if (action === 'deleteReceipt') {
-      if (body.role !== 'admin') return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
+      if (!verifyAdminRole(body)) return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
 
       // Restore parts if provided
       if (Array.isArray(body.partsToRestore) && body.partsToRestore.length > 0) {
@@ -317,7 +389,7 @@ function doPost(e) {
         }
       }
 
-      const row = headers.map(h => (body.data[h] !== undefined ? body.data[h] : ''));
+      const row = headers.map(h => (body.data[h] !== undefined ? sanitizeCellForSheet(body.data[h]) : ''));
       if (rowIndex === -1) {
         sh.appendRow(row);
       } else {
@@ -377,7 +449,7 @@ function doPost(e) {
       return jsonOut({ ok: true, payment });
     }
     if (action === 'deletePayment') {
-      if (body.role !== 'admin') return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
+      if (!verifyAdminRole(body)) return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
       const shPay = getSheet(SHEET_PAYMENTS);
       const headers = shPay.getRange(1, 1, 1, shPay.getLastColumn()).getValues()[0];
       const idCol = headers.indexOf('ID');
@@ -425,8 +497,9 @@ function doPost(e) {
       return jsonOut({ ok: true, item });
     }
     if (action === 'deleteInventoryItem') {
-      if (body.role !== 'admin') return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
+      if (!verifyAdminRole(body)) return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
       deleteRow(SHEET_INVENTORY, body.id, 'ID');
+      logAudit(body.id, body.user, 'حذف صنف من المخزن: ' + body.id);
       return jsonOut({ ok: true });
     }
     if (action === 'adjustInventoryQty') {
@@ -681,8 +754,9 @@ function doPost(e) {
       return jsonOut({ ok: true, expense: exp });
     }
     if (action === 'deleteExpense') {
-      if (body.role !== 'admin') return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
+      if (!verifyAdminRole(body)) return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
       deleteRow(SHEET_EXPENSES, body.id, 'ID');
+      logAudit(body.id, body.user, 'حذف مصروف: ' + body.id);
       return jsonOut({ ok: true });
     }
     if (action === 'saveAccount') {
@@ -699,8 +773,9 @@ function doPost(e) {
       return jsonOut({ ok: true, account: acc });
     }
     if (action === 'deleteAccount') {
-      if (body.role !== 'admin') return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
+      if (!verifyAdminRole(body)) return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
       deleteRow(SHEET_ACCOUNTS, String(body.code), 'Code');
+      logAudit(body.code, body.user, 'حذف حساب محاسبي: ' + body.code);
       return jsonOut({ ok: true });
     }
     if (action === 'saveJournalEntry') {
@@ -749,8 +824,30 @@ function doPost(e) {
       return jsonOut({ ok: true, invoice: inv });
     }
     if (action === 'deleteInvoice') {
-      if (body.role !== 'admin') return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
+      if (!verifyAdminRole(body)) return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
       deleteRow(SHEET_INVOICES, body.id, 'ID');
+      logAudit(body.id, body.user, 'حذف فاتورة: ' + body.id);
+      return jsonOut({ ok: true });
+    }
+    if (action === 'saveUser') {
+      if (!verifyAdminRole(body)) return jsonOut({ error: 'إدارة المستخدمين متاحة للمدير فقط' }, 403);
+      const usr = {
+        ID: body.data.ID || ('usr_' + new Date().getTime()),
+        Name: String(body.data.Name || '').trim(),
+        Password: String(body.data.Password || '').trim(),
+        Role: body.data.Role || 'cashier',
+        Sections: Array.isArray(body.data.Sections) ? body.data.Sections.join(',') : (body.data.Sections || ''),
+        Superuser: !!body.data.Superuser,
+        Notes: body.data.Notes || ''
+      };
+      upsertRow(SHEET_USERS, usr, 'Name');
+      logAudit(usr.Name, body.user, 'تعديل/إضافة مستخدم: ' + usr.Name + ' (' + usr.Role + ')');
+      return jsonOut({ ok: true, user: usr });
+    }
+    if (action === 'deleteUser') {
+      if (!verifyAdminRole(body)) return jsonOut({ error: 'حذف المستخدمين متاح للمدير فقط' }, 403);
+      deleteRow(SHEET_USERS, String(body.id || body.name), 'Name');
+      logAudit(body.id || body.name, body.user, 'حذف مستخدم: ' + (body.id || body.name));
       return jsonOut({ ok: true });
     }
     return jsonOut({ error: 'إجراء غير معروف' }, 400);
@@ -806,10 +903,21 @@ function ensureHeaders(sh, obj) {
   return headers;
 }
 
+function sanitizeCellForSheet(val) {
+  if (val === null || val === undefined) return '';
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (trimmed.length > 0 && ('=+-\t\r@'.indexOf(trimmed.charAt(0)) !== -1)) {
+      return "'" + val; // Neutralize formula execution in Google Sheets
+    }
+  }
+  return val;
+}
+
 function appendRow(sheetName, obj) {
   const sh = getSheet(sheetName);
   const headers = ensureHeaders(sh, obj);
-  const row = headers.map(h => (obj[h] !== undefined ? obj[h] : ''));
+  const row = headers.map(h => (obj[h] !== undefined ? sanitizeCellForSheet(obj[h]) : ''));
   sh.appendRow(row);
 }
 
@@ -822,7 +930,7 @@ function upsertRow(sheetName, obj, keyField) {
   for (let i = 1; i < values.length; i++) {
     if (String(values[i][keyCol]) === String(obj[keyField])) { rowIndex = i; break; }
   }
-  const row = headers.map(h => (obj[h] !== undefined ? obj[h] : ''));
+  const row = headers.map(h => (obj[h] !== undefined ? sanitizeCellForSheet(obj[h]) : ''));
   if (rowIndex === -1) {
     sh.appendRow(row);
   } else {

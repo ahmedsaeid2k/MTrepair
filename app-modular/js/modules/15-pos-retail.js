@@ -1181,61 +1181,71 @@ function renderPosSalesLog(main){
       ${state.posSalesSearchQ ? `<button class="btn btn-ghost btn-sm" id="clearPosSalesSearch">مسح البحث</button>` : ''}
     </div>
 
+    <div id="unifiedSelectionTopSlot"></div>
+
     <div class="card">
       ${list.length===0 ? '<div class="empty">لا توجد مبيعات مطابقة للبحث.</div>' : `
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>رقم العملية</th>
-              <th>التاريخ</th>
+              <th style="width:110px;">رقم العملية</th>
+              <th style="width:105px;">التاريخ</th>
               <th>العميل</th>
               <th>الأصناف المباعة</th>
-              <th>الإجمالي</th>
-              <th>طريقة الدفع</th>
-              <th>الحالة</th>
-              <th>الإجراءات والطباعة</th>
+              <th style="width:115px;text-align:center;">الإجمالي</th>
+              <th style="width:100px;text-align:center;">طريقة الدفع</th>
+              <th style="width:100px;text-align:center;">الحالة</th>
             </tr>
           </thead>
           <tbody>
             ${list.slice().reverse().map(s=>{
+              const isSelected = String(state.selectedSaleId) === String(s.ID);
+              const cPhone = String(s.CustomerPhone || '').trim();
+              const cleanPhone = cPhone.replace(/\D/g, '');
+              const phoneFormatted = cleanPhone.startsWith('0') ? '2' + cleanPhone : cleanPhone;
+              const waMsg = `مرحبًا ${s.CustomerName || 'عميلنا العزيز'}،\nإيصال مبيعات رقم: #${s.ID.slice(-8)}\nالأصناف: ${s.ItemsSummary}\nالإجمالي: ${s.Total} ج.م\nشكرًا لتعاملكم مع ${state.settings.shopName || 'ميكروتك'}.`;
+              const waUrl = cleanPhone ? `https://wa.me/${phoneFormatted}?text=${encodeURIComponent(waMsg)}` : '';
+
               return `
-                <tr>
+                <tr class="${isSelected ? 'selected-row' : ''}" data-sale-id="${s.ID}" onclick="handleSaleRowClick('${s.ID}', event)" ondblclick="openPosReceiptDirect('${s.ID}')" style="cursor:pointer;" title="انقر لتحديد عملية البيع واستخدام الشريط العلوي، أو نقر مزدوج للطباعة">
                   <td>
-                    <span class="mono font-bold" style="color:var(--primary);font-size:13px;">#${s.ID.slice(-8)}</span>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      <span class="mono font-bold" style="color:var(--primary);font-size:13px;">#${escapeHtml(s.ID.slice(-8))}</span>
+                      ${isSelected ? '<span class="badge badge-green selected-badge-indicator" style="font-size:9.5px;padding:1px 5px;">محددة</span>' : ''}
+                    </div>
                   </td>
                   <td style="font-size:11.5px;color:var(--ink-secondary);">
                     ${cleanDate(s.Date)}
                   </td>
                   <td>
-                    <div style="font-weight:800;font-size:13px;">${s.CustomerName||'عميل زائر'}</div>
-                    <div class="mono" style="font-size:11px;color:var(--ink-secondary);">${s.CustomerPhone||'-'}</div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                      <div>
+                        <div style="font-weight:800;font-size:13px;">${escapeHtml(s.CustomerName||'عميل زائر')}</div>
+                        <div class="mono" style="font-size:11px;color:var(--ink-secondary);">${escapeHtml(s.CustomerPhone||'-')}</div>
+                      </div>
+                      ${waUrl ? `
+                        <a href="${waUrl}" target="_blank" onclick="event.stopPropagation();" class="btn btn-xs btn-whatsapp" style="padding:2px 7px;border-radius:4px;text-decoration:none;" title="محادثة واتساب مباشرة">
+                          ${WA_ICON}
+                        </a>
+                      ` : ''}
+                    </div>
                   </td>
                   <td style="font-size:12px;max-width:280px;line-height:1.4;">
-                    ${s.ItemsSummary}
+                    ${escapeHtml(s.ItemsSummary || '-')}
                   </td>
-                  <td class="mono font-bold" style="color:var(--green);font-size:13.5px;">
+                  <td class="mono font-bold" style="color:var(--green);font-size:13.5px;text-align:center;">
                     ${Number(s.Total||0).toLocaleString()} ج.م
                   </td>
-                  <td>
-                    <span class="status-badge st-check" style="font-size:10.5px;">${s.PaymentMethod||'نقدي'}</span>
+                  <td style="text-align:center;">
+                    <span class="status-badge st-check" style="font-size:10.5px;">${escapeHtml(s.PaymentMethod||'نقدي')}</span>
                   </td>
-                  <td>
+                  <td style="text-align:center;">
                     ${s.IsReturned ? `
                       <span class="badge" style="background:#fee2e2;color:#b91c1c;font-weight:800;border:1px solid #fca5a5;padding:2px 6px;border-radius:4px;font-size:10.5px;white-space:nowrap;">↩️ مرتجع</span>
                     ` : `
                       <span class="badge" style="background:#dcfce7;color:#15803d;font-weight:700;border:1px solid #bbf7d0;padding:2px 6px;border-radius:4px;font-size:10.5px;white-space:nowrap;">✓ مباع</span>
                     `}
-                  </td>
-                  <td class="row-actions">
-                    ${!s.IsReturned ? `
-                      <button class="btn btn-xs btn-amber" data-posact="return" data-saleid="${s.ID}" title="استرجاع الفاتورة (خلال 14 يوم)">↩️ إرجاع</button>
-                    ` : `
-                      <button class="btn btn-xs btn-purple" data-posact="returnvoucher" data-saleid="${s.ID}" title="طباعة إشعار وسند الارتجاع">🧾 إذن ارتجاع</button>
-                    `}
-                    <button class="btn btn-xs btn-blue" data-posact="taxinvoice" data-saleid="${s.ID}" title="إصدار وتحويل لفاتورة ضريبية رسمية مع باركود QR">📄 فاتورة ضريبية</button>
-                    <button class="btn btn-xs btn-green" data-posact="receipt" data-saleid="${s.ID}" title="طباعة إيصال بيع سريع">🖨️ إيصال</button>
-                    ${s.CustomerPhone ? `<button class="btn btn-xs btn-whatsapp" data-posact="wa" data-saleid="${s.ID}" title="مشاركة الفاتورة عبر واتساب">${WA_ICON}</button>` : ''}
                   </td>
                 </tr>
               `;
@@ -1252,44 +1262,14 @@ function renderPosSalesLog(main){
   const clearBtn = document.getElementById('clearPosSalesSearch');
   if(clearBtn) clearBtn.onclick = ()=>{ state.posSalesSearchQ = ''; renderPosSalesLog(main); };
 
-  document.getElementById('goToNewSaleBtn').onclick = ()=>{ state.posTab='sell'; renderPosApp(document.getElementById('app')); };
-  document.getElementById('exportSalesExcelBtn').onclick = ()=>exportSalesToExcel(list);
+  const newSaleBtn = document.getElementById('goToNewSaleBtn');
+  if(newSaleBtn) newSaleBtn.onclick = ()=>{ state.posTab='sell'; renderPosApp(document.getElementById('app')); };
+  const expBtn = document.getElementById('exportSalesExcelBtn');
+  if(expBtn) expBtn.onclick = ()=>exportSalesToExcel(list);
 
-  main.querySelectorAll('[data-posact]').forEach(btn => {
-    btn.onclick = ()=>{
-      const s = state.sales.find(x => x.ID === btn.dataset.saleid);
-      if(!s) return;
-      const act = btn.dataset.posact;
-      if(act === 'return'){
-        openPosReturnModal(s);
-      }
-      if(act === 'returnvoucher'){
-        openPosReturnVoucherPrint(s, s.ReturnDetails || {});
-      }
-      if(act === 'taxinvoice'){
-        convertSaleToInvoice(s.ID);
-      }
-      if(act === 'receipt'){
-        let cartItems = [];
-        if(s.ItemsJSON){
-          try {
-            const parsed = typeof s.ItemsJSON==='string' ? JSON.parse(s.ItemsJSON) : s.ItemsJSON;
-            if(Array.isArray(parsed)) cartItems = parsed;
-          }catch(e){}
-        }
-        if(!cartItems.length){
-          cartItems = [{ name: s.ItemsSummary, qty: 1, price: s.Total }];
-        }
-        openSalePrint(s, cartItems);
-      }
-      if(act === 'wa'){
-        const phone = (s.CustomerPhone||'').replace(/\D/g,'');
-        const phoneFormatted = phone.startsWith('0') ? '2'+phone : phone;
-        const msg = `مرحبًا ${s.CustomerName||'عميلنا العزيز'}،\nإيصال مبيعات رقم: #${s.ID.slice(-8)}\nالأصناف: ${s.ItemsSummary}\nالإجمالي: ${s.Total} ج.م\nشكرًا لتعاملكم مع ${state.settings.shopName || 'ميكروتك'}.`;
-        window.open(`https://wa.me/${phoneFormatted}?text=${encodeURIComponent(msg)}`, '_blank');
-      }
-    };
-  });
+  if(typeof window.renderUnifiedSelectionBar === 'function'){
+    window.renderUnifiedSelectionBar();
+  }
 }
 
 /* ---------------- POS Sales Returns & Refunds Engine (آلية الإرجاع والاسترداد الدقيقة) ---------------- */

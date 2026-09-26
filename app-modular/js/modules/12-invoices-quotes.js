@@ -77,57 +77,69 @@ function renderInvoicesPage(main){
       ${(state.invoiceSearchQ || state.invoiceStatusFilter!=='all') ? `<button class="btn btn-ghost btn-sm" id="clearInvFilters">مسح الفلاتر</button>` : ''}
     </div>
 
+    <div id="unifiedSelectionTopSlot"></div>
+
     <div class="card">
       ${list.length===0 ? '<div class="empty">لا توجد فواتير مطابقة للبحث أو الفلتر المختار.</div>' : `
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>رقم الفاتورة</th>
-              <th>التاريخ</th>
+              <th style="width:140px;">رقم الفاتورة</th>
+              <th style="width:105px;">التاريخ</th>
               <th>العميل</th>
-              <th>المرجع</th>
-              <th>الإجمالي</th>
-              <th>المدفوع</th>
-              <th>المتبقي</th>
-              <th>حالة السداد</th>
-              <th>الإجراءات</th>
+              <th style="width:130px;">المرجع</th>
+              <th style="width:105px;text-align:center;">الإجمالي</th>
+              <th style="width:105px;text-align:center;">المدفوع</th>
+              <th style="width:105px;text-align:center;">المتبقي</th>
+              <th style="width:115px;text-align:center;">حالة السداد</th>
             </tr>
           </thead>
           <tbody>
             ${list.slice().reverse().map(inv=>{
               const isPaid = inv.Status === 'مدفوعة بالكامل' || Number(inv.Remaining||0) <= 0;
               const isPartial = inv.Status === 'مدفوعة جزئياً';
+              const isSelected = String(state.selectedInvoiceId) === String(inv.ID);
+              const cPhone = String(inv.CustomerPhone || '').trim();
+              const cleanPhone = cPhone.replace(/\D/g, '');
+              const phoneFormatted = cleanPhone.startsWith('0') ? '2' + cleanPhone : cleanPhone;
+              const waMsg = `مرحبًا ${inv.CustomerName}،\nفاتورة / بيان سعر رقم: ${inv.InvoiceNumber}\nإجمالي المستحق: ${inv.Total} ج.م\nالمدفوع: ${inv.AmountPaid} ج.م\nالمتبقي: ${inv.Remaining} ج.م\nشكرًا لتعاملكم مع ${state.settings.shopName || 'ميكروتك'}.`;
+              const waUrl = cleanPhone ? `https://wa.me/${phoneFormatted}?text=${encodeURIComponent(waMsg)}` : '';
 
               return `
-                <tr>
+                <tr class="${isSelected ? 'selected-row' : ''}" data-inv-id="${inv.ID}" onclick="handleInvoiceRowClick('${inv.ID}', event)" ondblclick="openInvoiceModalDirect('${inv.ID}')" style="cursor:pointer;" title="انقر لتحديد الفاتورة واستخدام الشريط العلوي، أو نقر مزدوج للتعديل">
                   <td>
-                    <span class="mono font-bold" style="color:var(--primary);font-size:13px;">${inv.InvoiceNumber}</span>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      <span class="mono font-bold" style="color:var(--primary);font-size:13px;">${escapeHtml(inv.InvoiceNumber)}</span>
+                      ${isSelected ? '<span class="badge badge-primary selected-badge-indicator" style="font-size:9.5px;padding:1px 5px;">محددة</span>' : ''}
+                    </div>
                   </td>
                   <td style="font-size:11.5px;color:var(--ink-secondary);">
                     ${cleanDate(inv.Date)}
                   </td>
                   <td>
-                    <div style="font-weight:800;font-size:13px;">${inv.CustomerName}</div>
-                    <div class="mono" style="font-size:11px;color:var(--ink-secondary);">${inv.CustomerPhone||'-'}</div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                      <div>
+                        <div style="font-weight:800;font-size:13px;color:var(--ink);">${escapeHtml(inv.CustomerName)}</div>
+                        <div class="mono" style="font-size:11px;color:var(--ink-secondary);">${escapeHtml(inv.CustomerPhone||'-')}</div>
+                      </div>
+                      ${waUrl ? `
+                        <a href="${waUrl}" target="_blank" onclick="event.stopPropagation();" class="btn btn-xs btn-whatsapp" style="padding:2px 7px;border-radius:4px;text-decoration:none;" title="محادثة واتساب مباشرة">
+                          ${WA_ICON}
+                        </a>
+                      ` : ''}
+                    </div>
                   </td>
                   <td>
-                    ${inv.ReferenceType ? `<span class="status-badge st-check" style="font-size:10.5px;">${inv.ReferenceType==='Receipt'?'🛠️ إيصال #':inv.ReferenceType} ${inv.ReferenceID}</span>` : '<span style="color:var(--slate-400);font-size:11px;">مباشر</span>'}
+                    ${inv.ReferenceType ? `<span class="status-badge st-check" style="font-size:10.5px;">${inv.ReferenceType==='Receipt'?'🛠️ إيصال #':inv.ReferenceType} ${escapeHtml(inv.ReferenceID)}</span>` : '<span style="color:var(--slate-400);font-size:11px;">مباشر</span>'}
                   </td>
-                  <td class="mono font-bold" style="font-size:13px;">${Number(inv.Total||0).toLocaleString()} ج.م</td>
-                  <td class="mono font-bold" style="color:var(--green);">${Number(inv.AmountPaid||0).toLocaleString()} ج.م</td>
-                  <td class="mono font-bold" style="color:${Number(inv.Remaining||0)>0?'var(--red)':'var(--ink)'};">${Number(inv.Remaining||0).toLocaleString()} ج.م</td>
-                  <td>
+                  <td class="mono font-bold" style="font-size:13px;text-align:center;">${Number(inv.Total||0).toLocaleString()} ج.م</td>
+                  <td class="mono font-bold" style="color:var(--green);font-size:13px;text-align:center;">${Number(inv.AmountPaid||0).toLocaleString()} ج.م</td>
+                  <td class="mono font-bold" style="color:${Number(inv.Remaining||0)>0?'var(--red)':'var(--ink)'};font-size:13px;text-align:center;">${Number(inv.Remaining||0).toLocaleString()} ج.م</td>
+                  <td style="text-align:center;">
                     <span class="status-badge ${isPaid?'st-done':(isPartial?'st-repair':'st-failed')}">
                       ${isPaid?'✅ مدفوعة':(isPartial?'⚡ جزئي':'⏳ آجل')}
                     </span>
-                  </td>
-                  <td class="row-actions">
-                    <button class="btn btn-xs btn-blue" data-invact="print" data-invid="${inv.ID}" title="طباعة فاتورة ضريبية رسمية">🖨️ فاتورة</button>
-                    <button class="btn btn-xs btn-purple" data-invact="barcode" data-invid="${inv.ID}" title="طباعة ملصقات باركود لأصناف الفاتورة">🏷️ باركود</button>
-                    <button class="btn btn-xs btn-ghost" data-invact="printquote" data-invid="${inv.ID}" title="طباعة بيان سعر وعرض أسعار رسمي">📑 بيان سعر</button>
-                    <button class="btn btn-xs btn-whatsapp" data-invact="wa" data-invid="${inv.ID}" title="إرسال الفاتورة عبر واتساب">${WA_ICON}</button>
-                    <button class="btn btn-xs btn-red" data-invact="del" data-invid="${inv.ID}" title="${state.user.role==='admin'?'حذف الفاتورة':'طلب تصريح حذف من المدير'}">${state.user.role==='admin'?'🗑️':'🔒 طلب حذف'}</button>
                   </td>
                 </tr>
               `;
@@ -140,57 +152,20 @@ function renderInvoicesPage(main){
 
   // Filter bindings
   const searchInput = document.getElementById('invSearchInp');
-  searchInput.oninput = (e)=>{ state.invoiceSearchQ = e.target.value; renderInvoicesPage(main); };
+  if(searchInput) searchInput.oninput = (e)=>{ state.invoiceSearchQ = e.target.value; renderInvoicesPage(main); };
   const statusSel = document.getElementById('invStatusFilterSelect');
-  statusSel.onchange = (e)=>{ state.invoiceStatusFilter = e.target.value; renderInvoicesPage(main); };
+  if(statusSel) statusSel.onchange = (e)=>{ state.invoiceStatusFilter = e.target.value; renderInvoicesPage(main); };
   const clearBtn = document.getElementById('clearInvFilters');
   if(clearBtn) clearBtn.onclick = ()=>{ state.invoiceSearchQ = ''; state.invoiceStatusFilter = 'all'; renderInvoicesPage(main); };
 
-  document.getElementById('addNewInvoiceBtn').onclick = ()=>openInvoiceModal();
-  document.getElementById('exportInvoicesExcelBtn').onclick = ()=>exportInvoicesToExcel(list);
+  const addBtn = document.getElementById('addNewInvoiceBtn');
+  if(addBtn) addBtn.onclick = ()=>openInvoiceModal();
+  const expBtn = document.getElementById('exportInvoicesExcelBtn');
+  if(expBtn) expBtn.onclick = ()=>exportInvoicesToExcel(list);
 
-  // Row action bindings
-  main.querySelectorAll('[data-invact]').forEach(btn => {
-    btn.onclick = async ()=>{
-      const inv = state.invoices.find(x=>x.ID===btn.dataset.invid);
-      if(!inv) return;
-      const act = btn.dataset.invact;
-      if(act==='barcode'){
-        openInvoiceBarcodePrintModal('invoice', inv.ID);
-      }
-      if(act==='print'){
-        openInvoicePrint(inv, 'invoice');
-      }
-      if(act==='printquote'){
-        openInvoicePrint(inv, 'quote');
-      }
-      if(act==='edit'){
-        openInvoiceModal(inv);
-      }
-      if(act==='wa'){
-        const phone = (inv.CustomerPhone||'').replace(/\D/g,'');
-        const phoneFormatted = phone.startsWith('0') ? '2'+phone : phone;
-        const msg = `مرحبًا ${inv.CustomerName}،\nفاتورة / بيان سعر رقم: ${inv.InvoiceNumber}\nإجمالي المستحق: ${inv.Total} ج.م\nالمدفوع: ${inv.AmountPaid} ج.م\nالمتبقي: ${inv.Remaining} ج.م\nشكرًا لتعاملكم مع ${state.settings.shopName || 'ميكروتك'}.`;
-        window.open(`https://wa.me/${phoneFormatted}?text=${encodeURIComponent(msg)}`, '_blank');
-      }
-      if(act==='del'){
-        requestAdminAuthorization({
-          action: 'حذف فاتورة',
-          entityType: 'فاتورة رسمية',
-          entityId: inv.ID,
-          entityTitle: `رقم ${inv.InvoiceNumber} (${inv.CustomerName})`,
-          onApproved: async ()=>{
-            try{
-              await deleteInvoiceRemote(inv.ID);
-              state.invoices = (state.invoices||[]).filter(x => x.ID !== inv.ID);
-              showToast('تم حذف الفاتورة بنجاح', 'success');
-              renderInvoicesPage(main);
-            }catch(e){ showToast('تعذر الحذف: '+e.message, 'error'); }
-          }
-        });
-      }
-    };
-  });
+  if(typeof window.renderUnifiedSelectionBar === 'function'){
+    window.renderUnifiedSelectionBar();
+  }
 }
 
 function renderInvoicesSectionApp(app){

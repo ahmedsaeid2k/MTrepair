@@ -3798,7 +3798,7 @@ Date.prototype.toLocaleDateString = function(locales, options) {
 };
 
 /* ---------------- Google Sheets API & Offline Sync Engine ---------------- */
-const API_URL = 'https://script.google.com/macros/s/AKfycbzpi81aPJwwsvHCqUKCkUxEhT0l4NnLgcCBPab1xjvx0B3vhzamCVkwiohrOCfWkKcm/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycby-rkoaYfBuahnMc_dxPuzGepC-H5SJChwm5AJJ_bkwdmEswFhJ7tBoBbMel4gQyxUL/exec';
 
 /* Local Cache Helpers */
 function getCache(key, fallback){
@@ -3821,42 +3821,111 @@ function saveSyncQueue(q){
 }
 function addToSyncQueue(action, data){
   const q = getSyncQueue();
+  const serialized = JSON.stringify({action, data});
+  const alreadyInQueue = q.some(item => JSON.stringify({action: item.action, data: item.data}) === serialized);
+  if(alreadyInQueue){
+    console.warn(`[addToSyncQueue] Suppressed identical pending queue item for ${action}`);
+    return;
+  }
   q.push({ id: 'sync_' + Date.now() + '_' + Math.random().toString(36).slice(2,7), action, data, timestamp: new Date().toISOString() });
   saveSyncQueue(q);
+}
+
+/* ============================================================
+   Anti-DoS Client Concurrency Limiter & Batch Network Engine
+   ============================================================ */
+class ClientRequestThrottler {
+  constructor(maxConcurrent = 3) {
+    this.maxConcurrent = maxConcurrent;
+    this.activeCount = 0;
+    this.waitingQueue = [];
+  }
+  async schedule(fn) {
+    if (this.activeCount >= this.maxConcurrent) {
+      await new Promise(resolve => this.waitingQueue.push(resolve));
+    }
+    this.activeCount++;
+    try {
+      return await fn();
+    } finally {
+      this.activeCount--;
+      if (this.waitingQueue.length > 0) {
+        const next = this.waitingQueue.shift();
+        next();
+      }
+    }
+  }
+}
+const networkThrottler = new ClientRequestThrottler(3);
+
+async function fetchBootstrapData(){
+  try {
+    const res = await apiGet('getBootstrapData');
+    if(res && res.ok){
+      if(Array.isArray(res.receipts)) { state.receipts = res.receipts.map(rowToReceipt); setCache('receipts', state.receipts); }
+      if(Array.isArray(res.customers)) { state.customers = res.customers; setCache('customers', state.customers); }
+      if(Array.isArray(res.technicians)) { 
+        const names = res.technicians.map(r=>r.Name).filter(Boolean);
+        state.technicians = names.length ? names : ['أحمد فتحي','محمود سيد','كريم عادل'];
+        setCache('technicians', state.technicians); 
+      }
+      if(res.settings && typeof res.settings === 'object') { state.settings = res.settings; setCache('settings', res.settings); }
+      if(Array.isArray(res.payments)) { state.payments = res.payments; setCache('payments', state.payments); }
+      if(Array.isArray(res.inventory)) { state.inventory = res.inventory; setCache('inventory', state.inventory); }
+      if(Array.isArray(res.sales)) { state.sales = res.sales; setCache('sales', state.sales); }
+      if(Array.isArray(res.quotations)) { state.quotations = res.quotations; setCache('quotations', state.quotations); }
+      if(Array.isArray(res.services)) { state.services = res.services; setCache('services', state.services); }
+      if(Array.isArray(res.purchases)) { state.purchases = res.purchases; setCache('purchases', state.purchases); }
+      if(Array.isArray(res.suppliers)) { state.suppliers = res.suppliers; setCache('suppliers', state.suppliers); }
+      if(Array.isArray(res.expenses)) { state.expenses = res.expenses; setCache('expenses', state.expenses); }
+      if(Array.isArray(res.accounts)) { state.accounts = res.accounts; setCache('accounts', state.accounts); }
+      if(Array.isArray(res.journalEntries)) { state.journalEntries = res.journalEntries; setCache('journal', res.journalEntries); }
+      if(Array.isArray(res.invoices)) { state.invoices = res.invoices; setCache('invoices', state.invoices); }
+      if(Array.isArray(res.users)) { state.users = res.users; setCache('users', state.users); }
+      return true;
+    }
+  } catch(e) {
+    console.warn('[fetchBootstrapData] Failed to load bootstrap batch:', e.message);
+  }
+  return false;
 }
 
 /* Network Request Wrappers with Local Fallback */
 async function apiGet(action, params){
   if(action === 'login'){
     // Security: login authentication must never cache or return stale cached tokens
-    const q = new URLSearchParams({action, ...(params||{})});
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 9000);
-    const res = await fetch(`${API_URL}?${q.toString()}`, { signal: controller.signal });
-    clearTimeout(timeout);
-    const json = await res.json();
-    if(json && json.error) throw new Error(json.error);
-    return json;
+    return networkThrottler.schedule(async () => {
+      const q = new URLSearchParams({action, ...(params||{})});
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      const res = await fetch(`${API_URL}?${q.toString()}`, { signal: controller.signal });
+      clearTimeout(timeout);
+      const json = await res.json();
+      if(json && json.error) throw new Error(json.error);
+      return json;
+    });
   }
   if(!navigator.onLine){
     // Return cached data immediately
     return getCache(action, []);
   }
-  try {
-    const q = new URLSearchParams({action, ...(params||{})});
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 9000);
-    const res = await fetch(`${API_URL}?${q.toString()}`, { signal: controller.signal });
-    clearTimeout(timeout);
-    const json = await res.json();
-    if(json && json.error) throw new Error(json.error);
-    // Cache success
-    setCache(action, json);
-    return json;
-  } catch(e) {
-    console.warn(`apiGet failed for ${action}, falling back to local cache:`, e.message);
-    return getCache(action, []);
-  }
+  return networkThrottler.schedule(async () => {
+    try {
+      const q = new URLSearchParams({action, ...(params||{})});
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20000);
+      const res = await fetch(`${API_URL}?${q.toString()}`, { signal: controller.signal });
+      clearTimeout(timeout);
+      const json = await res.json();
+      if(json && json.error) throw new Error(json.error);
+      // Cache success
+      setCache(action, json);
+      return json;
+    } catch(e) {
+      console.warn(`apiGet failed for ${action}, falling back to local cache:`, e.message);
+      return getCache(action, []);
+    }
+  });
 }
 
 async function apiPost(action, data){
@@ -3864,24 +3933,26 @@ async function apiPost(action, data){
     addToSyncQueue(action, data);
     return { ok: true, offline: true };
   }
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 9000);
-    const res = await fetch(API_URL, {
-      method: 'POST',
-      headers: {'Content-Type': 'text/plain;charset=utf-8'},
-      body: JSON.stringify({action, ...data}),
-      signal: controller.signal
-    });
-    clearTimeout(timeout);
-    const json = await res.json();
-    if(json && json.error) throw new Error(json.error);
-    return json;
-  } catch(e) {
-    console.warn(`apiPost network error on ${action}, enqueuing for background sync:`, e.message);
-    addToSyncQueue(action, data);
-    return { ok: true, offline: true };
-  }
+  return networkThrottler.schedule(async () => {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 25000);
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: {'Content-Type': 'text/plain;charset=utf-8'},
+        body: JSON.stringify({action, ...data}),
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+      const json = await res.json();
+      if(json && json.error) throw new Error(json.error);
+      return json;
+    } catch(e) {
+      console.warn(`apiPost network error on ${action}, enqueuing for background sync:`, e.message);
+      addToSyncQueue(action, data);
+      return { ok: true, offline: true };
+    }
+  });
 }
 
 /* Background Synchronization */
@@ -3925,12 +3996,22 @@ async function syncOfflineQueue(isManual = false){
 
   if(remaining.length === 0){
     if(isManual) showToast('✅ تم مزامنة كافة العمليات بنجاح مع السحابة!', 'success');
-    // Refresh memory from cloud
+    // Refresh memory from cloud using unified bootstrap
     try {
-      [state.receipts, state.customers, state.technicians, state.settings, state.payments, state.inventory, state.sales, state.quotations, state.services, state.purchases, state.suppliers, state.expenses] = await Promise.all([
-        loadReceipts(), loadCustomers(), loadTechnicians(), loadSettings(), loadPayments(), loadInventory(), loadSales(), loadQuotations(), loadServices(), loadPurchases(), loadSuppliers(), loadExpenses()
-      ]);
-      renderMain();
+      const bDone = await fetchBootstrapData();
+      if(!bDone){
+        [state.receipts, state.customers, state.technicians, state.settings, state.payments, state.inventory, state.sales, state.quotations, state.services, state.purchases, state.suppliers, state.expenses] = await Promise.all([
+          loadReceipts(), loadCustomers(), loadTechnicians(), loadSettings(), loadPayments(), loadInventory(), loadSales(), loadQuotations(), loadServices(), loadPurchases(), loadSuppliers(), loadExpenses()
+        ]);
+      }
+      // Only refresh view if user is in Maintenance and not editing/typing
+      if(state.currentSection === 'maintenance' && !state.draft){
+        const isTyping = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT');
+        const modalOpen = !!document.querySelector('.modal-overlay, .modal-backdrop, .modal, [id*="Modal"]');
+        if(!isTyping && !modalOpen){
+          renderMain();
+        }
+      }
     } catch(e){}
   } else {
     if(isManual) showToast(`⚠️ تبقى ${remaining.length} عمليات في الطابور سيتم رفعها تلقائياً.`, 'info');
@@ -4895,12 +4976,24 @@ async function loadPayments(receiptId){
   }
   return state.payments;
 }
+// Dedup guard map to prevent duplicate payments within 15 seconds
+const _recentPaymentGuards = new Map();
+
 async function savePaymentRemote(receiptId, amount, note, paymentMethod){
   const payMethod = paymentMethod || 'نقدي (كاش)';
+  const numAmt = Number(amount);
+  const guardKey = `${String(receiptId).trim()}_${numAmt}_${payMethod}_${String(note||'').trim()}`;
+  const now = Date.now();
+  if(_recentPaymentGuards.has(guardKey) && (now - _recentPaymentGuards.get(guardKey)) < 15000){
+    console.warn(`[savePaymentRemote] Duplicate payment suppressed for guardKey: ${guardKey}`);
+    return { ok: true, duplicateSuppressed: true };
+  }
+  _recentPaymentGuards.set(guardKey, now);
+
   const payment = {
     ID: 'p_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
     ReceiptID: receiptId, Date: new Date().toISOString().slice(0,10),
-    Amount: Number(amount), Note: note || '', By: state.user ? state.user.name : 'نظام',
+    Amount: numAmt, Note: note || '', By: state.user ? state.user.name : 'نظام',
     PaymentMethod: payMethod
   };
   state.payments.push(payment);
@@ -4920,11 +5013,89 @@ async function savePaymentRemote(receiptId, amount, note, paymentMethod){
     'Receipt',
     receiptId,
     [
-      {AccountCode: debitAccCode, AccountName: debitAccName, Debit: Number(amount), Credit: 0, Notes: `تحصيل عبر ${payMethod}`},
-      {AccountCode: '4101', AccountName: 'إيرادات خدمات صيانة وتصليح', Debit: 0, Credit: Number(amount), Notes: `إيصال: ${receiptId}`}
+      {AccountCode: debitAccCode, AccountName: debitAccName, Debit: numAmt, Credit: 0, Notes: `تحصيل عبر ${payMethod}`},
+      {AccountCode: '4101', AccountName: 'إيرادات خدمات صيانة وتصليح', Debit: 0, Credit: numAmt, Notes: `إيصال: ${receiptId}`}
     ]
   ).catch(e=>{});
-  return apiPost('savePayment', {receiptId, amount: payment.Amount, note: payment.Note, paymentMethod: payMethod, date: payment.Date, user: payment.By});
+  return apiPost('savePayment', {id: payment.ID, receiptId, amount: payment.Amount, note: payment.Note, paymentMethod: payMethod, date: payment.Date, user: payment.By});
+}
+
+async function deletePaymentRemote(paymentId){
+  const p = (state.payments||[]).find(x => String(x.ID) === String(paymentId));
+  if(!p) return { ok: false, error: 'الدفعة غير موجودة' };
+  
+  // 1. Remove from state.payments and update cache
+  state.payments = state.payments.filter(x => String(x.ID) !== String(paymentId));
+  setCache('payments', state.payments);
+
+  // 2. Adjust corresponding receipt if it exists
+  const r = (state.receipts||[]).find(x => String(x.id) === String(p.ReceiptID) || String(x.receiptNumber) === String(p.ReceiptID));
+  if(r){
+    const totalDue = Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0);
+    r.deposit = Math.max(0, Number(r.deposit || 0) - Number(p.Amount || 0));
+    if(r.deposit < totalDue){
+      r.paid = false;
+    }
+    setCache('receipts', state.receipts);
+    try { await saveReceiptRemote(r); } catch(e){}
+  }
+
+  // 3. Reverse Auto-Journal Entry
+  const payMethod = p.PaymentMethod || 'نقدي (كاش)';
+  const pLow = String(payMethod).toLowerCase();
+  const isCredit = pLow.includes('آجل') || pLow.includes('اجل') || pLow.includes('credit');
+  const isBankOrWallet = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('إنستاباي') || pLow.includes('instapay') || pLow.includes('محفظ') || pLow.includes('فودافون') || pLow.includes('vodafone');
+  const debitAccCode = isCredit ? '1103' : (isBankOrWallet ? '1102' : '1101');
+  const debitAccName = isCredit ? 'العملاء والمدينون' : (isBankOrWallet ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)');
+
+  recordAutoJournalEntry(
+    `إلغاء / عكس تحصيل صيانة [${payMethod}] (${p.Note || 'دفعة إيصال'})`,
+    'Receipt_Void',
+    p.ReceiptID,
+    [
+      {AccountCode: '4101', AccountName: 'إيرادات خدمات صيانة وتصليح', Debit: Number(p.Amount), Credit: 0, Notes: `عكس تحصيل دفعة صيانة: ${p.ReceiptID}`},
+      {AccountCode: debitAccCode, AccountName: debitAccName, Debit: 0, Credit: Number(p.Amount), Notes: `عكس تحصيل عبر ${payMethod}`}
+    ]
+  ).catch(e=>{});
+
+  recordAuditLog('حذف دفعة مالية', 'الخزينة', `تم حذف دفعة بقيمة ${p.Amount} ج.م للإيصال (${p.ReceiptID}) بواسطة ${state.user ? state.user.name : 'المدير'} وتصحيح رصيد الخزينة والإيصال`, p.ReceiptID);
+
+  // 4. Send to backend
+  return apiPost('deletePayment', { id: p.ID, receiptId: p.ReceiptID, amount: p.Amount, date: p.Date, role: state.user ? state.user.role : 'admin' });
+}
+
+function detectDuplicatePayments(payments = state.payments || []){
+  const seen = new Map();
+  const duplicates = [];
+  (payments || []).forEach(p => {
+    const key = `${String(p.ReceiptID||'').trim()}_${Number(p.Amount||0)}_${String(p.Date||'').slice(0,10)}_${String(p.Note||'').trim()}_${String(p.PaymentMethod||'').trim()}`;
+    if(seen.has(key)){
+      duplicates.push({ original: seen.get(key), duplicate: p });
+    } else {
+      seen.set(key, p);
+    }
+  });
+  return duplicates;
+}
+
+async function cleanDuplicatePayments(){
+  const duplicates = detectDuplicatePayments(state.payments || []);
+  if(!duplicates.length){
+    showToast('لا توجد أي دفعات مكررة في النظام ✨', 'success');
+    return;
+  }
+  let count = 0;
+  for(const item of duplicates){
+    const dupP = item.duplicate;
+    await deletePaymentRemote(dupP.ID);
+    count++;
+  }
+  showToast(`تم تنظيف ${count} دفعة مكررة وتصحيح رصيد الخزينة والإيصالات بنجاح ✅`, 'success');
+  if(state.currentSection === 'daily'){
+    renderDailyJournalPage(document.getElementById('main'));
+  } else {
+    render();
+  }
 }
 
 async function loadInventory(){
@@ -5134,42 +5305,55 @@ async function saveExpenseRemote(exp){
 
   // Auto Journal
   const isIncome = exp.Type === 'in' || exp.Type === 'income';
-  const isDraw = exp.Type === 'out' || exp.Category === 'مسحوبات شخصية' || exp.Category === 'جاري الشركاء';
+  const isDraw = !isIncome && (exp.Type === 'out' && (exp.Category === 'مسحوبات شخصية' || exp.Category === 'جاري الشركاء' || String(exp.Title||'').includes('مسحوبات')));
   const isPetty = exp.Type === 'petty' || exp.Category === 'بوفيه ونثريات' || exp.Category === 'نثريات';
-  const isSupplierPayment = exp.Category === 'موردين' || exp.Category === 'الموردين' || exp.Category === 'سداد موردين ومشتريات' || (String(exp.Category||'').includes('مورد')) || exp.Type === 'supplier' || exp.skipAutoJournal;
+  const isPosReturn = exp.Category === 'مرتجع مبيعات POS' || exp.AccountCode === '4102-RET' || exp.Type === 'pos_return';
+  const isSupplierPayment = exp.Category === 'موردين' || exp.Category === 'الموردين' || exp.Category === 'سداد موردين ومشتريات' || (String(exp.Category||'').includes('مورد')) || exp.Type === 'supplier' || exp.skipAutoJournal || isPosReturn;
 
-  if(isSupplierPayment){
-    // Suppress general operating expense journal entry; handled specifically as a reduction of Accounts Payable (2101)
+  if(isSupplierPayment || isPosReturn || exp.skipAutoJournal){
+    // Suppress general operating expense journal entry; handled specifically by the dedicated module (Supplier Payments, POS Returns, etc.)
   } else if(isIncome){
+    const pLow = String(exp.PaymentMethod || 'نقدي').toLowerCase();
+    const isBank = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('إنستاباي') || pLow.includes('محفظ') || pLow.includes('فودافون');
+    const debitCode = isBank ? '1102' : '1101';
+    const debitName = isBank ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)';
     recordAutoJournalEntry(
       `إيداع وارد: ${exp.Title}`,
       'CashIn',
       exp.ID,
       [
-        {AccountCode:'1101', AccountName:'الخزينة الرئيسية (النقدية)', Debit:Number(exp.Amount), Credit:0, Notes:exp.Title},
-        {AccountCode:'4102', AccountName:'إيرادات أخرى متنوعة', Debit:0, Credit:Number(exp.Amount), Notes:exp.Notes||exp.Title}
+        {AccountCode:debitCode, AccountName:debitName, Debit:Number(exp.Amount), Credit:0, Notes:exp.Title},
+        {AccountCode:'42', AccountName:'إيرادات أخرى متنوعة', Debit:0, Credit:Number(exp.Amount), Notes:exp.Notes||exp.Title}
       ]
     ).catch(e=>{});
   } else if(isDraw){
+    const pLow = String(exp.PaymentMethod || 'نقدي').toLowerCase();
+    const isBank = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('إنستاباي') || pLow.includes('محفظ') || pLow.includes('فودافون');
+    const creditCode = isBank ? '1102' : '1101';
+    const creditName = isBank ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)';
     recordAutoJournalEntry(
       `منصرف مسحوبات: ${exp.Title}`,
       'CashOut',
       exp.ID,
       [
         {AccountCode:'3103', AccountName:'جاري الشركاء والمسحوبات', Debit:Number(exp.Amount), Credit:0, Notes:exp.Title},
-        {AccountCode:'1101', AccountName:'الخزينة الرئيسية (النقدية)', Debit:0, Credit:Number(exp.Amount), Notes:exp.Notes||exp.Title}
+        {AccountCode:creditCode, AccountName:creditName, Debit:0, Credit:Number(exp.Amount), Notes:exp.Notes||exp.Title}
       ]
     ).catch(e=>{});
   } else {
-    const expAccCode = EXPENSE_ACCOUNT_MAP[exp.Category] || (isPetty ? '5203' : '52');
+    const expAccCode = EXPENSE_ACCOUNT_MAP[exp.Category] || (isPetty ? '5204' : '52');
     const expAcc = state.accounts.find(a=>a.Code===expAccCode) || {Name: isPetty ? 'بوفيه ونثريات وضيافة' : 'المصروفات التشغيلية'};
+    const pLow = String(exp.PaymentMethod || 'نقدي').toLowerCase();
+    const isBank = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('إنستاباي') || pLow.includes('محفظ') || pLow.includes('فودافون');
+    const creditCode = isBank ? '1102' : '1101';
+    const creditName = isBank ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)';
     recordAutoJournalEntry(
       `${isPetty?'نثريات':'مصروف'}: ${exp.Title} (${exp.Category})`,
       'Expense',
       exp.ID,
       [
         {AccountCode:expAccCode, AccountName:expAcc.Name, Debit:Number(exp.Amount), Credit:0, Notes:exp.Notes||exp.Title},
-        {AccountCode:'1101', AccountName:'الخزينة الرئيسية (النقدية)', Debit:0, Credit:Number(exp.Amount), Notes:'سداد نقدي من الدرج'}
+        {AccountCode:creditCode, AccountName:creditName, Debit:0, Credit:Number(exp.Amount), Notes: `سداد عبر ${exp.PaymentMethod || 'نقدي'}`}
       ]
     ).catch(e=>{});
   }
@@ -5326,8 +5510,8 @@ async function saveInvoiceRemote(inv){
 
   // Auto-ensure invoice customer is saved to directory
   if(inv.CustomerName && inv.CustomerName !== 'عميل زائر' && inv.CustomerName !== 'عميل' && inv.CustomerName !== 'زبون'){
-    const cPhone = (inv.CustomerPhone || '').trim();
-    const cNameLow = inv.CustomerName.trim().toLowerCase();
+    const cPhone = String(inv.CustomerPhone || '').trim();
+    const cNameLow = String(inv.CustomerName).trim().toLowerCase();
     const existing = (state.customers || []).find(c => {
       if(cPhone && cPhone !== '0000000000' && c.phone === cPhone) return true;
       if((c.name||'').trim().toLowerCase() === cNameLow) return true;
@@ -5422,10 +5606,21 @@ const EXPENSE_ACCOUNT_MAP = {
   'إيجار': '5201',
   'كهرباء ومياه': '5202',
   'رواتب وسلفيات': '5203',
+  'رواتب': '5203',
+  'سلفيات': '5203',
   'بوفيه ونثريات': '5204',
+  'نثريات': '5204',
+  'بوفيه': '5204',
+  'ضيافة': '5204',
   'دعاية وإعلانات': '5205',
+  'تسويق': '5205',
   'أدوات وصيانة مقر': '5206',
-  'شحن وتوصيل': '5207'
+  'أدوات ومستهلكات': '5206',
+  'شحن وتوصيل': '5207',
+  'مسحوبات شخصية': '3103',
+  'جاري الشركاء': '3103',
+  'سداد موردين ومشتريات': '2101',
+  'سداد موردين': '2101'
 };
 
 async function loadAccounts(){
@@ -7397,12 +7592,15 @@ async function init(){
   render();
   updateSyncStatusPill();
 
-  // If online, fetch fresh updates in background
+  // If online, fetch fresh updates in background via unified bootstrap
   if(navigator.onLine){
     try {
-      [state.users, state.receipts, state.customers, state.technicians, state.settings, state.payments, state.inventory, state.sales, state.quotations, state.services, state.purchases, state.suppliers, state.expenses, state.accounts, state.journalEntries, state.invoices] = await Promise.all([
-        loadUsers(), loadReceipts(), loadCustomers(), loadTechnicians(), loadSettings(), loadPayments(), loadInventory(), loadSales(), loadQuotations(), loadServices(), loadPurchases(), loadSuppliers(), loadExpenses(), loadAccounts(), loadJournalEntries(), loadInvoices()
-      ]);
+      const bOk = await fetchBootstrapData();
+      if(!bOk){
+        [state.users, state.receipts, state.customers, state.technicians, state.settings, state.payments, state.inventory, state.sales, state.quotations, state.services, state.purchases, state.suppliers, state.expenses, state.accounts, state.journalEntries, state.invoices] = await Promise.all([
+          loadUsers(), loadReceipts(), loadCustomers(), loadTechnicians(), loadSettings(), loadPayments(), loadInventory(), loadSales(), loadQuotations(), loadServices(), loadPurchases(), loadSuppliers(), loadExpenses(), loadAccounts(), loadJournalEntries(), loadInvoices()
+        ]);
+      }
       recoverAndSyncAllCustomerPhones(false);
       if(state.user) normalizeUserSections(state.user);
       render();
@@ -7412,36 +7610,50 @@ async function init(){
     }
   }
 
-  // Periodic multi-device cloud synchronization every 40 seconds
+  // Smart multi-device cloud synchronization (Every 90s, throttled and paused when tab is hidden)
   setInterval(async ()=>{
+    if(document.hidden) return; // Do not waste bandwidth/quota if tab is in background
     if(navigator.onLine){
       if(getSyncQueue().length > 0){
         await syncOfflineQueue();
       }
-      // If user is not currently filling a draft form, pull fresh data from cloud
-      if(!state.draft && (state.tab === 'archive' || state.tab === 'dashboard' || state.tab === 'customers')){
-        try {
-          const [freshReceipts, freshCustomers] = await Promise.all([loadReceipts(), loadCustomers()]);
-          if(freshReceipts && freshReceipts.length){
-            state.receipts = freshReceipts;
-          }
-          if(freshCustomers && freshCustomers.length){
-            state.customers = freshCustomers;
-          }
-          renderMain();
-        } catch(syncErr){}
+      // If user is inside Maintenance and not currently filling a draft form, pull fresh data from cloud
+      if(state.currentSection === 'maintenance' && !state.draft && (state.tab === 'archive' || state.tab === 'dashboard' || state.tab === 'customers')){
+        const isTyping = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT');
+        const modalOpen = !!document.querySelector('.modal-overlay, .modal-backdrop, .modal, [id*="Modal"]');
+        if(!isTyping && !modalOpen){
+          try {
+            const [freshReceipts, freshCustomers] = await Promise.all([loadReceipts(), loadCustomers()]);
+            if(freshReceipts && freshReceipts.length){
+              state.receipts = freshReceipts;
+            }
+            if(freshCustomers && freshCustomers.length){
+              state.customers = freshCustomers;
+            }
+            if(state.currentSection === 'maintenance'){
+              renderMain();
+            }
+          } catch(syncErr){}
+        }
       }
     }
-  }, 40000);
+  }, 90000);
 
-  // Auto-sync whenever user returns to or focuses the window/tab from another device
+  // Smart focus sync with 3-minute cooldown to prevent network flooding when switching tabs
+  let lastFocusSyncTime = Date.now();
   window.addEventListener('focus', async () => {
-    if(navigator.onLine && !state.draft){
+    const now = Date.now();
+    if(now - lastFocusSyncTime < 180000) return; // 3-minute cooldown
+    if(navigator.onLine && !state.draft && state.currentSection === 'maintenance'){
+      const isTyping = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT');
+      const modalOpen = !!document.querySelector('.modal-overlay, .modal-backdrop, .modal, [id*="Modal"]');
+      if(isTyping || modalOpen) return;
+      lastFocusSyncTime = now;
       try {
         const [freshReceipts, freshCustomers] = await Promise.all([loadReceipts(), loadCustomers()]);
         if(freshReceipts && freshReceipts.length) state.receipts = freshReceipts;
         if(freshCustomers && freshCustomers.length) state.customers = freshCustomers;
-        if(state.tab === 'archive' || state.tab === 'dashboard' || state.tab === 'customers'){
+        if(state.currentSection === 'maintenance' && (state.tab === 'archive' || state.tab === 'dashboard' || state.tab === 'customers')){
           renderMain();
         }
       } catch(fErr){}
@@ -8813,6 +9025,9 @@ function updateSidebarNav(){
 
 /* ---------------- Main Router ---------------- */
 function renderMain(){
+  // Strict Safeguard: renderMain is exclusively the sub-router for the Maintenance section.
+  // Under NO circumstances should it execute or modify the DOM if the user is in another section or on the section picker.
+  if(state.currentSection !== 'maintenance') return;
   const main = document.getElementById('main');
   if(!main) return;
   if(state.tab==='settings' && !canUserAccessSection('settings')){ state.tab='dashboard'; }
@@ -10153,6 +10368,37 @@ window.deleteReceiptDirect = function(receiptId, receiptNum){
    UNIFIED ACTIONS & SELECTION ENGINE (المحرك الموحد للاختيار وإجراءات البرنامج)
    ========================================================================== */
 
+window.startNewReceiptForCustomer = function(name, phone, title=''){
+  startNewDraft();
+  state.draft.customer.title = title || '';
+  state.draft.customer.name = name || '';
+  state.draft.customer.phone = phone || '';
+  state.tab = 'new';
+  renderMain();
+};
+
+window.startNewInvoiceForCustomer = function(name, phone, title=''){
+  const newInv = {
+    InvoiceNumber: typeof nextInvoiceNumber === 'function' ? nextInvoiceNumber() : '',
+    Date: typeof todayISO === 'function' ? todayISO() : new Date().toISOString().slice(0, 10),
+    DueDate: typeof todayISO === 'function' ? todayISO() : new Date().toISOString().slice(0, 10),
+    CustomerTitle: title || '',
+    CustomerName: name || '',
+    CustomerPhone: phone || '',
+    Type: 'مبيعات',
+    Items: [],
+    Subtotal: 0, TaxPercent: 0, TaxAmount: 0, Discount: 0, Total: 0, AmountPaid: 0, Remaining: 0,
+    Status: 'غير مدفوعة (آجلة)', PaymentMethod: 'نقدي'
+  };
+  openInvoiceModal(newInv, true);
+};
+
+window.viewCustomerReceiptsInArchive = function(custName){
+  state.tab = 'archive';
+  state.archiveFilter.q = custName || '';
+  renderMain();
+};
+
 function getOrCreateUnifiedSelectionBar(){
   let bar = document.getElementById('unifiedSelectionBar');
   if(!bar){
@@ -10369,8 +10615,10 @@ window.renderUnifiedSelectionBar = function(){
   if(state.tab === 'customers' && state.selectedCustomerId){
     const custName = state.selectedCustomerId;
     const allCusts = state.customers || [];
-    const cust = allCusts.find(c => extractCustomerName(c) === custName);
-    const cPhone = (cust && extractCustomerPhone(cust)) || '';
+    const cust = allCusts.find(c => extractCustomerName(c) === custName) || {};
+    const cTitle = extractCustomerTitle(cust) || '';
+    const cPhone = extractCustomerPhone(cust) || '';
+    const cEmail = cust.email || '';
     const clientReceipts = (state.receipts || []).filter(r => {
       const rName = extractCustomerName(r);
       const rPhone = extractCustomerPhone(r);
@@ -10385,29 +10633,50 @@ window.renderUnifiedSelectionBar = function(){
         </div>
         <div style="font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
           <span style="font-weight:800;color:var(--ink);">${escapeHtml(custName)}</span>
+          ${cTitle ? `<span class="badge" style="background:var(--paper2);color:var(--primary);font-size:11px;font-weight:700;border:1px solid var(--line);padding:1px 6px;border-radius:4px;">${escapeHtml(cTitle)}</span>` : ''}
           ${cPhone && cPhone !== '0000000000' ? `<span class="mono" style="color:var(--ink-secondary);font-size:11.5px;direction:ltr;">${escapeHtml(cPhone)}</span>` : ''}
           <span class="badge badge-blue" style="font-size:10.5px;">🛠️ ${clientReceipts.length} جهاز مسجل</span>
         </div>
       </div>
 
       <div class="unified-bar-actions">
-        <button class="unified-bar-btn btn-primary" onclick="openCustomerActionSheet('${escapeHtml(custName)}', '${escapeHtml(cPhone)}');" title="فتح لوحة إجراءات العميل الموحدة">
+        <button class="unified-bar-btn btn-primary" onclick="openCustomerActionSheet('${escapeHtml(custName)}', '${escapeHtml(cPhone)}', '${escapeHtml(cTitle)}', '${escapeHtml(cEmail)}');" title="فتح لوحة إجراءات وخيارات العميل الموحدة">
           ⚡ خيارات العميل
         </button>
-        <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="document.querySelector('tr.selected-row .edit-cust-btn')?.click();" title="تعديل بيانات العميل">
+        <button class="unified-bar-btn" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-weight:700;" onclick="openCustomerStatementModal('${escapeHtml(custName)}', '${escapeHtml(cPhone)}');" title="كشف حساب تفصيلي للعميل والمبيعات والتحصيلات">
+          📊 كشف حساب
+        </button>
+        <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="openEditCustomerModal({ title: '${escapeHtml(cTitle)}', name: '${escapeHtml(custName)}', phone: '${escapeHtml(cPhone)}', email: '${escapeHtml(cEmail)}' });" title="تعديل بيانات العميل">
           ✏️ تعديل
         </button>
-        <button class="unified-bar-btn btn-blue" onclick="document.querySelector('tr.selected-row .cust-new-receipt-btn')?.click();" title="إنشاء إيصال صيانة جديد لهذا العميل">
+        <button class="unified-bar-btn btn-blue" onclick="startNewReceiptForCustomer('${escapeHtml(custName)}', '${escapeHtml(cPhone)}', '${escapeHtml(cTitle)}');" title="إنشاء إيصال صيانة جديد لهذا العميل">
           ➕ إيصال صيانة
         </button>
-        <button class="unified-bar-btn btn-ghost" style="background:#faf5ff;color:#7c3aed;border:1px solid #ddd6fe;" onclick="document.querySelector('tr.selected-row .cust-new-inv-btn')?.click();" title="إنشاء فاتورة جديدة">
+        <button class="unified-bar-btn btn-ghost" style="background:#faf5ff;color:#7c3aed;border:1px solid #ddd6fe;" onclick="startNewInvoiceForCustomer('${escapeHtml(custName)}', '${escapeHtml(cPhone)}', '${escapeHtml(cTitle)}');" title="إنشاء فاتورة جديدة">
           🧾 فاتورة
         </button>
+        ${clientReceipts.length > 0 ? `
+          <button class="unified-bar-btn btn-ghost" style="color:var(--primary);font-weight:800;border:1px solid var(--line);" onclick="viewCustomerReceiptsInArchive('${escapeHtml(custName)}');" title="استعراض أجهزة العميل بالأرشيف">
+            📁 الأجهزة (${clientReceipts.length})
+          </button>
+        ` : ''}
+        ${clientReceipts.length > 1 ? `
+          <button class="unified-bar-btn btn-ghost" style="background:#ede9fe;color:#6d28d9;border:1px solid #c4b5fd;font-weight:800;" onclick="openCustomerConsolidatedInvoiceModal('${escapeHtml(custName)}');" title="إصدار فاتورة مجمعة لكافة أجهزة هذا العميل">
+            📑 فاتورة مجمعة
+          </button>
+        ` : ''}
         ${cPhone && cPhone !== '0000000000' ? `
-          <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" class="unified-bar-btn btn-whatsapp" style="text-decoration:none;">
+          <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" class="unified-bar-btn btn-whatsapp" style="text-decoration:none;" title="محادثة واتساب">
             ${WA_ICON} واتساب
           </a>
-        ` : ''}
+          <a href="tel:${cPhone}" class="unified-bar-btn btn-ghost" style="text-decoration:none;border:1px solid var(--line);" title="اتصال هاتفي">
+            📞 اتصال
+          </a>
+        ` : `
+          <button class="unified-bar-btn btn-amber" onclick="openQuickAddPhoneModal('${escapeHtml(custName)}', '');" title="إضافة رقم هاتف للعميل">
+            ⚠️ إضافة هاتف
+          </button>
+        `}
         <button class="unified-bar-btn-close" onclick="deselectCurrentSelection()" title="إلغاء التحديد">
           ✕
         </button>
@@ -10444,11 +10713,12 @@ window.renderUnifiedSelectionBar = function(){
           <span>📌 شريط إجراءات العملاء الموحد</span>
         </div>
         <div style="font-size:12px;color:var(--ink-secondary);">
-          اضغط على أي عميل لتفعيل خيارات التعديل والمراسلة وإيصالات الصيانة
+          اضغط على أي عميل من الجدول أدناه لتفعيل خيارات التعديل والمراسلة وإيصالات الصيانة وكشف الحساب
         </div>
       </div>
       <div class="unified-bar-actions" style="opacity:0.55;pointer-events:none;">
         <button class="unified-bar-btn btn-primary" disabled>⚡ خيارات العميل</button>
+        <button class="unified-bar-btn" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-weight:700;" disabled>📊 كشف حساب</button>
         <button class="unified-bar-btn btn-ghost" disabled>✏️ تعديل</button>
         <button class="unified-bar-btn btn-blue" disabled>➕ إيصال صيانة</button>
         <button class="unified-bar-btn btn-ghost" disabled>🧾 فاتورة</button>
@@ -10897,62 +11167,9 @@ window.selectCustomer = function(custName, custPhone){
     }
   });
 
-  const cPhone = custPhone || '';
-  const clientReceipts = (state.receipts || []).filter(r => {
-    const rName = extractCustomerName(r);
-    const rPhone = extractCustomerPhone(r);
-    return (rName && rName.toLowerCase() === custName.toLowerCase()) || (cPhone && rPhone === cPhone);
-  });
-
-  const bar = getOrCreateUnifiedSelectionBar();
-  bar.innerHTML = `
-    <div class="unified-bar-info">
-      <div class="unified-bar-badge" style="background:#eff6ff;color:#2563eb;">
-        <span>👤 عميل مختار</span>
-      </div>
-      <div style="font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-        <span style="font-weight:800;color:var(--ink);">${escapeHtml(custName)}</span>
-        ${cPhone && cPhone !== '0000000000' ? `<span class="mono" style="color:var(--ink-secondary);font-size:11.5px;direction:ltr;">${escapeHtml(cPhone)}</span>` : ''}
-        <span class="badge badge-blue" style="font-size:10.5px;">🛠️ ${clientReceipts.length} جهاز مسجل</span>
-      </div>
-    </div>
-
-    <div class="unified-bar-actions">
-      <button class="unified-bar-btn btn-primary" onclick="openCustomerActionSheet('${escapeHtml(custName)}', '${escapeHtml(cPhone)}');" title="فتح لوحة إجراءات العميل الموحدة">
-        ⚡ خيارات العميل
-      </button>
-      <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="document.querySelector('tr.selected-row .edit-cust-btn')?.click();" title="تعديل بيانات العميل">
-        ✏️ تعديل
-      </button>
-      <button class="unified-bar-btn btn-blue" onclick="document.querySelector('tr.selected-row .cust-new-receipt-btn')?.click();" title="إنشاء إيصال صيانة جديد لهذا العميل">
-        ➕ إيصال صيانة
-      </button>
-      <button class="unified-bar-btn btn-ghost" style="background:#faf5ff;color:#7c3aed;border:1px solid #ddd6fe;" onclick="document.querySelector('tr.selected-row .cust-new-inv-btn')?.click();" title="إنشاء فاتورة جديدة">
-        🧾 فاتورة
-      </button>
-      ${clientReceipts.length > 0 ? `
-        <button class="unified-bar-btn btn-ghost" style="color:var(--primary);font-weight:800;border:1px solid var(--line);" onclick="document.querySelector('tr.selected-row .view-cust-receipts-btn')?.click();" title="استعراض أجهزة العميل بالأرشيف">
-          📁 أجهزة العميل (${clientReceipts.length})
-        </button>
-      ` : ''}
-      ${cPhone && cPhone !== '0000000000' ? `
-        <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" class="unified-bar-btn btn-whatsapp" style="text-decoration:none;">
-          ${WA_ICON} واتساب
-        </a>
-        <a href="tel:${cPhone}" class="unified-bar-btn btn-ghost" style="text-decoration:none;border:1px solid var(--line);" title="اتصال هاتفي">
-          📞 اتصال
-        </a>
-      ` : `
-        <button class="unified-bar-btn btn-amber" onclick="openQuickAddPhoneModal('${escapeHtml(custName)}', '')">
-          ⚠️ إضافة هاتف
-        </button>
-      `}
-      <button class="unified-bar-btn-close" onclick="deselectCurrentSelection()" title="إلغاء التحديد">
-        ✕
-      </button>
-    </div>
-  `;
-  bar.classList.add('active');
+  if(typeof window.renderUnifiedSelectionBar === 'function'){
+    window.renderUnifiedSelectionBar();
+  }
 };
 
 window.handleCustomerRowClick = function(custName, custPhone, evt){
@@ -11000,12 +11217,12 @@ window.openCustomerActionSheet = function(custName, custPhone, custTitle, custEm
 
       <div class="action-sheet-section-title">⚡ العمليات والمعاملات المباشرة</div>
       <div class="action-sheet-grid">
-        <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); document.querySelector('tr.selected-row .cust-new-receipt-btn')?.click();">
+        <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); startNewReceiptForCustomer('${escapeHtml(custName)}', '${escapeHtml(custPhone||'')}', '${escapeHtml(custTitle||'')}');">
           <div class="act-icon">➕</div>
           <div class="act-label">إيصال صيانة جديد</div>
           <div class="act-desc">استلام جهاز للعميل</div>
         </div>
-        <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); document.querySelector('tr.selected-row .cust-new-inv-btn')?.click();">
+        <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); startNewInvoiceForCustomer('${escapeHtml(custName)}', '${escapeHtml(custPhone||'')}', '${escapeHtml(custTitle||'')}');">
           <div class="act-icon">🧾</div>
           <div class="act-label">فاتورة جديدة</div>
           <div class="act-desc">إصدار فاتورة بيع/خدمة</div>
@@ -11015,7 +11232,7 @@ window.openCustomerActionSheet = function(custName, custPhone, custTitle, custEm
           <div class="act-label">كشف حساب تفصيلي</div>
           <div class="act-desc">سجل حركات ورصيد العميل</div>
         </div>
-        <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); document.querySelector('tr.selected-row .edit-cust-btn')?.click();">
+        <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); openEditCustomerModal({ title: '${escapeHtml(custTitle||'')}', name: '${escapeHtml(custName)}', phone: '${escapeHtml(custPhone||'')}', email: '${escapeHtml(custEmail||'')}' });">
           <div class="act-icon">✏️</div>
           <div class="act-label">تعديل البيانات</div>
           <div class="act-desc">تحديث الهاتف والاسم</div>
@@ -11050,7 +11267,7 @@ window.openCustomerActionSheet = function(custName, custPhone, custTitle, custEm
           </div>
         `}
         ${clientReceipts.length > 0 ? `
-          <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); document.querySelector('tr.selected-row .view-cust-receipts-btn')?.click();">
+          <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); viewCustomerReceiptsInArchive('${escapeHtml(custName)}');">
             <div class="act-icon" style="color:var(--primary);">📁</div>
             <div class="act-label">سجل أجهزة العميل</div>
             <div class="act-desc">${clientReceipts.length} جهاز في الأرشيف</div>
@@ -11563,11 +11780,10 @@ function renderCustomersPage(main){
         <table>
           <thead>
             <tr>
-              <th style="text-align:right;">اسم العميل</th>
-              <th style="text-align:right;">رقم الهاتف والاتصال</th>
-              <th style="text-align:center;">أجهزة الصيانة</th>
-              <th style="text-align:right;">البريد / الملاحظات</th>
-              <th style="text-align:center;min-width:220px;">الإجراءات السريعة</th>
+              <th style="text-align:right;width:32%;">اسم العميل</th>
+              <th style="text-align:right;width:24%;">رقم الهاتف والاتصال</th>
+              <th style="text-align:center;width:14%;">أجهزة الصيانة</th>
+              <th style="text-align:right;width:30%;">البريد / الملاحظات</th>
             </tr>
           </thead>
           <tbody>
@@ -11583,7 +11799,7 @@ function renderCustomersPage(main){
               const isSelectedCust = String(cName) === String(state.selectedCustomerId);
 
               return `
-                <tr class="selectable-row ${isSelectedCust ? 'selected-row' : ''}" data-cust-name="${escapeHtml(cName)}" data-cust-phone="${escapeHtml(cPhone||'')}" onclick="handleCustomerRowClick('${escapeHtml(cName)}', '${escapeHtml(cPhone||'')}', event)">
+                <tr class="selectable-row ${isSelectedCust ? 'selected-row' : ''}" data-cust-name="${escapeHtml(cName)}" data-cust-phone="${escapeHtml(cPhone||'')}" onclick="handleCustomerRowClick('${escapeHtml(cName)}', '${escapeHtml(cPhone||'')}', event)" style="cursor:pointer;">
                   <td>
                     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                       ${isSelectedCust ? '<span class="selected-badge-indicator">✓</span>' : ''}
@@ -11599,44 +11815,20 @@ function renderCustomersPage(main){
                         <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" class="btn btn-ghost btn-xs" style="padding:2px 6px;color:#22c55e;" title="محادثة واتساب" onclick="event.stopPropagation();">💬</a>
                       </div>
                     ` : `
-                      <button class="btn btn-ghost btn-xs edit-cust-quick-phone-btn" data-custtitle="${escapeHtml(cTitle)}" data-custname="${escapeHtml(cName)}" style="color:var(--amber-text);border-color:var(--amber);font-weight:700;" onclick="event.stopPropagation();">
+                      <button class="btn btn-ghost btn-xs edit-cust-quick-phone-btn" style="color:var(--amber-text);border-color:var(--amber);font-weight:700;" onclick="event.stopPropagation(); openQuickAddPhoneModal('${escapeHtml(cName)}', '${escapeHtml(cTitle||'')}');" title="إضافة رقم هاتف للعميل">
                         ⚠️ إضافة رقم الهاتف
                       </button>
                     `}
                   </td>
                   <td style="text-align:center;">
                     ${clientReceipts.length > 0 ? `
-                      <button class="btn btn-ghost btn-xs view-cust-receipts-btn" data-custname="${escapeHtml(cName)}" style="font-weight:800;color:var(--primary);" onclick="event.stopPropagation();">
+                      <button class="btn btn-ghost btn-xs view-cust-receipts-btn" style="font-weight:800;color:var(--primary);" onclick="event.stopPropagation(); viewCustomerReceiptsInArchive('${escapeHtml(cName)}');" title="استعراض أجهزة العميل بالأرشيف">
                         🛠️ ${clientReceipts.length} جهاز
                       </button>
                     ` : `<span style="color:var(--ink-secondary);font-size:11px;">-</span>`}
                   </td>
                   <td style="font-size:11.5px;color:var(--ink-secondary);">
                     ${highlightSpotlightMatch(c.email || c.address || '-', state.custSearch)}
-                  </td>
-                  <td style="text-align:center;" onclick="event.stopPropagation();">
-                    <div style="display:inline-flex;gap:4px;flex-wrap:wrap;justify-content:center;">
-                      <button class="btn btn-primary btn-xs font-bold" onclick="openCustomerActionSheet('${escapeHtml(cName)}', '${escapeHtml(cPhone||'')}', '${escapeHtml(cTitle)}', '${escapeHtml(c.email||'')}'); event.stopPropagation();" title="فتح لوحة الإجراءات الموحدة للعميل">
-                        ⚡ خيارات العميل
-                      </button>
-                      <button class="btn btn-xs" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-weight:700;" onclick="openCustomerStatementModal('${escapeHtml(cName)}', '${escapeHtml(cPhone||'')}'); event.stopPropagation();" title="كشف حساب تفصيلي للعميل">
-                        📊 كشف حساب
-                      </button>
-                      <button class="btn btn-ghost btn-xs edit-cust-btn" data-custtitle="${escapeHtml(cTitle)}" data-custname="${escapeHtml(cName)}" data-custphone="${escapeHtml(cPhone||'')}" data-custemail="${escapeHtml(c.email||'')}">
-                        ✏️ تعديل
-                      </button>
-                      <button class="btn btn-ghost btn-xs cust-new-receipt-btn" data-custtitle="${escapeHtml(cTitle)}" data-custname="${escapeHtml(cName)}" data-custphone="${escapeHtml(cPhone||'')}" style="color:var(--blue-text);">
-                        ➕ صيانة
-                      </button>
-                      <button class="btn btn-ghost btn-xs cust-new-inv-btn" data-custtitle="${escapeHtml(cTitle)}" data-custname="${escapeHtml(cName)}" data-custphone="${escapeHtml(cPhone||'')}" style="color:var(--purple);">
-                        🧾 فاتورة
-                      </button>
-                      ${clientReceipts.length > 1 ? `
-                        <button class="btn btn-xs" style="background:#ede9fe;color:#6d28d9;border:1px solid #c4b5fd;font-weight:800;" onclick="openCustomerConsolidatedInvoiceModal('${escapeHtml(cName)}'); event.stopPropagation();" title="إصدار فاتورة مجمعة لكافة أجهزة هذا العميل">
-                          📑 مجمعة
-                        </button>
-                      ` : ''}
-                    </div>
                   </td>
                 </tr>
               `;
@@ -11684,56 +11876,6 @@ function renderCustomersPage(main){
   // Export Excel
   document.getElementById('exportCustsExcelBtn').onclick = ()=>exportCustomersToExcel(allCusts);
 
-  // Edit Customer
-  main.querySelectorAll('.edit-cust-btn, .edit-cust-quick-phone-btn').forEach(btn => {
-    btn.onclick = ()=>{
-      const title = btn.dataset.custtitle || '';
-      const name = btn.dataset.custname;
-      const phone = btn.dataset.custphone || '';
-      const email = btn.dataset.custemail || '';
-      openEditCustomerModal({ title, name, phone, email });
-    };
-  });
-
-  // View Customer Receipts in Archive
-  main.querySelectorAll('.view-cust-receipts-btn').forEach(btn => {
-    btn.onclick = ()=>{
-      state.tab = 'archive';
-      state.archiveFilter.q = btn.dataset.custname;
-      renderMain();
-    };
-  });
-
-  // New Receipt for customer
-  main.querySelectorAll('.cust-new-receipt-btn').forEach(btn => {
-    btn.onclick = ()=>{
-      startNewDraft();
-      state.draft.customer.title = btn.dataset.custtitle || '';
-      state.draft.customer.name = btn.dataset.custname;
-      state.draft.customer.phone = btn.dataset.custphone || '';
-      state.tab = 'new';
-      renderMain();
-    };
-  });
-
-  // New Invoice for customer
-  main.querySelectorAll('.cust-new-inv-btn').forEach(btn => {
-    btn.onclick = ()=>{
-      const newInv = {
-        InvoiceNumber: typeof nextInvoiceNumber === 'function' ? nextInvoiceNumber() : '',
-        Date: typeof todayISO === 'function' ? todayISO() : new Date().toISOString().slice(0, 10),
-        DueDate: typeof todayISO === 'function' ? todayISO() : new Date().toISOString().slice(0, 10),
-        CustomerTitle: btn.dataset.custtitle || '',
-        CustomerName: btn.dataset.custname || '',
-        CustomerPhone: btn.dataset.custphone || '',
-        Type: 'مبيعات',
-        Items: [],
-        Subtotal: 0, TaxPercent: 0, TaxAmount: 0, Discount: 0, Total: 0, AmountPaid: 0, Remaining: 0,
-        Status: 'غير مدفوعة (آجلة)', PaymentMethod: 'نقدي'
-      };
-      openInvoiceModal(newInv, true);
-    };
-  });
   if(typeof window.renderUnifiedSelectionBar === 'function'){
     window.renderUnifiedSelectionBar();
   }
@@ -12040,8 +12182,14 @@ function promptDeliveryRemainingPayment(r, remaining, onProceed){
     };
   });
 
+  let isHandshakeHandled = false;
   pOverlay.querySelector('#promptBtnPayAndDeliver').onclick = ()=>{
-    pOverlay.remove();
+    if(isHandshakeHandled) return;
+    isHandshakeHandled = true;
+    const btn = pOverlay.querySelector('#promptBtnPayAndDeliver');
+    if(btn){ btn.disabled = true; btn.textContent = '⏳ جارٍ التحصيل والتسليم...'; }
+    pOverlay.querySelectorAll('button').forEach(b => b.disabled = true);
+    setTimeout(() => pOverlay.remove(), 100);
     const pmObj = getActivePaymentMethods().find(x=>x.id===curMethod) || {name:'نقدي (كاش)'};
     if(curMethod === 'credit'){
       onProceed(false, 'آجل / على الحساب');
@@ -12050,10 +12198,15 @@ function promptDeliveryRemainingPayment(r, remaining, onProceed){
     }
   };
   pOverlay.querySelector('#promptBtnDeliverOnly').onclick = ()=>{
-    pOverlay.remove();
+    if(isHandshakeHandled) return;
+    isHandshakeHandled = true;
+    pOverlay.querySelectorAll('button').forEach(b => b.disabled = true);
+    setTimeout(() => pOverlay.remove(), 100);
     onProceed(false, 'آجل / على الحساب');
   };
   pOverlay.querySelector('#promptBtnCancel').onclick = ()=>{
+    if(isHandshakeHandled) return;
+    isHandshakeHandled = true;
     pOverlay.remove();
   };
 }
@@ -12121,17 +12274,30 @@ function promptPaymentDeliveryStatus(r, amt, onProceed){
     };
   });
 
+  let isPayStatusHandled = false;
   pOverlay.querySelector('#promptBtnDeliver').onclick = ()=>{
-    pOverlay.remove();
+    if(isPayStatusHandled) return;
+    isPayStatusHandled = true;
+    const btn = pOverlay.querySelector('#promptBtnDeliver');
+    if(btn){ btn.disabled = true; btn.textContent = '⏳ جارٍ تسجيل السداد والتسليم...'; }
+    pOverlay.querySelectorAll('button').forEach(b => b.disabled = true);
+    setTimeout(() => pOverlay.remove(), 100);
     const pmObj = getActivePaymentMethods().find(x=>x.id===curMethod) || {name:'نقدي (كاش)'};
     onProceed(true, pmObj.name); // true = تغيير الحالة لتم التسليم
   };
   pOverlay.querySelector('#promptBtnKeepStatus').onclick = ()=>{
-    pOverlay.remove();
+    if(isPayStatusHandled) return;
+    isPayStatusHandled = true;
+    const btn = pOverlay.querySelector('#promptBtnKeepStatus');
+    if(btn){ btn.disabled = true; btn.textContent = '⏳ جارٍ تسجيل السداد...'; }
+    pOverlay.querySelectorAll('button').forEach(b => b.disabled = true);
+    setTimeout(() => pOverlay.remove(), 100);
     const pmObj = getActivePaymentMethods().find(x=>x.id===curMethod) || {name:'نقدي (كاش)'};
     onProceed(false, pmObj.name); // false = سداد فقط مع إبقاء الحالة
   };
   pOverlay.querySelector('#promptBtnCancelPay').onclick = ()=>{
+    if(isPayStatusHandled) return;
+    isPayStatusHandled = true;
     pOverlay.remove();
   };
 }
@@ -12204,15 +12370,19 @@ function openQuickStatusModal(rawR){
   const quickStatusCostEstBtn = overlay.querySelector('#quickStatusCostEstBtn');
   if(quickStatusCostEstBtn) quickStatusCostEstBtn.onclick = ()=>{ overlay.remove(); openCostEstimateModal(r); };
 
+  let isQuickStatusBusy = false;
   overlay.querySelectorAll('[data-setstatus]').forEach(btn=>{
     btn.onclick = async ()=>{
+      if(isQuickStatusBusy) return;
       const newStatus = btn.dataset.setstatus;
       const newTech = overlay.querySelector('#quickTechSelect').value;
       const sendWa = overlay.querySelector('#sendWaAfterStatus').checked;
-      const remaining = Number(r.cost||0) + Number(r.partsCost||0) - Number(r.deposit||0) + Number(r.refunded||0);
+      const remaining = Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0) - Number(r.deposit||0) + Number(r.refunded||0);
 
       // إذا كان التغيير إلى "تم التسليم" وهناك مبلغ متبقي غير مسدد
       if(newStatus === 'تم التسليم' && remaining > 0){
+        isQuickStatusBusy = true;
+        overlay.querySelectorAll('[data-setstatus]').forEach(b => b.disabled = true);
         promptDeliveryRemainingPayment(r, remaining, async (shouldPay, payMethodName)=>{
           if(newTech) r.technician = newTech;
           r.status = 'تم التسليم';
@@ -14287,9 +14457,9 @@ async function openReceiptDetail(rawR){
     const remainingNow = Math.max(0, totalDue - totalPaid + Number(r.refunded||0));
 
     if(r.status === 'تم التسليم' && remainingNow > 0){
+      const btn = overlay.querySelector('#saveEditBtn');
+      if(btn){ btn.disabled = true; btn.textContent = 'جارٍ الحفظ...'; }
       promptDeliveryRemainingPayment(r, remainingNow, async (shouldPay, payMethodName)=>{
-        const btn = overlay.querySelector('#saveEditBtn');
-        if(btn){ btn.disabled = true; btn.textContent = 'جارٍ الحفظ...'; }
         if(shouldPay){
           try{
             await savePaymentRemote(r.id, remainingNow, 'سداد المتبقي عند التسليم', payMethodName || 'نقدي (كاش)');
@@ -14325,7 +14495,10 @@ async function openReceiptDetail(rawR){
     }
   };
 
+  let isAddPaySubmitting = false;
   overlay.querySelector('#addPayBtn').onclick = async ()=>{
+    if(isAddPaySubmitting) return;
+    const addPayBtn = overlay.querySelector('#addPayBtn');
     const amt = Number(overlay.querySelector('#newPayAmt').value);
     const note = overlay.querySelector('#newPayNote').value.trim();
     const payMethodInp = overlay.querySelector('#newPayMethod');
@@ -14346,6 +14519,9 @@ async function openReceiptDetail(rawR){
       return;
     }
 
+    isAddPaySubmitting = true;
+    if(addPayBtn){ addPayBtn.disabled = true; addPayBtn.textContent = 'جارٍ التسجيل...'; }
+
     // إذا كانت الدفعة تغطي المبلغ المتبقي بالكامل والحالة لم تسلم بعد
     if(amt >= remainingBefore && r.status !== 'تم التسليم'){
       promptPaymentDeliveryStatus(r, amt, async (shouldDeliver, payMethodName)=>{
@@ -14365,7 +14541,11 @@ async function openReceiptDetail(rawR){
           overlay.remove();
           showToast(shouldDeliver ? 'تم سداد كامل المبلغ وتحديث الحالة إلى تم التسليم 🤝✅' : 'تم سداد كامل المبلغ وتحديث الحسابات بنجاح ✅', 'success');
           renderMain();
-        }catch(e){ showToast('تم الحفظ محلياً: '+e.message, 'info'); }
+        }catch(e){ 
+          showToast('تم الحفظ محلياً: '+e.message, 'info'); 
+          isAddPaySubmitting = false;
+          if(addPayBtn){ addPayBtn.disabled = false; addPayBtn.textContent = 'تسجيل دفعة'; }
+        }
       });
       return;
     }
@@ -14386,11 +14566,18 @@ async function openReceiptDetail(rawR){
       await refreshPayments();
       showToast('تم تسجيل الدفعة بنجاح', 'success');
       renderMain();
-    }catch(e){ showToast('تم تسجيل الدفعة محلياً', 'info'); }
+    }catch(e){ 
+      showToast('تم تسجيل الدفعة محلياً', 'info'); 
+    }finally{
+      isAddPaySubmitting = false;
+      if(addPayBtn){ addPayBtn.disabled = false; addPayBtn.textContent = 'تسجيل دفعة'; }
+    }
   };
 
+  let isPayBtnSubmitting = false;
   const payBtn = overlay.querySelector('#payBtn');
   if(payBtn) payBtn.onclick = async ()=>{
+    if(isPayBtnSubmitting) return;
     const totalDue = Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0);
     const remainingNow = Math.max(0, totalDue - Number(r.deposit||0) + Number(r.refunded||0));
     if(remainingNow <= 0){
@@ -14398,8 +14585,11 @@ async function openReceiptDetail(rawR){
       return;
     }
 
+    isPayBtnSubmitting = true;
+    payBtn.disabled = true;
+    payBtn.textContent = 'جارٍ السداد...';
+
     promptPaymentDeliveryStatus(r, remainingNow, async (shouldDeliver, payMethodName)=>{
-      payBtn.disabled = true;
       try{
         await savePaymentRemote(r.id, remainingNow, shouldDeliver ? 'سداد المتبقي عند التسليم' : 'سداد المتبقي بالكامل', payMethodName || 'نقدي (كاش)');
         r.deposit = Number(r.deposit||0) + remainingNow;
@@ -14420,6 +14610,8 @@ async function openReceiptDetail(rawR){
       }catch(e){
         showToast('تم السداد محلياً: '+e.message, 'info');
         payBtn.disabled = false;
+        payBtn.textContent = '✅ سداد المتبقي';
+        isPayBtnSubmitting = false;
       }
     });
   };
@@ -16275,7 +16467,14 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
         await saveInvoiceRemote(inv);
         showToast(`تم حفظ ${docType==='quote'?'عرض السعر':'الفاتورة'} بنجاح (${inv.InvoiceNumber})`, 'success');
         overlay.remove();
-        renderMain();
+        const main = document.getElementById('main');
+        if(state.currentSection === 'invoices' && main){
+          renderInvoicesPage(main);
+        } else if(state.currentSection === 'maintenance' && state.tab === 'invoices' && main){
+          renderInvoicesPage(main);
+        } else if(state.currentSection === 'maintenance'){
+          renderMain();
+        }
         if(andPrint) openInvoicePrint(inv, docType);
       }catch(e){
         showToast('خطأ في حفظ البيانات', 'error');
@@ -16766,6 +16965,8 @@ function getUnifiedDailyTransactions(){
     const custName = r ? r.customer.name : '';
     transactions.push({
       id: 'pay_' + (p.ID || p.ReceiptID),
+      rawPayId: p.ID,
+      rawReceiptId: p.ReceiptID,
       date: cleanDate(p.Date) || new Date().toISOString().slice(0,10),
       rawTime: p.Time || '',
       type: 'in',
@@ -16782,7 +16983,7 @@ function getUnifiedDailyTransactions(){
       by: p.By || 'نظام',
       method: p.PaymentMethod || 'نقدي (كاش)',
       notes: p.Note || '',
-      canDelete: false
+      canDelete: true
     });
   });
 
@@ -17117,11 +17318,21 @@ function openRecordTransactionModal(defaultType='expense'){
         });
         showToast('تم تسجيل الحركة بنجاح في دفتر اليومية ✅', 'success');
         overlay.remove();
-        renderMain();
+        const main = document.getElementById('main');
+        if(state.currentSection === 'daily' && main){
+          renderDailyJournalPage(main);
+        } else if(state.currentSection === 'maintenance'){
+          renderMain();
+        }
       }catch(e){
         showToast('تم الحفظ محلياً', 'info');
         overlay.remove();
-        renderMain();
+        const main = document.getElementById('main');
+        if(state.currentSection === 'daily' && main){
+          renderDailyJournalPage(main);
+        } else if(state.currentSection === 'maintenance'){
+          renderMain();
+        }
       }
     };
   }
@@ -17368,8 +17579,9 @@ function renderDailyJournalPage(main){
   const walletNet = filtered.filter(t => isMethodMatch(t.method, 'wallet')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
   const creditNet = filtered.filter(t => isMethodMatch(t.method, 'credit')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
 
-  // Overall Cash Balance in Drawer (from all time)
-  const currentTotalCashInDrawer = allTx.length ? allTx[allTx.length - 1].runningBalance : 0;
+  // Overall Cash Balance in Drawer (from all time - Cash Only)
+  const currentTotalCashInDrawer = allTx.filter(t => isMethodMatch(t.method, 'cash')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
+  const totalAllLiquidity = allTx.filter(t => !isMethodMatch(t.method, 'credit')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
 
   main.innerHTML = `
     <div class="top-header">
@@ -17413,7 +17625,7 @@ function renderDailyJournalPage(main){
       <div class="stat-card" style="border-top:3px solid #8b5cf6;background:linear-gradient(180deg, #f5f3ff 0%, #fff 100%);">
         <div class="top-row"><span class="lbl" style="color:#6d28d9;font-weight:800;">💰 رصيد الخزينة بالدرج</span><div class="icon-box" style="background:#ede9fe;">💵</div></div>
         <div class="num mono" style="font-weight:900;color:#6d28d9;">${currentTotalCashInDrawer.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
-        <div style="font-size:11px;color:var(--ink-secondary);margin-top:3px;">الرصيد الفعلي الحاضر بالدرج</div>
+        <div style="font-size:11px;color:var(--ink-secondary);margin-top:3px;">النقدية الحاضرة بالدرج (إجمالي السيولة: ${totalAllLiquidity.toLocaleString()} ج.م)</div>
       </div>
     </div>
 
@@ -17499,6 +17711,32 @@ function renderDailyJournalPage(main){
       ${(state.dailySearchQ || state.dailyTypeFilter!=='all' || (state.dailyMethodFilter && state.dailyMethodFilter!=='all') || state.dailyDateFilter!=='today') ? `<button class="btn btn-ghost btn-sm" id="clearDailyFilters">إعادة ضبط</button>` : ''}
     </div>
 
+    <!-- Detected Duplicates Alert Banner -->
+    ${(()=>{
+      const detectedDuplicates = detectDuplicatePayments(state.payments || []);
+      if(!detectedDuplicates.length) return '';
+      return `
+        <div style="background:#fef2f2;border:1.5px solid #f87171;border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:20px;">⚠️</span>
+            <div>
+              <div style="font-size:13px;font-weight:800;color:#991b1b;">
+                تنبيه تدقيق الخزينة: تم اكتشاف ${detectedDuplicates.length} دفعة صيانة مكررة مسجلة بالخزينة تؤثر على توازن الرصيد!
+              </div>
+              <div style="font-size:11px;color:#b91c1c;margin-top:2px;">
+                الدفعة مكررة لنفس الإيصال والمبلغ، اضغط على زر المعالجة أدناه لإلغاء الدفعة المكررة وتصحيح رصيد الخزينة والإيصال فوراً.
+              </div>
+            </div>
+          </div>
+          ${state.user.role==='admin' ? `
+            <button class="btn btn-sm btn-red font-bold" id="autoFixDuplicatePaymentsBtn" style="box-shadow:0 2px 6px rgba(220,38,38,0.25);">
+              🧹 تنظيف الدفعات المكررة وضبط الخزينة
+            </button>
+          ` : ''}
+        </div>
+      `;
+    })()}
+
     <!-- Ledger Table -->
     <div class="card">
       ${filtered.length===0 ? '<div class="empty">لا توجد حركات نقدية مسجلة في هذه الفترة أو مطابقة للفلتر.</div>' : `
@@ -17554,7 +17792,11 @@ function renderDailyJournalPage(main){
                   <td style="font-size:11.5px;">${t.by}</td>
                   <td style="text-align:center;">
                     ${t.canDelete && state.user.role==='admin' ? `
-                      <button class="btn btn-xs btn-red" data-txdel="${t.rawExpId}" title="حذف القيد اليدوي">🗑️</button>
+                      ${t.sourceType==='maintenance' ? `
+                        <button class="btn btn-xs btn-red" data-txpaydel="${t.rawPayId}" title="حذف دفعة الصيانة وتصحيح الخزينة والإيصال">🗑️</button>
+                      ` : `
+                        <button class="btn btn-xs btn-red" data-txdel="${t.rawExpId}" title="حذف القيد اليدوي">🗑️</button>
+                      `}
                     ` : ''}
                   </td>
                 </tr>
@@ -17636,7 +17878,37 @@ function renderDailyJournalPage(main){
     openDailyClosePrint(curDateStr, { totalIn, totalOut, totalPetty, netCash }, filtered);
   };
 
-  // Row Delete
+  const autoFixBtn = document.getElementById('autoFixDuplicatePaymentsBtn');
+  if(autoFixBtn){
+    autoFixBtn.onclick = async ()=>{
+      if(!confirm('هل أنت متأكد من رغبتك في إزالة الدفعات المتكررة تلقائياً وتصحيح رصيد الخزينة والإيصالات؟')) return;
+      await cleanDuplicatePayments();
+    };
+  }
+
+  // Row Delete for Payments
+  main.querySelectorAll('[data-txpaydel]').forEach(btn => {
+    btn.onclick = async ()=>{
+      const payId = btn.dataset.txpaydel;
+      const p = (state.payments || []).find(x => String(x.ID) === String(payId));
+      const title = p ? `تحصيل صيانة بمبلغ ${p.Amount} ج.م (إيصال #${p.ReceiptNumber || p.ReceiptID})` : 'دفعة صيانة';
+      requestAdminAuthorization({
+        action: 'حذف دفعة صيانة وتصحيح رصيد الخزينة',
+        entityType: 'دفعة صيانة',
+        entityId: payId,
+        entityTitle: title,
+        onApproved: async ()=>{
+          try{
+            await deletePaymentRemote(payId);
+            showToast('تم حذف الدفعة وتصحيح رصيد الخزينة والإيصال بنجاح ✅', 'success');
+            renderDailyJournalPage(main);
+          }catch(e){ showToast('تعذر حذف الدفعة: '+e.message, 'error'); }
+        }
+      });
+    };
+  });
+
+  // Row Delete for Expenses
   main.querySelectorAll('[data-txdel]').forEach(btn => {
     btn.onclick = async ()=>{
       const exp = (state.expenses || []).find(x=>x.ID === btn.dataset.txdel);
@@ -17898,15 +18170,16 @@ function renderCashDrawerPage(main){
   const totalOut = filtered.reduce((s,t)=>s+Number(t.out||0), 0);
   const totalPetty = filtered.filter(t=>t.type==='petty'||(t.category||'').includes('نثريات')).reduce((s,t)=>s+Number(t.out||0), 0);
   const netShiftCash = totalIn - totalOut;
-  const currentTotalCashInDrawer = allTx.length ? allTx[allTx.length - 1].runningBalance : 0;
-  const posCashIn = filtered.filter(t => t.sourceType==='pos').reduce((s,t)=>s+Number(t.in||0), 0);
-  const maintCashIn = filtered.filter(t => t.sourceType==='maintenance').reduce((s,t)=>s+Number(t.in||0), 0);
+  const currentTotalCashInDrawer = allTx.filter(t => isMethodMatch(t.method, 'cash')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
+  const totalAllLiquidity = allTx.filter(t => !isMethodMatch(t.method, 'credit')).reduce((s,t)=>s + Number(t.in||0) - Number(t.out||0), 0);
+  const posCashIn = filtered.filter(t => t.sourceType==='pos' && isMethodMatch(t.method, 'cash')).reduce((s,t)=>s+Number(t.in||0), 0);
+  const maintCashIn = filtered.filter(t => t.sourceType==='maintenance' && isMethodMatch(t.method, 'cash')).reduce((s,t)=>s+Number(t.in||0), 0);
 
   main.innerHTML = `
     <div class="top-header">
       <div>
         <h2 class="page-title">💵 حركة الخزينة والدرج (Cash Drawer & Shift Settlement)</h2>
-        <div class="subtitle mono" style="font-size:12px;color:var(--ink-secondary);">${filtered.length} حركة نقدية مسجلة بالدرج • رصيد الدرج الحي: <b>${currentTotalCashInDrawer.toLocaleString()} ج.م</b></div>
+        <div class="subtitle mono" style="font-size:12px;color:var(--ink-secondary);">${filtered.length} حركة نقدية مسجلة بالدرج • رصيد الدرج الحي (كاش): <b>${currentTotalCashInDrawer.toLocaleString()} ج.م</b> • إجمالي السيولة الشاملة: <b>${totalAllLiquidity.toLocaleString()} ج.م</b></div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn btn-blue btn-sm" id="drawerClosePrintBtn">🖨️ طباعة تقفيل الدرج والوردية</button>
@@ -17922,9 +18195,9 @@ function renderCashDrawerPage(main){
     <!-- Drawer KPIs Grid -->
     <div class="stat-grid" style="grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;margin-bottom:16px;">
       <div class="stat-card" style="border-top:3px solid #10b981;background:linear-gradient(180deg, #ecfdf5 0%, #fff 100%);">
-        <div class="top-row"><span class="lbl" style="color:#047857;font-weight:900;">💵 الرصيد الحي الفعلي بالدرج</span><div class="icon-box" style="background:#d1fae5;">💰</div></div>
+        <div class="top-row"><span class="lbl" style="color:#047857;font-weight:900;">💵 الرصيد الحي الفعلي بالدرج (كاش)</span><div class="icon-box" style="background:#d1fae5;">💰</div></div>
         <div class="num mono" style="color:#047857;font-weight:900;">${currentTotalCashInDrawer.toLocaleString()} <span style="font-size:12px;">ج.م</span></div>
-        <div style="font-size:11px;color:var(--ink-secondary);margin-top:3px;">السيولة النقدية الحاضرة بالخزينة الآن</div>
+        <div style="font-size:11px;color:var(--ink-secondary);margin-top:3px;">السيولة النقدية الحاضرة بالخزينة الآن (إجمالي السيولة: ${totalAllLiquidity.toLocaleString()} ج.م)</div>
       </div>
       <div class="stat-card" style="border-top:3px solid #0284c7;background:linear-gradient(180deg, #f0f9ff 0%, #fff 100%);">
         <div class="top-row"><span class="lbl" style="color:#0369a1;font-weight:800;">📥 وارد الدرج (المقبوضات)</span><div class="icon-box" style="background:#e0f2fe;">📥</div></div>
@@ -19272,6 +19545,20 @@ function renderInventoryHubApp(app){
   else renderInventory(main, state.invHubTab, state.invHubTab==='all' ? 'كل أصناف الشركة' : `مخزون: ${state.invHubTab}`);
 }
 
+function refreshInventorySectionOrTab(){
+  const main = document.getElementById('main');
+  if(!main) return;
+  if(state.currentSection === 'inventory'){
+    if(state.invHubTab === 'purchases') renderPurchases(main);
+    else if(state.invHubTab === 'suppliers') renderSuppliers(main);
+    else renderInventory(main, state.invHubTab || 'all', (state.invHubTab === 'all' || !state.invHubTab) ? 'كل أصناف الشركة' : `مخزون: ${state.invHubTab}`);
+  } else if(state.currentSection === 'maintenance' && state.tab === 'inventory'){
+    renderInventory(main, 'صيانة', 'مخزن قطع الغيار');
+  } else if(state.currentSection === 'maintenance'){
+    renderMain();
+  }
+}
+
 /* ---------------- Pro Inventory Master Screen (شاشة إدارة وأصناف المخزن المطورة) ---------------- */
 function renderInventory(main, categoryFilter, titleOverride){
   if(!state.invSearchQ) state.invSearchQ = '';
@@ -19833,7 +20120,7 @@ function openInventoryItemModal(editItem, cloneMode=false, defaultCategory='صي
       try{
         await saveInventoryItemRemote(item);
         showToast(`تم حفظ الصنف "${item.Name}" بنجاح ✅`, 'success');
-        renderMain();
+        refreshInventorySectionOrTab();
 
         if(keepOpen){
           // Reset form for next item
@@ -19964,7 +20251,7 @@ function openInventoryImportModal(){
     }
     showToast(`تم استيراد ${parsedItems.length} صنف بنجاح إلى المخزن! 🎉`, 'success');
     overlay.remove();
-    renderMain();
+    refreshInventorySectionOrTab();
   };
 }
 
@@ -20059,7 +20346,7 @@ function openWarehouseManagerModal(){
       recordAuditLog('إنشاء مخزن جديد', 'المخزن', `تم إنشاء مخزن جديد باسم: (${val})`, val);
       showToast(`تم إضافة المخزن "${val}" بنجاح 🏢`, 'success');
       renderModal();
-      renderMain();
+      refreshInventorySectionOrTab();
     };
 
     overlay.querySelectorAll('[data-filterwh]').forEach(btn => {
@@ -20067,7 +20354,7 @@ function openWarehouseManagerModal(){
         state.selectedWarehouseFilter = btn.dataset.filterwh;
         overlay.remove();
         if(state.currentSection !== 'inventory'){ state.currentSection = 'inventory'; render(); }
-        else renderMain();
+        else refreshInventorySectionOrTab();
       };
     });
 
@@ -20092,7 +20379,7 @@ function openWarehouseManagerModal(){
         recordAuditLog('حذف مخزن', 'المخزن', `تم حذف المخزن (${targetWh})`, targetWh);
         showToast(`تم حذف المخزن "${targetWh}" بنجاح`, 'info');
         renderModal();
-        renderMain();
+        refreshInventorySectionOrTab();
       };
     });
   }
@@ -20297,7 +20584,7 @@ function openWarehouseTransferModal(preselectedItem=null){
         showToast(`تم تحويل ${qty} قطعة من "${selItem.Name}" إلى ${toWh} بنجاح ✅`, 'success');
         playNotificationChime();
         overlay.remove();
-        renderMain();
+        refreshInventorySectionOrTab();
       };
     }
   }
@@ -21923,11 +22210,12 @@ function openPosReturnModal(sale){
           AccountCode: '4102-RET',
           Reference: `RET-${sale.ID.slice(-8)}`,
           By: state.user ? state.user.name : 'كاشير',
-          Notes: `رد بنفس وسيلة الدفع (${refundMethod}) • خصم عمولة بائع: ${commissionDeducted} ج.م من (${sale.By||'الكاشير'}) • سبب: ${returnReason}`
+          Notes: `رد بنفس وسيلة الدفع (${refundMethod}) • خصم عمولة بائع: ${commissionDeducted} ج.م من (${sale.By||'الكاشير'}) • سبب: ${returnReason}`,
+          skipAutoJournal: true
         };
         await saveExpenseRemote(exp);
 
-        // 3. Mark sale as returned
+        // 3. Mark sale as returned & persist to backend
         const returnDetails = {
           voucherNumber: `RET-${sale.ID.slice(-8)}`,
           returnDate: new Date().toISOString().slice(0,10),
@@ -21948,20 +22236,48 @@ function openPosReturnModal(sale){
         sale.ReturnDetails = returnDetails;
         setCache('sales', state.sales);
 
-        // 4. Auto Journal Entry
+        // Sync return to remote Google Apps Script backend
+        apiPost('saveReturn', {
+          saleId: sale.ID,
+          date: returnDetails.returnDate,
+          itemsSummary: returnedItems.map(x => `${x.qty}x ${x.name}`).join('، '),
+          refundAmount: totalRefund,
+          refundMethod: refundMethod,
+          returnDetails: returnDetails,
+          user: returnDetails.processedBy
+        }).catch(e => console.warn('Sync return to remote warning:', e));
+
+        // 4. Auto Journal Entry with dual reversal (Revenue & COGS)
         const isBank = (refundMethod.includes('فيزا') || refundMethod.includes('visa') || refundMethod.includes('card') || refundMethod.includes('instapay') || refundMethod.includes('محفظ') || refundMethod.includes('wallet'));
         const isCredit = (refundMethod.includes('آجل') || refundMethod.includes('اجل') || refundMethod.includes('حساب'));
         const creditAccCode = isBank ? '1102' : (isCredit ? '1103' : '1101');
         const creditAccName = isBank ? 'البنك وحسابات الدفع الإلكتروني' : (isCredit ? 'حساب العميل (مدينون آجل)' : 'الخزينة الرئيسية (النقدية بالدرج)');
 
+        let restockedCOGS = 0;
+        returnedItems.forEach(it => {
+          if(it.restocked && it.itemId && !String(it.itemId).startsWith('srv_')){
+            const inv = (state.inventory||[]).find(x => x.ID === it.itemId);
+            const cost = inv ? Number(inv.PurchasePrice||0) : 0;
+            restockedCOGS += cost * Number(it.qty||1);
+          }
+        });
+
+        const retJournalLines = [
+          {AccountCode:'4102', AccountName:'مردودات ومسموحات مبيعات الأجهزة والإكسسوار', Debit:Number(totalRefund), Credit:0, Notes:`مرتجع أصناف للعميل ${sale.CustomerName||'عميل زائر'}`},
+          {AccountCode:creditAccCode, AccountName:creditAccName, Debit:0, Credit:Number(totalRefund), Notes:`رد واسترداد بنفس وسيلة الدفع الأصلية (${refundMethod})`}
+        ];
+        if(restockedCOGS > 0){
+          retJournalLines.push(
+            {AccountCode:'1104', AccountName:'مخزون البضائع وقطع الغيار', Debit:Number(restockedCOGS), Credit:0, Notes:`إعادة إدخال مخزون أصناف مرتجعة (فاتورة #${sale.ID.slice(-8)})`},
+            {AccountCode:'5102', AccountName:'تكلفة البضاعة المباعة (POS)', Debit:0, Credit:Number(restockedCOGS), Notes:`عكس تكلفة بضاعة مباعة لمرتجع`}
+          );
+        }
+
         recordAutoJournalEntry(
           `مرتجع مبيعات POS فاتورة #${sale.ID.slice(-8)} (رد عبر ${refundMethod})`,
           'POS_Return',
           sale.ID,
-          [
-            {AccountCode:'4102', AccountName:'مردودات ومسموحات مبيعات الأجهزة والإكسسوار', Debit:Number(totalRefund), Credit:0, Notes:`مرتجع أصناف للعميل ${sale.CustomerName||'عميل زائر'}`},
-            {AccountCode:creditAccCode, AccountName:creditAccName, Debit:0, Credit:Number(totalRefund), Notes:`رد واسترداد بنفس وسيلة الدفع الأصلية (${refundMethod})`}
-          ]
+          retJournalLines
         ).catch(e=>{});
 
         // 5. Audit logs
@@ -22465,7 +22781,7 @@ function openPaySupplierModal(preselectedName){
       overlay.remove();
       const main = document.getElementById('main');
       if(state.invHubTab === 'suppliers') renderSuppliers(main);
-      else renderMain();
+      else refreshInventorySectionOrTab();
 
       setTimeout(()=>{
         if(confirm(`تم تسجيل سداد ${amount.toLocaleString()} ج.م للمورد (${supName}) بنجاح ✅\n\nهل ترغب في طباعة سند الصرف الآن؟`)){
@@ -23408,14 +23724,28 @@ function openAccountLedgerModal(acc){
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
 
+  // Gather all descendant codes if this account has sub-accounts
+  function getAllSubAccountCodes(code){
+    const res = [String(code).trim()];
+    (state.accounts || []).forEach(a => {
+      if(String(a.ParentCode).trim() === String(code).trim()){
+        res.push(...getAllSubAccountCodes(a.Code));
+      }
+    });
+    return res;
+  }
+  const targetCodes = new Set(getAllSubAccountCodes(acc.Code));
+
   // Gather all transactions
   const lines = [];
   (state.journalEntries||[]).forEach(je=>{
     (je.Lines||[]).forEach(l=>{
-      if(String(l.AccountCode).trim()===String(acc.Code).trim()){
+      if(targetCodes.has(String(l.AccountCode).trim())){
         lines.push({
           date: cleanDate(je.Date),
           entryNum: je.EntryNumber||je.ID,
+          accountCode: l.AccountCode,
+          accountName: l.AccountName,
           desc: l.Notes || je.Description,
           debit: Number(l.Debit||0),
           credit: Number(l.Credit||0)
@@ -23679,10 +24009,15 @@ function renderTrialBalance(main){
 
   const rows = state.accounts.map(acc=>{
     const stats = getAccountStats(acc.Code);
-    grandDebit += stats.totalDebit;
-    grandCredit += stats.totalCredit;
-    return { acc, stats };
+    const hasChildren = state.accounts.some(a => String(a.ParentCode) === String(acc.Code));
+    if(!hasChildren){
+      grandDebit += stats.totalDebit;
+      grandCredit += stats.totalCredit;
+    }
+    return { acc, stats, hasChildren };
   });
+
+  const isBalanced = Math.abs(grandDebit - grandCredit) < 0.01;
 
   main.innerHTML = `
     <div class="top-header">
@@ -23710,9 +24045,9 @@ function renderTrialBalance(main){
             </tr>
           </thead>
           <tbody>
-            ${rows.map(r=>`<tr>
+            ${rows.map(r=>`<tr style="${r.hasChildren ? 'background:var(--paper2);font-weight:700;' : ''}">
               <td class="mono font-bold">${r.acc.Code}</td>
-              <td><b>${r.acc.Name}</b></td>
+              <td><b>${r.acc.Name}</b> ${r.hasChildren ? '<span class="badge" style="font-size:10px;margin-right:4px;">تجميعي</span>' : ''}</td>
               <td>${r.acc.Type}</td>
               <td><span class="nature-pill ${r.stats.nature==='مدين'?'debit':'credit'}">${r.stats.nature}</span></td>
               <td class="mono">${(r.acc.Balance||0).toLocaleString()} ج.م</td>
@@ -23723,10 +24058,10 @@ function renderTrialBalance(main){
           </tbody>
           <tfoot>
             <tr style="background:var(--paper3);font-weight:900;font-size:13.5px;">
-              <td colspan="5" style="text-align:left;">الإجمالي العام لميزان المراجعة:</td>
+              <td colspan="5" style="text-align:left;">الإجمالي العام لميزان المراجعة (الحسابات الفرعية القابلة للقيد):</td>
               <td class="mono font-bold" style="color:var(--blue);">${grandDebit.toLocaleString()} ج.م</td>
               <td class="mono font-bold" style="color:var(--green);">${grandCredit.toLocaleString()} ج.م</td>
-              <td><span class="status-badge st-done">✅ متزن</span></td>
+              <td>${isBalanced ? '<span class="status-badge st-done">✅ متزن</span>' : `<span class="status-badge st-red">⚠️ غير متزن (${Math.abs(grandDebit - grandCredit).toLocaleString()} ج.م)</span>`}</td>
             </tr>
           </tfoot>
         </table>
@@ -23783,10 +24118,12 @@ function getIncomeStatementData(startDate, endDate){
   const sDate = startDate || '2000-01-01';
   const eDate = endDate || '2099-12-31';
 
-  // 1. POS Sales Revenue & COGS
+  // 1. POS Sales Revenue, Returns & COGS
   let posSalesRev = 0;
+  let posSalesReturns = 0;
   let posSalesCOGS = 0;
   let posSalesCount = 0;
+  let posReturnsCount = 0;
   (state.sales || []).forEach(s => {
     const dt = cleanDate(s.Date) || s.Date;
     if(dt >= sDate && dt <= eDate){
@@ -23795,6 +24132,7 @@ function getIncomeStatementData(startDate, endDate){
       posSalesRev += tot;
 
       let saleCOGS = 0;
+      let returnedCOGS = 0;
       if(s.ItemsJSON){
         try {
           const items = JSON.parse(s.ItemsJSON);
@@ -23810,28 +24148,57 @@ function getIncomeStatementData(startDate, endDate){
       if(saleCOGS === 0 && tot > 0){
         saleCOGS = tot * 0.70; // تقدير متحفظ في حال عدم توفر تفاصيل الأصناف القديمة
       }
-      posSalesCOGS += saleCOGS;
+
+      if(s.IsReturned){
+        posReturnsCount++;
+        const retDetails = s.ReturnDetails || {};
+        const retAmt = Number(retDetails.totalRefund != null ? retDetails.totalRefund : tot);
+        posSalesReturns += retAmt;
+
+        if(Array.isArray(retDetails.returnedItems)){
+          retDetails.returnedItems.forEach(it => {
+            if(it.restocked && it.itemId && !String(it.itemId).startsWith('srv_')){
+              const inv = (state.inventory||[]).find(x => x.ID === it.itemId);
+              const buy = inv ? Number(inv.PurchasePrice||0) : 0;
+              returnedCOGS += buy * Number(it.qty||1);
+            }
+          });
+        }
+        if(returnedCOGS === 0 && retAmt > 0 && saleCOGS > 0){
+          returnedCOGS = (retAmt / tot) * saleCOGS;
+        }
+      }
+
+      posSalesCOGS += Math.max(0, saleCOGS - returnedCOGS);
     }
   });
+
+  const netPosSalesRev = Math.max(0, posSalesRev - posSalesReturns);
 
   // 2. Maintenance Revenue & Parts COGS
   let maintLaborRev = 0;
   let maintPartsRev = 0;
   let maintPartsCOGS = 0;
+  let maintRefunds = 0;
   let maintCount = 0;
   (state.receipts || []).forEach(r => {
     const dt = cleanDate(r.date) || r.date;
     if(dt >= sDate && dt <= eDate){
+      const isCancelled = r.status === 'ملغي' || r.status === 'رفض العميل' || r.status === 'لا يمكن إصلاحه';
+      const cost = isCancelled ? 0 : Number(r.cost || 0);
+      const parts = isCancelled ? 0 : Number(r.partsCost || 0);
+      const other = isCancelled ? 0 : Number(r.otherAccountAmount || 0);
+      const refAmt = Number(r.refunded || 0);
       maintCount++;
-      const cost = Number(r.cost || 0);
-      const parts = Number(r.partsCost || 0);
-      const other = Number(r.otherAccountAmount || 0);
       const labor = Math.max(0, cost - parts) + other;
       maintLaborRev += labor;
       maintPartsRev += parts;
       maintPartsCOGS += parts;
+      maintRefunds += refAmt;
     }
   });
+
+  const netMaintRev = Math.max(0, (maintLaborRev + maintPartsRev) - maintRefunds);
 
   // 3. Other Invoices & Services
   let servicesRev = 0;
@@ -23844,12 +24211,12 @@ function getIncomeStatementData(startDate, endDate){
     }
   });
 
-  const totalRevenue = posSalesRev + maintLaborRev + maintPartsRev + servicesRev;
+  const totalRevenue = netPosSalesRev + netMaintRev + servicesRev;
   const totalCOGS = posSalesCOGS + maintPartsCOGS;
   const grossProfit = totalRevenue - totalCOGS;
   const grossMargin = totalRevenue > 0 ? ((grossProfit / totalRevenue) * 100) : 0;
 
-  // 4. Operating Expenses Breakdown
+  // 4. Operating Expenses Breakdown (Excluding POS returns, drawings, and supplier pay)
   const expCategories = {
     'إيجار': 0,
     'كهرباء ومياه': 0,
@@ -23867,7 +24234,8 @@ function getIncomeStatementData(startDate, endDate){
       const isSupplier = exp.Category === 'سداد موردين ومشتريات' || String(exp.Category||'').includes('مورد') || exp.Type === 'supplier';
       const isDraw = exp.Type === 'out' || exp.Category === 'مسحوبات شخصية' || exp.Category === 'جاري الشركاء';
       const isIncome = exp.Type === 'in' || exp.Type === 'income';
-      if(!isSupplier && !isDraw && !isIncome){
+      const isPosReturn = exp.Category === 'مرتجع مبيعات POS' || exp.AccountCode === '4102-RET' || exp.Type === 'pos_return';
+      if(!isSupplier && !isDraw && !isIncome && !isPosReturn){
         const amt = Number(exp.Amount || 0);
         totalOperatingExpenses += amt;
         const cat = exp.Category || 'مصروفات أخرى';
@@ -23882,8 +24250,8 @@ function getIncomeStatementData(startDate, endDate){
 
   return {
     sDate, eDate,
-    posSalesRev, posSalesCOGS, posSalesCount,
-    maintLaborRev, maintPartsRev, maintPartsCOGS, maintCount,
+    posSalesRev, posSalesReturns, netPosSalesRev, posSalesCOGS, posSalesCount, posReturnsCount,
+    maintLaborRev, maintPartsRev, maintPartsCOGS, maintRefunds, netMaintRev, maintCount,
     servicesRev,
     totalRevenue, totalCOGS, grossProfit, grossMargin,
     expCategories, totalOperatingExpenses,
@@ -24270,7 +24638,7 @@ function openCustomerStatementModal(custName, custPhone){
     const rPhone = extractCustomerPhone(r);
     const isMatch = (rName && rName.toLowerCase() === custName.toLowerCase()) || (cPhone && rPhone === cPhone);
     if(isMatch){
-      const totalDue = Number(r.cost || 0) + Number(r.otherAccountAmount || 0);
+      const totalDue = Number(r.cost || 0) + Number(r.partsCost || 0) + Number(r.otherAccountAmount || 0);
       const dep = Number(r.deposit || 0);
       const devStr = `${r.device?.category||''} ${r.device?.brand||''} ${r.device?.model||''}`.trim();
       const faultStr = (Array.isArray(r.faults) && r.faults.length) ? r.faults.join('، ') : (r.faultNotes || 'صيانة');
@@ -24294,6 +24662,18 @@ function openCustomerStatementModal(custName, custPhone){
           desc: `عربون مدفوع عند استلام الجهاز (${r.depositPaymentMethod || 'نقدي'})`,
           debit: 0,
           credit: dep
+        });
+      }
+
+      if(Number(r.refunded || 0) > 0){
+        transactions.push({
+          date: cleanDate(r.updatedAt || r.date) || r.date || '2026-01-01',
+          type: 'استرداد مبالغ صيانة',
+          icon: '↩️',
+          ref: '#' + (r.receiptNumber || r.id),
+          desc: `مبلغ مسترد للعميل عن إيصال صيانة #${r.receiptNumber || r.id}`,
+          debit: Number(r.refunded),
+          credit: 0
         });
       }
     }
@@ -24322,8 +24702,8 @@ function openCustomerStatementModal(custName, custPhone){
 
   // 3. POS Sales
   (state.sales || []).forEach(s => {
-    const sName = (s.CustomerName || '').trim().toLowerCase();
-    const sPhone = (s.CustomerPhone || '').trim();
+    const sName = String(s.CustomerName || '').trim().toLowerCase();
+    const sPhone = String(s.CustomerPhone || '').trim();
     const isMatch = (sName && sName === custName.toLowerCase()) || (cPhone && sPhone === cPhone);
     if(isMatch){
       const tot = Number(s.Total || 0);
@@ -24338,14 +24718,43 @@ function openCustomerStatementModal(custName, custPhone){
         debit: tot,
         credit: paid
       });
+
+      if(s.IsReturned){
+        const retDetails = s.ReturnDetails || {};
+        const retAmt = Number(retDetails.totalRefund != null ? retDetails.totalRefund : tot);
+        const retMethod = retDetails.refundMethod || s.PaymentMethod || 'نقدي';
+
+        transactions.push({
+          date: cleanDate(retDetails.returnDate || s.Date) || s.Date || '2026-01-01',
+          type: 'مرتجع مبيعات POS',
+          icon: '↩️',
+          ref: retDetails.voucherNumber || ('#' + String(s.ID).slice(-8) + '-RET'),
+          desc: `مرتجع أصناف مبيعات (${retDetails.reason || 'إرجاع فاتورة'})`,
+          debit: 0,
+          credit: retAmt
+        });
+
+        const isDebtSettlementOnly = (retMethod.includes('آجل') || retMethod.includes('حساب'));
+        if(!isDebtSettlementOnly && paid > 0){
+          transactions.push({
+            date: cleanDate(retDetails.returnDate || s.Date) || s.Date || '2026-01-01',
+            type: 'استرداد نقدي لمرتجع',
+            icon: '💵',
+            ref: retDetails.voucherNumber || ('#' + String(s.ID).slice(-8) + '-RET'),
+            desc: `استرداد مبلغ المرتجع للعميل عبر [${retMethod}]`,
+            debit: Math.min(paid, retAmt),
+            credit: 0
+          });
+        }
+      }
     }
   });
 
   // 4. Invoices
   (state.invoices || []).forEach(inv => {
     if(inv.ReferenceType !== 'Receipt' && inv.ReferenceType !== 'POS_Sale'){
-      const invName = (inv.CustomerName || '').trim().toLowerCase();
-      const invPhone = (inv.CustomerPhone || '').trim();
+      const invName = String(inv.CustomerName || '').trim().toLowerCase();
+      const invPhone = String(inv.CustomerPhone || '').trim();
       const isMatch = (invName && invName === custName.toLowerCase()) || (cPhone && invPhone === cPhone);
       if(isMatch){
         transactions.push({

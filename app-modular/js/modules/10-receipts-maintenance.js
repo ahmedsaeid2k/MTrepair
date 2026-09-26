@@ -1165,9 +1165,163 @@ window.renderUnifiedSelectionBar = function(){
     topSlot.appendChild(bar);
   }
 
-  const isInv = (state.currentSection === 'inventory') || (state.tab === 'inventory');
+  const isQuoSection = (state.currentSection === 'cameras' && state.camTab === 'quotes') || (state.currentSection === 'quotations');
+  const isSupSection = (state.currentSection === 'inventory' && state.invHubTab === 'suppliers') || (state.tab === 'suppliers');
+  const isPurSection = (state.currentSection === 'inventory' && state.invHubTab === 'purchases');
+  const isInv = ((state.currentSection === 'inventory' && state.invHubTab !== 'suppliers' && state.invHubTab !== 'purchases') || (state.tab === 'inventory')) && !isSupSection && !isPurSection;
   const isInvoiceSection = (state.currentSection === 'invoices') || (state.tab === 'invoices') || (state.financeTab === 'invoices');
   const isPosSalesLog = (state.currentSection === 'pos' && state.posTab === 'salesLog');
+
+  // Context 0.01: Quotation Selected
+  if(isQuoSection && state.selectedQuotationId){
+    const q = (state.quotations || []).find(x => String(x.ID) === String(state.selectedQuotationId));
+    if(q){
+      const total = Number(q.Total || 0);
+      const paid = Number(q.PaidAmount || 0);
+      const rem = Math.max(0, total - paid);
+      const cName = q.ClientName || 'عميل';
+      const qId = String(q.ID || '').slice(-8);
+
+      bar.className = 'unified-selection-bar active';
+      bar.innerHTML = `
+        <div class="unified-bar-info">
+          <div class="unified-bar-badge" style="background:#f5f3ff;color:#7c3aed;">
+            <span>📑 عرض سعر مختار</span>
+            <b class="mono" style="direction:ltr;unicode-bidi:isolate;">#${escapeHtml(qId)}</b>
+          </div>
+          <div style="font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span style="font-weight:800;color:var(--ink);">${escapeHtml(cName)}</span>
+            <span class="status-badge st-check" style="font-size:11px;">${escapeHtml(q.Status || 'معلق')}</span>
+            <span class="mono" style="font-size:11.5px;font-weight:800;color:var(--ink);">
+              الإجمالي: ${total.toLocaleString()} ج.م
+            </span>
+            <span class="mono" style="font-size:11.5px;font-weight:700;color:var(--green);">
+              المدفوع: ${paid.toLocaleString()} ج.م
+            </span>
+            <span class="mono" style="font-size:11.5px;font-weight:800;${rem > 0 ? 'color:var(--red);' : 'color:var(--green);'}">
+              ${rem > 0 ? `المتبقي: ${rem.toLocaleString()} ج.م` : 'خالص المسدد'}
+            </span>
+          </div>
+        </div>
+
+        <div class="unified-bar-actions">
+          <button class="unified-bar-btn btn-primary" onclick="openQuotationDetailModalById('${q.ID}')" title="عرض التفاصيل وتسجيل دفعات">
+            👁️ استعراض ودفعات
+          </button>
+          <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="openQuotationPrintDirect('${q.ID}')" title="طباعة عرض السعر الرسمي">
+            📑 طباعة العرض
+          </button>
+          <button class="unified-bar-btn btn-ghost" style="color:var(--green-text);border:1px solid var(--green);" onclick="openQuotationAgreementPrintDirect('${q.ID}')" title="طباعة عقد الشروط والاتفاق">
+            📜 طباعة العقد
+          </button>
+          <button class="unified-bar-btn btn-ghost" style="color:var(--purple);border:1px solid #c4b5fd;background:#f5f3ff;" onclick="convertQuotationToInvoiceDirect('${q.ID}')" title="تحويل وإصدار فاتورة رسمية">
+            🧾 تحويل لفاتورة
+          </button>
+          ${q.ClientPhone ? `
+            <button class="unified-bar-btn btn-whatsapp" onclick="openQuotationWhatsappDirect('${q.ID}')" title="مشاركة عرض السعر عبر واتساب">
+              ${WA_ICON} واتساب
+            </button>
+          ` : ''}
+          <button class="unified-bar-btn-close" onclick="deselectCurrentSelection()" title="إلغاء التحديد">
+            ✕
+          </button>
+        </div>
+      `;
+      return;
+    }
+  }
+
+  // Context 0.02: Supplier Selected
+  if(isSupSection && state.selectedSupplierName){
+    const sName = state.selectedSupplierName;
+    const s = (state.suppliers || []).find(x => (x.Name || x.name || '') === sName) || { Name: sName };
+    const sTitle = s.Title || s.title || '';
+    const sPhone = s.Phone || s.phone || '';
+    const pCount = (state.expenses || []).filter(ex => (ex.Category === 'سداد موردين ومشتريات' || ex.Supplier) && ex.Supplier === sName).length;
+
+    bar.className = 'unified-selection-bar active';
+    bar.innerHTML = `
+      <div class="unified-bar-info">
+        <div class="unified-bar-badge" style="background:#ecfdf5;color:#047857;">
+          <span>👤 مورد مختار</span>
+        </div>
+        <div style="font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span style="font-weight:800;color:var(--ink);">${escapeHtml(sName)}</span>
+          ${sTitle ? `<span class="badge" style="background:var(--paper2);color:var(--primary);font-size:11px;border:1px solid var(--line);">${escapeHtml(sTitle)}</span>` : ''}
+          ${sPhone ? `<span class="mono" style="color:var(--ink-secondary);font-size:11.5px;direction:ltr;">${escapeHtml(sPhone)}</span>` : ''}
+          <span class="badge" style="background:var(--paper2);border:1px solid var(--line);font-size:11px;">📋 ${pCount} سند صرف</span>
+        </div>
+      </div>
+
+      <div class="unified-bar-actions">
+        <button class="unified-bar-btn btn-green" onclick="openPaySupplierDirect('${escapeHtml(sName)}')" title="تسجيل سند صرف وسداد دفعة للمورد">
+          💵 سداد دفعة (سند صرف)
+        </button>
+        <button class="unified-bar-btn" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-weight:700;" onclick="openSupplierStatementDirect('${escapeHtml(sName)}')" title="كشف حساب تفصيلي للمورد">
+          📊 كشف حساب تفصيلي
+        </button>
+        ${pCount ? `
+          <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="openSupplierHistoryDirect('${escapeHtml(sName)}')" title="عرض سجل سندات الصرف">
+            📋 سجل السندات (${pCount})
+          </button>
+        ` : ''}
+        ${sPhone ? `
+          <button class="unified-bar-btn btn-whatsapp" onclick="openSupplierWhatsappDirect('${escapeHtml(sPhone)}', '${escapeHtml(sName)}')" title="مراسلة المورد عبر واتساب">
+            ${WA_ICON} واتساب
+          </button>
+        ` : ''}
+        <button class="unified-bar-btn-close" onclick="deselectCurrentSelection()" title="إلغاء التحديد">
+          ✕
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  // Context 0.03: Purchase Invoice Selected
+  if(isPurSection && state.selectedPurchaseId){
+    const p = (state.purchases || []).find(x => String(x.ID) === String(state.selectedPurchaseId));
+    if(p){
+      const tot = Number(p.Total || 0);
+      const paid = Number(p.AmountPaid != null ? p.AmountPaid : tot);
+      const rem = Math.max(0, tot - paid);
+
+      bar.className = 'unified-selection-bar active';
+      bar.innerHTML = `
+        <div class="unified-bar-info">
+          <div class="unified-bar-badge" style="background:#fdf2f8;color:#9d174d;">
+            <span>📥 فاتورة شراء مختارة</span>
+            <b class="mono" style="direction:ltr;unicode-bidi:isolate;">#${escapeHtml(String(p.ID || '').slice(-8))}</b>
+          </div>
+          <div style="font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span style="font-weight:800;color:var(--ink);">${escapeHtml(p.Supplier || '')}</span>
+            <span class="mono" style="font-size:11.5px;font-weight:800;color:var(--ink);">
+              الإجمالي: ${tot.toLocaleString()} ج.م
+            </span>
+            <span class="mono" style="font-size:11.5px;font-weight:700;color:var(--green);">
+              المدفوع: ${paid.toLocaleString()} ج.م
+            </span>
+            <span class="mono" style="font-size:11.5px;font-weight:800;${rem > 0 ? 'color:var(--red);' : 'color:var(--green);'}">
+              ${rem > 0 ? `المتبقي: ${rem.toLocaleString()} ج.م` : 'خالص'}
+            </span>
+          </div>
+        </div>
+
+        <div class="unified-bar-actions">
+          <button class="unified-bar-btn btn-amber" onclick="openInvoiceBarcodePrintModal('purchase', '${escapeHtml(String(p.ID || ''))}')" title="طباعة ملصقات الباركود لأصناف هذه الفاتورة">
+            🏷️ طباعة الباركود
+          </button>
+          <button class="unified-bar-btn btn-green" onclick="openPaySupplierDirect('${escapeHtml(p.Supplier || '')}')" title="تسجيل سند صرف للمورد">
+            💵 سداد للمورد
+          </button>
+          <button class="unified-bar-btn-close" onclick="deselectCurrentSelection()" title="إلغاء التحديد">
+            ✕
+          </button>
+        </div>
+      `;
+      return;
+    }
+  }
 
   // Context 0.1: Invoice Selected
   if(isInvoiceSection && state.selectedInvoiceId){
@@ -1578,6 +1732,55 @@ window.renderUnifiedSelectionBar = function(){
         <button class="unified-bar-btn btn-whatsapp" disabled>${WA_ICON} واتساب</button>
       </div>
     `;
+  } else if(isQuoSection){
+    bar.innerHTML = `
+      <div class="unified-bar-info">
+        <div class="unified-bar-badge" style="background:var(--paper3);color:var(--ink-secondary);border:1px dashed var(--line);">
+          <span>📌 شريط إجراءات عروض الأسعار الموحد</span>
+        </div>
+        <div style="font-size:12px;color:var(--ink-secondary);">
+          اضغط على أي عرض سعر من الجدول لتفعيل الطباعة، العقد، تسجيل الدفعات، والتحويل لفاتورة
+        </div>
+      </div>
+      <div class="unified-bar-actions" style="opacity:0.55;pointer-events:none;">
+        <button class="unified-bar-btn btn-primary" disabled>👁️ استعراض ودفعات</button>
+        <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" disabled>📑 طباعة العرض</button>
+        <button class="unified-bar-btn btn-ghost" disabled>📜 طباعة العقد</button>
+        <button class="unified-bar-btn btn-ghost" disabled>🧾 تحويل لفاتورة</button>
+        <button class="unified-bar-btn btn-whatsapp" disabled>${WA_ICON} واتساب</button>
+      </div>
+    `;
+  } else if(isSupSection){
+    bar.innerHTML = `
+      <div class="unified-bar-info">
+        <div class="unified-bar-badge" style="background:var(--paper3);color:var(--ink-secondary);border:1px dashed var(--line);">
+          <span>📌 شريط إجراءات الموردين الموحد</span>
+        </div>
+        <div style="font-size:12px;color:var(--ink-secondary);">
+          اضغط على أي مورد من الجدول أدناه لتسجيل سند صرف أو استعراض كشف الحساب وسجل السندات
+        </div>
+      </div>
+      <div class="unified-bar-actions" style="opacity:0.55;pointer-events:none;">
+        <button class="unified-bar-btn btn-green" disabled>💵 سداد دفعة</button>
+        <button class="unified-bar-btn" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-weight:700;" disabled>📊 كشف حساب</button>
+        <button class="unified-bar-btn btn-ghost" disabled>📋 سجل السندات</button>
+      </div>
+    `;
+  } else if(isPurSection){
+    bar.innerHTML = `
+      <div class="unified-bar-info">
+        <div class="unified-bar-badge" style="background:var(--paper3);color:var(--ink-secondary);border:1px dashed var(--line);">
+          <span>📌 شريط إجراءات فواتير الشراء الموحد</span>
+        </div>
+        <div style="font-size:12px;color:var(--ink-secondary);">
+          اضغط على أي فاتورة شراء من الجدول أدناه لطباعة ملصقات الباركود أو سداد دفعة للمورد
+        </div>
+      </div>
+      <div class="unified-bar-actions" style="opacity:0.55;pointer-events:none;">
+        <button class="unified-bar-btn btn-amber" disabled>🏷️ طباعة الباركود</button>
+        <button class="unified-bar-btn btn-green" disabled>💵 سداد للمورد</button>
+      </div>
+    `;
   } else if(isInv){
     bar.innerHTML = `
       <div class="unified-bar-info">
@@ -1649,6 +1852,9 @@ window.hideUnifiedSelectionBar = function(){
   state.selectedInventoryItemId = null;
   state.selectedInvoiceId = null;
   state.selectedSaleId = null;
+  state.selectedQuotationId = null;
+  state.selectedSupplierName = null;
+  state.selectedPurchaseId = null;
   document.querySelectorAll('.selected-row').forEach(el => el.classList.remove('selected-row'));
   document.querySelectorAll('.selected-card').forEach(el => el.classList.remove('selected-card'));
   document.querySelectorAll('.selected-badge-indicator').forEach(el => el.remove());
@@ -2064,6 +2270,202 @@ window.openSaleWhatsappDirect = function(saleId){
   const phoneFormatted = phone.startsWith('0') ? '2' + phone : phone;
   const msg = `مرحبًا ${s.CustomerName || 'عميلنا العزيز'}،\nإيصال مبيعات رقم: #${s.ID.slice(-8)}\nالأصناف: ${s.ItemsSummary}\nالإجمالي: ${s.Total} ج.م\nشكرًا لتعاملكم مع ${state.settings.shopName || 'ميكروتك'}.`;
   window.open(`https://wa.me/${phoneFormatted}?text=${encodeURIComponent(msg)}`, '_blank');
+};
+
+// Quotation Direct Action & Selection Handlers
+window.selectQuotation = function(qId){
+  const q = (state.quotations || []).find(x => String(x.ID) === String(qId));
+  if(!q) return;
+
+  state.selectedQuotationId = String(q.ID);
+  state.selectedReceiptId = null;
+  state.selectedReceiptNum = null;
+  state.selectedReceiptIds = [];
+  state.selectedCustomerId = null;
+  state.selectedInventoryItemId = null;
+  state.selectedInvoiceId = null;
+  state.selectedSaleId = null;
+  state.selectedSupplierName = null;
+  state.selectedPurchaseId = null;
+
+  document.querySelectorAll('.selected-row').forEach(el => el.classList.remove('selected-row'));
+  document.querySelectorAll('.selected-badge-indicator').forEach(el => el.remove());
+
+  const matchingRows = document.querySelectorAll(`tr[data-quo-id="${q.ID}"]`);
+  matchingRows.forEach(el => {
+    el.classList.add('selected-row');
+    const firstCell = el.querySelector('td:first-child > div');
+    if(firstCell && !firstCell.querySelector('.selected-badge-indicator')){
+      const b = document.createElement('span');
+      b.className = 'badge badge-primary selected-badge-indicator';
+      b.style.fontSize = '9.5px';
+      b.style.padding = '1px 5px';
+      b.textContent = 'محدد';
+      firstCell.appendChild(b);
+    }
+  });
+
+  if(typeof window.renderUnifiedSelectionBar === 'function') window.renderUnifiedSelectionBar();
+};
+
+window.toggleQuotationSelection = function(qId){
+  if(String(state.selectedQuotationId) === String(qId)){
+    window.deselectCurrentSelection();
+  } else {
+    window.selectQuotation(qId);
+  }
+};
+
+window.handleQuotationRowClick = function(qId, evt){
+  if(evt && evt.target && evt.target.closest('button, a, input, select')){
+    return;
+  }
+  window.toggleQuotationSelection(qId);
+};
+
+window.openQuotationPrintDirect = function(qId){
+  const q = (state.quotations || []).find(x => String(x.ID) === String(qId));
+  if(!q){ showToast('لم يتم العثور على عرض السعر', 'error'); return; }
+  if(typeof openQuotationPrint === 'function') openQuotationPrint(q, getQuotationItems(q));
+};
+
+window.openQuotationAgreementPrintDirect = function(qId){
+  const q = (state.quotations || []).find(x => String(x.ID) === String(qId));
+  if(!q){ showToast('لم يتم العثور على عرض السعر', 'error'); return; }
+  if(typeof openQuotationAgreementPrint === 'function') openQuotationAgreementPrint(q, getQuotationItems(q));
+};
+
+window.convertQuotationToInvoiceDirect = function(qId){
+  const q = (state.quotations || []).find(x => String(x.ID) === String(qId));
+  if(!q){ showToast('لم يتم العثور على عرض السعر', 'error'); return; }
+  if(typeof convertQuotationToInvoice === 'function') convertQuotationToInvoice(q);
+};
+
+window.openQuotationWhatsappDirect = function(qId){
+  const q = (state.quotations || []).find(x => String(x.ID) === String(qId));
+  if(!q){ showToast('لم يتم العثور على عرض السعر', 'error'); return; }
+  if(typeof shareQuotationWhatsapp === 'function') shareQuotationWhatsapp(q);
+};
+
+// Supplier Direct Action & Selection Handlers
+window.selectSupplier = function(supName){
+  if(!supName) return;
+
+  state.selectedSupplierName = String(supName);
+  state.selectedReceiptId = null;
+  state.selectedReceiptNum = null;
+  state.selectedReceiptIds = [];
+  state.selectedCustomerId = null;
+  state.selectedInventoryItemId = null;
+  state.selectedInvoiceId = null;
+  state.selectedSaleId = null;
+  state.selectedQuotationId = null;
+  state.selectedPurchaseId = null;
+
+  document.querySelectorAll('.selected-row').forEach(el => el.classList.remove('selected-row'));
+  document.querySelectorAll('.selected-badge-indicator').forEach(el => el.remove());
+
+  const matchingRows = document.querySelectorAll(`tr[data-sup-name="${escapeHtml(supName)}"]`);
+  matchingRows.forEach(el => {
+    el.classList.add('selected-row');
+    const firstCell = el.querySelector('td:first-child > div');
+    if(firstCell && !firstCell.querySelector('.selected-badge-indicator')){
+      const b = document.createElement('span');
+      b.className = 'badge badge-primary selected-badge-indicator';
+      b.style.fontSize = '9.5px';
+      b.style.padding = '1px 5px';
+      b.textContent = 'محدد';
+      firstCell.appendChild(b);
+    }
+  });
+
+  if(typeof window.renderUnifiedSelectionBar === 'function') window.renderUnifiedSelectionBar();
+};
+
+window.toggleSupplierSelection = function(supName){
+  if(String(state.selectedSupplierName) === String(supName)){
+    window.deselectCurrentSelection();
+  } else {
+    window.selectSupplier(supName);
+  }
+};
+
+window.handleSupplierRowClick = function(supName, evt){
+  if(evt && evt.target && evt.target.closest('button, a, input, select')){
+    return;
+  }
+  window.toggleSupplierSelection(supName);
+};
+
+window.openPaySupplierDirect = function(supName){
+  if(typeof openPaySupplierModal === 'function') openPaySupplierModal(supName);
+};
+
+window.openSupplierStatementDirect = function(supName){
+  if(typeof openSupplierStatementModal === 'function') openSupplierStatementModal(supName);
+};
+
+window.openSupplierHistoryDirect = function(supName){
+  if(typeof openSupplierPaymentsHistoryModal === 'function') openSupplierPaymentsHistoryModal(supName);
+};
+
+window.openSupplierWhatsappDirect = function(supPhone, supName){
+  const phone = String(supPhone || '').replace(/\D/g, '');
+  if(!phone){ showToast('لا يوجد رقم هاتف مسجل لهذا المورد', 'warning'); return; }
+  const phoneFormatted = phone.startsWith('0') ? '2' + phone : phone;
+  const msg = `مرحبًا ${supName || 'موردنا العزيز'}،\nبخصوص تعاملات التوريد والحساب مع ${state.settings.shopName || 'ميكروتك'}.`;
+  window.open(`https://wa.me/${phoneFormatted}?text=${encodeURIComponent(msg)}`, '_blank');
+};
+
+// Purchase Invoice Direct Action & Selection Handlers
+window.selectPurchase = function(purId){
+  const p = (state.purchases || []).find(x => String(x.ID) === String(purId));
+  if(!p) return;
+
+  state.selectedPurchaseId = String(p.ID);
+  state.selectedReceiptId = null;
+  state.selectedReceiptNum = null;
+  state.selectedReceiptIds = [];
+  state.selectedCustomerId = null;
+  state.selectedInventoryItemId = null;
+  state.selectedInvoiceId = null;
+  state.selectedSaleId = null;
+  state.selectedQuotationId = null;
+  state.selectedSupplierName = null;
+
+  document.querySelectorAll('.selected-row').forEach(el => el.classList.remove('selected-row'));
+  document.querySelectorAll('.selected-badge-indicator').forEach(el => el.remove());
+
+  const matchingRows = document.querySelectorAll(`tr[data-purchase-id="${p.ID}"]`);
+  matchingRows.forEach(el => {
+    el.classList.add('selected-row');
+    const firstCell = el.querySelector('td:first-child > div');
+    if(firstCell && !firstCell.querySelector('.selected-badge-indicator')){
+      const b = document.createElement('span');
+      b.className = 'badge badge-primary selected-badge-indicator';
+      b.style.fontSize = '9.5px';
+      b.style.padding = '1px 5px';
+      b.textContent = 'محددة';
+      firstCell.appendChild(b);
+    }
+  });
+
+  if(typeof window.renderUnifiedSelectionBar === 'function') window.renderUnifiedSelectionBar();
+};
+
+window.togglePurchaseSelection = function(purId){
+  if(String(state.selectedPurchaseId) === String(purId)){
+    window.deselectCurrentSelection();
+  } else {
+    window.selectPurchase(purId);
+  }
+};
+
+window.handlePurchaseRowClick = function(purId, evt){
+  if(evt && evt.target && evt.target.closest('button, a, input, select')){
+    return;
+  }
+  window.togglePurchaseSelection(purId);
 };
 
 window.toggleReceiptSelection = function(receiptId, receiptNum){

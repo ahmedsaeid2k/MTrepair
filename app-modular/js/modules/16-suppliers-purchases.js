@@ -25,33 +25,41 @@ function renderSuppliers(main){
       </div>
       <button class="btn btn-primary btn-sm" id="addSupBtn" style="margin-top:8px;">➕ إضافة مورد</button>
     </div>
+    <div id="unifiedSelectionTopSlot"></div>
+
     <div class="card">
       <h3>قائمة الموردين</h3>
       ${state.suppliers.length===0 ? '<div class="empty">لا يوجد موردون بعد.</div>' : `
-      <div class="table-wrap"><table><thead><tr><th>اللقب والاسم</th><th>الهاتف</th><th>ملاحظات</th><th style="width:130px;text-align:center;">الإجراءات</th></tr></thead><tbody>
+      <div class="table-wrap"><table><thead><tr><th style="width:30%;">اللقب والاسم</th><th style="width:25%;">الهاتف والاتصال</th><th>ملاحظات ومجال التوريد</th><th style="width:18%;text-align:center;">سجل الحركات</th></tr></thead><tbody>
         ${state.suppliers.map(s=>{
           const sTitle = s.Title || s.title || '';
           const sName = s.Name || s.name || '';
-          return `<tr>
-            <td>
-              <div style="display:flex;align-items:center;gap:6px;">
-                ${sTitle ? `<span class="badge" style="background:var(--paper2);color:var(--primary);font-size:11px;font-weight:700;border:1px solid var(--line);">${escapeHtml(sTitle)}</span>` : ''}
-                <b>${escapeHtml(sName)}</b>
-              </div>
-            </td>
-            <td class="mono">${escapeHtml(s.Phone||s.phone||'-')}</td>
-            <td>${escapeHtml(s.Notes||s.notes||'-')}</td>
-            <td style="text-align:center;">
-              <div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;">
-                <button class="btn btn-xs btn-green" data-suppaybtn="${escapeHtml(sName)}" title="تسجيل سند صرف وسداد دفعة لهذا المورد">💵 سداد دفعة</button>
-                <button class="btn btn-xs" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-weight:700;" data-supstatementbtn="${escapeHtml(sName)}" title="كشف حساب تفصيلي للمورد">📊 كشف حساب</button>
-                ${(() => {
-                  const pCount = (state.expenses || []).filter(ex => (ex.Category === 'سداد موردين ومشتريات' || ex.Supplier) && ex.Supplier === sName).length;
-                  return pCount ? `<button class="btn btn-xs btn-ghost" data-suphistbtn="${escapeHtml(sName)}" title="عرض سجل سندات الصرف">📋 السجل (${pCount})</button>` : '';
-                })()}
-              </div>
-            </td>
-          </tr>`;
+          const isSelected = String(state.selectedSupplierName) === String(sName);
+          const pCount = (state.expenses || []).filter(ex => (ex.Category === 'سداد موردين ومشتريات' || ex.Supplier) && ex.Supplier === sName).length;
+          return `
+            <tr class="selectable-row ${isSelected ? 'selected-row' : ''}" data-sup-name="${escapeHtml(sName)}" onclick="handleSupplierRowClick('${escapeHtml(sName)}', event)" ondblclick="openSupplierStatementModal('${escapeHtml(sName)}')" style="cursor:pointer;">
+              <td>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  ${isSelected ? '<span class="badge badge-primary selected-badge-indicator" style="font-size:9.5px;padding:1px 5px;">محدد</span>' : ''}
+                  ${sTitle ? `<span class="badge" style="background:var(--paper2);color:var(--primary);font-size:11px;font-weight:700;border:1px solid var(--line);">${escapeHtml(sTitle)}</span>` : ''}
+                  <b style="font-size:13.5px;">${escapeHtml(sName)}</b>
+                </div>
+              </td>
+              <td>
+                ${(s.Phone||s.phone) ? `
+                  <div style="display:inline-flex;align-items:center;gap:6px;">
+                    <span class="mono font-bold" style="font-size:12.5px;">${escapeHtml(s.Phone||s.phone)}</span>
+                    <a href="tel:${escapeHtml(s.Phone||s.phone)}" class="btn btn-ghost btn-xs" style="padding:2px 6px;" title="اتصال هاتفي" onclick="event.stopPropagation();">📞</a>
+                    <a href="https://wa.me/${normalizePhoneForWa(s.Phone||s.phone)}" target="_blank" class="btn btn-ghost btn-xs" style="padding:2px 6px;color:#22c55e;" title="محادثة واتساب" onclick="event.stopPropagation();">💬</a>
+                  </div>
+                ` : '<span style="color:var(--ink-secondary);font-size:11px;">-</span>'}
+              </td>
+              <td style="font-size:12px;color:var(--ink-secondary);">${escapeHtml(s.Notes||s.notes||'-')}</td>
+              <td style="text-align:center;">
+                ${pCount ? `<span class="badge" style="background:var(--paper2);color:var(--ink);font-weight:700;border:1px solid var(--line);font-size:11px;">📋 ${pCount} سند صرف</span>` : `<span style="color:var(--ink-secondary);font-size:11px;">-</span>`}
+              </td>
+            </tr>
+          `;
         }).join('')}
       </tbody></table></div>`}
     </div>
@@ -73,17 +81,9 @@ function renderSuppliers(main){
   const openPaySupBtn = document.getElementById('openPaySupBtn');
   if(openPaySupBtn) openPaySupBtn.onclick = () => openPaySupplierModal();
 
-  main.querySelectorAll('[data-suppaybtn]').forEach(btn => {
-    btn.onclick = () => openPaySupplierModal(btn.dataset.suppaybtn);
-  });
-
-  main.querySelectorAll('[data-suphistbtn]').forEach(btn => {
-    btn.onclick = () => openSupplierPaymentsHistoryModal(btn.dataset.suphistbtn);
-  });
-
-  main.querySelectorAll('[data-supstatementbtn]').forEach(btn => {
-    btn.onclick = () => openSupplierStatementModal(btn.dataset.supstatementbtn);
-  });
+  if(typeof window.renderUnifiedSelectionBar === 'function'){
+    window.renderUnifiedSelectionBar();
+  }
 }
 
 function openPaySupplierModal(preselectedName){
@@ -464,6 +464,8 @@ function renderPurchases(main){
         <button class="btn btn-primary btn-sm" id="btnNewPurchaseInvoice">➕ فاتورة شراء وتوريد جديدة</button>
       </div>
     </div>
+    <div id="unifiedSelectionTopSlot"></div>
+
     <div class="card">
       <h3>آخر فواتير الشراء</h3>
       ${state.purchases.length===0 ? '<div class="empty">لا توجد فواتير شراء بعد. اضغط على "➕ فاتورة شراء وتوريد جديدة" لتسجيل بضاعة جديدة وتوريد المخزن.</div>' : `
@@ -471,13 +473,12 @@ function renderPurchases(main){
         <table>
           <thead>
             <tr>
-              <th>التاريخ</th>
-              <th>المورد</th>
-              <th>الأصناف</th>
-              <th>الإجمالي</th>
-              <th>المدفوع</th>
-              <th>المتبقي (آجل)</th>
-              <th>الإجراءات</th>
+              <th style="width:120px;">التاريخ</th>
+              <th style="width:180px;">المورد</th>
+              <th style="min-width:240px;">الأصناف والمحتوى</th>
+              <th style="width:130px;">الإجمالي</th>
+              <th style="width:130px;">المدفوع</th>
+              <th style="width:130px;">المتبقي (آجل)</th>
             </tr>
           </thead>
           <tbody>
@@ -485,17 +486,22 @@ function renderPurchases(main){
               const tot = Number(p.Total||0);
               const paid = Number(p.AmountPaid!=null?p.AmountPaid:tot);
               const rem = Math.max(0, tot - paid);
-              return `<tr>
-                <td>${cleanDate(p.Date)}</td>
-                <td><b>${escapeHtml(p.Supplier||'')}</b></td>
-                <td>${escapeHtml(p.ItemsSummary||'')}</td>
-                <td class="mono font-bold">${tot.toLocaleString()} ج.م</td>
-                <td class="mono" style="color:var(--green);">${paid.toLocaleString()} ج.م</td>
-                <td class="mono font-bold" style="color:${rem>0?'var(--red)':'var(--ink-secondary)'};">${rem>0 ? rem.toLocaleString() + ' ج.م' : 'خالص'}</td>
-                <td>
-                  <button class="btn btn-xs btn-purple" onclick="openInvoiceBarcodePrintModal('purchase', '${escapeHtml(String(p.ID||''))}')" title="طباعة ملصقات الباركود لأصناف هذه الفاتورة">🏷️ طباعة الباركود</button>
-                </td>
-              </tr>`;
+              const isSelected = String(state.selectedPurchaseId) === String(p.ID);
+              return `
+                <tr class="selectable-row ${isSelected ? 'selected-row' : ''}" data-purchase-id="${p.ID}" onclick="handlePurchaseRowClick('${p.ID}', event)" ondblclick="openInvoiceBarcodePrintModal('purchase', '${escapeHtml(String(p.ID||''))}')" style="cursor:pointer;">
+                  <td>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      ${isSelected ? '<span class="badge badge-primary selected-badge-indicator" style="font-size:9.5px;padding:1px 5px;">محددة</span>' : ''}
+                      <span>${cleanDate(p.Date)}</span>
+                    </div>
+                  </td>
+                  <td><b>${escapeHtml(p.Supplier||'')}</b></td>
+                  <td style="font-size:12px;color:var(--ink-secondary);">${escapeHtml(p.ItemsSummary||'')}</td>
+                  <td class="mono font-bold">${tot.toLocaleString()} ج.م</td>
+                  <td class="mono" style="color:var(--green);">${paid.toLocaleString()} ج.م</td>
+                  <td class="mono font-bold" style="color:${rem>0?'var(--red)':'var(--ink-secondary)'};">${rem>0 ? rem.toLocaleString() + ' ج.م' : 'خالص'}</td>
+                </tr>
+              `;
             }).join('')}
           </tbody>
         </table>
@@ -506,6 +512,10 @@ function renderPurchases(main){
   if(btnBatch) btnBatch.onclick = () => openInvoiceBarcodePrintModal('purchase');
   const btnNewPur = document.getElementById('btnNewPurchaseInvoice');
   if(btnNewPur) btnNewPur.onclick = () => openNewPurchaseModal();
+
+  if(typeof window.renderUnifiedSelectionBar === 'function'){
+    window.renderUnifiedSelectionBar();
+  }
 }
 
 function openNewPurchaseModal(){

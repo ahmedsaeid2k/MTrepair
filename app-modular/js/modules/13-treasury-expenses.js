@@ -1208,19 +1208,20 @@ function renderQuotationsList(main){
       </div>
     </div>
 
+    <div id="unifiedSelectionTopSlot"></div>
+
     <!-- Quotations Table -->
     ${filtered.length === 0 ? '<div class="card empty" style="padding:30px;text-align:center;">لا توجد عروض أسعار مطابقة لمعايير البحث.</div>' : `
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th style="text-align:right;">رقم العرض</th>
-              <th style="text-align:right;">التاريخ</th>
+              <th style="text-align:right;width:120px;">رقم العرض</th>
+              <th style="text-align:right;width:105px;">التاريخ</th>
               <th style="text-align:right;">العميل / الشركة</th>
-              <th style="text-align:right;min-width:200px;">ملخص البنود والأعمال</th>
-              <th style="text-align:right;">الماليات والتحصيل</th>
-              <th style="text-align:center;">الحالة</th>
-              <th style="text-align:center;min-width:280px;">الإجراءات والطباعة</th>
+              <th style="text-align:right;min-width:220px;">ملخص البنود والأعمال</th>
+              <th style="text-align:right;width:170px;">الماليات والتحصيل</th>
+              <th style="text-align:center;width:150px;">الحالة</th>
             </tr>
           </thead>
           <tbody>
@@ -1229,16 +1230,26 @@ function renderQuotationsList(main){
               const paid = Number(q.PaidAmount||0);
               const total = Number(q.Total||0);
               const rem = Math.max(0, total - paid);
+              const isSelected = String(state.selectedQuotationId) === String(q.ID);
 
               return `
-                <tr>
-                  <td class="mono font-bold" style="color:var(--primary);cursor:pointer;" onclick="openQuotationDetailModalById('${q.ID}')">
-                    #${qId}
+                <tr class="selectable-row ${isSelected ? 'selected-row' : ''}" data-quo-id="${q.ID}" onclick="handleQuotationRowClick('${q.ID}', event)" ondblclick="openQuotationDetailModalById('${q.ID}')" style="cursor:pointer;">
+                  <td class="mono font-bold" style="color:var(--primary);">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      ${isSelected ? '<span class="badge badge-primary selected-badge-indicator" style="font-size:9.5px;padding:1px 5px;">محدد</span>' : ''}
+                      <span>#${qId}</span>
+                    </div>
                   </td>
                   <td class="mono" style="font-size:11.5px;">${cleanDate(q.Date)}</td>
                   <td>
                     <div style="font-weight:800;color:var(--ink);">${escapeHtml(q.ClientName)}</div>
-                    ${q.ClientPhone ? `<div style="font-size:11px;color:var(--ink-secondary);" class="mono">${escapeHtml(q.ClientPhone)}</div>` : ''}
+                    ${q.ClientPhone ? `
+                      <div style="display:inline-flex;align-items:center;gap:6px;margin-top:2px;">
+                        <span style="font-size:11px;color:var(--ink-secondary);" class="mono">${escapeHtml(q.ClientPhone)}</span>
+                        <a href="https://wa.me/${normalizePhoneForWa(q.ClientPhone)}" target="_blank" class="btn btn-ghost btn-xs" style="padding:1px 5px;color:#22c55e;" title="محادثة واتساب" onclick="event.stopPropagation();">💬</a>
+                        <a href="tel:${escapeHtml(q.ClientPhone)}" class="btn btn-ghost btn-xs" style="padding:1px 5px;" title="اتصال هاتفي" onclick="event.stopPropagation();">📞</a>
+                      </div>
+                    ` : ''}
                   </td>
                   <td style="font-size:11.5px;line-height:1.4;color:var(--ink-secondary);">
                     ${escapeHtml(q.ItemsSummary||'')}
@@ -1251,33 +1262,12 @@ function renderQuotationsList(main){
                     ` : '<div style="font-size:10.5px;color:var(--ink-secondary);">لم يسدد دفعات بعد</div>'}
                   </td>
                   <td style="text-align:center;">
-                    <select class="quo-quick-status-sel" data-quoid="${q.ID}" style="font-size:11px;padding:3px 6px;border-radius:12px;font-weight:800;">
+                    <select class="quo-quick-status-sel" data-quoid="${q.ID}" onclick="event.stopPropagation();" style="font-size:11px;padding:3px 6px;border-radius:12px;font-weight:800;">
                       <option value="معلق" ${(q.Status==='معلق'||!q.Status)?'selected':''}>⏳ معلق</option>
                       <option value="مقبول / جاري التنفيذ" ${(q.Status==='مقبول / جاري التنفيذ'||q.Status==='مقبول')?'selected':''}>🛠️ جاري التنفيذ</option>
                       <option value="تم التنفيذ والتسليم" ${(q.Status==='تم التنفيذ والتسليم'||q.Status==='تم التنفيذ')?'selected':''}>✅ تم التنفيذ</option>
                       <option value="ملغي / مرفوض" ${(q.Status==='ملغي / مرفوض'||q.Status==='ملغي')?'selected':''}>❌ ملغي</option>
                     </select>
-                  </td>
-                  <td style="text-align:center;">
-                    <div style="display:inline-flex;gap:4px;flex-wrap:wrap;justify-content:center;">
-                      <button class="btn btn-ghost btn-xs quo-detail-btn" data-quoid="${q.ID}" style="font-weight:800;color:var(--primary);border-color:var(--primary);" title="عرض التفاصيل وتسجيل دفعات">
-                        👁️ دفعات
-                      </button>
-                      <button class="btn btn-ghost btn-xs quo-print-btn" data-quoid="${q.ID}" title="طباعة عرض السعر الرسمي">
-                        📑 العرض
-                      </button>
-                      <button class="btn btn-ghost btn-xs quo-contract-btn" data-quoid="${q.ID}" style="color:var(--green-text);border-color:var(--green);" title="طباعة عقد واتفاق الشروط">
-                        📜 العقد
-                      </button>
-                      <button class="btn btn-ghost btn-xs quo-invoice-btn" data-quoid="${q.ID}" style="color:var(--purple);border-color:var(--purple);" title="تحويل وإصدار فاتورة ضريبية">
-                        🧾 فاتورة
-                      </button>
-                      ${q.ClientPhone ? `
-                        <button class="btn btn-ghost btn-xs quo-wa-btn" data-quoid="${q.ID}" style="color:#22c55e;" title="مشاركة عبر واتساب">
-                          💬
-                        </button>
-                      ` : ''}
-                    </div>
                   </td>
                 </tr>
               `;
@@ -1332,34 +1322,9 @@ function renderQuotationsList(main){
     };
   });
 
-  // Action button clicks
-  main.querySelectorAll('.quo-detail-btn').forEach(btn => {
-    btn.onclick = ()=>openQuotationDetailModalById(btn.dataset.quoid);
-  });
-  main.querySelectorAll('.quo-print-btn').forEach(btn => {
-    btn.onclick = ()=>{
-      const q = state.quotations.find(x => String(x.ID) === String(btn.dataset.quoid));
-      if(q) openQuotationPrint(q, getQuotationItems(q));
-    };
-  });
-  main.querySelectorAll('.quo-contract-btn').forEach(btn => {
-    btn.onclick = ()=>{
-      const q = state.quotations.find(x => String(x.ID) === String(btn.dataset.quoid));
-      if(q) openQuotationAgreementPrint(q, getQuotationItems(q));
-    };
-  });
-  main.querySelectorAll('.quo-invoice-btn').forEach(btn => {
-    btn.onclick = ()=>{
-      const q = state.quotations.find(x => String(x.ID) === String(btn.dataset.quoid));
-      if(q) convertQuotationToInvoice(q);
-    };
-  });
-  main.querySelectorAll('.quo-wa-btn').forEach(btn => {
-    btn.onclick = ()=>{
-      const q = state.quotations.find(x => String(x.ID) === String(btn.dataset.quoid));
-      if(q) shareQuotationWhatsapp(q);
-    };
-  });
+  if(typeof window.renderUnifiedSelectionBar === 'function'){
+    window.renderUnifiedSelectionBar();
+  }
 }
 
 function openQuotationDetailModalById(qId){
@@ -1562,8 +1527,8 @@ function openQuotationDetailModal(q){
     }
   }
 
-  renderModalContent();
   document.body.appendChild(overlay);
+  renderModalContent();
 }
 
 function shareQuotationWhatsapp(q){

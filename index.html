@@ -6560,14 +6560,11 @@ async function loginRemote(name, password){
       const effectiveSecs = getEffectiveSections(found);
       return { name: found.Name, role: effectiveRole, sections: effectiveSecs, superuser: isSuper, Superuser: isSuper };
     }
-    if(cleanName.toLowerCase()==='admin' && cleanPass==='admin'){
-      return { name:'admin', role:'admin', superuser: true, Superuser: true, sections:['maintenance', 'pos', 'invoices', 'cameras', 'cashdrawer', 'daily', 'finance', 'inventory', 'barcode', 'audit', 'users', 'settings'] };
-    }
     throw new Error('بيانات الدخول غير صحيحة (وضع غير متصل)');
   }
 
   try {
-    const res = await apiGet('login', {name: cleanName, password: cleanPass});
+    const res = await apiPost('login', {name: cleanName, password: cleanPass});
     if(res && !res.error && res.name && res.name.toLowerCase() === cleanName.toLowerCase()){
       // LOCAL USER CONFIGURATION SET BY ADMIN IS THE SOURCE OF TRUTH
       const effectiveRole = (found && found.Role) ? found.Role : res.role;
@@ -6604,9 +6601,6 @@ async function loginRemote(name, password){
     const isSuper = effectiveRole === 'admin' || !!found.Superuser || !!found.superuser;
     const effectiveSecs = getEffectiveSections(found);
     return { name: found.Name, role: effectiveRole, sections: effectiveSecs, superuser: isSuper, Superuser: isSuper };
-  }
-  if(cleanName.toLowerCase()==='admin' && cleanPass==='admin'){
-    return { name:'admin', role:'admin', superuser: true, Superuser: true, sections:['maintenance', 'pos', 'invoices', 'cameras', 'cashdrawer', 'daily', 'finance', 'inventory', 'barcode', 'audit', 'users', 'settings'] };
   }
   throw new Error('اسم المستخدم أو كلمة المرور غير صحيحة');
 }
@@ -7483,11 +7477,43 @@ function checkCustomerTrackingURL(){
 
 async function renderPublicTrackingPortal(receiptNum){
   const app = document.getElementById('app');
-  let receipts = state.receipts || [];
+  let r = null;
+  const cleanNum = String(receiptNum || '').trim();
+
   if(navigator.onLine){
-    try{ receipts = (await apiGet('getReceipts')).map(rowToReceipt); }catch(e){}
+    try{
+      const res = await apiGet('trackReceipt', { receiptNumber: cleanNum });
+      if(res && res.found && res.receipt){
+        r = res.receipt;
+      }
+    }catch(e){
+      console.warn('trackReceipt API call failed:', e);
+    }
   }
-  const r = receipts.find(x=>x.receiptNumber.trim()===receiptNum.trim());
+
+  // Fallback to local memory only if already loaded
+  if(!r && state.receipts && state.receipts.length){
+    const localMatch = state.receipts.find(x => String(x.receiptNumber || '').trim().toLowerCase() === cleanNum.toLowerCase());
+    if(localMatch) {
+      r = {
+        receiptNumber: localMatch.receiptNumber,
+        customer: { name: (localMatch.customer && localMatch.customer.name) || extractCustomerName(localMatch) || '' },
+        device: {
+          category: (localMatch.device && localMatch.device.category) || '',
+          brand: (localMatch.device && localMatch.device.brand) || '',
+          brandOther: (localMatch.device && localMatch.device.brandOther) || '',
+          model: (localMatch.device && localMatch.device.model) || ''
+        },
+        faults: Array.isArray(localMatch.faults) ? localMatch.faults : [String(localMatch.faults || '')],
+        deliveryDate: localMatch.deliveryDate || '',
+        status: localMatch.status || 'قيد الفحص',
+        cost: Number(localMatch.cost || 0),
+        partsCost: Number(localMatch.partsCost || 0),
+        deposit: Number(localMatch.deposit || 0),
+        refunded: Number(localMatch.refunded || 0)
+      };
+    }
+  }
   
   if(!r){
     app.innerHTML = `
@@ -7495,7 +7521,7 @@ async function renderPublicTrackingPortal(receiptNum){
         <div class="tracking-card" style="text-align:center;">
           <div style="font-size:40px;margin-bottom:12px;">🔍</div>
           <h2>لم يتم العثور على الإيصال</h2>
-          <p class="subtitle" style="margin-bottom:20px;">تأكد من رقم الإيصال المكتوب: <b>${receiptNum}</b></p>
+          <p class="subtitle" style="margin-bottom:20px;">تأكد من رقم الإيصال المكتوب: <b class="mono">${escapeHtml(cleanNum)}</b></p>
           <a href="${window.location.pathname}" class="btn btn-primary">العودة لتسجيل الدخول</a>
         </div>
       </div>
@@ -7509,13 +7535,22 @@ async function renderPublicTrackingPortal(receiptNum){
   const isRepair = r.status==='الصيانة';
   const isCheck = r.status==='قيد الفحص';
 
+  const custName = escapeHtml((r.customer && r.customer.name) || '');
+  const devCat = escapeHtml((r.device && r.device.category) || 'جهاز');
+  const devBrand = escapeHtml(r.device ? (r.device.brand==='أخرى' ? (r.device.brandOther || '') : (r.device.brand || '')) : '');
+  const devModel = escapeHtml((r.device && r.device.model) || '');
+  const faultsText = escapeHtml(Array.isArray(r.faults) ? r.faults.join('، ') : (r.faults || '-'));
+  const delDate = escapeHtml(r.deliveryDate || 'قيد التحديد');
+  const rStatus = escapeHtml(r.status || 'قيد الفحص');
+  const rNum = escapeHtml(String(r.receiptNumber || ''));
+
   app.innerHTML = `
     <div class="tracking-container">
       <div class="tracking-card">
         <div style="text-align:center;border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:16px;">
           <div style="font-size:28px;">⚡</div>
           <h2 style="margin:4px 0;">بوابة تتبع الصيانة — ميكروتك</h2>
-          <div class="subtitle">رقم الإيصال: <b class="mono" style="color:var(--primary);font-size:16px;">${r.receiptNumber}</b></div>
+          <div class="subtitle">رقم الإيصال: <b class="mono" style="color:var(--primary);font-size:16px;">#${rNum}</b></div>
         </div>
 
         <div class="tracking-timeline">
@@ -7542,11 +7577,11 @@ async function renderPublicTrackingPortal(receiptNum){
         </div>
 
         <div style="background:var(--paper3);border-radius:var(--radius);padding:16px;margin-bottom:16px;line-height:1.8;">
-          <div><b>👤 اسم العميل:</b> ${r.customer.name}</div>
-          <div><b>💻 الجهاز:</b> ${r.device.category} - ${r.device.brand==='أخرى'?r.device.brandOther:r.device.brand} ${r.device.model||''}</div>
-          <div><b>⚠️ العطل المبلغ عنه:</b> ${r.faults.join('، ')||'-'}</div>
-          <div><b>📅 موعد التسليم المتوقع:</b> ${r.deliveryDate||'قيد التحديد'}</div>
-          <div><b>📌 الحالة الحالية:</b> <span class="status-badge ${(STATUSES.find(s=>s.v===r.status)||{}).cls||'st-check'}">${r.status}</span></div>
+          <div><b>👤 اسم العميل:</b> ${custName}</div>
+          <div><b>💻 الجهاز:</b> ${devCat} - ${devBrand} ${devModel}</div>
+          <div><b>⚠️ العطل المبلغ عنه:</b> ${faultsText}</div>
+          <div><b>📅 موعد التسليم المتوقع:</b> ${delDate}</div>
+          <div><b>📌 الحالة الحالية:</b> <span class="status-badge ${(STATUSES.find(s=>s.v===r.status)||{}).cls||'st-check'}">${rStatus}</span></div>
         </div>
 
         <div class="fin-box" style="margin-bottom:20px;">
@@ -10037,7 +10072,7 @@ function stepFinance(body,d){
     d.partsCost = Number(d.partsCost||0) + cost;
     d.partsUsed = d.partsList.map(p => `${p.name} × ${p.qty}`).join('، ');
     document.getElementById('finParts').value = d.partsCost;
-    document.getElementById('draftPartsUsedList').innerHTML = d.partsUsed + ' <span style="font-size:11px;color:var(--primary);font-weight:700;">(سيتم الخصم الفعلي عند اعتماد الإيصال)</span>';
+    document.getElementById('draftPartsUsedList').innerHTML = escapeHtml(d.partsUsed) + ' <span style="font-size:11px;color:var(--primary);font-weight:700;">(سيتم الخصم الفعلي عند اعتماد الإيصال)</span>';
     recalcDraftFinances();
     showToast('تمت إضافة قطعة الغيار لمسودة الإيصال (سيتم الخصم عند الحفظ النهائي)', 'success');
   };
@@ -10101,10 +10136,10 @@ function stepReview(body,d){
     <div class="card">
       <h3>📋 مراجعة بيانات الإيصال قبل الحفظ</h3>
       <div class="grid2" style="font-size:13.5px;line-height:2;">
-        <div><b>👤 العميل:</b> ${d.customer.name} — <span class="mono">${d.customer.phone}</span></div>
+        <div><b>👤 العميل:</b> ${escapeHtml(d.customer.name)} — <span class="mono">${escapeHtml(d.customer.phone)}</span></div>
         <div><b>📅 تاريخ ووقت الاستلام:</b> <span class="mono" style="font-weight:bold;">${cleanDate(d.date)}</span> <span class="badge badge-blue mono" style="font-size:11.5px;margin-right:4px;">⏰ ${formatReceiptTime(d) || d.time || ''}</span></div>
         ${d.previousReceiptNumber ? `<div><b>🔄 صيانة راجعة / تكرارية:</b> <span class="badge badge-amber mono">#${escapeHtml(d.previousReceiptNumber)}</span> <span style="font-size:11.5px;color:var(--ink-secondary);">${d.reIntakeReason ? '('+escapeHtml(d.reIntakeReason)+')' : ''}</span></div>` : ''}
-        <div><b>👨‍🔧 الفني المسؤول:</b> ${d.technician||'غير محدد'}</div>
+        <div><b>👨‍🔧 الفني المسؤول:</b> ${escapeHtml(d.technician||'غير محدد')}</div>
         <div><b>💵 تكلفة الخدمة:</b> ${d.cost||0} ج.م</div>
         ${(d.serviceItems && d.serviceItems.length > 0) ? `<div style="grid-column:1/-1;background:var(--paper2);padding:6px 10px;border-radius:4px;border:1px solid var(--line);font-size:12px;line-height:1.5;"><b>🛠️ تفاصيل بنود الصيانة (${d.serviceItems.length}):</b> ${d.serviceItems.map(it=>`${escapeHtml(it.desc)} (<b class="mono">${it.price}</b> ج.م)`).join(' | ')}</div>` : ''}
         <div><b>⚙️ تكلفة قطع الغيار:</b> ${d.partsCost||0} ج.م</div>
@@ -10117,7 +10152,7 @@ function stepReview(body,d){
           </div>
         ` : `<div><b>📥 الدفعة المقدمة:</b> 0 ج.م</div>`}
         <div><b style="color:var(--primary);">المبلغ المتبقي المطلوب:</b> <span class="mono" style="font-size:17px;font-weight:900;color:var(--primary);">${remaining}</span> ج.م</div>
-        <div><b>📅 موعد التسليم:</b> ${d.deliveryDate||'غير محدد'}</div>
+        <div><b>📅 موعد التسليم:</b> ${escapeHtml(d.deliveryDate||'غير محدد')}</div>
       </div>
 
       ${isMultiDev ? `
@@ -10431,7 +10466,278 @@ window.renderUnifiedSelectionBar = function(){
     topSlot.appendChild(bar);
   }
 
-  const isInv = (state.currentSection === 'inventory') || (state.tab === 'inventory');
+  const isQuoSection = (state.currentSection === 'cameras' && state.camTab === 'quotes') || (state.currentSection === 'quotations');
+  const isSupSection = (state.currentSection === 'inventory' && state.invHubTab === 'suppliers') || (state.tab === 'suppliers');
+  const isPurSection = (state.currentSection === 'inventory' && state.invHubTab === 'purchases');
+  const isInv = ((state.currentSection === 'inventory' && state.invHubTab !== 'suppliers' && state.invHubTab !== 'purchases') || (state.tab === 'inventory')) && !isSupSection && !isPurSection;
+  const isInvoiceSection = (state.currentSection === 'invoices') || (state.tab === 'invoices') || (state.financeTab === 'invoices');
+  const isPosSalesLog = (state.currentSection === 'pos' && state.posTab === 'salesLog');
+
+  // Context 0.01: Quotation Selected
+  if(isQuoSection && state.selectedQuotationId){
+    const q = (state.quotations || []).find(x => String(x.ID) === String(state.selectedQuotationId));
+    if(q){
+      const total = Number(q.Total || 0);
+      const paid = Number(q.PaidAmount || 0);
+      const rem = Math.max(0, total - paid);
+      const cName = q.ClientName || 'عميل';
+      const qId = String(q.ID || '').slice(-8);
+
+      bar.className = 'unified-selection-bar active';
+      bar.innerHTML = `
+        <div class="unified-bar-info">
+          <div class="unified-bar-badge" style="background:#f5f3ff;color:#7c3aed;">
+            <span>📑 عرض سعر مختار</span>
+            <b class="mono" style="direction:ltr;unicode-bidi:isolate;">#${escapeHtml(qId)}</b>
+          </div>
+          <div style="font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span style="font-weight:800;color:var(--ink);">${escapeHtml(cName)}</span>
+            <span class="status-badge st-check" style="font-size:11px;">${escapeHtml(q.Status || 'معلق')}</span>
+            <span class="mono" style="font-size:11.5px;font-weight:800;color:var(--ink);">
+              الإجمالي: ${total.toLocaleString()} ج.م
+            </span>
+            <span class="mono" style="font-size:11.5px;font-weight:700;color:var(--green);">
+              المدفوع: ${paid.toLocaleString()} ج.م
+            </span>
+            <span class="mono" style="font-size:11.5px;font-weight:800;${rem > 0 ? 'color:var(--red);' : 'color:var(--green);'}">
+              ${rem > 0 ? `المتبقي: ${rem.toLocaleString()} ج.م` : 'خالص المسدد'}
+            </span>
+          </div>
+        </div>
+
+        <div class="unified-bar-actions">
+          <button class="unified-bar-btn btn-primary" onclick="openQuotationDetailModalById('${q.ID}')" title="عرض التفاصيل وتسجيل دفعات">
+            👁️ استعراض ودفعات
+          </button>
+          <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="openQuotationPrintDirect('${q.ID}')" title="طباعة عرض السعر الرسمي">
+            📑 طباعة العرض
+          </button>
+          <button class="unified-bar-btn btn-ghost" style="color:var(--green-text);border:1px solid var(--green);" onclick="openQuotationAgreementPrintDirect('${q.ID}')" title="طباعة عقد الشروط والاتفاق">
+            📜 طباعة العقد
+          </button>
+          <button class="unified-bar-btn btn-ghost" style="color:var(--purple);border:1px solid #c4b5fd;background:#f5f3ff;" onclick="convertQuotationToInvoiceDirect('${q.ID}')" title="تحويل وإصدار فاتورة رسمية">
+            🧾 تحويل لفاتورة
+          </button>
+          ${q.ClientPhone ? `
+            <button class="unified-bar-btn btn-whatsapp" onclick="openQuotationWhatsappDirect('${q.ID}')" title="مشاركة عرض السعر عبر واتساب">
+              ${WA_ICON} واتساب
+            </button>
+          ` : ''}
+          <button class="unified-bar-btn-close" onclick="deselectCurrentSelection()" title="إلغاء التحديد">
+            ✕
+          </button>
+        </div>
+      `;
+      return;
+    }
+  }
+
+  // Context 0.02: Supplier Selected
+  if(isSupSection && state.selectedSupplierName){
+    const sName = state.selectedSupplierName;
+    const s = (state.suppliers || []).find(x => (x.Name || x.name || '') === sName) || { Name: sName };
+    const sTitle = s.Title || s.title || '';
+    const sPhone = s.Phone || s.phone || '';
+    const pCount = (state.expenses || []).filter(ex => (ex.Category === 'سداد موردين ومشتريات' || ex.Supplier) && ex.Supplier === sName).length;
+
+    bar.className = 'unified-selection-bar active';
+    bar.innerHTML = `
+      <div class="unified-bar-info">
+        <div class="unified-bar-badge" style="background:#ecfdf5;color:#047857;">
+          <span>👤 مورد مختار</span>
+        </div>
+        <div style="font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span style="font-weight:800;color:var(--ink);">${escapeHtml(sName)}</span>
+          ${sTitle ? `<span class="badge" style="background:var(--paper2);color:var(--primary);font-size:11px;border:1px solid var(--line);">${escapeHtml(sTitle)}</span>` : ''}
+          ${sPhone ? `<span class="mono" style="color:var(--ink-secondary);font-size:11.5px;direction:ltr;">${escapeHtml(sPhone)}</span>` : ''}
+          <span class="badge" style="background:var(--paper2);border:1px solid var(--line);font-size:11px;">📋 ${pCount} سند صرف</span>
+        </div>
+      </div>
+
+      <div class="unified-bar-actions">
+        <button class="unified-bar-btn btn-green" onclick="openPaySupplierDirect('${escapeHtml(sName)}')" title="تسجيل سند صرف وسداد دفعة للمورد">
+          💵 سداد دفعة (سند صرف)
+        </button>
+        <button class="unified-bar-btn" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-weight:700;" onclick="openSupplierStatementDirect('${escapeHtml(sName)}')" title="كشف حساب تفصيلي للمورد">
+          📊 كشف حساب تفصيلي
+        </button>
+        ${pCount ? `
+          <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="openSupplierHistoryDirect('${escapeHtml(sName)}')" title="عرض سجل سندات الصرف">
+            📋 سجل السندات (${pCount})
+          </button>
+        ` : ''}
+        ${sPhone ? `
+          <button class="unified-bar-btn btn-whatsapp" onclick="openSupplierWhatsappDirect('${escapeHtml(sPhone)}', '${escapeHtml(sName)}')" title="مراسلة المورد عبر واتساب">
+            ${WA_ICON} واتساب
+          </button>
+        ` : ''}
+        <button class="unified-bar-btn-close" onclick="deselectCurrentSelection()" title="إلغاء التحديد">
+          ✕
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  // Context 0.03: Purchase Invoice Selected
+  if(isPurSection && state.selectedPurchaseId){
+    const p = (state.purchases || []).find(x => String(x.ID) === String(state.selectedPurchaseId));
+    if(p){
+      const tot = Number(p.Total || 0);
+      const paid = Number(p.AmountPaid != null ? p.AmountPaid : tot);
+      const rem = Math.max(0, tot - paid);
+
+      bar.className = 'unified-selection-bar active';
+      bar.innerHTML = `
+        <div class="unified-bar-info">
+          <div class="unified-bar-badge" style="background:#fdf2f8;color:#9d174d;">
+            <span>📥 فاتورة شراء مختارة</span>
+            <b class="mono" style="direction:ltr;unicode-bidi:isolate;">#${escapeHtml(String(p.ID || '').slice(-8))}</b>
+          </div>
+          <div style="font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span style="font-weight:800;color:var(--ink);">${escapeHtml(p.Supplier || '')}</span>
+            <span class="mono" style="font-size:11.5px;font-weight:800;color:var(--ink);">
+              الإجمالي: ${tot.toLocaleString()} ج.م
+            </span>
+            <span class="mono" style="font-size:11.5px;font-weight:700;color:var(--green);">
+              المدفوع: ${paid.toLocaleString()} ج.م
+            </span>
+            <span class="mono" style="font-size:11.5px;font-weight:800;${rem > 0 ? 'color:var(--red);' : 'color:var(--green);'}">
+              ${rem > 0 ? `المتبقي: ${rem.toLocaleString()} ج.م` : 'خالص'}
+            </span>
+          </div>
+        </div>
+
+        <div class="unified-bar-actions">
+          <button class="unified-bar-btn btn-amber" onclick="openInvoiceBarcodePrintModal('purchase', '${escapeHtml(String(p.ID || ''))}')" title="طباعة ملصقات الباركود لأصناف هذه الفاتورة">
+            🏷️ طباعة الباركود
+          </button>
+          <button class="unified-bar-btn btn-green" onclick="openPaySupplierDirect('${escapeHtml(p.Supplier || '')}')" title="تسجيل سند صرف للمورد">
+            💵 سداد للمورد
+          </button>
+          <button class="unified-bar-btn-close" onclick="deselectCurrentSelection()" title="إلغاء التحديد">
+            ✕
+          </button>
+        </div>
+      `;
+      return;
+    }
+  }
+
+  // Context 0.1: Invoice Selected
+  if(isInvoiceSection && state.selectedInvoiceId){
+    const inv = (state.invoices || []).find(x => String(x.ID) === String(state.selectedInvoiceId));
+    if(inv){
+      const total = Number(inv.Total || 0);
+      const paid = Number(inv.AmountPaid || 0);
+      const remaining = Number(inv.Remaining || 0);
+      const cName = inv.CustomerName || 'عميل';
+      const invNum = inv.InvoiceNumber || '';
+      const ref = inv.ReferenceType ? (inv.ReferenceType === 'Receipt' ? '🛠️ إيصال #' + inv.ReferenceID : inv.ReferenceType + ' ' + inv.ReferenceID) : '';
+
+      bar.className = 'unified-selection-bar active';
+      bar.innerHTML = `
+        <div class="unified-bar-info">
+          <div class="unified-bar-badge" style="background:#eff6ff;color:#2563eb;">
+            <span>📄 فاتورة مختارة</span>
+            <b class="mono" style="direction:ltr;unicode-bidi:isolate;">#${escapeHtml(invNum)}</b>
+          </div>
+          <div style="font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span style="font-weight:800;color:var(--ink);">${escapeHtml(cName)}</span>
+            ${ref ? `<span class="badge" style="background:var(--paper2);color:var(--ink-secondary);font-size:11px;border:1px solid var(--line);">${escapeHtml(ref)}</span>` : ''}
+            <span class="mono" style="font-size:11.5px;font-weight:800;color:var(--ink);">
+              الإجمالي: ${total.toLocaleString()} ج.م
+            </span>
+            <span class="mono" style="font-size:11.5px;font-weight:700;color:var(--green);">
+              المحصل: ${paid.toLocaleString()} ج.م
+            </span>
+            <span class="mono" style="font-size:11.5px;font-weight:800;${remaining > 0 ? 'color:var(--red);' : 'color:var(--green);'}">
+              ${remaining > 0 ? `المتبقي: ${remaining.toLocaleString()} ج.م` : 'خالص المسدد'}
+            </span>
+          </div>
+        </div>
+
+        <div class="unified-bar-actions">
+          <button class="unified-bar-btn btn-primary" onclick="openInvoicePrintDirect('${inv.ID}', 'invoice')" title="طباعة فاتورة ضريبية رسمية A4/A5">
+            🖨️ طباعة فاتورة
+          </button>
+          <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="openInvoicePrintDirect('${inv.ID}', 'quote')" title="طباعة بيان سعر وعرض أسعار رسمي">
+            📑 بيان أسعار
+          </button>
+          <button class="unified-bar-btn btn-amber" onclick="openInvoiceBarcodeDirect('${inv.ID}')" title="طباعة ملصقات باركود لكافة أصناف الفاتورة">
+            🏷️ باركود الأصناف
+          </button>
+          <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="openInvoiceModalDirect('${inv.ID}')" title="عرض تفاصيل الفاتورة أو التعديل">
+            ✏️ تفاصيل وتعديل
+          </button>
+          <button class="unified-bar-btn btn-whatsapp" onclick="openInvoiceWhatsappDirect('${inv.ID}')" title="إرسال الفاتورة عبر واتساب للعميل">
+            ${WA_ICON} واتساب
+          </button>
+          <button class="unified-bar-btn btn-red" onclick="deleteInvoiceDirect('${inv.ID}')" title="${(state.user && state.user.role === 'admin') ? 'حذف الفاتورة' : 'طلب تصريح حذف'}">
+            ${(state.user && state.user.role === 'admin') ? '🗑️ حذف' : '🔒 طلب حذف'}
+          </button>
+          <button class="unified-bar-btn-close" onclick="deselectCurrentSelection()" title="إلغاء التحديد">
+            ✕
+          </button>
+        </div>
+      `;
+      return;
+    }
+  }
+
+  // Context 0.2: POS Sale Selected
+  if(isPosSalesLog && state.selectedSaleId){
+    const s = (state.sales || []).find(x => String(x.ID) === String(state.selectedSaleId));
+    if(s){
+      const total = Number(s.Total || 0);
+      const cName = s.CustomerName || 'عميل زائر';
+      const saleNum = (s.ID || '').slice(-8);
+
+      bar.className = 'unified-selection-bar active';
+      bar.innerHTML = `
+        <div class="unified-bar-info">
+          <div class="unified-bar-badge" style="background:#f0fdf4;color:#15803d;">
+            <span>🧾 عملية بيع مختارة</span>
+            <b class="mono" style="direction:ltr;unicode-bidi:isolate;">#${escapeHtml(saleNum)}</b>
+          </div>
+          <div style="font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span style="font-weight:800;color:var(--ink);">${escapeHtml(cName)}</span>
+            <span class="mono" style="font-size:11.5px;font-weight:800;color:var(--green);">
+              القيمة: ${total.toLocaleString()} ج.م (${escapeHtml(s.PaymentMethod || 'نقدي')})
+            </span>
+            ${s.IsReturned ? '<span class="badge" style="background:#fee2e2;color:#b91c1c;font-weight:800;">مرتجع</span>' : '<span class="badge badge-green">مكتمل</span>'}
+          </div>
+        </div>
+
+        <div class="unified-bar-actions">
+          <button class="unified-bar-btn btn-green" onclick="openPosReceiptDirect('${s.ID}')" title="طباعة إيصال بيع كاشير سريع">
+            🖨️ طباعة إيصال
+          </button>
+          <button class="unified-bar-btn btn-blue" onclick="convertSaleToInvoiceDirect('${s.ID}')" title="تحويل وإصدار فاتورة ضريبية رسمية">
+            📄 فاتورة ضريبية
+          </button>
+          ${!s.IsReturned ? `
+            <button class="unified-bar-btn btn-amber" onclick="openPosReturnDirect('${s.ID}')" title="استرجاع الفاتورة (خلال 14 يوم)">
+              ↩️ إرجاع مبيعات
+            </button>
+          ` : `
+            <button class="unified-bar-btn btn-purple" onclick="openPosReturnDirect('${s.ID}')" title="طباعة إشعار وسند الارتجاع">
+              🧾 إذن ارتجاع
+            </button>
+          `}
+          ${s.CustomerPhone ? `
+            <button class="unified-bar-btn btn-whatsapp" onclick="openSaleWhatsappDirect('${s.ID}')" title="مشاركة الفاتورة عبر واتساب">
+              ${WA_ICON} واتساب
+            </button>
+          ` : ''}
+          <button class="unified-bar-btn-close" onclick="deselectCurrentSelection()" title="إلغاء التحديد">
+            ✕
+          </button>
+        </div>
+      `;
+      return;
+    }
+  }
 
   // Context 1: Inventory Item Selected
   if(isInv && state.selectedInventoryItemId){
@@ -10533,10 +10839,10 @@ window.renderUnifiedSelectionBar = function(){
         <button class="unified-bar-btn btn-primary" style="background:linear-gradient(135deg, #4f46e5, #4338ca);color:#fff;font-weight:800;box-shadow:0 2px 6px rgba(79,70,229,0.3);" onclick="convertMultipleReceiptsToInvoice(state.selectedReceiptIds)" title="إنشاء فاتورة ضريبية مجمعة تجمع كافة الأجهزة والصيانات للإيصالات المحددة">
           🧾 إصدار فاتورة مجمعة (${count})
         </button>
-        <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="state.selectedReceiptIds = []; if(typeof renderArchive==='function') renderArchive(); if(typeof window.renderUnifiedSelectionBar==='function') window.renderUnifiedSelectionBar();" title="إلغاء التحديد">
+        <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="deselectCurrentSelection(); if(typeof renderArchive==='function') renderArchive();" title="إلغاء التحديد">
           إلغاء التحديد
         </button>
-        <button class="unified-bar-btn-close" onclick="state.selectedReceiptIds = []; if(typeof renderArchive==='function') renderArchive(); if(typeof window.renderUnifiedSelectionBar==='function') window.renderUnifiedSelectionBar();" title="إلغاء التحديد">
+        <button class="unified-bar-btn-close" onclick="deselectCurrentSelection(); if(typeof renderArchive==='function') renderArchive();" title="إلغاء التحديد">
           ✕
         </button>
       </div>
@@ -10575,6 +10881,9 @@ window.renderUnifiedSelectionBar = function(){
         </div>
 
         <div class="unified-bar-actions">
+          <button class="unified-bar-btn btn-primary" onclick="openReceiptActionSheet('${safeTargetId}', '${rNum}')" title="فتح لوحة إجراءات وخيارات الإيصال الموحدة">
+            ⚡ خيارات الإيصال
+          </button>
           <button class="unified-bar-btn btn-status-quick" style="background:var(--green-bg);color:var(--green-text);border-color:rgba(5,150,105,0.25);" onclick="openQuickStatusModalDirect('${safeTargetId}', '${rNum}')" title="تغيير سريع لحالة الجهاز">
             ⚡ الحالة
           </button>
@@ -10688,7 +10997,92 @@ window.renderUnifiedSelectionBar = function(){
   // Context 4: Standby State (Nothing selected) - Permanent stationary toolbar in place!
   bar.className = 'unified-selection-bar standby';
 
-  if(isInv){
+  if(isInvoiceSection){
+    bar.innerHTML = `
+      <div class="unified-bar-info">
+        <div class="unified-bar-badge" style="background:var(--paper3);color:var(--ink-secondary);border:1px dashed var(--line);">
+          <span>📌 شريط إجراءات الفواتير الموحد</span>
+        </div>
+        <div style="font-size:12px;color:var(--ink-secondary);">
+          اضغط على أي فاتورة من الجدول لتفعيل الطباعة والباركود وبيان الأسعار والمراسلة والتعديل
+        </div>
+      </div>
+      <div class="unified-bar-actions" style="opacity:0.55;pointer-events:none;">
+        <button class="unified-bar-btn btn-primary" disabled>🖨️ طباعة فاتورة</button>
+        <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" disabled>📑 بيان أسعار</button>
+        <button class="unified-bar-btn btn-amber" disabled>🏷️ باركود الأصناف</button>
+        <button class="unified-bar-btn btn-ghost" disabled>✏️ تفاصيل وتعديل</button>
+        <button class="unified-bar-btn btn-whatsapp" disabled>${WA_ICON} واتساب</button>
+        <button class="unified-bar-btn btn-red" disabled>🗑️ حذف</button>
+      </div>
+    `;
+  } else if(isPosSalesLog){
+    bar.innerHTML = `
+      <div class="unified-bar-info">
+        <div class="unified-bar-badge" style="background:var(--paper3);color:var(--ink-secondary);border:1px dashed var(--line);">
+          <span>📌 شريط إجراءات المبيعات الموحد</span>
+        </div>
+        <div style="font-size:12px;color:var(--ink-secondary);">
+          اضغط على أي عملية بيع من الجدول لتفعيل الطباعة والتحويل لفاتورة والإرجاع
+        </div>
+      </div>
+      <div class="unified-bar-actions" style="opacity:0.55;pointer-events:none;">
+        <button class="unified-bar-btn btn-green" disabled>🖨️ طباعة إيصال</button>
+        <button class="unified-bar-btn btn-blue" disabled>📄 فاتورة ضريبية</button>
+        <button class="unified-bar-btn btn-amber" disabled>↩️ إرجاع مبيعات</button>
+        <button class="unified-bar-btn btn-whatsapp" disabled>${WA_ICON} واتساب</button>
+      </div>
+    `;
+  } else if(isQuoSection){
+    bar.innerHTML = `
+      <div class="unified-bar-info">
+        <div class="unified-bar-badge" style="background:var(--paper3);color:var(--ink-secondary);border:1px dashed var(--line);">
+          <span>📌 شريط إجراءات عروض الأسعار الموحد</span>
+        </div>
+        <div style="font-size:12px;color:var(--ink-secondary);">
+          اضغط على أي عرض سعر من الجدول لتفعيل الطباعة، العقد، تسجيل الدفعات، والتحويل لفاتورة
+        </div>
+      </div>
+      <div class="unified-bar-actions" style="opacity:0.55;pointer-events:none;">
+        <button class="unified-bar-btn btn-primary" disabled>👁️ استعراض ودفعات</button>
+        <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" disabled>📑 طباعة العرض</button>
+        <button class="unified-bar-btn btn-ghost" disabled>📜 طباعة العقد</button>
+        <button class="unified-bar-btn btn-ghost" disabled>🧾 تحويل لفاتورة</button>
+        <button class="unified-bar-btn btn-whatsapp" disabled>${WA_ICON} واتساب</button>
+      </div>
+    `;
+  } else if(isSupSection){
+    bar.innerHTML = `
+      <div class="unified-bar-info">
+        <div class="unified-bar-badge" style="background:var(--paper3);color:var(--ink-secondary);border:1px dashed var(--line);">
+          <span>📌 شريط إجراءات الموردين الموحد</span>
+        </div>
+        <div style="font-size:12px;color:var(--ink-secondary);">
+          اضغط على أي مورد من الجدول أدناه لتسجيل سند صرف أو استعراض كشف الحساب وسجل السندات
+        </div>
+      </div>
+      <div class="unified-bar-actions" style="opacity:0.55;pointer-events:none;">
+        <button class="unified-bar-btn btn-green" disabled>💵 سداد دفعة</button>
+        <button class="unified-bar-btn" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-weight:700;" disabled>📊 كشف حساب</button>
+        <button class="unified-bar-btn btn-ghost" disabled>📋 سجل السندات</button>
+      </div>
+    `;
+  } else if(isPurSection){
+    bar.innerHTML = `
+      <div class="unified-bar-info">
+        <div class="unified-bar-badge" style="background:var(--paper3);color:var(--ink-secondary);border:1px dashed var(--line);">
+          <span>📌 شريط إجراءات فواتير الشراء الموحد</span>
+        </div>
+        <div style="font-size:12px;color:var(--ink-secondary);">
+          اضغط على أي فاتورة شراء من الجدول أدناه لطباعة ملصقات الباركود أو سداد دفعة للمورد
+        </div>
+      </div>
+      <div class="unified-bar-actions" style="opacity:0.55;pointer-events:none;">
+        <button class="unified-bar-btn btn-amber" disabled>🏷️ طباعة الباركود</button>
+        <button class="unified-bar-btn btn-green" disabled>💵 سداد للمورد</button>
+      </div>
+    `;
+  } else if(isInv){
     bar.innerHTML = `
       <div class="unified-bar-info">
         <div class="unified-bar-badge" style="background:var(--paper3);color:var(--ink-secondary);border:1px dashed var(--line);">
@@ -10736,6 +11130,7 @@ window.renderUnifiedSelectionBar = function(){
         </div>
       </div>
       <div class="unified-bar-actions" style="opacity:0.55;pointer-events:none;">
+        <button class="unified-bar-btn btn-primary" disabled>⚡ خيارات الإيصال</button>
         <button class="unified-bar-btn btn-status-quick" disabled>⚡ الحالة</button>
         <button class="unified-bar-btn" disabled>💰 عرض التكلفة</button>
         <button class="unified-bar-btn btn-whatsapp" disabled>${WA_ICON} واتساب</button>
@@ -10756,6 +11151,11 @@ window.hideUnifiedSelectionBar = function(){
   state.selectedReceiptIds = [];
   state.selectedCustomerId = null;
   state.selectedInventoryItemId = null;
+  state.selectedInvoiceId = null;
+  state.selectedSaleId = null;
+  state.selectedQuotationId = null;
+  state.selectedSupplierName = null;
+  state.selectedPurchaseId = null;
   document.querySelectorAll('.selected-row').forEach(el => el.classList.remove('selected-row'));
   document.querySelectorAll('.selected-card').forEach(el => el.classList.remove('selected-card'));
   document.querySelectorAll('.selected-badge-indicator').forEach(el => el.remove());
@@ -10942,7 +11342,10 @@ window.selectInventoryItem = function(itemId){
   state.selectedInventoryItemId = String(itemId);
   state.selectedReceiptId = null;
   state.selectedReceiptNum = null;
+  state.selectedReceiptIds = [];
   state.selectedCustomerId = null;
+  state.selectedInvoiceId = null;
+  state.selectedSaleId = null;
 
   document.querySelectorAll('.selected-row').forEach(el => el.classList.remove('selected-row'));
   document.querySelectorAll('.selected-badge-indicator').forEach(el => el.remove());
@@ -10953,10 +11356,11 @@ window.selectInventoryItem = function(itemId){
     const firstCell = el.querySelector('td:first-child > div');
     if(firstCell && !firstCell.querySelector('.selected-badge-indicator')){
       const b = document.createElement('span');
-      b.className = 'selected-badge-indicator';
-      b.title = 'صنف محدد';
-      b.textContent = '✓';
-      firstCell.prepend(b);
+      b.className = 'badge badge-primary selected-badge-indicator';
+      b.style.fontSize = '9.5px';
+      b.style.padding = '1px 5px';
+      b.textContent = 'محدد';
+      firstCell.appendChild(b);
     }
   });
 
@@ -10976,6 +11380,393 @@ window.handleInventoryRowClick = function(itemId, evt){
     return;
   }
   window.toggleInventorySelection(itemId);
+};
+
+// Invoice Direct Action & Selection Handlers
+window.selectInvoice = function(invId){
+  const inv = (state.invoices || []).find(x => String(x.ID) === String(invId));
+  if(!inv) return;
+
+  state.selectedInvoiceId = String(inv.ID);
+  state.selectedReceiptId = null;
+  state.selectedReceiptNum = null;
+  state.selectedReceiptIds = [];
+  state.selectedCustomerId = null;
+  state.selectedInventoryItemId = null;
+  state.selectedSaleId = null;
+
+  document.querySelectorAll('.selected-row').forEach(el => el.classList.remove('selected-row'));
+  document.querySelectorAll('.selected-badge-indicator').forEach(el => el.remove());
+
+  const matchingRows = document.querySelectorAll(`tr[data-inv-id="${inv.ID}"]`);
+  matchingRows.forEach(el => {
+    el.classList.add('selected-row');
+    const firstCell = el.querySelector('td:first-child > div');
+    if(firstCell && !firstCell.querySelector('.selected-badge-indicator')){
+      const b = document.createElement('span');
+      b.className = 'badge badge-primary selected-badge-indicator';
+      b.style.fontSize = '9.5px';
+      b.style.padding = '1px 5px';
+      b.textContent = 'محددة';
+      firstCell.appendChild(b);
+    }
+  });
+
+  if(typeof window.renderUnifiedSelectionBar === 'function') window.renderUnifiedSelectionBar();
+};
+
+window.toggleInvoiceSelection = function(invId){
+  if(String(state.selectedInvoiceId) === String(invId)){
+    window.deselectCurrentSelection();
+  } else {
+    window.selectInvoice(invId);
+  }
+};
+
+window.handleInvoiceRowClick = function(invId, evt){
+  if(evt && evt.target && evt.target.closest('button, a, input, select')){
+    return;
+  }
+  window.toggleInvoiceSelection(invId);
+};
+
+window.openInvoicePrintDirect = function(invId, docType='invoice'){
+  const inv = (state.invoices || []).find(x => String(x.ID) === String(invId));
+  if(!inv){ showToast('لم يتم العثور على الفاتورة', 'error'); return; }
+  if(typeof openInvoicePrint === 'function') openInvoicePrint(inv, docType);
+};
+
+window.openInvoiceBarcodeDirect = function(invId){
+  const inv = (state.invoices || []).find(x => String(x.ID) === String(invId));
+  if(!inv){ showToast('لم يتم العثور على الفاتورة', 'error'); return; }
+  if(typeof openInvoiceBarcodePrintModal === 'function') openInvoiceBarcodePrintModal('invoice', inv.ID);
+};
+
+window.openInvoiceModalDirect = function(invId){
+  const inv = (state.invoices || []).find(x => String(x.ID) === String(invId));
+  if(!inv){ showToast('لم يتم العثور على الفاتورة', 'error'); return; }
+  if(typeof openInvoiceModal === 'function') openInvoiceModal(inv);
+};
+
+window.openInvoiceWhatsappDirect = function(invId){
+  const inv = (state.invoices || []).find(x => String(x.ID) === String(invId));
+  if(!inv){ showToast('لم يتم العثور على الفاتورة', 'error'); return; }
+  const phone = (inv.CustomerPhone || '').replace(/\D/g, '');
+  if(!phone){ showToast('لا يوجد رقم هاتف مسجل لهذه الفاتورة', 'warning'); return; }
+  const phoneFormatted = phone.startsWith('0') ? '2' + phone : phone;
+  const msg = `مرحبًا ${inv.CustomerName}،\nفاتورة / بيان سعر رقم: ${inv.InvoiceNumber}\nإجمالي المستحق: ${inv.Total} ج.م\nالمدفوع: ${inv.AmountPaid} ج.م\nالمتبقي: ${inv.Remaining} ج.م\nشكرًا لتعاملكم مع ${state.settings.shopName || 'ميكروتك'}.`;
+  window.open(`https://wa.me/${phoneFormatted}?text=${encodeURIComponent(msg)}`, '_blank');
+};
+
+window.deleteInvoiceDirect = function(invId){
+  const inv = (state.invoices || []).find(x => String(x.ID) === String(invId));
+  if(!inv){ showToast('لم يتم العثور على الفاتورة', 'error'); return; }
+  requestAdminAuthorization({
+    action: 'حذف فاتورة',
+    entityType: 'فاتورة رسمية',
+    entityId: inv.ID,
+    entityTitle: `رقم ${inv.InvoiceNumber} (${inv.CustomerName})`,
+    onApproved: async ()=>{
+      try{
+        await deleteInvoiceRemote(inv.ID);
+        state.invoices = (state.invoices || []).filter(x => x.ID !== inv.ID);
+        showToast('تم حذف الفاتورة بنجاح', 'success');
+        window.deselectCurrentSelection();
+        const main = document.getElementById('main');
+        if(main && typeof renderInvoicesPage === 'function') renderInvoicesPage(main);
+      }catch(e){ showToast('تعذر الحذف: ' + e.message, 'error'); }
+    }
+  });
+};
+
+// POS Sales Direct Action & Selection Handlers
+window.selectSale = function(saleId){
+  const s = (state.sales || []).find(x => String(x.ID) === String(saleId));
+  if(!s) return;
+
+  state.selectedSaleId = String(s.ID);
+  state.selectedReceiptId = null;
+  state.selectedReceiptNum = null;
+  state.selectedReceiptIds = [];
+  state.selectedCustomerId = null;
+  state.selectedInventoryItemId = null;
+  state.selectedInvoiceId = null;
+
+  document.querySelectorAll('.selected-row').forEach(el => el.classList.remove('selected-row'));
+  document.querySelectorAll('.selected-badge-indicator').forEach(el => el.remove());
+
+  const matchingRows = document.querySelectorAll(`tr[data-sale-id="${s.ID}"]`);
+  matchingRows.forEach(el => {
+    el.classList.add('selected-row');
+    const firstCell = el.querySelector('td:first-child > div');
+    if(firstCell && !firstCell.querySelector('.selected-badge-indicator')){
+      const b = document.createElement('span');
+      b.className = 'badge badge-green selected-badge-indicator';
+      b.style.fontSize = '9.5px';
+      b.style.padding = '1px 5px';
+      b.textContent = 'محددة';
+      firstCell.appendChild(b);
+    }
+  });
+
+  if(typeof window.renderUnifiedSelectionBar === 'function') window.renderUnifiedSelectionBar();
+};
+
+window.toggleSaleSelection = function(saleId){
+  if(String(state.selectedSaleId) === String(saleId)){
+    window.deselectCurrentSelection();
+  } else {
+    window.selectSale(saleId);
+  }
+};
+
+window.handleSaleRowClick = function(saleId, evt){
+  if(evt && evt.target && evt.target.closest('button, a, input, select')){
+    return;
+  }
+  window.toggleSaleSelection(saleId);
+};
+
+window.openPosReceiptDirect = function(saleId){
+  const s = (state.sales || []).find(x => String(x.ID) === String(saleId));
+  if(!s){ showToast('لم يتم العثور على عملية البيع', 'error'); return; }
+  let cartItems = [];
+  if(s.ItemsJSON){
+    try {
+      const parsed = typeof s.ItemsJSON==='string' ? JSON.parse(s.ItemsJSON) : s.ItemsJSON;
+      if(Array.isArray(parsed)) cartItems = parsed;
+    } catch(e){}
+  }
+  if(!cartItems.length){
+    cartItems = [{ name: s.ItemsSummary, qty: 1, price: s.Total }];
+  }
+  if(typeof openSalePrint === 'function'){
+    openSalePrint(s, cartItems);
+  }
+};
+
+window.convertSaleToInvoiceDirect = function(saleId){
+  const s = (state.sales || []).find(x => String(x.ID) === String(saleId));
+  if(!s){ showToast('لم يتم العثور على عملية البيع', 'error'); return; }
+  if(typeof convertSaleToInvoice === 'function'){
+    convertSaleToInvoice(s.ID);
+  }
+};
+
+window.openPosReturnDirect = function(saleId){
+  const s = (state.sales || []).find(x => String(x.ID) === String(saleId));
+  if(!s){ showToast('لم يتم العثور على عملية البيع', 'error'); return; }
+  if(!s.IsReturned){
+    if(typeof openPosReturnModal === 'function') openPosReturnModal(s);
+  } else {
+    if(typeof openPosReturnVoucherPrint === 'function') openPosReturnVoucherPrint(s, s.ReturnDetails || {});
+  }
+};
+
+window.openSaleWhatsappDirect = function(saleId){
+  const s = (state.sales || []).find(x => String(x.ID) === String(saleId));
+  if(!s){ showToast('لم يتم العثور على عملية البيع', 'error'); return; }
+  const phone = (s.CustomerPhone || '').replace(/\D/g, '');
+  if(!phone){ showToast('لا يوجد رقم هاتف مسجل لهذه العملية', 'warning'); return; }
+  const phoneFormatted = phone.startsWith('0') ? '2' + phone : phone;
+  const msg = `مرحبًا ${s.CustomerName || 'عميلنا العزيز'}،\nإيصال مبيعات رقم: #${s.ID.slice(-8)}\nالأصناف: ${s.ItemsSummary}\nالإجمالي: ${s.Total} ج.م\nشكرًا لتعاملكم مع ${state.settings.shopName || 'ميكروتك'}.`;
+  window.open(`https://wa.me/${phoneFormatted}?text=${encodeURIComponent(msg)}`, '_blank');
+};
+
+// Quotation Direct Action & Selection Handlers
+window.selectQuotation = function(qId){
+  const q = (state.quotations || []).find(x => String(x.ID) === String(qId));
+  if(!q) return;
+
+  state.selectedQuotationId = String(q.ID);
+  state.selectedReceiptId = null;
+  state.selectedReceiptNum = null;
+  state.selectedReceiptIds = [];
+  state.selectedCustomerId = null;
+  state.selectedInventoryItemId = null;
+  state.selectedInvoiceId = null;
+  state.selectedSaleId = null;
+  state.selectedSupplierName = null;
+  state.selectedPurchaseId = null;
+
+  document.querySelectorAll('.selected-row').forEach(el => el.classList.remove('selected-row'));
+  document.querySelectorAll('.selected-badge-indicator').forEach(el => el.remove());
+
+  const matchingRows = document.querySelectorAll(`tr[data-quo-id="${q.ID}"]`);
+  matchingRows.forEach(el => {
+    el.classList.add('selected-row');
+    const firstCell = el.querySelector('td:first-child > div');
+    if(firstCell && !firstCell.querySelector('.selected-badge-indicator')){
+      const b = document.createElement('span');
+      b.className = 'badge badge-primary selected-badge-indicator';
+      b.style.fontSize = '9.5px';
+      b.style.padding = '1px 5px';
+      b.textContent = 'محدد';
+      firstCell.appendChild(b);
+    }
+  });
+
+  if(typeof window.renderUnifiedSelectionBar === 'function') window.renderUnifiedSelectionBar();
+};
+
+window.toggleQuotationSelection = function(qId){
+  if(String(state.selectedQuotationId) === String(qId)){
+    window.deselectCurrentSelection();
+  } else {
+    window.selectQuotation(qId);
+  }
+};
+
+window.handleQuotationRowClick = function(qId, evt){
+  if(evt && evt.target && evt.target.closest('button, a, input, select')){
+    return;
+  }
+  window.toggleQuotationSelection(qId);
+};
+
+window.openQuotationPrintDirect = function(qId){
+  const q = (state.quotations || []).find(x => String(x.ID) === String(qId));
+  if(!q){ showToast('لم يتم العثور على عرض السعر', 'error'); return; }
+  if(typeof openQuotationPrint === 'function') openQuotationPrint(q, getQuotationItems(q));
+};
+
+window.openQuotationAgreementPrintDirect = function(qId){
+  const q = (state.quotations || []).find(x => String(x.ID) === String(qId));
+  if(!q){ showToast('لم يتم العثور على عرض السعر', 'error'); return; }
+  if(typeof openQuotationAgreementPrint === 'function') openQuotationAgreementPrint(q, getQuotationItems(q));
+};
+
+window.convertQuotationToInvoiceDirect = function(qId){
+  const q = (state.quotations || []).find(x => String(x.ID) === String(qId));
+  if(!q){ showToast('لم يتم العثور على عرض السعر', 'error'); return; }
+  if(typeof convertQuotationToInvoice === 'function') convertQuotationToInvoice(q);
+};
+
+window.openQuotationWhatsappDirect = function(qId){
+  const q = (state.quotations || []).find(x => String(x.ID) === String(qId));
+  if(!q){ showToast('لم يتم العثور على عرض السعر', 'error'); return; }
+  if(typeof shareQuotationWhatsapp === 'function') shareQuotationWhatsapp(q);
+};
+
+// Supplier Direct Action & Selection Handlers
+window.selectSupplier = function(supName){
+  if(!supName) return;
+
+  state.selectedSupplierName = String(supName);
+  state.selectedReceiptId = null;
+  state.selectedReceiptNum = null;
+  state.selectedReceiptIds = [];
+  state.selectedCustomerId = null;
+  state.selectedInventoryItemId = null;
+  state.selectedInvoiceId = null;
+  state.selectedSaleId = null;
+  state.selectedQuotationId = null;
+  state.selectedPurchaseId = null;
+
+  document.querySelectorAll('.selected-row').forEach(el => el.classList.remove('selected-row'));
+  document.querySelectorAll('.selected-badge-indicator').forEach(el => el.remove());
+
+  const matchingRows = document.querySelectorAll(`tr[data-sup-name="${escapeHtml(supName)}"]`);
+  matchingRows.forEach(el => {
+    el.classList.add('selected-row');
+    const firstCell = el.querySelector('td:first-child > div');
+    if(firstCell && !firstCell.querySelector('.selected-badge-indicator')){
+      const b = document.createElement('span');
+      b.className = 'badge badge-primary selected-badge-indicator';
+      b.style.fontSize = '9.5px';
+      b.style.padding = '1px 5px';
+      b.textContent = 'محدد';
+      firstCell.appendChild(b);
+    }
+  });
+
+  if(typeof window.renderUnifiedSelectionBar === 'function') window.renderUnifiedSelectionBar();
+};
+
+window.toggleSupplierSelection = function(supName){
+  if(String(state.selectedSupplierName) === String(supName)){
+    window.deselectCurrentSelection();
+  } else {
+    window.selectSupplier(supName);
+  }
+};
+
+window.handleSupplierRowClick = function(supName, evt){
+  if(evt && evt.target && evt.target.closest('button, a, input, select')){
+    return;
+  }
+  window.toggleSupplierSelection(supName);
+};
+
+window.openPaySupplierDirect = function(supName){
+  if(typeof openPaySupplierModal === 'function') openPaySupplierModal(supName);
+};
+
+window.openSupplierStatementDirect = function(supName){
+  if(typeof openSupplierStatementModal === 'function') openSupplierStatementModal(supName);
+};
+
+window.openSupplierHistoryDirect = function(supName){
+  if(typeof openSupplierPaymentsHistoryModal === 'function') openSupplierPaymentsHistoryModal(supName);
+};
+
+window.openSupplierWhatsappDirect = function(supPhone, supName){
+  const phone = String(supPhone || '').replace(/\D/g, '');
+  if(!phone){ showToast('لا يوجد رقم هاتف مسجل لهذا المورد', 'warning'); return; }
+  const phoneFormatted = phone.startsWith('0') ? '2' + phone : phone;
+  const msg = `مرحبًا ${supName || 'موردنا العزيز'}،\nبخصوص تعاملات التوريد والحساب مع ${state.settings.shopName || 'ميكروتك'}.`;
+  window.open(`https://wa.me/${phoneFormatted}?text=${encodeURIComponent(msg)}`, '_blank');
+};
+
+// Purchase Invoice Direct Action & Selection Handlers
+window.selectPurchase = function(purId){
+  const p = (state.purchases || []).find(x => String(x.ID) === String(purId));
+  if(!p) return;
+
+  state.selectedPurchaseId = String(p.ID);
+  state.selectedReceiptId = null;
+  state.selectedReceiptNum = null;
+  state.selectedReceiptIds = [];
+  state.selectedCustomerId = null;
+  state.selectedInventoryItemId = null;
+  state.selectedInvoiceId = null;
+  state.selectedSaleId = null;
+  state.selectedQuotationId = null;
+  state.selectedSupplierName = null;
+
+  document.querySelectorAll('.selected-row').forEach(el => el.classList.remove('selected-row'));
+  document.querySelectorAll('.selected-badge-indicator').forEach(el => el.remove());
+
+  const matchingRows = document.querySelectorAll(`tr[data-purchase-id="${p.ID}"]`);
+  matchingRows.forEach(el => {
+    el.classList.add('selected-row');
+    const firstCell = el.querySelector('td:first-child > div');
+    if(firstCell && !firstCell.querySelector('.selected-badge-indicator')){
+      const b = document.createElement('span');
+      b.className = 'badge badge-primary selected-badge-indicator';
+      b.style.fontSize = '9.5px';
+      b.style.padding = '1px 5px';
+      b.textContent = 'محددة';
+      firstCell.appendChild(b);
+    }
+  });
+
+  if(typeof window.renderUnifiedSelectionBar === 'function') window.renderUnifiedSelectionBar();
+};
+
+window.togglePurchaseSelection = function(purId){
+  if(String(state.selectedPurchaseId) === String(purId)){
+    window.deselectCurrentSelection();
+  } else {
+    window.selectPurchase(purId);
+  }
+};
+
+window.handlePurchaseRowClick = function(purId, evt){
+  if(evt && evt.target && evt.target.closest('button, a, input, select')){
+    return;
+  }
+  window.togglePurchaseSelection(purId);
 };
 
 window.toggleReceiptSelection = function(receiptId, receiptNum){
@@ -11296,7 +12087,14 @@ function archiveTable(list){
     <th style="width:36px;text-align:center;">
       <input type="checkbox" id="receiptSelectAllCb" ${allSelected ? 'checked' : ''} onchange="window.toggleSelectAllReceipts(this.checked)" title="تحديد الكل" style="cursor:pointer;width:16px;height:16px;" />
     </th>
-    <th>رقم الإيصال</th><th>العميل</th><th>الأجهزة</th><th>الفني</th><th>الحالة</th><th>التكلفة</th><th>المدفوع</th><th>المتبقي</th><th>الإجراءات الموحدة</th>
+    <th style="width:12%;">رقم الإيصال</th>
+    <th style="width:16%;">العميل</th>
+    <th style="width:22%;">الأجهزة والعطل</th>
+    <th style="width:10%;">الفني</th>
+    <th style="width:11%;text-align:center;">الحالة</th>
+    <th style="width:9%;text-align:center;">التكلفة</th>
+    <th style="width:9%;text-align:center;">المدفوع</th>
+    <th style="width:11%;text-align:center;">المتبقي</th>
   </tr></thead><tbody>
   ${list.map(rawR=>{
     const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
@@ -11334,7 +12132,7 @@ function archiveTable(list){
       <div>${dCat} - ${dBrand} <span style="color:var(--ink-secondary);">${dModel}</span></div>
     `;
 
-    return `<tr class="selectable-row ${isSelected ? 'selected-row' : ''}" data-receipt-id="${safeTargetId}" data-receipt-num="${rNum}" onclick="handleReceiptRowClick('${safeTargetId}', '${rNum}', event)" style="${isOverdue?'background:rgba(245,158,11,0.08);':''}">
+    return `<tr class="selectable-row ${isSelected ? 'selected-row' : ''}" data-receipt-id="${safeTargetId}" data-receipt-num="${rNum}" onclick="handleReceiptRowClick('${safeTargetId}', '${rNum}', event)" ondblclick="openReceiptDetailModal('${safeTargetId}', '${rNum}')" style="cursor:pointer;${isOverdue?'background:rgba(245,158,11,0.08);':''}" title="نقر لتحديد الإيصال وإجراء العمليات • نقر مزدوج لعرض التفاصيل والتعديل">
       <td style="text-align:center;" onclick="event.stopPropagation();">
         <input type="checkbox" class="receipt-select-cb" value="${safeTargetId}" ${isChecked ? 'checked' : ''} onchange="window.toggleReceiptMultiSelection('${safeTargetId}', this.checked, event)" style="cursor:pointer;width:16px;height:16px;" />
       </td>
@@ -11357,7 +12155,7 @@ function archiveTable(list){
         ${cPhone && cPhone !== '0000000000' ? `
           <div style="color:var(--ink-secondary);font-size:11.5px;display:flex;align-items:center;gap:4px;margin-top:2px;" class="mono">
             <span>${escapeHtml(cPhone)}</span>
-            <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" style="color:#22c55e;text-decoration:none;font-size:12px;" title="محادثة واتساب">💬</a>
+            <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" style="color:#22c55e;text-decoration:none;font-size:12px;" title="محادثة واتساب" onclick="event.stopPropagation();">💬</a>
           </div>
         ` : `
           <div style="color:var(--amber-text);font-size:10.5px;font-weight:700;cursor:pointer;margin-top:2px;" onclick="openQuickAddPhoneModal('${escapeHtml(cName)}', '${escapeHtml(cTitle)}', '${safeTargetId}', '${rNum}'); event.stopPropagation();">⚠️ هاتف غير مسجل (اضغط للإضافة)</div>
@@ -11365,32 +12163,21 @@ function archiveTable(list){
       </td>
       <td>${deviceHtml}</td>
       <td>${r.technician ? `<span style="font-weight:600;">${escapeHtml(r.technician)}</span>` : '<span style="color:var(--slate-400);">-</span>'}</td>
-      <td>
+      <td style="text-align:center;">
         <button class="btn-status-quick" onclick="openQuickStatusModalDirect('${safeTargetId}', '${rNum}'); event.stopPropagation();" title="اضغط لتغيير حالة الجهاز فورًا">
           <span class="status-badge ${st.cls}">${st.icon} ${escapeHtml(r.status)}</span>
           <span style="font-size:9.5px;color:var(--slate-400);">⚡</span>
         </button>
       </td>
-      <td class="mono" style="font-weight:700;color:var(--ink);">
+      <td class="mono" style="font-weight:700;color:var(--ink);text-align:center;">
         ${totalDue.toLocaleString()} ج.م
         ${otherAmt>0 ? `<div style="font-size:9.5px;color:var(--amber-text);font-weight:700;">(+${otherAmt} إضافي)</div>` : ''}
       </td>
-      <td class="mono" style="font-weight:700;color:var(--green);">
+      <td class="mono" style="font-weight:700;color:var(--green);text-align:center;">
         ${deposit.toLocaleString()} ج.م
       </td>
-      <td class="mono" style="font-weight:800;${remaining>0?'color:var(--red);':'color:var(--green);'}">
+      <td class="mono" style="font-weight:800;text-align:center;${remaining>0?'color:var(--red);':'color:var(--green);'}">
         ${remaining.toLocaleString()} ج.م
-      </td>
-      <td class="row-actions" onclick="event.stopPropagation()">
-        <button class="btn btn-xs btn-primary font-bold" onclick="openReceiptActionSheet('${safeTargetId}', '${rNum}'); event.stopPropagation();" title="عرض خيارات وإجراءات الإيصال الموحدة">
-          ⚡ خيارات الإيصال
-        </button>
-        <button class="btn btn-xs btn-status-quick" style="background:var(--green-bg);color:var(--green-text);" onclick="openQuickStatusModalDirect('${safeTargetId}', '${rNum}'); event.stopPropagation();" title="تغيير سريع لحالة الجهاز">
-          ⚡ الحالة
-        </button>
-        <button class="btn btn-xs btn-whatsapp" onclick="openWhatsappDirect('${safeTargetId}', '${rNum}'); event.stopPropagation();" title="محادثة واتساب">
-          ${WA_ICON}
-        </button>
       </td>
     </tr>`;
   }).join('')}
@@ -11493,18 +12280,6 @@ function archiveCards(list){
             <span class="lbl">المتبقي</span>
             <span class="val mono" style="${remaining>0?'color:var(--red);':'color:var(--green);'}">${remaining.toLocaleString()} <small style="font-size:9.5px;">ج.م</small></span>
           </div>
-        </div>
-
-        <div class="smart-card-actions" onclick="event.stopPropagation()">
-          <button class="btn btn-xs btn-primary font-bold" onclick="openReceiptActionSheet('${safeTargetId}', '${rNum}'); event.stopPropagation();" style="flex:2;" title="فتح لوحة الإجراءات الموحدة للوصل">
-            ⚡ خيارات وإجراءات الإيصال
-          </button>
-          <button class="btn btn-xs btn-status-quick" style="background:var(--green-bg);color:var(--green-text);flex:1;" onclick="openQuickStatusModalDirect('${safeTargetId}', '${rNum}'); event.stopPropagation();" title="تغيير سريع للحالة">
-            ⚡ الحالة
-          </button>
-          <button class="btn btn-xs btn-whatsapp" onclick="openWhatsappDirect('${safeTargetId}', '${rNum}'); event.stopPropagation();" style="flex:1;" title="محادثة واتساب">
-            ${WA_ICON} واتساب
-          </button>
         </div>
       </div>
     </div>`;
@@ -16750,57 +17525,69 @@ function renderInvoicesPage(main){
       ${(state.invoiceSearchQ || state.invoiceStatusFilter!=='all') ? `<button class="btn btn-ghost btn-sm" id="clearInvFilters">مسح الفلاتر</button>` : ''}
     </div>
 
+    <div id="unifiedSelectionTopSlot"></div>
+
     <div class="card">
       ${list.length===0 ? '<div class="empty">لا توجد فواتير مطابقة للبحث أو الفلتر المختار.</div>' : `
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>رقم الفاتورة</th>
-              <th>التاريخ</th>
+              <th style="width:140px;">رقم الفاتورة</th>
+              <th style="width:105px;">التاريخ</th>
               <th>العميل</th>
-              <th>المرجع</th>
-              <th>الإجمالي</th>
-              <th>المدفوع</th>
-              <th>المتبقي</th>
-              <th>حالة السداد</th>
-              <th>الإجراءات</th>
+              <th style="width:130px;">المرجع</th>
+              <th style="width:105px;text-align:center;">الإجمالي</th>
+              <th style="width:105px;text-align:center;">المدفوع</th>
+              <th style="width:105px;text-align:center;">المتبقي</th>
+              <th style="width:115px;text-align:center;">حالة السداد</th>
             </tr>
           </thead>
           <tbody>
             ${list.slice().reverse().map(inv=>{
               const isPaid = inv.Status === 'مدفوعة بالكامل' || Number(inv.Remaining||0) <= 0;
               const isPartial = inv.Status === 'مدفوعة جزئياً';
+              const isSelected = String(state.selectedInvoiceId) === String(inv.ID);
+              const cPhone = String(inv.CustomerPhone || '').trim();
+              const cleanPhone = cPhone.replace(/\D/g, '');
+              const phoneFormatted = cleanPhone.startsWith('0') ? '2' + cleanPhone : cleanPhone;
+              const waMsg = `مرحبًا ${inv.CustomerName}،\nفاتورة / بيان سعر رقم: ${inv.InvoiceNumber}\nإجمالي المستحق: ${inv.Total} ج.م\nالمدفوع: ${inv.AmountPaid} ج.م\nالمتبقي: ${inv.Remaining} ج.م\nشكرًا لتعاملكم مع ${state.settings.shopName || 'ميكروتك'}.`;
+              const waUrl = cleanPhone ? `https://wa.me/${phoneFormatted}?text=${encodeURIComponent(waMsg)}` : '';
 
               return `
-                <tr>
+                <tr class="${isSelected ? 'selected-row' : ''}" data-inv-id="${inv.ID}" onclick="handleInvoiceRowClick('${inv.ID}', event)" ondblclick="openInvoiceModalDirect('${inv.ID}')" style="cursor:pointer;" title="انقر لتحديد الفاتورة واستخدام الشريط العلوي، أو نقر مزدوج للتعديل">
                   <td>
-                    <span class="mono font-bold" style="color:var(--primary);font-size:13px;">${inv.InvoiceNumber}</span>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      <span class="mono font-bold" style="color:var(--primary);font-size:13px;">${escapeHtml(inv.InvoiceNumber)}</span>
+                      ${isSelected ? '<span class="badge badge-primary selected-badge-indicator" style="font-size:9.5px;padding:1px 5px;">محددة</span>' : ''}
+                    </div>
                   </td>
                   <td style="font-size:11.5px;color:var(--ink-secondary);">
                     ${cleanDate(inv.Date)}
                   </td>
                   <td>
-                    <div style="font-weight:800;font-size:13px;">${inv.CustomerName}</div>
-                    <div class="mono" style="font-size:11px;color:var(--ink-secondary);">${inv.CustomerPhone||'-'}</div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                      <div>
+                        <div style="font-weight:800;font-size:13px;color:var(--ink);">${escapeHtml(inv.CustomerName)}</div>
+                        <div class="mono" style="font-size:11px;color:var(--ink-secondary);">${escapeHtml(inv.CustomerPhone||'-')}</div>
+                      </div>
+                      ${waUrl ? `
+                        <a href="${waUrl}" target="_blank" onclick="event.stopPropagation();" class="btn btn-xs btn-whatsapp" style="padding:2px 7px;border-radius:4px;text-decoration:none;" title="محادثة واتساب مباشرة">
+                          ${WA_ICON}
+                        </a>
+                      ` : ''}
+                    </div>
                   </td>
                   <td>
-                    ${inv.ReferenceType ? `<span class="status-badge st-check" style="font-size:10.5px;">${inv.ReferenceType==='Receipt'?'🛠️ إيصال #':inv.ReferenceType} ${inv.ReferenceID}</span>` : '<span style="color:var(--slate-400);font-size:11px;">مباشر</span>'}
+                    ${inv.ReferenceType ? `<span class="status-badge st-check" style="font-size:10.5px;">${inv.ReferenceType==='Receipt'?'🛠️ إيصال #':inv.ReferenceType} ${escapeHtml(inv.ReferenceID)}</span>` : '<span style="color:var(--slate-400);font-size:11px;">مباشر</span>'}
                   </td>
-                  <td class="mono font-bold" style="font-size:13px;">${Number(inv.Total||0).toLocaleString()} ج.م</td>
-                  <td class="mono font-bold" style="color:var(--green);">${Number(inv.AmountPaid||0).toLocaleString()} ج.م</td>
-                  <td class="mono font-bold" style="color:${Number(inv.Remaining||0)>0?'var(--red)':'var(--ink)'};">${Number(inv.Remaining||0).toLocaleString()} ج.م</td>
-                  <td>
+                  <td class="mono font-bold" style="font-size:13px;text-align:center;">${Number(inv.Total||0).toLocaleString()} ج.م</td>
+                  <td class="mono font-bold" style="color:var(--green);font-size:13px;text-align:center;">${Number(inv.AmountPaid||0).toLocaleString()} ج.م</td>
+                  <td class="mono font-bold" style="color:${Number(inv.Remaining||0)>0?'var(--red)':'var(--ink)'};font-size:13px;text-align:center;">${Number(inv.Remaining||0).toLocaleString()} ج.م</td>
+                  <td style="text-align:center;">
                     <span class="status-badge ${isPaid?'st-done':(isPartial?'st-repair':'st-failed')}">
                       ${isPaid?'✅ مدفوعة':(isPartial?'⚡ جزئي':'⏳ آجل')}
                     </span>
-                  </td>
-                  <td class="row-actions">
-                    <button class="btn btn-xs btn-blue" data-invact="print" data-invid="${inv.ID}" title="طباعة فاتورة ضريبية رسمية">🖨️ فاتورة</button>
-                    <button class="btn btn-xs btn-purple" data-invact="barcode" data-invid="${inv.ID}" title="طباعة ملصقات باركود لأصناف الفاتورة">🏷️ باركود</button>
-                    <button class="btn btn-xs btn-ghost" data-invact="printquote" data-invid="${inv.ID}" title="طباعة بيان سعر وعرض أسعار رسمي">📑 بيان سعر</button>
-                    <button class="btn btn-xs btn-whatsapp" data-invact="wa" data-invid="${inv.ID}" title="إرسال الفاتورة عبر واتساب">${WA_ICON}</button>
-                    <button class="btn btn-xs btn-red" data-invact="del" data-invid="${inv.ID}" title="${state.user.role==='admin'?'حذف الفاتورة':'طلب تصريح حذف من المدير'}">${state.user.role==='admin'?'🗑️':'🔒 طلب حذف'}</button>
                   </td>
                 </tr>
               `;
@@ -16813,57 +17600,20 @@ function renderInvoicesPage(main){
 
   // Filter bindings
   const searchInput = document.getElementById('invSearchInp');
-  searchInput.oninput = (e)=>{ state.invoiceSearchQ = e.target.value; renderInvoicesPage(main); };
+  if(searchInput) searchInput.oninput = (e)=>{ state.invoiceSearchQ = e.target.value; renderInvoicesPage(main); };
   const statusSel = document.getElementById('invStatusFilterSelect');
-  statusSel.onchange = (e)=>{ state.invoiceStatusFilter = e.target.value; renderInvoicesPage(main); };
+  if(statusSel) statusSel.onchange = (e)=>{ state.invoiceStatusFilter = e.target.value; renderInvoicesPage(main); };
   const clearBtn = document.getElementById('clearInvFilters');
   if(clearBtn) clearBtn.onclick = ()=>{ state.invoiceSearchQ = ''; state.invoiceStatusFilter = 'all'; renderInvoicesPage(main); };
 
-  document.getElementById('addNewInvoiceBtn').onclick = ()=>openInvoiceModal();
-  document.getElementById('exportInvoicesExcelBtn').onclick = ()=>exportInvoicesToExcel(list);
+  const addBtn = document.getElementById('addNewInvoiceBtn');
+  if(addBtn) addBtn.onclick = ()=>openInvoiceModal();
+  const expBtn = document.getElementById('exportInvoicesExcelBtn');
+  if(expBtn) expBtn.onclick = ()=>exportInvoicesToExcel(list);
 
-  // Row action bindings
-  main.querySelectorAll('[data-invact]').forEach(btn => {
-    btn.onclick = async ()=>{
-      const inv = state.invoices.find(x=>x.ID===btn.dataset.invid);
-      if(!inv) return;
-      const act = btn.dataset.invact;
-      if(act==='barcode'){
-        openInvoiceBarcodePrintModal('invoice', inv.ID);
-      }
-      if(act==='print'){
-        openInvoicePrint(inv, 'invoice');
-      }
-      if(act==='printquote'){
-        openInvoicePrint(inv, 'quote');
-      }
-      if(act==='edit'){
-        openInvoiceModal(inv);
-      }
-      if(act==='wa'){
-        const phone = (inv.CustomerPhone||'').replace(/\D/g,'');
-        const phoneFormatted = phone.startsWith('0') ? '2'+phone : phone;
-        const msg = `مرحبًا ${inv.CustomerName}،\nفاتورة / بيان سعر رقم: ${inv.InvoiceNumber}\nإجمالي المستحق: ${inv.Total} ج.م\nالمدفوع: ${inv.AmountPaid} ج.م\nالمتبقي: ${inv.Remaining} ج.م\nشكرًا لتعاملكم مع ${state.settings.shopName || 'ميكروتك'}.`;
-        window.open(`https://wa.me/${phoneFormatted}?text=${encodeURIComponent(msg)}`, '_blank');
-      }
-      if(act==='del'){
-        requestAdminAuthorization({
-          action: 'حذف فاتورة',
-          entityType: 'فاتورة رسمية',
-          entityId: inv.ID,
-          entityTitle: `رقم ${inv.InvoiceNumber} (${inv.CustomerName})`,
-          onApproved: async ()=>{
-            try{
-              await deleteInvoiceRemote(inv.ID);
-              state.invoices = (state.invoices||[]).filter(x => x.ID !== inv.ID);
-              showToast('تم حذف الفاتورة بنجاح', 'success');
-              renderInvoicesPage(main);
-            }catch(e){ showToast('تعذر الحذف: '+e.message, 'error'); }
-          }
-        });
-      }
-    };
-  });
+  if(typeof window.renderUnifiedSelectionBar === 'function'){
+    window.renderUnifiedSelectionBar();
+  }
 }
 
 function renderInvoicesSectionApp(app){
@@ -18687,19 +19437,20 @@ function renderQuotationsList(main){
       </div>
     </div>
 
+    <div id="unifiedSelectionTopSlot"></div>
+
     <!-- Quotations Table -->
     ${filtered.length === 0 ? '<div class="card empty" style="padding:30px;text-align:center;">لا توجد عروض أسعار مطابقة لمعايير البحث.</div>' : `
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th style="text-align:right;">رقم العرض</th>
-              <th style="text-align:right;">التاريخ</th>
+              <th style="text-align:right;width:120px;">رقم العرض</th>
+              <th style="text-align:right;width:105px;">التاريخ</th>
               <th style="text-align:right;">العميل / الشركة</th>
-              <th style="text-align:right;min-width:200px;">ملخص البنود والأعمال</th>
-              <th style="text-align:right;">الماليات والتحصيل</th>
-              <th style="text-align:center;">الحالة</th>
-              <th style="text-align:center;min-width:280px;">الإجراءات والطباعة</th>
+              <th style="text-align:right;min-width:220px;">ملخص البنود والأعمال</th>
+              <th style="text-align:right;width:170px;">الماليات والتحصيل</th>
+              <th style="text-align:center;width:150px;">الحالة</th>
             </tr>
           </thead>
           <tbody>
@@ -18708,16 +19459,26 @@ function renderQuotationsList(main){
               const paid = Number(q.PaidAmount||0);
               const total = Number(q.Total||0);
               const rem = Math.max(0, total - paid);
+              const isSelected = String(state.selectedQuotationId) === String(q.ID);
 
               return `
-                <tr>
-                  <td class="mono font-bold" style="color:var(--primary);cursor:pointer;" onclick="openQuotationDetailModalById('${q.ID}')">
-                    #${qId}
+                <tr class="selectable-row ${isSelected ? 'selected-row' : ''}" data-quo-id="${q.ID}" onclick="handleQuotationRowClick('${q.ID}', event)" ondblclick="openQuotationDetailModalById('${q.ID}')" style="cursor:pointer;">
+                  <td class="mono font-bold" style="color:var(--primary);">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      ${isSelected ? '<span class="badge badge-primary selected-badge-indicator" style="font-size:9.5px;padding:1px 5px;">محدد</span>' : ''}
+                      <span>#${qId}</span>
+                    </div>
                   </td>
                   <td class="mono" style="font-size:11.5px;">${cleanDate(q.Date)}</td>
                   <td>
                     <div style="font-weight:800;color:var(--ink);">${escapeHtml(q.ClientName)}</div>
-                    ${q.ClientPhone ? `<div style="font-size:11px;color:var(--ink-secondary);" class="mono">${escapeHtml(q.ClientPhone)}</div>` : ''}
+                    ${q.ClientPhone ? `
+                      <div style="display:inline-flex;align-items:center;gap:6px;margin-top:2px;">
+                        <span style="font-size:11px;color:var(--ink-secondary);" class="mono">${escapeHtml(q.ClientPhone)}</span>
+                        <a href="https://wa.me/${normalizePhoneForWa(q.ClientPhone)}" target="_blank" class="btn btn-ghost btn-xs" style="padding:1px 5px;color:#22c55e;" title="محادثة واتساب" onclick="event.stopPropagation();">💬</a>
+                        <a href="tel:${escapeHtml(q.ClientPhone)}" class="btn btn-ghost btn-xs" style="padding:1px 5px;" title="اتصال هاتفي" onclick="event.stopPropagation();">📞</a>
+                      </div>
+                    ` : ''}
                   </td>
                   <td style="font-size:11.5px;line-height:1.4;color:var(--ink-secondary);">
                     ${escapeHtml(q.ItemsSummary||'')}
@@ -18730,33 +19491,12 @@ function renderQuotationsList(main){
                     ` : '<div style="font-size:10.5px;color:var(--ink-secondary);">لم يسدد دفعات بعد</div>'}
                   </td>
                   <td style="text-align:center;">
-                    <select class="quo-quick-status-sel" data-quoid="${q.ID}" style="font-size:11px;padding:3px 6px;border-radius:12px;font-weight:800;">
+                    <select class="quo-quick-status-sel" data-quoid="${q.ID}" onclick="event.stopPropagation();" style="font-size:11px;padding:3px 6px;border-radius:12px;font-weight:800;">
                       <option value="معلق" ${(q.Status==='معلق'||!q.Status)?'selected':''}>⏳ معلق</option>
                       <option value="مقبول / جاري التنفيذ" ${(q.Status==='مقبول / جاري التنفيذ'||q.Status==='مقبول')?'selected':''}>🛠️ جاري التنفيذ</option>
                       <option value="تم التنفيذ والتسليم" ${(q.Status==='تم التنفيذ والتسليم'||q.Status==='تم التنفيذ')?'selected':''}>✅ تم التنفيذ</option>
                       <option value="ملغي / مرفوض" ${(q.Status==='ملغي / مرفوض'||q.Status==='ملغي')?'selected':''}>❌ ملغي</option>
                     </select>
-                  </td>
-                  <td style="text-align:center;">
-                    <div style="display:inline-flex;gap:4px;flex-wrap:wrap;justify-content:center;">
-                      <button class="btn btn-ghost btn-xs quo-detail-btn" data-quoid="${q.ID}" style="font-weight:800;color:var(--primary);border-color:var(--primary);" title="عرض التفاصيل وتسجيل دفعات">
-                        👁️ دفعات
-                      </button>
-                      <button class="btn btn-ghost btn-xs quo-print-btn" data-quoid="${q.ID}" title="طباعة عرض السعر الرسمي">
-                        📑 العرض
-                      </button>
-                      <button class="btn btn-ghost btn-xs quo-contract-btn" data-quoid="${q.ID}" style="color:var(--green-text);border-color:var(--green);" title="طباعة عقد واتفاق الشروط">
-                        📜 العقد
-                      </button>
-                      <button class="btn btn-ghost btn-xs quo-invoice-btn" data-quoid="${q.ID}" style="color:var(--purple);border-color:var(--purple);" title="تحويل وإصدار فاتورة ضريبية">
-                        🧾 فاتورة
-                      </button>
-                      ${q.ClientPhone ? `
-                        <button class="btn btn-ghost btn-xs quo-wa-btn" data-quoid="${q.ID}" style="color:#22c55e;" title="مشاركة عبر واتساب">
-                          💬
-                        </button>
-                      ` : ''}
-                    </div>
                   </td>
                 </tr>
               `;
@@ -18811,34 +19551,9 @@ function renderQuotationsList(main){
     };
   });
 
-  // Action button clicks
-  main.querySelectorAll('.quo-detail-btn').forEach(btn => {
-    btn.onclick = ()=>openQuotationDetailModalById(btn.dataset.quoid);
-  });
-  main.querySelectorAll('.quo-print-btn').forEach(btn => {
-    btn.onclick = ()=>{
-      const q = state.quotations.find(x => String(x.ID) === String(btn.dataset.quoid));
-      if(q) openQuotationPrint(q, getQuotationItems(q));
-    };
-  });
-  main.querySelectorAll('.quo-contract-btn').forEach(btn => {
-    btn.onclick = ()=>{
-      const q = state.quotations.find(x => String(x.ID) === String(btn.dataset.quoid));
-      if(q) openQuotationAgreementPrint(q, getQuotationItems(q));
-    };
-  });
-  main.querySelectorAll('.quo-invoice-btn').forEach(btn => {
-    btn.onclick = ()=>{
-      const q = state.quotations.find(x => String(x.ID) === String(btn.dataset.quoid));
-      if(q) convertQuotationToInvoice(q);
-    };
-  });
-  main.querySelectorAll('.quo-wa-btn').forEach(btn => {
-    btn.onclick = ()=>{
-      const q = state.quotations.find(x => String(x.ID) === String(btn.dataset.quoid));
-      if(q) shareQuotationWhatsapp(q);
-    };
-  });
+  if(typeof window.renderUnifiedSelectionBar === 'function'){
+    window.renderUnifiedSelectionBar();
+  }
 }
 
 function openQuotationDetailModalById(qId){
@@ -19041,8 +19756,8 @@ function openQuotationDetailModal(q){
     }
   }
 
-  renderModalContent();
   document.body.appendChild(overlay);
+  renderModalContent();
 }
 
 function shareQuotationWhatsapp(q){
@@ -19665,17 +20380,16 @@ function renderInventory(main, categoryFilter, titleOverride){
         <table>
           <thead>
             <tr>
-              <th>الصنف والموديل</th>
-              <th>المخزن / الفرع</th>
-              ${categoryFilter==='all'?'<th>القسم</th>':''}
-              <th>مكان الرف</th>
-              <th>الباركود</th>
-              <th>الكمية المتاحة</th>
-              <th>سعر الشراء</th>
-              <th>سعر البيع (قطاعي)</th>
-              <th>سعر الجملة</th>
-              <th>هامش الربح</th>
-              <th style="min-width:170px;">الإجراءات</th>
+              <th style="min-width:200px;">الصنف والموديل</th>
+              <th style="width:130px;">المخزن / الفرع</th>
+              ${categoryFilter==='all'?'<th style="width:90px;text-align:center;">القسم</th>':''}
+              <th style="width:100px;">مكان الرف</th>
+              <th style="width:125px;">الباركود</th>
+              <th style="width:95px;text-align:center;">الكمية المتاحة</th>
+              <th style="width:105px;text-align:center;">سعر الشراء</th>
+              <th style="width:110px;text-align:center;">سعر البيع (قطاعي)</th>
+              <th style="width:105px;text-align:center;">سعر الجملة</th>
+              <th style="width:115px;text-align:center;">هامش الربح</th>
             </tr>
           </thead>
           <tbody>
@@ -19692,11 +20406,11 @@ function renderInventory(main, categoryFilter, titleOverride){
               const isSelected = String(it.ID) === String(state.selectedInventoryItemId);
 
               return `
-                <tr class="selectable-row ${isSelected ? 'selected-row' : ''}" data-inv-id="${it.ID}" onclick="handleInventoryRowClick('${it.ID}', event)" style="${isLowStock ? 'background:rgba(239,68,68,0.05);' : ''}">
+                <tr class="selectable-row ${isSelected ? 'selected-row' : ''}" data-inv-id="${it.ID}" onclick="handleInventoryRowClick('${it.ID}', event)" ondblclick="openInventoryItemModalDirect('${it.ID}', false)" style="cursor:pointer;${isLowStock ? 'background:rgba(239,68,68,0.05);' : ''}" title="انقر لتحديد الصنف واستخدام الشريط العلوي، أو نقر مزدوج للتعديل">
                   <td>
                     <div style="display:flex;align-items:center;gap:6px;">
-                      ${isSelected ? '<span class="selected-badge-indicator" title="صنف محدد">✓</span>' : ''}
-                      <div style="font-weight:800;font-size:13px;color:var(--ink);cursor:pointer;">${escapeHtml(it.Name)}</div>
+                      <div style="font-weight:800;font-size:13px;color:var(--ink);">${escapeHtml(it.Name)}</div>
+                      ${isSelected ? '<span class="badge badge-primary selected-badge-indicator" style="font-size:9.5px;padding:1px 5px;">محدد</span>' : ''}
                     </div>
                     <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:var(--ink-secondary);margin-top:2px;">
                       ${it.SKU ? `<span class="mono" style="color:var(--primary);font-weight:700;">#${escapeHtml(it.SKU)}</span>` : ''}
@@ -19710,7 +20424,7 @@ function renderInventory(main, categoryFilter, titleOverride){
                       🏢 ${escapeHtml(whName)}
                     </span>
                   </td>
-                  ${categoryFilter==='all'?`<td><span class="status-badge st-check">${escapeHtml(it.Category||'صيانة')}</span></td>`:''}
+                  ${categoryFilter==='all'?`<td style="text-align:center;"><span class="status-badge st-check" style="font-size:10px;">${escapeHtml(it.Category||'صيانة')}</span></td>`:''}
                   <td>
                     ${it.ShelfLocation ? `<span style="background:var(--paper3);border:1px solid var(--line-strong);padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700;color:var(--ink);">📍 ${escapeHtml(it.ShelfLocation)}</span>` : '<span style="color:var(--slate-400);font-size:11px;">-</span>'}
                   </td>
@@ -19718,31 +20432,24 @@ function renderInventory(main, categoryFilter, titleOverride){
                     ${it.Barcode ? `
                       <div style="display:flex;align-items:center;gap:4px;">
                         <span class="mono" style="font-size:11px;font-weight:700;color:var(--ink-secondary);">${escapeHtml(it.Barcode)}</span>
-                        <button class="btn btn-xs btn-ghost" onclick="printInventoryStickerDirect('${it.ID}'); event.stopPropagation();" title="طباعة ملصق الباركود الحراري" style="padding:2px 5px;">🏷️</button>
+                        <button class="btn btn-xs btn-amber" onclick="printInventoryStickerDirect('${it.ID}'); event.stopPropagation();" title="طباعة ملصق الباركود الحراري" style="padding:2px 5px;line-height:1;">🏷️</button>
                       </div>
                     ` : '<span style="color:var(--slate-400);font-size:11px;">بدون</span>'}
                   </td>
-                  <td>
-                    <div style="display:flex;align-items:center;gap:4px;">
+                  <td style="text-align:center;">
+                    <div style="display:flex;align-items:center;justify-content:center;gap:4px;">
                       <span class="mono" style="font-weight:900;font-size:13.5px;color:${isLowStock?'var(--red)':'var(--ink)'};">${qty}</span>
                       <span style="font-size:11px;color:var(--ink-secondary);">${escapeHtml(it.Unit||'قطعة')}</span>
                       ${isLowStock ? '<span title="الكمية وصلت لحد الأمان أو نفدت" style="font-size:11px;">⚠️</span>' : ''}
                     </div>
                   </td>
-                  <td class="mono font-bold">${buy.toLocaleString()} ج.م</td>
-                  <td class="mono font-bold" style="color:var(--green);">${sell.toLocaleString()} ج.م</td>
-                  <td class="mono">${wholesale ? wholesale.toLocaleString() + ' ج.م' : '<span style="color:var(--slate-400);">-</span>'}</td>
-                  <td>
+                  <td class="mono font-bold" style="text-align:center;">${buy.toLocaleString()} ج.م</td>
+                  <td class="mono font-bold" style="color:var(--green);text-align:center;">${sell.toLocaleString()} ج.م</td>
+                  <td class="mono" style="text-align:center;">${wholesale ? wholesale.toLocaleString() + ' ج.م' : '<span style="color:var(--slate-400);">-</span>'}</td>
+                  <td style="text-align:center;">
                     <span class="mono font-bold" style="color:${profitAmt>=0?'var(--green-text)':'var(--red)'};font-size:11.5px;">
                       ${profitAmt >= 0 ? '+' : ''}${profitAmt.toLocaleString()} ج.م (${profitMarginPct}%)
                     </span>
-                  </td>
-                  <td class="row-actions" onclick="event.stopPropagation()">
-                    <button class="btn btn-xs btn-primary font-bold" onclick="selectInventoryItem('${it.ID}'); event.stopPropagation();" title="تحديد الصنف وتفعيل الإجراءات الموحدة بالأعلى">
-                      ⚡ خيارات الصنف
-                    </button>
-                    <button class="btn btn-xs btn-ghost" onclick="openInventoryItemModalDirect('${it.ID}', false); event.stopPropagation();" title="تعديل سريع">✏️</button>
-                    <button class="btn btn-xs btn-amber" onclick="printInventoryStickerDirect('${it.ID}'); event.stopPropagation();" title="طباعة ملصق">🏷️</button>
                   </td>
                 </tr>
               `;
@@ -21776,61 +22483,71 @@ function renderPosSalesLog(main){
       ${state.posSalesSearchQ ? `<button class="btn btn-ghost btn-sm" id="clearPosSalesSearch">مسح البحث</button>` : ''}
     </div>
 
+    <div id="unifiedSelectionTopSlot"></div>
+
     <div class="card">
       ${list.length===0 ? '<div class="empty">لا توجد مبيعات مطابقة للبحث.</div>' : `
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>رقم العملية</th>
-              <th>التاريخ</th>
+              <th style="width:110px;">رقم العملية</th>
+              <th style="width:105px;">التاريخ</th>
               <th>العميل</th>
               <th>الأصناف المباعة</th>
-              <th>الإجمالي</th>
-              <th>طريقة الدفع</th>
-              <th>الحالة</th>
-              <th>الإجراءات والطباعة</th>
+              <th style="width:115px;text-align:center;">الإجمالي</th>
+              <th style="width:100px;text-align:center;">طريقة الدفع</th>
+              <th style="width:100px;text-align:center;">الحالة</th>
             </tr>
           </thead>
           <tbody>
             ${list.slice().reverse().map(s=>{
+              const isSelected = String(state.selectedSaleId) === String(s.ID);
+              const cPhone = String(s.CustomerPhone || '').trim();
+              const cleanPhone = cPhone.replace(/\D/g, '');
+              const phoneFormatted = cleanPhone.startsWith('0') ? '2' + cleanPhone : cleanPhone;
+              const waMsg = `مرحبًا ${s.CustomerName || 'عميلنا العزيز'}،\nإيصال مبيعات رقم: #${s.ID.slice(-8)}\nالأصناف: ${s.ItemsSummary}\nالإجمالي: ${s.Total} ج.م\nشكرًا لتعاملكم مع ${state.settings.shopName || 'ميكروتك'}.`;
+              const waUrl = cleanPhone ? `https://wa.me/${phoneFormatted}?text=${encodeURIComponent(waMsg)}` : '';
+
               return `
-                <tr>
+                <tr class="${isSelected ? 'selected-row' : ''}" data-sale-id="${s.ID}" onclick="handleSaleRowClick('${s.ID}', event)" ondblclick="openPosReceiptDirect('${s.ID}')" style="cursor:pointer;" title="انقر لتحديد عملية البيع واستخدام الشريط العلوي، أو نقر مزدوج للطباعة">
                   <td>
-                    <span class="mono font-bold" style="color:var(--primary);font-size:13px;">#${s.ID.slice(-8)}</span>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      <span class="mono font-bold" style="color:var(--primary);font-size:13px;">#${escapeHtml(s.ID.slice(-8))}</span>
+                      ${isSelected ? '<span class="badge badge-green selected-badge-indicator" style="font-size:9.5px;padding:1px 5px;">محددة</span>' : ''}
+                    </div>
                   </td>
                   <td style="font-size:11.5px;color:var(--ink-secondary);">
                     ${cleanDate(s.Date)}
                   </td>
                   <td>
-                    <div style="font-weight:800;font-size:13px;">${s.CustomerName||'عميل زائر'}</div>
-                    <div class="mono" style="font-size:11px;color:var(--ink-secondary);">${s.CustomerPhone||'-'}</div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                      <div>
+                        <div style="font-weight:800;font-size:13px;">${escapeHtml(s.CustomerName||'عميل زائر')}</div>
+                        <div class="mono" style="font-size:11px;color:var(--ink-secondary);">${escapeHtml(s.CustomerPhone||'-')}</div>
+                      </div>
+                      ${waUrl ? `
+                        <a href="${waUrl}" target="_blank" onclick="event.stopPropagation();" class="btn btn-xs btn-whatsapp" style="padding:2px 7px;border-radius:4px;text-decoration:none;" title="محادثة واتساب مباشرة">
+                          ${WA_ICON}
+                        </a>
+                      ` : ''}
+                    </div>
                   </td>
                   <td style="font-size:12px;max-width:280px;line-height:1.4;">
-                    ${s.ItemsSummary}
+                    ${escapeHtml(s.ItemsSummary || '-')}
                   </td>
-                  <td class="mono font-bold" style="color:var(--green);font-size:13.5px;">
+                  <td class="mono font-bold" style="color:var(--green);font-size:13.5px;text-align:center;">
                     ${Number(s.Total||0).toLocaleString()} ج.م
                   </td>
-                  <td>
-                    <span class="status-badge st-check" style="font-size:10.5px;">${s.PaymentMethod||'نقدي'}</span>
+                  <td style="text-align:center;">
+                    <span class="status-badge st-check" style="font-size:10.5px;">${escapeHtml(s.PaymentMethod||'نقدي')}</span>
                   </td>
-                  <td>
+                  <td style="text-align:center;">
                     ${s.IsReturned ? `
                       <span class="badge" style="background:#fee2e2;color:#b91c1c;font-weight:800;border:1px solid #fca5a5;padding:2px 6px;border-radius:4px;font-size:10.5px;white-space:nowrap;">↩️ مرتجع</span>
                     ` : `
                       <span class="badge" style="background:#dcfce7;color:#15803d;font-weight:700;border:1px solid #bbf7d0;padding:2px 6px;border-radius:4px;font-size:10.5px;white-space:nowrap;">✓ مباع</span>
                     `}
-                  </td>
-                  <td class="row-actions">
-                    ${!s.IsReturned ? `
-                      <button class="btn btn-xs btn-amber" data-posact="return" data-saleid="${s.ID}" title="استرجاع الفاتورة (خلال 14 يوم)">↩️ إرجاع</button>
-                    ` : `
-                      <button class="btn btn-xs btn-purple" data-posact="returnvoucher" data-saleid="${s.ID}" title="طباعة إشعار وسند الارتجاع">🧾 إذن ارتجاع</button>
-                    `}
-                    <button class="btn btn-xs btn-blue" data-posact="taxinvoice" data-saleid="${s.ID}" title="إصدار وتحويل لفاتورة ضريبية رسمية مع باركود QR">📄 فاتورة ضريبية</button>
-                    <button class="btn btn-xs btn-green" data-posact="receipt" data-saleid="${s.ID}" title="طباعة إيصال بيع سريع">🖨️ إيصال</button>
-                    ${s.CustomerPhone ? `<button class="btn btn-xs btn-whatsapp" data-posact="wa" data-saleid="${s.ID}" title="مشاركة الفاتورة عبر واتساب">${WA_ICON}</button>` : ''}
                   </td>
                 </tr>
               `;
@@ -21847,44 +22564,14 @@ function renderPosSalesLog(main){
   const clearBtn = document.getElementById('clearPosSalesSearch');
   if(clearBtn) clearBtn.onclick = ()=>{ state.posSalesSearchQ = ''; renderPosSalesLog(main); };
 
-  document.getElementById('goToNewSaleBtn').onclick = ()=>{ state.posTab='sell'; renderPosApp(document.getElementById('app')); };
-  document.getElementById('exportSalesExcelBtn').onclick = ()=>exportSalesToExcel(list);
+  const newSaleBtn = document.getElementById('goToNewSaleBtn');
+  if(newSaleBtn) newSaleBtn.onclick = ()=>{ state.posTab='sell'; renderPosApp(document.getElementById('app')); };
+  const expBtn = document.getElementById('exportSalesExcelBtn');
+  if(expBtn) expBtn.onclick = ()=>exportSalesToExcel(list);
 
-  main.querySelectorAll('[data-posact]').forEach(btn => {
-    btn.onclick = ()=>{
-      const s = state.sales.find(x => x.ID === btn.dataset.saleid);
-      if(!s) return;
-      const act = btn.dataset.posact;
-      if(act === 'return'){
-        openPosReturnModal(s);
-      }
-      if(act === 'returnvoucher'){
-        openPosReturnVoucherPrint(s, s.ReturnDetails || {});
-      }
-      if(act === 'taxinvoice'){
-        convertSaleToInvoice(s.ID);
-      }
-      if(act === 'receipt'){
-        let cartItems = [];
-        if(s.ItemsJSON){
-          try {
-            const parsed = typeof s.ItemsJSON==='string' ? JSON.parse(s.ItemsJSON) : s.ItemsJSON;
-            if(Array.isArray(parsed)) cartItems = parsed;
-          }catch(e){}
-        }
-        if(!cartItems.length){
-          cartItems = [{ name: s.ItemsSummary, qty: 1, price: s.Total }];
-        }
-        openSalePrint(s, cartItems);
-      }
-      if(act === 'wa'){
-        const phone = (s.CustomerPhone||'').replace(/\D/g,'');
-        const phoneFormatted = phone.startsWith('0') ? '2'+phone : phone;
-        const msg = `مرحبًا ${s.CustomerName||'عميلنا العزيز'}،\nإيصال مبيعات رقم: #${s.ID.slice(-8)}\nالأصناف: ${s.ItemsSummary}\nالإجمالي: ${s.Total} ج.م\nشكرًا لتعاملكم مع ${state.settings.shopName || 'ميكروتك'}.`;
-        window.open(`https://wa.me/${phoneFormatted}?text=${encodeURIComponent(msg)}`, '_blank');
-      }
-    };
-  });
+  if(typeof window.renderUnifiedSelectionBar === 'function'){
+    window.renderUnifiedSelectionBar();
+  }
 }
 
 /* ---------------- POS Sales Returns & Refunds Engine (آلية الإرجاع والاسترداد الدقيقة) ---------------- */
@@ -22573,33 +23260,41 @@ function renderSuppliers(main){
       </div>
       <button class="btn btn-primary btn-sm" id="addSupBtn" style="margin-top:8px;">➕ إضافة مورد</button>
     </div>
+    <div id="unifiedSelectionTopSlot"></div>
+
     <div class="card">
       <h3>قائمة الموردين</h3>
       ${state.suppliers.length===0 ? '<div class="empty">لا يوجد موردون بعد.</div>' : `
-      <div class="table-wrap"><table><thead><tr><th>اللقب والاسم</th><th>الهاتف</th><th>ملاحظات</th><th style="width:130px;text-align:center;">الإجراءات</th></tr></thead><tbody>
+      <div class="table-wrap"><table><thead><tr><th style="width:30%;">اللقب والاسم</th><th style="width:25%;">الهاتف والاتصال</th><th>ملاحظات ومجال التوريد</th><th style="width:18%;text-align:center;">سجل الحركات</th></tr></thead><tbody>
         ${state.suppliers.map(s=>{
           const sTitle = s.Title || s.title || '';
           const sName = s.Name || s.name || '';
-          return `<tr>
-            <td>
-              <div style="display:flex;align-items:center;gap:6px;">
-                ${sTitle ? `<span class="badge" style="background:var(--paper2);color:var(--primary);font-size:11px;font-weight:700;border:1px solid var(--line);">${escapeHtml(sTitle)}</span>` : ''}
-                <b>${escapeHtml(sName)}</b>
-              </div>
-            </td>
-            <td class="mono">${escapeHtml(s.Phone||s.phone||'-')}</td>
-            <td>${escapeHtml(s.Notes||s.notes||'-')}</td>
-            <td style="text-align:center;">
-              <div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;">
-                <button class="btn btn-xs btn-green" data-suppaybtn="${escapeHtml(sName)}" title="تسجيل سند صرف وسداد دفعة لهذا المورد">💵 سداد دفعة</button>
-                <button class="btn btn-xs" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-weight:700;" data-supstatementbtn="${escapeHtml(sName)}" title="كشف حساب تفصيلي للمورد">📊 كشف حساب</button>
-                ${(() => {
-                  const pCount = (state.expenses || []).filter(ex => (ex.Category === 'سداد موردين ومشتريات' || ex.Supplier) && ex.Supplier === sName).length;
-                  return pCount ? `<button class="btn btn-xs btn-ghost" data-suphistbtn="${escapeHtml(sName)}" title="عرض سجل سندات الصرف">📋 السجل (${pCount})</button>` : '';
-                })()}
-              </div>
-            </td>
-          </tr>`;
+          const isSelected = String(state.selectedSupplierName) === String(sName);
+          const pCount = (state.expenses || []).filter(ex => (ex.Category === 'سداد موردين ومشتريات' || ex.Supplier) && ex.Supplier === sName).length;
+          return `
+            <tr class="selectable-row ${isSelected ? 'selected-row' : ''}" data-sup-name="${escapeHtml(sName)}" onclick="handleSupplierRowClick('${escapeHtml(sName)}', event)" ondblclick="openSupplierStatementModal('${escapeHtml(sName)}')" style="cursor:pointer;">
+              <td>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  ${isSelected ? '<span class="badge badge-primary selected-badge-indicator" style="font-size:9.5px;padding:1px 5px;">محدد</span>' : ''}
+                  ${sTitle ? `<span class="badge" style="background:var(--paper2);color:var(--primary);font-size:11px;font-weight:700;border:1px solid var(--line);">${escapeHtml(sTitle)}</span>` : ''}
+                  <b style="font-size:13.5px;">${escapeHtml(sName)}</b>
+                </div>
+              </td>
+              <td>
+                ${(s.Phone||s.phone) ? `
+                  <div style="display:inline-flex;align-items:center;gap:6px;">
+                    <span class="mono font-bold" style="font-size:12.5px;">${escapeHtml(s.Phone||s.phone)}</span>
+                    <a href="tel:${escapeHtml(s.Phone||s.phone)}" class="btn btn-ghost btn-xs" style="padding:2px 6px;" title="اتصال هاتفي" onclick="event.stopPropagation();">📞</a>
+                    <a href="https://wa.me/${normalizePhoneForWa(s.Phone||s.phone)}" target="_blank" class="btn btn-ghost btn-xs" style="padding:2px 6px;color:#22c55e;" title="محادثة واتساب" onclick="event.stopPropagation();">💬</a>
+                  </div>
+                ` : '<span style="color:var(--ink-secondary);font-size:11px;">-</span>'}
+              </td>
+              <td style="font-size:12px;color:var(--ink-secondary);">${escapeHtml(s.Notes||s.notes||'-')}</td>
+              <td style="text-align:center;">
+                ${pCount ? `<span class="badge" style="background:var(--paper2);color:var(--ink);font-weight:700;border:1px solid var(--line);font-size:11px;">📋 ${pCount} سند صرف</span>` : `<span style="color:var(--ink-secondary);font-size:11px;">-</span>`}
+              </td>
+            </tr>
+          `;
         }).join('')}
       </tbody></table></div>`}
     </div>
@@ -22621,17 +23316,9 @@ function renderSuppliers(main){
   const openPaySupBtn = document.getElementById('openPaySupBtn');
   if(openPaySupBtn) openPaySupBtn.onclick = () => openPaySupplierModal();
 
-  main.querySelectorAll('[data-suppaybtn]').forEach(btn => {
-    btn.onclick = () => openPaySupplierModal(btn.dataset.suppaybtn);
-  });
-
-  main.querySelectorAll('[data-suphistbtn]').forEach(btn => {
-    btn.onclick = () => openSupplierPaymentsHistoryModal(btn.dataset.suphistbtn);
-  });
-
-  main.querySelectorAll('[data-supstatementbtn]').forEach(btn => {
-    btn.onclick = () => openSupplierStatementModal(btn.dataset.supstatementbtn);
-  });
+  if(typeof window.renderUnifiedSelectionBar === 'function'){
+    window.renderUnifiedSelectionBar();
+  }
 }
 
 function openPaySupplierModal(preselectedName){
@@ -23012,6 +23699,8 @@ function renderPurchases(main){
         <button class="btn btn-primary btn-sm" id="btnNewPurchaseInvoice">➕ فاتورة شراء وتوريد جديدة</button>
       </div>
     </div>
+    <div id="unifiedSelectionTopSlot"></div>
+
     <div class="card">
       <h3>آخر فواتير الشراء</h3>
       ${state.purchases.length===0 ? '<div class="empty">لا توجد فواتير شراء بعد. اضغط على "➕ فاتورة شراء وتوريد جديدة" لتسجيل بضاعة جديدة وتوريد المخزن.</div>' : `
@@ -23019,13 +23708,12 @@ function renderPurchases(main){
         <table>
           <thead>
             <tr>
-              <th>التاريخ</th>
-              <th>المورد</th>
-              <th>الأصناف</th>
-              <th>الإجمالي</th>
-              <th>المدفوع</th>
-              <th>المتبقي (آجل)</th>
-              <th>الإجراءات</th>
+              <th style="width:120px;">التاريخ</th>
+              <th style="width:180px;">المورد</th>
+              <th style="min-width:240px;">الأصناف والمحتوى</th>
+              <th style="width:130px;">الإجمالي</th>
+              <th style="width:130px;">المدفوع</th>
+              <th style="width:130px;">المتبقي (آجل)</th>
             </tr>
           </thead>
           <tbody>
@@ -23033,17 +23721,22 @@ function renderPurchases(main){
               const tot = Number(p.Total||0);
               const paid = Number(p.AmountPaid!=null?p.AmountPaid:tot);
               const rem = Math.max(0, tot - paid);
-              return `<tr>
-                <td>${cleanDate(p.Date)}</td>
-                <td><b>${escapeHtml(p.Supplier||'')}</b></td>
-                <td>${escapeHtml(p.ItemsSummary||'')}</td>
-                <td class="mono font-bold">${tot.toLocaleString()} ج.م</td>
-                <td class="mono" style="color:var(--green);">${paid.toLocaleString()} ج.م</td>
-                <td class="mono font-bold" style="color:${rem>0?'var(--red)':'var(--ink-secondary)'};">${rem>0 ? rem.toLocaleString() + ' ج.م' : 'خالص'}</td>
-                <td>
-                  <button class="btn btn-xs btn-purple" onclick="openInvoiceBarcodePrintModal('purchase', '${escapeHtml(String(p.ID||''))}')" title="طباعة ملصقات الباركود لأصناف هذه الفاتورة">🏷️ طباعة الباركود</button>
-                </td>
-              </tr>`;
+              const isSelected = String(state.selectedPurchaseId) === String(p.ID);
+              return `
+                <tr class="selectable-row ${isSelected ? 'selected-row' : ''}" data-purchase-id="${p.ID}" onclick="handlePurchaseRowClick('${p.ID}', event)" ondblclick="openInvoiceBarcodePrintModal('purchase', '${escapeHtml(String(p.ID||''))}')" style="cursor:pointer;">
+                  <td>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      ${isSelected ? '<span class="badge badge-primary selected-badge-indicator" style="font-size:9.5px;padding:1px 5px;">محددة</span>' : ''}
+                      <span>${cleanDate(p.Date)}</span>
+                    </div>
+                  </td>
+                  <td><b>${escapeHtml(p.Supplier||'')}</b></td>
+                  <td style="font-size:12px;color:var(--ink-secondary);">${escapeHtml(p.ItemsSummary||'')}</td>
+                  <td class="mono font-bold">${tot.toLocaleString()} ج.م</td>
+                  <td class="mono" style="color:var(--green);">${paid.toLocaleString()} ج.م</td>
+                  <td class="mono font-bold" style="color:${rem>0?'var(--red)':'var(--ink-secondary)'};">${rem>0 ? rem.toLocaleString() + ' ج.م' : 'خالص'}</td>
+                </tr>
+              `;
             }).join('')}
           </tbody>
         </table>
@@ -23054,6 +23747,10 @@ function renderPurchases(main){
   if(btnBatch) btnBatch.onclick = () => openInvoiceBarcodePrintModal('purchase');
   const btnNewPur = document.getElementById('btnNewPurchaseInvoice');
   if(btnNewPur) btnNewPur.onclick = () => openNewPurchaseModal();
+
+  if(typeof window.renderUnifiedSelectionBar === 'function'){
+    window.renderUnifiedSelectionBar();
+  }
 }
 
 function openNewPurchaseModal(){

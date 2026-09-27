@@ -2490,6 +2490,57 @@ async function openReceiptDetail(rawR){
         </div>
     </div>
 
+    <!-- توثيق صور وفيديوهات حالة الجهاز (الاستلام والتسليم) -->
+    <div class="card" style="background:var(--paper3);padding:12px;border-radius:var(--radius-sm);margin-top:10px;border:1px solid var(--line);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
+        <div>
+          <h4 style="margin:0;font-size:13.5px;display:flex;align-items:center;gap:6px;">
+            <span>📷</span>
+            <span>توثيق صور حالة الجهاز (الاستلام والتسليم)</span>
+            <span class="badge" id="detailPhotosCountBadge" style="background:var(--primary-bg);color:var(--primary);font-size:11px;font-weight:800;">
+              ${(r.photos || []).length} صور
+            </span>
+          </h4>
+          <div style="font-size:11px;color:var(--ink-secondary);margin-top:2px;">
+            صور فحص الجهاز عند الاستلام (شاشة، خدوش، كسور) وصور ما بعد الصيانة عند التسليم
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+          <input type="file" id="detailCameraInput" accept="image/*" capture="environment" style="display:none;">
+          <input type="file" id="detailGalleryInput" accept="image/*" multiple style="display:none;">
+          
+          <select id="detailPhotoStageSelect" style="padding:4px 8px;font-size:11px;font-weight:700;">
+            <option value="intake">عند الاستلام 📥</option>
+            <option value="delivery">عند التسليم بعد الإصلاح ✅</option>
+          </select>
+
+          <select id="detailPhotoAngleSelect" style="padding:4px 8px;font-size:11px;">
+            <option value="📱 الشاشة والواجهة">📱 الشاشة والواجهة</option>
+            <option value="🔄 ظهر وسيريال الجهاز">🔄 ظهر وسيريال الجهاز</option>
+            <option value="⚠️ خدوش وكسور سابقة">⚠️ خدوش وكسور سابقة</option>
+            <option value="🔌 الشاحن والملحقات">🔌 الشاحن والملحقات</option>
+            <option value="✅ تم الإصلاح والشاشة تعمل">✅ تم الإصلاح والشاشة تعمل</option>
+            <option value="📷 عام">📷 عام</option>
+          </select>
+
+          <button type="button" class="btn btn-primary btn-xs" id="detailAddPhotoCameraBtn">📸 تصوير</button>
+          <button type="button" class="btn btn-ghost btn-xs" id="detailAddPhotoGalleryBtn" style="border:1px solid var(--line);background:var(--surface);">📁 رفع صورة</button>
+        </div>
+      </div>
+
+      <!-- Stage Filter Tabs: All / Intake / Delivery -->
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;font-size:11.5px;border-top:1px dashed var(--line);padding-top:8px;">
+        <span style="font-weight:700;color:var(--ink-secondary);">تصفية الصور:</span>
+        <button type="button" class="btn btn-xs btn-blue photo-filter-tab" data-stage="all">الكل</button>
+        <button type="button" class="btn btn-xs btn-ghost photo-filter-tab" data-stage="intake">عند الاستلام (فحص البداية)</button>
+        <button type="button" class="btn btn-xs btn-ghost photo-filter-tab" data-stage="delivery">عند التسليم (بعد الإصلاح)</button>
+      </div>
+
+      <!-- Photo Thumbnails Grid -->
+      <div id="detailPhotosGrid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(110px, 1fr));gap:8px;margin-top:6px;">
+      </div>
+    </div>
+
     <!-- بنود الصيانة المستحقة على الجهاز -->
     <div class="card" style="background:var(--paper3);padding:12px;border-radius:var(--radius-sm);margin-top:10px;border:1px solid var(--line);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -2699,6 +2750,101 @@ async function openReceiptDetail(rawR){
   const eOtherInp = overlay.querySelector('#eOtherAmount');
   if(eOtherInp) eOtherInp.oninput = recalcDetailFinances;
 
+  // Detail Photos (Intake & Delivery) State & Handlers
+  let detailPhotos = Array.isArray(r.photos) && r.photos.length 
+    ? JSON.parse(JSON.stringify(r.photos)) 
+    : (Array.isArray(r.devices) ? r.devices.flatMap(x => x.photos || []) : []);
+  let currentPhotoFilterStage = 'all';
+
+  function renderDetailPhotosGallery(){
+    const grid = overlay.querySelector('#detailPhotosGrid');
+    const badge = overlay.querySelector('#detailPhotosCountBadge');
+    if(badge) badge.innerText = `${detailPhotos.length} صور`;
+    if(!grid) return;
+
+    let filtered = detailPhotos;
+    if(currentPhotoFilterStage === 'intake'){
+      filtered = detailPhotos.filter(p => p.stage !== 'delivery');
+    } else if(currentPhotoFilterStage === 'delivery'){
+      filtered = detailPhotos.filter(p => p.stage === 'delivery');
+    }
+
+    renderDevicePhotosThumbnails(filtered, grid, {
+      canDelete: true,
+      onChanged: () => {
+        const remainingIds = new Set(filtered.map(p => p.id || p.url));
+        detailPhotos = detailPhotos.filter(p => {
+          const inThisStage = (currentPhotoFilterStage === 'all') ||
+            (currentPhotoFilterStage === 'intake' && p.stage !== 'delivery') ||
+            (currentPhotoFilterStage === 'delivery' && p.stage === 'delivery');
+          if(inThisStage){
+            return remainingIds.has(p.id || p.url);
+          }
+          return true;
+        });
+        if(badge) badge.innerText = `${detailPhotos.length} صور`;
+      }
+    });
+  }
+
+  overlay.querySelectorAll('.photo-filter-tab').forEach(tab => {
+    tab.onclick = () => {
+      currentPhotoFilterStage = tab.dataset.stage;
+      overlay.querySelectorAll('.photo-filter-tab').forEach(t => {
+        if(t.dataset.stage === currentPhotoFilterStage){
+          t.className = 'btn btn-xs btn-blue photo-filter-tab';
+        } else {
+          t.className = 'btn btn-xs btn-ghost photo-filter-tab';
+        }
+      });
+      renderDetailPhotosGallery();
+    };
+  });
+
+  const detCamInp = overlay.querySelector('#detailCameraInput');
+  const detGalInp = overlay.querySelector('#detailGalleryInput');
+  const detCamBtn = overlay.querySelector('#detailAddPhotoCameraBtn');
+  const detGalBtn = overlay.querySelector('#detailAddPhotoGalleryBtn');
+
+  async function handleDetailFilesSelected(files){
+    if(!files || !files.length) return;
+    const stage = overlay.querySelector('#detailPhotoStageSelect')?.value || 'intake';
+    const angle = overlay.querySelector('#detailPhotoAngleSelect')?.value || '📷 عام';
+    const badge = overlay.querySelector('#detailPhotosCountBadge');
+    if(badge) badge.innerText = 'جارٍ الضغط...';
+    try {
+      for(let i = 0; i < files.length; i++){
+        const file = files[i];
+        if(!file.type.startsWith('image/')) continue;
+        const compressedUrl = await compressImageFile(file, 900, 900, 0.72);
+        detailPhotos.push({
+          id: 'p_' + Date.now() + '_' + Math.floor(Math.random() * 10000),
+          url: compressedUrl,
+          thumb: compressedUrl,
+          angle: angle,
+          stage: stage,
+          timestamp: new Date().toISOString()
+        });
+      }
+      showToast('تمت إضافة الصور الموثقة للجهاز بنجاح 📷', 'success');
+      renderDetailPhotosGallery();
+    } catch(err){
+      showToast('خطأ أثناء معالجة الصور: ' + err.message, 'error');
+      renderDetailPhotosGallery();
+    }
+  }
+
+  if(detCamBtn && detCamInp){
+    detCamBtn.onclick = () => detCamInp.click();
+    detCamInp.onchange = (e) => handleDetailFilesSelected(e.target.files);
+  }
+  if(detGalBtn && detGalInp){
+    detGalBtn.onclick = () => detGalInp.click();
+    detGalInp.onchange = (e) => handleDetailFilesSelected(e.target.files);
+  }
+
+  renderDetailPhotosGallery();
+
   let currentEditDevIdx = 0;
   const hasMultipleDevices = Array.isArray(r.devices) && r.devices.length > 1;
 
@@ -2818,6 +2964,14 @@ async function openReceiptDetail(rawR){
 
     r.technician = overlay.querySelector('#eTech').value;
     r.status = overlay.querySelector('#eStatus').value.replace(/^[^\s]+\s/, '');
+    r.photos = detailPhotos;
+    if(Array.isArray(r.devices) && r.devices.length > 0){
+      if(r.devices[currentEditDevIdx]){
+        r.devices[currentEditDevIdx].photos = detailPhotos;
+      } else {
+        r.devices[0].photos = detailPhotos;
+      }
+    }
     r.serviceItems = detailServiceItems.filter(it => (it.desc && it.desc.trim()) || Number(it.price) > 0);
     r.otherAccountDesc = (overlay.querySelector('#eOtherDesc')?.value || '').trim();
     r.otherAccountAmount = Number(overlay.querySelector('#eOtherAmount')?.value || 0);
@@ -3300,6 +3454,12 @@ function openReceiptPrint(rawR, kind){
 
       <!-- Bottom Part: Terms & Signatures -->
       <div>
+        ${(Array.isArray(r.photos) && r.photos.length > 0) ? `
+          <div style="font-size:6.5px;color:#0369a1;background:#f0f9ff;border:1px solid #bae6fd;border-radius:2px;padding:1px 3px;margin-bottom:1.5px;display:flex;align-items:center;gap:3px;">
+            <span>📷</span>
+            <span><b>توثيق مصور:</b> تم حفظ (${r.photos.length}) صور لحالة وفحص الجهاز عند الاستلام في النظام.</span>
+          </div>
+        ` : ''}
         <div style="font-size:6px;color:#475569;line-height:1.2;border-top:1px dashed #cbd5e1;padding-top:1px;margin-bottom:1.5px;">
           • المركز غير مسؤول عن الجهاز بعد 30 يوماً من إخطار الجاهزية.<br>
           • هذا الإيصال هو الوثيقة الرسمية والوحيدة المعتمدة لاستلام الجهاز.

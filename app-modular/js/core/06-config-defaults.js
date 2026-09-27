@@ -593,6 +593,216 @@ function cleanTime(val){
   }
 }
 
+/* ---------------- Device Media Photos Engine & Lightbox ---------------- */
+
+/**
+ * Compresses an image file via Canvas down to optimal dimensions and quality.
+ * Reduces 4MB+ camera photos to ~40-70KB crisp JPEGs to preserve localStorage and network speed.
+ */
+function compressImageFile(file, maxWidth = 900, maxHeight = 900, quality = 0.72){
+  return new Promise((resolve, reject) => {
+    if(!file || !file.type.startsWith('image/')){
+      return reject(new Error('الملف المختار ليس صورة صالحة'));
+    }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('تعذر قراءة ملف الصورة'));
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('تعذر معالجة بيانات الصورة'));
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if(width > height){
+          if(width > maxWidth){
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if(height > maxHeight){
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve(dataUrl);
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Interactive Full-Screen Image Lightbox with zoom, rotate, and download
+ */
+function openImageLightbox(photo, allPhotos = [], onDelete = null){
+  if(!photo) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.zIndex = '13000';
+  overlay.style.background = 'rgba(15, 23, 42, 0.92)';
+  overlay.style.backdropFilter = 'blur(6px)';
+
+  let rotation = 0;
+  let zoom = 1;
+  const angleTitle = photo.angle || 'صورة الجهاز';
+  const stageTitle = photo.stage === 'delivery' ? 'عند التسليم' : 'عند الاستلام';
+  const timeStr = photo.timestamp ? cleanDate(photo.timestamp) + ' ' + cleanTime(photo.timestamp) : '';
+
+  overlay.innerHTML = `
+    <div style="position:relative;width:95vw;max-width:850px;height:90vh;max-height:680px;background:#1e293b;border-radius:12px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 25px 50px -12px rgba(0,0,0,0.6);border:1px solid #334155;">
+      
+      <!-- Lightbox Header -->
+      <div style="padding:12px 16px;background:#0f172a;border-bottom:1px solid #334155;display:flex;justify-content:space-between;align-items:center;color:#fff;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:18px;">📷</span>
+          <div>
+            <div style="font-weight:800;font-size:14px;color:#f8fafc;">${escapeHtml(angleTitle)} <span class="badge" style="background:#3b82f6;color:#fff;font-size:10.5px;margin-right:4px;">${stageTitle}</span></div>
+            <div style="font-size:11px;color:#94a3b8;">${timeStr ? '📅 ' + timeStr : ''}</div>
+          </div>
+        </div>
+        
+        <div style="display:flex;gap:6px;align-items:center;">
+          <button type="button" class="btn btn-ghost btn-xs" id="lbRotateBtn" style="color:#cbd5e1;background:#1e293b;" title="تدوير 90 درجة">🔄 تدوير</button>
+          <button type="button" class="btn btn-ghost btn-xs" id="lbZoomInBtn" style="color:#cbd5e1;background:#1e293b;" title="تكبير">🔍 +</button>
+          <button type="button" class="btn btn-ghost btn-xs" id="lbZoomOutBtn" style="color:#cbd5e1;background:#1e293b;" title="تصغير">🔍 -</button>
+          <button type="button" class="btn btn-ghost btn-xs" id="lbDownloadBtn" style="color:#38bdf8;background:#1e293b;" title="تحميل الصورة">📥 تحميل</button>
+          ${onDelete ? `<button type="button" class="btn btn-ghost btn-xs" id="lbDeleteBtn" style="color:#f87171;background:#1e293b;" title="حذف الصورة">🗑️ حذف</button>` : ''}
+          <button type="button" class="btn btn-ghost btn-xs" id="lbCloseBtn" style="color:#fff;background:#334155;font-weight:900;margin-right:6px;">✕</button>
+        </div>
+      </div>
+
+      <!-- Image Canvas Viewport -->
+      <div style="flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:16px;background:#090d16;">
+        <img id="lbMainImage" src="${photo.url || photo.thumb}" alt="Device condition" style="max-width:100%;max-height:100%;object-fit:contain;transition:transform 0.2s ease;border-radius:6px;box-shadow:0 10px 25px rgba(0,0,0,0.5);">
+      </div>
+
+      ${photo.note ? `
+        <div style="padding:8px 14px;background:#0f172a;color:#cbd5e1;font-size:12px;border-top:1px solid #334155;">
+          <b>ملاحظة:</b> ${escapeHtml(photo.note)}
+        </div>
+      ` : ''}
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const imgEl = overlay.querySelector('#lbMainImage');
+  const applyTransform = () => {
+    imgEl.style.transform = `scale(${zoom}) rotate(${rotation}deg)`;
+  };
+
+  overlay.querySelector('#lbRotateBtn').onclick = () => {
+    rotation = (rotation + 90) % 360;
+    applyTransform();
+  };
+  overlay.querySelector('#lbZoomInBtn').onclick = () => {
+    zoom = Math.min(3, zoom + 0.25);
+    applyTransform();
+  };
+  overlay.querySelector('#lbZoomOutBtn').onclick = () => {
+    zoom = Math.max(0.5, zoom - 0.25);
+    applyTransform();
+  };
+  overlay.querySelector('#lbDownloadBtn').onclick = () => {
+    const a = document.createElement('a');
+    a.href = photo.url || photo.thumb;
+    a.download = `MicroTech_Device_${photo.angle || 'photo'}_${Date.now()}.jpg`;
+    a.click();
+  };
+  if(onDelete){
+    const delBtn = overlay.querySelector('#lbDeleteBtn');
+    if(delBtn){
+      delBtn.onclick = () => {
+        if(confirm('هل أنت متأكد من حذف هذه الصورة الموثقة للجهاز؟')){
+          overlay.remove();
+          onDelete(photo);
+        }
+      };
+    }
+  }
+
+  const closeLb = () => overlay.remove();
+  overlay.querySelector('#lbCloseBtn').onclick = closeLb;
+  overlay.onclick = (e) => {
+    if(e.target === overlay) closeLb();
+  };
+}
+
+/**
+ * Renders photos thumbnails gallery into a container element
+ */
+function renderDevicePhotosThumbnails(photos, containerEl, options = {}){
+  if(!containerEl) return;
+  const list = Array.isArray(photos) ? photos : [];
+  if(list.length === 0){
+    containerEl.innerHTML = `
+      <div style="grid-column:1/-1;padding:14px;text-align:center;color:var(--ink-secondary);font-size:11.5px;background:var(--paper);border:1px dashed var(--line);border-radius:6px;">
+        <span style="font-size:18px;display:block;margin-bottom:3px;">📷</span>
+        لم يتم إرفاق صور لهذا الجهاز بعد.<br>
+        <span style="font-size:10.5px;opacity:0.8;">التقط بالكاميرا أو اختر صوراً لتوثيق حالة الشاشة والخدوش والملحقات.</span>
+      </div>
+    `;
+    return;
+  }
+
+  containerEl.innerHTML = list.map((p, idx) => {
+    const angle = p.angle || 'عام';
+    const isDelivery = p.stage === 'delivery';
+    return `
+      <div class="device-photo-card" data-pidx="${idx}" style="position:relative;background:var(--paper);border:1px solid var(--line);border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);display:flex;flex-direction:column;cursor:pointer;">
+        <div style="height:76px;overflow:hidden;background:#000;display:flex;align-items:center;justify-content:center;">
+          <img src="${p.url || p.thumb}" style="width:100%;height:100%;object-fit:cover;" loading="lazy">
+        </div>
+        <div style="padding:4px 6px;font-size:10px;display:flex;justify-content:space-between;align-items:center;background:var(--paper2);">
+          <span style="font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(angle)}">${escapeHtml(angle)}</span>
+          <span class="badge" style="font-size:9px;padding:1px 4px;background:${isDelivery?'rgba(59,130,246,0.15)':'rgba(16,185,129,0.15)'};color:${isDelivery?'var(--primary)':'var(--green)'};">
+            ${isDelivery ? 'تسليم' : 'استلام'}
+          </span>
+        </div>
+        ${options.canDelete !== false ? `
+          <button type="button" class="del-photo-btn" data-delpidx="${idx}" style="position:absolute;top:3px;left:3px;background:rgba(239,68,68,0.85);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:900;display:flex;align-items:center;justify-content:center;cursor:pointer;" title="حذف الصورة">✕</button>
+        ` : ''}
+      </div>
+    `;
+  }).join('');
+
+  // Attach click handlers
+  containerEl.querySelectorAll('.device-photo-card').forEach(card => {
+    card.onclick = (e) => {
+      if(e.target.closest('.del-photo-btn')) return;
+      const idx = Number(card.dataset.pidx);
+      const photo = list[idx];
+      openImageLightbox(photo, list, options.canDelete !== false ? (p) => {
+        list.splice(idx, 1);
+        if(typeof options.onChanged === 'function') options.onChanged(list);
+        renderDevicePhotosThumbnails(list, containerEl, options);
+      } : null);
+    };
+  });
+
+  if(options.canDelete !== false){
+    containerEl.querySelectorAll('.del-photo-btn').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const idx = Number(btn.dataset.delpidx);
+        if(confirm('هل تريد حذف هذه الصورة؟')){
+          list.splice(idx, 1);
+          if(typeof options.onChanged === 'function') options.onChanged(list);
+          renderDevicePhotosThumbnails(list, containerEl, options);
+        }
+      };
+    });
+  }
+}
+
 /**
  * Escapes unsafe HTML characters to prevent XSS vulnerabilities.
  * @param {string|number|null} str - Raw input text.

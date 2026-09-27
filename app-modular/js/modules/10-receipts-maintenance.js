@@ -266,6 +266,48 @@ function stepDevice(body,d){
         <div class="field"><label>الملحقات المستلمة مع هذا الجهاز</label><input id="devAcc" placeholder="شاحن أصلي، كابل باور، حقيبة، ماوس..." value="${escapeHtml(currDev.accessories||'')}"></div>
         <div class="field"><label>كلمة المرور / الباسورد (اختياري)</label><input id="devPassword" type="text" placeholder="باسورد الجهاز أو رمز القفل للفحص إن وجد..." value="${escapeHtml(currDev.password||'')}"></div>
       </div>
+
+      <!-- Device Intake Photos & Visual Condition Inspection -->
+      <div style="margin-top:14px;background:var(--paper2);border:1.5px solid var(--line);border-radius:var(--radius-sm);padding:12px 14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
+          <div>
+            <div style="font-weight:800;font-size:13px;color:var(--ink);display:flex;align-items:center;gap:6px;">
+              <span>📷</span>
+              <span>توثيق صور حالة الجهاز عند الاستلام (Intake Photos)</span>
+              <span class="badge" id="intakePhotosCountBadge" style="background:var(--primary-bg);color:var(--primary);font-size:11px;font-weight:800;">
+                ${(currDev.photos || []).length} صور
+              </span>
+            </div>
+            <div style="font-size:11px;color:var(--ink-secondary);margin-top:2px;">
+              وثق حالة الشاشة، الخدوش السابقة، والكسور لحماية المركز والعميل قبل الفتح والإصلاح.
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+            <input type="file" id="intakeCameraInput" accept="image/*" capture="environment" style="display:none;">
+            <input type="file" id="intakeGalleryInput" accept="image/*" multiple style="display:none;">
+            <button type="button" class="btn btn-primary btn-xs" id="triggerIntakeCameraBtn" style="font-weight:700;">
+              📸 فتح الكاميرا
+            </button>
+            <button type="button" class="btn btn-ghost btn-xs" id="triggerIntakeGalleryBtn" style="border:1px solid var(--line);background:var(--surface);">
+              📁 اختيار من الملفات
+            </button>
+          </div>
+        </div>
+
+        <!-- Angle Tags selector for next upload -->
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+          <span style="font-size:11px;font-weight:700;color:var(--ink-secondary);">زاوية التصوير:</span>
+          ${['📱 الشاشة والواجهة', '🔄 ظهر وسيريال الجهاز', '⚠️ خدوش وكسور سابقة', '🔌 الشاحن والملحقات', '📷 عام'].map((ang, aIdx) => `
+            <button type="button" class="btn btn-xs ${aIdx===0?'btn-blue':'btn-ghost'} photo-angle-preset-btn" data-angle="${ang}" style="font-size:11px;padding:2px 8px;">
+              ${ang}
+            </button>
+          `).join('')}
+        </div>
+
+        <!-- Photos Thumbnails Container -->
+        <div id="devicePhotosThumbnailsGrid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(110px, 1fr));gap:8px;margin-top:6px;">
+        </div>
+      </div>
     </div>
   `;
 
@@ -280,6 +322,76 @@ function stepDevice(body,d){
   document.getElementById('devCat').onchange = fillBrands;
   document.getElementById('devBrand').onchange = ()=>{ document.getElementById('brandOtherWrap').style.display = document.getElementById('devBrand').value==='أخرى'?'':'none'; };
 
+  // Photo Angle Presets & Upload Logic
+  let selectedAngle = '📱 الشاشة والواجهة';
+  body.querySelectorAll('.photo-angle-preset-btn').forEach(btn => {
+    btn.onclick = () => {
+      body.querySelectorAll('.photo-angle-preset-btn').forEach(b => {
+        b.className = 'btn btn-xs btn-ghost photo-angle-preset-btn';
+      });
+      btn.className = 'btn btn-xs btn-blue photo-angle-preset-btn';
+      selectedAngle = btn.dataset.angle;
+    };
+  });
+
+  const photosGrid = document.getElementById('devicePhotosThumbnailsGrid');
+  const updatePhotosGrid = () => {
+    if(!Array.isArray(currDev.photos)) currDev.photos = [];
+    const countBadge = document.getElementById('intakePhotosCountBadge');
+    if(countBadge) countBadge.innerText = `${currDev.photos.length} صور`;
+    renderDevicePhotosThumbnails(currDev.photos, photosGrid, {
+      canDelete: true,
+      onChanged: (updatedList) => {
+        currDev.photos = updatedList;
+        d.photos = (d.devices || []).flatMap(x => x.photos || []);
+        if(countBadge) countBadge.innerText = `${currDev.photos.length} صور`;
+      }
+    });
+  };
+  updatePhotosGrid();
+
+  const handleFilesSelected = async (files) => {
+    if(!files || !files.length) return;
+    const countBadge = document.getElementById('intakePhotosCountBadge');
+    if(countBadge) countBadge.innerText = 'جارٍ معالجة وضغط الصور...';
+    try {
+      for(let i=0; i<files.length; i++){
+        const file = files[i];
+        if(!file.type.startsWith('image/')) continue;
+        const compressedUrl = await compressImageFile(file, 900, 900, 0.72);
+        if(!Array.isArray(currDev.photos)) currDev.photos = [];
+        currDev.photos.push({
+          id: 'p_' + Date.now() + '_' + Math.floor(Math.random()*1000),
+          url: compressedUrl,
+          thumb: compressedUrl,
+          angle: selectedAngle,
+          stage: 'intake',
+          timestamp: new Date().toISOString()
+        });
+      }
+      d.photos = (d.devices || []).flatMap(x => x.photos || []);
+      showToast('تمت إضافة الصور الموثقة للجهاز بنجاح 📷', 'success');
+      updatePhotosGrid();
+    } catch(err){
+      showToast('خطأ أثناء معالجة الصور: ' + err.message, 'error');
+      updatePhotosGrid();
+    }
+  };
+
+  const camInp = document.getElementById('intakeCameraInput');
+  const galInp = document.getElementById('intakeGalleryInput');
+  const camBtn = document.getElementById('triggerIntakeCameraBtn');
+  const galBtn = document.getElementById('triggerIntakeGalleryBtn');
+
+  if(camBtn && camInp){
+    camBtn.onclick = () => camInp.click();
+    camInp.onchange = (e) => handleFilesSelected(e.target.files);
+  }
+  if(galBtn && galInp){
+    galBtn.onclick = () => galInp.click();
+    galInp.onchange = (e) => handleFilesSelected(e.target.files);
+  }
+
   function collectActiveDeviceFromDom(){
     currDev.category = document.getElementById('devCat').value;
     currDev.brand = document.getElementById('devBrand').value;
@@ -287,6 +399,7 @@ function stepDevice(body,d){
     currDev.model = document.getElementById('devModel').value.trim();
     currDev.accessories = document.getElementById('devAcc').value.trim();
     currDev.password = document.getElementById('devPassword') ? document.getElementById('devPassword').value.trim() : '';
+    currDev.photos = currDev.photos || [];
 
     // Keep top-level d.device in sync with d.devices[0] for full backward compatibility
     d.device = {
@@ -298,6 +411,7 @@ function stepDevice(body,d){
       password: d.devices[0].password
     };
     d.password = d.device.password;
+    d.photos = (d.devices || []).flatMap(x => x.photos || []);
   }
 
   // Device tabs navigation
@@ -890,6 +1004,19 @@ function stepReview(body,d){
           <div><b>🎒 الملحقات:</b> ${(d.device && d.device.accessories) || 'بدون'}</div>
         </div>
       `}
+
+      <!-- Attached Intake Photos Review -->
+      ${(d.photos && d.photos.length > 0) ? `
+        <div style="margin-top:12px;background:var(--paper2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px 12px;">
+          <div style="font-weight:800;font-size:13px;color:var(--ink);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+            <span>📷</span>
+            <span>الصور الموثقة لحالة الجهاز عند الاستلام:</span>
+            <span class="badge badge-green" style="font-size:11px;">${d.photos.length} صور</span>
+          </div>
+          <div id="reviewPhotosGrid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(90px, 1fr));gap:6px;">
+          </div>
+        </div>
+      ` : ''}
     </div>
     <div class="actions-row" style="flex-wrap:wrap;">
       <button class="btn btn-ghost" id="backBtn">السابق</button>
@@ -901,6 +1028,12 @@ function stepReview(body,d){
       </div>
     </div>
   `;
+
+  const revPhotosGrid = document.getElementById('reviewPhotosGrid');
+  if(revPhotosGrid && d.photos && d.photos.length > 0){
+    renderDevicePhotosThumbnails(d.photos, revPhotosGrid, { canDelete: false });
+  }
+
   document.getElementById('backBtn').onclick = ()=>{ state.formStep=3; renderMain(); };
   document.getElementById('saveOnlyBtn').onclick = ()=>saveReceipt(d,false,false,false);
   document.getElementById('saveWaBtn').onclick = ()=>saveReceipt(d,false,true,false);

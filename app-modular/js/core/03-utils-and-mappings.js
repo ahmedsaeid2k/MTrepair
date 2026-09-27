@@ -546,6 +546,7 @@ function receiptToRow(d){
     Warranty: d.warranty || '',
     ServiceItems: (Array.isArray(d.serviceItems) && d.serviceItems.length) ? JSON.stringify(d.serviceItems) : '',
     Devices: (Array.isArray(d.devices) && d.devices.length) ? JSON.stringify(d.devices) : '',
+    Photos: (Array.isArray(d.photos) && d.photos.length) ? JSON.stringify(d.photos) : '',
     OtherAccountDesc: d.otherAccountDesc || '',
     OtherAccountAmount: Number(d.otherAccountAmount || 0),
     DeliveryDate: d.deliveryDate, Status: d.status, Paid: d.paid ? 'TRUE' : 'FALSE',
@@ -642,6 +643,14 @@ function rowToReceipt(row){
         try{ const p = JSON.parse(rawD); if(Array.isArray(p) && p.length) return p; }catch(e){}
       }
       return null;
+    })(),
+    photos: (()=>{
+      const rawP = row.Photos || row.photos;
+      if(Array.isArray(rawP)) return rawP;
+      if(typeof rawP === 'string' && rawP.trim()){
+        try { const p = JSON.parse(rawP); if(Array.isArray(p)) return p; } catch(e){}
+      }
+      return [];
     })()
   };
 }
@@ -767,6 +776,25 @@ function normalizeReceipt(r){
   r.deposit = Number(r.deposit != null ? r.deposit : (r.Deposit || 0));
   r.refunded = Number(r.refunded != null ? r.refunded : (r.Refunded || 0));
 
+  // Normalize Photos (توثيق صور وفيديوهات حالة الجهاز عند الاستلام والتسليم)
+  let rawPhotos = r.photos || r.Photos;
+  if(typeof rawPhotos === 'string' && rawPhotos.trim()){
+    try {
+      const p = JSON.parse(rawPhotos);
+      if(Array.isArray(p)) rawPhotos = p;
+    } catch(e){}
+  }
+  if(!Array.isArray(rawPhotos)) rawPhotos = [];
+  r.photos = rawPhotos.map((p, pIdx) => ({
+    id: String(p.id || ('photo_' + Date.now() + '_' + pIdx)),
+    url: String(p.url || p.thumb || ''),
+    thumb: String(p.thumb || p.url || ''),
+    angle: String(p.angle || 'عام'),
+    stage: String(p.stage || 'intake'),
+    timestamp: String(p.timestamp || new Date().toISOString()),
+    note: String(p.note || '')
+  }));
+
   // Normalize Devices (دعم استلام أكثر من جهاز في الإيصال الواحد)
   let rawDevs = r.devices || r.Devices;
   if(typeof rawDevs === 'string' && rawDevs.trim()){
@@ -787,7 +815,8 @@ function normalizeReceipt(r){
         password: String(pass || ''),
         faults: Array.isArray(r.faults) ? [...r.faults] : [],
         faultNotes: String(r.faultNotes || ''),
-        technician: String(r.technician || '')
+        technician: String(r.technician || ''),
+        photos: r.photos || []
       }
     ];
   } else {
@@ -801,7 +830,8 @@ function normalizeReceipt(r){
       password: String(d.password != null ? d.password : (pass || '')),
       faults: Array.isArray(d.faults) ? d.faults.map(String) : (typeof d.faults === 'string' ? d.faults.split('، ').filter(Boolean) : []),
       faultNotes: String(d.faultNotes != null ? d.faultNotes : ''),
-      technician: String(d.technician != null ? d.technician : (r.technician || ''))
+      technician: String(d.technician != null ? d.technician : (r.technician || '')),
+      photos: Array.isArray(d.photos) ? d.photos : []
     }));
   }
   r.devices = rawDevs;
@@ -818,6 +848,11 @@ function normalizeReceipt(r){
     if(r.devices.length === 1){
       r.faults = d0.faults;
       r.faultNotes = d0.faultNotes;
+      if(d0.photos && d0.photos.length && (!r.photos || !r.photos.length)){
+        r.photos = d0.photos;
+      } else if(r.photos && r.photos.length && (!d0.photos || !d0.photos.length)){
+        d0.photos = r.photos;
+      }
     }
   }
 

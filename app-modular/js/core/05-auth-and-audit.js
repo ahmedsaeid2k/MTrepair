@@ -556,6 +556,14 @@ async function loginRemote(name, password){
         ? getEffectiveSections(found) 
         : getEffectiveSections(res, res.sections);
 
+      if (res.sessionToken) {
+        state.sessionToken = res.sessionToken;
+        try {
+          localStorage.setItem('microerp_session_token', res.sessionToken);
+          sessionStorage.setItem('microerp_session_token', res.sessionToken);
+        } catch(e) {}
+      }
+
       const userObj = {
         ID: (found && found.ID) || ('usr_' + Date.now()),
         Name: res.name,

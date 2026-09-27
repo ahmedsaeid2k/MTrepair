@@ -1,6 +1,7 @@
 /* ---------------- State ---------------- */
 let state = {
   user: null,
+  sessionToken: null,
   tab: 'dashboard',
   settingsTab: 'appearance',
   posTab: 'sell',

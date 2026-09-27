@@ -7,6 +7,10 @@
         normalizeUserSections(state.user);
       }
     }
+    const token = sessionStorage.getItem('microerp_session_token') || localStorage.getItem('microerp_session_token');
+    if(token) {
+      state.sessionToken = token;
+    }
   }catch(e){}
 })();
 

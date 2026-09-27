@@ -93,16 +93,97 @@ function checkRateLimit(clientId) {
 }
 
 /**
- * Server-side Admin Role Verification
- * Confirms against Users sheet to prevent client-side role forgery.
+ * Cryptographic Password Hashing (SHA-256)
+ * Neutralizes plaintext credential storage in Google Sheets.
  */
-function verifyAdminRole(body) {
+function hashPassword(pass) {
+  if (!pass) return '';
+  const rawBytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(pass).trim(), Utilities.Charset.UTF_8);
+  return rawBytes.map(b => (b < 0 ? b + 256 : b).toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Server-Side Session Token Engine
+ * Issues random 48-char tokens stored in CacheService (fast) + Script Properties (durable).
+ * Standard session lifespan: 24 hours.
+ */
+function createSession(userObj) {
+  const token = (Utilities.getUuid() + Utilities.getUuid()).replace(/[^a-zA-Z0-9]/g, '').slice(0, 48);
+  const sessionData = {
+    name: userObj.Name,
+    role: userObj.Role,
+    superuser: !!userObj.Superuser,
+    created: Date.now()
+  };
+  const jsonStr = JSON.stringify(sessionData);
+
+  // 1. In-memory cache for fast sub-millisecond lookups (max 6h = 21600s)
+  try { CacheService.getScriptCache().put('sess_' + token, jsonStr, 21600); } catch(e) {}
+
+  // 2. Persistent storage in script properties for high durability across server cycles
+  try { PropertiesService.getScriptProperties().setProperty('sess_' + token, jsonStr); } catch(e) {}
+
+  return token;
+}
+
+function getSession(token) {
+  if (!token) return null;
+  const cleanToken = String(token).trim();
+  if (cleanToken.length < 20) return null;
+
+  let sessionData = null;
+
+  // 1. Fast Cache Lookup
+  try {
+    const cached = CacheService.getScriptCache().get('sess_' + cleanToken);
+    if (cached) sessionData = JSON.parse(cached);
+  } catch(e) {}
+
+  // 2. Fallback to Script Properties if cache evacuated
+  if (!sessionData) {
+    try {
+      const stored = PropertiesService.getScriptProperties().getProperty('sess_' + cleanToken);
+      if (stored) {
+        sessionData = JSON.parse(stored);
+        // Re-hydrate cache
+        try { CacheService.getScriptCache().put('sess_' + cleanToken, stored, 21600); } catch(cErr) {}
+      }
+    } catch(e) {}
+  }
+
+  if (!sessionData) return null;
+
+  // 3. Expiration Check (24 Hours max lifetime)
+  const maxAgeMs = 24 * 60 * 60 * 1000;
+  if (sessionData.created && (Date.now() - sessionData.created > maxAgeMs)) {
+    destroySession(cleanToken);
+    return null;
+  }
+
+  return sessionData;
+}
+
+function destroySession(token) {
+  if (!token) return;
+  const cleanToken = String(token).trim();
+  try { CacheService.getScriptCache().remove('sess_' + cleanToken); } catch(e) {}
+  try { PropertiesService.getScriptProperties().deleteProperty('sess_' + cleanToken); } catch(e) {}
+}
+
+/**
+ * Server-side Admin Role Verification
+ * Uses session data directly when available, preventing client-side role forgery.
+ */
+function verifyAdminRole(body, session) {
+  if (session) {
+    return (String(session.role || '').toLowerCase() === 'admin' || !!session.superuser);
+  }
   if (!body) return false;
   const reqRole = String(body.role || '').trim().toLowerCase();
   if (reqRole !== 'admin') return false;
 
   const reqUser = String(body.user || '').trim().toLowerCase();
-  if (!reqUser) return false; // must supply a username
+  if (!reqUser) return false;
 
   try {
     const users = getAllRows(SHEET_USERS);
@@ -112,26 +193,7 @@ function verifyAdminRole(body) {
     }
   } catch(e) {}
 
-  // User not found in sheet → deny by default (fail-closed)
   return false;
-}
-
-
-/**
- * API Token Verification
- * All private data endpoints must present this token.
- * The token is stored in Script Properties (not hardcoded) and sent by
- * the frontend on every authenticated request.
- */
-function checkApiToken(token) {
-  try {
-    const props = PropertiesService.getScriptProperties();
-    const secret = props.getProperty('API_CLIENT_SECRET');
-    if (!secret) return true; // Not configured yet → allow (backward compat during deploy)
-    return String(token || '').trim() === secret;
-  } catch(e) {
-    return true; // Fail-open if props unavailable (deploy window)
-  }
 }
 
 function doGet(e) {
@@ -143,7 +205,7 @@ function doGet(e) {
   }
 
   // Anti-DoS Rate Limit Check
-  const clientKey = e.parameter.clientToken || e.parameter.user || 'anon_get';
+  const clientKey = e.parameter.sessionToken || e.parameter.user || 'anon_get';
   if (!checkRateLimit(clientKey)) {
     return jsonOut({ error: 'تم تجاوز الحد الأقصى لمعدل الطلبات في الدقيقة (Rate Limit Exceeded). يرجى الانتظار قليلاً.' }, 429);
   }
@@ -175,9 +237,10 @@ function doGet(e) {
       });
     }
 
-    // 🔒 All remaining GET endpoints require valid API token
-    if (!checkApiToken(e.parameter.clientToken)) {
-      return jsonOut({ error: 'غير مصرح: رمز الوصول غير صحيح أو مفقود' }, 403);
+    // 🔒 All remaining GET endpoints require a valid Server-Issued Session Token
+    const session = getSession(e.parameter.sessionToken);
+    if (!session) {
+      return jsonOut({ error: 'جلسة العمل غير صالحة أو منتهية، يرجى تسجيل الدخول مجدداً (Session Expired)', sessionExpired: true }, 401);
     }
 
     // 🚀 Unified Bootstrap Endpoint: Reads all sheets in a single roundtrip (93% request reduction)
@@ -293,19 +356,68 @@ function doPost(e) {
   try {
     const action = body.action;
 
+    // 🔓 1. LOGIN (Public: Credentials exchange for Server-Issued Session Token)
     if (action === 'login') {
       const name = String(body.name || '').trim();
       const pass = String(body.password || '').trim();
+      if (!name || !pass) return jsonOut({ error: 'اسم المستخدم وكلمة المرور مطلوبان' }, 400);
+
       const users = getAllRows(SHEET_USERS);
-      const found = users.find(u => u.Name && u.Name.trim().toLowerCase() === name.toLowerCase() && String(u.Password || '').trim() === pass);
+      const hashed = hashPassword(pass);
+      const found = users.find(u => u.Name && u.Name.trim().toLowerCase() === name.toLowerCase() && (String(u.Password || '').trim() === pass || String(u.Password || '').trim() === hashed));
+
       if (!found) return jsonOut({ error: 'بيانات الدخول غير صحيحة' }, 401);
-      return jsonOut({ ok: true, name: found.Name, role: found.Role, sections: found.Sections || '', superuser: !!found.Superuser });
+
+      // Auto-upgrade plaintext password to SHA-256 hash in sheet if it was stored as plaintext
+      if (String(found.Password || '').trim() === pass && String(found.Password || '').trim() !== hashed) {
+        try {
+          const shUsers = getSheet(SHEET_USERS);
+          const headers = shUsers.getRange(1, 1, 1, shUsers.getLastColumn()).getValues()[0];
+          const nameCol = headers.indexOf('Name');
+          const passCol = headers.indexOf('Password');
+          if (nameCol >= 0 && passCol >= 0) {
+            const vals = shUsers.getDataRange().getValues();
+            for (let i = 1; i < vals.length; i++) {
+              if (String(vals[i][nameCol]).trim().toLowerCase() === name.toLowerCase()) {
+                shUsers.getRange(i + 1, passCol + 1).setValue(hashed);
+                break;
+              }
+            }
+          }
+        } catch(upgradeErr) {
+          console.warn('Password hash upgrade failed:', upgradeErr);
+        }
+      }
+
+      // Generate cryptographically secure server session
+      const sessionToken = createSession(found);
+      logAudit('', found.Name, 'تسجيل دخول ناجح (جلسة مؤمنة)');
+
+      return jsonOut({
+        ok: true,
+        sessionToken: sessionToken,
+        name: found.Name,
+        role: found.Role,
+        sections: found.Sections || '',
+        superuser: !!found.Superuser
+      });
     }
 
-    // 🔒 All write operations require a valid API token (login above is exempt — it's the credential exchange itself)
-    if (!checkApiToken(body.clientToken)) {
-      return jsonOut({ error: 'غير مصرح: رمز الوصول غير صحيح أو مفقود في طلب الكتابة' }, 403);
+    // 🔓 2. LOGOUT (Invalidate session token)
+    if (action === 'logout') {
+      destroySession(body.sessionToken);
+      return jsonOut({ ok: true });
     }
+
+    // 🔒 3. All write operations REQUIRE valid Server-Issued Session Token
+    const session = getSession(body.sessionToken);
+    if (!session) {
+      return jsonOut({ error: 'جلسة العمل غير صالحة أو منتهية، يرجى تسجيل الدخول مجدداً (Session Expired)', sessionExpired: true }, 401);
+    }
+
+    // Secure Identity: Server-authenticated user replaces any client-supplied body.user
+    const actorUser = session.name;
+    body.user = actorUser;
 
     if (action === 'saveReceipt') {
       upsertRow(SHEET_RECEIPTS, body.data, 'ID');
@@ -342,7 +454,7 @@ function doPost(e) {
       return jsonOut({ ok: true });
     }
     if (action === 'deleteReceipt') {
-      if (!verifyAdminRole(body)) return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
+      if (!verifyAdminRole(body, session)) return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
 
       // Restore parts if provided
       if (Array.isArray(body.partsToRestore) && body.partsToRestore.length > 0) {
@@ -469,7 +581,7 @@ function doPost(e) {
       return jsonOut({ ok: true, payment });
     }
     if (action === 'deletePayment') {
-      if (!verifyAdminRole(body)) return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
+      if (!verifyAdminRole(body, session)) return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
       const shPay = getSheet(SHEET_PAYMENTS);
       const headers = shPay.getRange(1, 1, 1, shPay.getLastColumn()).getValues()[0];
       const idCol = headers.indexOf('ID');
@@ -517,7 +629,7 @@ function doPost(e) {
       return jsonOut({ ok: true, item });
     }
     if (action === 'deleteInventoryItem') {
-      if (!verifyAdminRole(body)) return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
+      if (!verifyAdminRole(body, session)) return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
       deleteRow(SHEET_INVENTORY, body.id, 'ID');
       logAudit(body.id, body.user, 'حذف صنف من المخزن: ' + body.id);
       return jsonOut({ ok: true });
@@ -774,7 +886,7 @@ function doPost(e) {
       return jsonOut({ ok: true, expense: exp });
     }
     if (action === 'deleteExpense') {
-      if (!verifyAdminRole(body)) return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
+      if (!verifyAdminRole(body, session)) return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
       deleteRow(SHEET_EXPENSES, body.id, 'ID');
       logAudit(body.id, body.user, 'حذف مصروف: ' + body.id);
       return jsonOut({ ok: true });
@@ -793,7 +905,7 @@ function doPost(e) {
       return jsonOut({ ok: true, account: acc });
     }
     if (action === 'deleteAccount') {
-      if (!verifyAdminRole(body)) return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
+      if (!verifyAdminRole(body, session)) return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
       deleteRow(SHEET_ACCOUNTS, String(body.code), 'Code');
       logAudit(body.code, body.user, 'حذف حساب محاسبي: ' + body.code);
       return jsonOut({ ok: true });
@@ -844,28 +956,34 @@ function doPost(e) {
       return jsonOut({ ok: true, invoice: inv });
     }
     if (action === 'deleteInvoice') {
-      if (!verifyAdminRole(body)) return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
+      if (!verifyAdminRole(body, session)) return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
       deleteRow(SHEET_INVOICES, body.id, 'ID');
       logAudit(body.id, body.user, 'حذف فاتورة: ' + body.id);
       return jsonOut({ ok: true });
     }
     if (action === 'saveUser') {
-      if (!verifyAdminRole(body)) return jsonOut({ error: 'إدارة المستخدمين متاحة للمدير فقط' }, 403);
+      if (!verifyAdminRole(body, session)) return jsonOut({ error: 'إدارة المستخدمين متاحة للمدير فقط' }, 403);
+      const rawPass = String(body.data.Password || '').trim();
       const usr = {
         ID: body.data.ID || ('usr_' + new Date().getTime()),
         Name: String(body.data.Name || '').trim(),
-        Password: String(body.data.Password || '').trim(),
+        Password: rawPass ? hashPassword(rawPass) : '',
         Role: body.data.Role || 'cashier',
         Sections: Array.isArray(body.data.Sections) ? body.data.Sections.join(',') : (body.data.Sections || ''),
         Superuser: !!body.data.Superuser,
         Notes: body.data.Notes || ''
       };
+      // If password was empty on update, retain existing hashed password
+      if (!usr.Password) {
+        const existing = getAllRows(SHEET_USERS).find(u => u.Name && u.Name.toLowerCase() === usr.Name.toLowerCase());
+        if (existing) usr.Password = existing.Password;
+      }
       upsertRow(SHEET_USERS, usr, 'Name');
-      logAudit(usr.Name, body.user, 'تعديل/إضافة مستخدم: ' + usr.Name + ' (' + usr.Role + ')');
+      logAudit(usr.Name, actorUser, 'تعديل/إضافة مستخدم: ' + usr.Name + ' (' + usr.Role + ')');
       return jsonOut({ ok: true, user: usr });
     }
     if (action === 'deleteUser') {
-      if (!verifyAdminRole(body)) return jsonOut({ error: 'حذف المستخدمين متاح للمدير فقط' }, 403);
+      if (!verifyAdminRole(body, session)) return jsonOut({ error: 'حذف المستخدمين متاح للمدير فقط' }, 403);
       deleteRow(SHEET_USERS, String(body.id || body.name), 'Name');
       logAudit(body.id || body.name, body.user, 'حذف مستخدم: ' + (body.id || body.name));
       return jsonOut({ ok: true });

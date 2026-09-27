@@ -26,8 +26,8 @@ async function init(){
   render();
   updateSyncStatusPill();
 
-  // If online, fetch fresh updates in background via unified bootstrap
-  if(navigator.onLine){
+  // If online and authenticated with server session, fetch fresh updates in background via unified bootstrap
+  if(navigator.onLine && state.user && getSessionToken()){
     try {
       const bOk = await fetchBootstrapData();
       if(!bOk){
@@ -1352,11 +1352,18 @@ function attachSidebarHandlers(){
 }
 
 function logout(){
+  const token = getSessionToken();
+  if (token && navigator.onLine) {
+    try { apiPost('logout', { sessionToken: token }).catch(()=>{}); } catch(e){}
+  }
   try{
     localStorage.removeItem('microerp_session');
     sessionStorage.removeItem('microerp_session');
+    localStorage.removeItem('microerp_session_token');
+    sessionStorage.removeItem('microerp_session_token');
   }catch(e){}
   state.user = null;
+  state.sessionToken = null;
   state.currentSection = null;
   render();
 }

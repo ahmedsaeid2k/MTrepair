@@ -4335,7 +4335,21 @@ function generateProductStickerHTML(item, dim, svgId){
   }
 }
 
-function generateReceiptStickerHTML(r, dim, svgId){
+function generateReceiptStickerHTML(r, dim, svgId, customOpts){
+  const prn = (state.settings && state.settings.printers && state.settings.printers.barcodePrinter) || {};
+  const opts = Object.assign({
+    barcodeMode: prn.barcodeMode || 'qr', // 'qr', 'barcode', 'none'
+    showShopName: prn.showShopName !== false,
+    showCustomerName: prn.showCustomerName !== false,
+    showPhone: prn.showPhone !== false,
+    showDevice: prn.showDevice !== false,
+    showPassword: prn.showPassword !== false,
+    showFaults: prn.showFaults !== false,
+    showPrice: prn.showPrice === true,
+    showDate: prn.showDate !== false,
+    showBorder: prn.showBorder === true
+  }, customOpts || {});
+
   const rawShopName = (state.settings && state.settings.shopName) || 'صيانة ميكروتك';
   const shopName = escapeHtml(rawShopName.length > 20 ? (rawShopName.slice(0, 18) + '..') : rawShopName);
   
@@ -4346,19 +4360,59 @@ function generateReceiptStickerHTML(r, dim, svgId){
   const dCat = escapeHtml((r.device && r.device.category) || 'جهاز');
   const dBrand = escapeHtml(r.device ? (r.device.brand==='أخرى'?r.device.brandOther:r.device.brand) : '');
   const dModel = escapeHtml((r.device && r.device.model) || '');
-  const pass = escapeHtml(((r.device && r.device.password) || r.password || '').slice(0, 12));
-  const firstFault = escapeHtml(((Array.isArray(r.faults) && r.faults.length ? r.faults[0] : (typeof r.faults === 'string' ? r.faults : '')) || r.faultNotes || 'صيانة عامة').slice(0, 28));
+  const pass = escapeHtml(((r.device && r.device.password) || r.password || '').slice(0, 14));
+  const firstFault = escapeHtml(((Array.isArray(r.faults) && r.faults.length ? r.faults[0] : (typeof r.faults === 'string' ? r.faults : '')) || r.faultNotes || 'صيانة عامة').slice(0, 26));
   const rNum = escapeHtml(String(r.receiptNumber || ''));
   const intakeTime = (typeof formatReceiptTime === 'function' ? formatReceiptTime(r) : (r.time || ''));
   const dateTimeStr = escapeHtml(`${cleanDate(r.date)}${intakeTime ? ' ' + intakeTime : ''}`);
 
+  const otherAmt = Number(r.otherAccountAmount || 0);
+  const remCost = Number(r.cost || 0) + Number(r.partsCost || 0) + otherAmt - Number(r.deposit || 0) + Number(r.refunded || 0);
+  const costStr = remCost > 0 ? `${remCost} ج.م` : (r.cost ? `${r.cost} ج.م` : '');
+
+  const trackUrl = `${window.location.origin}${window.location.pathname}?track=${encodeURIComponent(r.receiptNumber || '')}`;
+  const borderCss = opts.showBorder ? 'border:1px dashed #000;' : '';
+
+  // ── Layout 1: 40x10 mm (عرض 4 سم × ارتفاع 1 سم - شريط فائق النحافة) ──
   if(dim.h <= 12){
-    // 40x10 mm (عرض 4 سم × ارتفاع 1 سم) بدون باركود - صفين مكثفين وبولد
+    if(opts.barcodeMode === 'qr'){
+      const qrSvg = QRCodeGenerator.toSvg(trackUrl, 32);
+      return `
+      <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:space-between;padding:0.5mm 1mm !important;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:900;color:#000;background:#fff;overflow:hidden;direction:rtl;line-height:1.1;${borderCss}">
+        <div style="display:flex;flex-direction:column;justify-content:space-between;flex:1;min-width:0;height:100%;padding-left:1mm;">
+          <div style="display:flex;justify-content:space-between;align-items:center;white-space:nowrap;overflow:hidden;gap:1mm;">
+            <b class="mono" style="font-size:9px;font-weight:900;direction:ltr;color:#000;">#${rNum}</b>
+            <span style="font-size:8.5px;font-weight:900;overflow:hidden;text-overflow:ellipsis;color:#000;">${cName}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;white-space:nowrap;overflow:hidden;gap:1mm;">
+            <b class="mono" style="font-size:8.5px;font-weight:900;direction:ltr;color:#000;">${cPhone}</b>
+            <span style="font-size:8px;font-weight:900;overflow:hidden;text-overflow:ellipsis;color:#000;">${dCat} ${dBrand}</span>
+          </div>
+        </div>
+        <div style="width:8.5mm;height:8.5mm;flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+          ${qrSvg}
+        </div>
+      </div>`;
+    }
+    if(opts.barcodeMode === 'barcode'){
+      return `
+      <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:0.5mm 1mm !important;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:900;color:#000;background:#fff;overflow:hidden;direction:rtl;line-height:1;${borderCss}">
+        <div style="display:flex;justify-content:space-between;align-items:center;white-space:nowrap;overflow:hidden;gap:1mm;font-size:8px;">
+          <b class="mono" style="font-size:8.5px;direction:ltr;">#${rNum}</b>
+          <span style="overflow:hidden;text-overflow:ellipsis;">${cName}</span>
+          <b class="mono" style="direction:ltr;">${cPhone}</b>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:center;flex:1;max-height:5.2mm;overflow:hidden;">
+          <svg id="${svgId}" style="width:100%;max-height:5.2mm;display:block;margin:0 auto;"></svg>
+        </div>
+      </div>`;
+    }
+    // None (Text only)
     return `
-    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:1mm 1.5mm !important;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:900;color:#000;background:#fff;overflow:hidden;direction:rtl;line-height:1.15;">
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:1mm 1.5mm !important;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:900;color:#000;background:#fff;overflow:hidden;direction:rtl;line-height:1.15;${borderCss}">
       <div style="display:flex;justify-content:space-between;align-items:center;white-space:nowrap;overflow:hidden;gap:1mm;">
         <b class="mono" style="font-size:9.5px;font-weight:900;direction:ltr;color:#000;">#${rNum}</b>
-        <span style="font-size:9px;font-weight:900;overflow:hidden;text-overflow:ellipsis;color:#000;"><b>العميل:</b> ${cName}</span>
+        <span style="font-size:9px;font-weight:900;overflow:hidden;text-overflow:ellipsis;color:#000;">${cName}</span>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;white-space:nowrap;overflow:hidden;gap:1mm;">
         <b class="mono" style="font-size:9.5px;font-weight:900;direction:ltr;color:#000;">${cPhone}</b>
@@ -4367,73 +4421,207 @@ function generateReceiptStickerHTML(r, dim, svgId){
     </div>`;
   }
 
-  // 40x20 mm (Standard 4x2 cm roll - ⭐ عرض 4 سم × ارتفاع 2 سم بهامش آمن وبدون باركود)
+  // ── Layout 2: 40x20 mm roll (Standard 4x2 cm roll - ⭐ المقاس الأساسي الأكثر استخداماً) ──
   if(dim.h <= 23){
+    if(opts.barcodeMode === 'qr'){
+      const qrSvg = QRCodeGenerator.toSvg(trackUrl, 48);
+      return `
+      <div style="width:100%;height:100%;max-height:${dim.h}mm;display:flex;flex-direction:row;align-items:stretch;justify-content:space-between;padding:0.8mm 1mm !important;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:900;color:#000;background:#fff;overflow:hidden;direction:rtl;line-height:1.15;gap:1mm;${borderCss}">
+        <!-- Text Column -->
+        <div style="display:flex;flex-direction:column;justify-content:space-between;flex:1;min-width:0;height:100%;overflow:hidden;">
+          <!-- Row 1: Shop & Receipt # -->
+          <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.2px solid #000;padding-bottom:0.2mm;flex-shrink:0;">
+            ${opts.showShopName ? `<span style="font-size:8px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:55%;color:#000;letter-spacing:-0.2px;">${shopName}</span>` : '<span></span>'}
+            <b class="mono" style="font-size:9.5px;font-weight:900;direction:ltr;display:inline-block;white-space:nowrap;color:#000;letter-spacing:0.2px;">#${rNum}</b>
+          </div>
+          <!-- Row 2: Customer Name -->
+          ${opts.showCustomerName ? `
+          <div style="font-size:8.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#000;flex-shrink:0;">
+            <span style="font-size:7px;font-weight:800;color:#000;">ع:</span> <b style="font-size:8.5px;font-weight:900;color:#000;">${cName}</b>
+          </div>` : ''}
+          <!-- Row 3: Phone -->
+          ${opts.showPhone ? `
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:8.5px;font-weight:900;white-space:nowrap;overflow:hidden;color:#000;flex-shrink:0;line-height:1;">
+            <span style="font-size:7px;font-weight:800;color:#000;">هـ:</span>
+            <b class="mono" style="font-size:9px;font-weight:900;direction:ltr;display:inline-block;letter-spacing:0.3px;color:#000;">${cPhone}</b>
+          </div>` : ''}
+          <!-- Row 4: Device & Pass -->
+          ${opts.showDevice ? `
+          <div style="font-size:7.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#000;flex-shrink:0;line-height:1.1;">
+            <span style="font-size:6.5px;font-weight:800;color:#000;">ج:</span> <b style="color:#000;">${dCat} ${dBrand} ${dModel}</b>${opts.showPassword && pass ? ` | <span style="font-size:6.5px;">ب:</span><b class="mono" style="font-size:7.5px;color:#000;">${pass}</b>` : ''}
+          </div>` : ''}
+          <!-- Row 5: Fault & Price -->
+          ${(opts.showFaults || (opts.showPrice && costStr)) ? `
+          <div style="font-size:7.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#000;border-top:1px dashed #000;padding-top:0.2mm;flex-shrink:0;line-height:1.1;">
+            ${opts.showFaults ? `<span style="font-size:6.5px;font-weight:800;color:#000;">ع:</span> <span style="font-weight:900;color:#000;">${firstFault}</span>` : ''}
+            ${(opts.showPrice && costStr) ? `<span style="margin-right:2px;">| <b class="mono" style="font-size:8px;">${costStr}</b></span>` : ''}
+          </div>` : ''}
+        </div>
+        <!-- Smart Tracking QR Column -->
+        <div style="width:13.5mm;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;">
+          <div style="width:13mm;height:13mm;display:flex;align-items:center;justify-content:center;">
+            ${qrSvg}
+          </div>
+          <div style="font-size:6.5px;font-weight:900;line-height:1;margin-top:0.3mm;color:#000;white-space:nowrap;">تتبع الصيانة 📱</div>
+        </div>
+      </div>`;
+    }
+
+    if(opts.barcodeMode === 'barcode'){
+      return `
+      <div style="width:100%;height:100%;max-height:${dim.h}mm;display:flex;flex-direction:column;justify-content:space-between;padding:0.8mm 1.2mm !important;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:900;color:#000;background:#fff;overflow:hidden;direction:rtl;line-height:1.1;${borderCss}">
+        <!-- Row 1: Header -->
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #000;padding-bottom:0.2mm;flex-shrink:0;">
+          ${opts.showShopName ? `<span style="font-size:8px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:55%;color:#000;">${shopName}</span>` : '<span></span>'}
+          <b class="mono" style="font-size:9.5px;font-weight:900;direction:ltr;display:inline-block;white-space:nowrap;color:#000;">#${rNum}</b>
+        </div>
+        <!-- Row 2: Customer & Phone -->
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:8px;font-weight:900;white-space:nowrap;overflow:hidden;flex-shrink:0;">
+          ${opts.showCustomerName ? `<span style="overflow:hidden;text-overflow:ellipsis;max-width:52%;">ع: ${cName}</span>` : '<span></span>'}
+          ${opts.showPhone ? `<b class="mono" style="font-size:8.5px;direction:ltr;">${cPhone}</b>` : ''}
+        </div>
+        <!-- Row 3: Device & Pass -->
+        ${opts.showDevice ? `
+        <div style="font-size:7.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;">
+          ج: ${dCat} ${dBrand} ${dModel}${opts.showPassword && pass ? ` | ب:<b class="mono">${pass}</b>` : ''}
+        </div>` : ''}
+        <!-- Row 4: Barcode SVG -->
+        <div style="display:flex;align-items:center;justify-content:center;flex:1;max-height:6mm;overflow:hidden;margin:0.2mm 0;">
+          <svg id="${svgId}" style="width:100%;max-height:5.8mm;display:block;margin:0 auto;"></svg>
+        </div>
+        <!-- Row 5: Fault -->
+        ${(opts.showFaults || (opts.showPrice && costStr)) ? `
+        <div style="font-size:7px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:0.8px dashed #000;padding-top:0.2mm;flex-shrink:0;">
+          ${opts.showFaults ? `ع: ${firstFault}` : ''}
+          ${(opts.showPrice && costStr) ? ` | <b class="mono">${costStr}</b>` : ''}
+        </div>` : ''}
+      </div>`;
+    }
+
+    // None (Pure Typography)
     return `
-    <div style="width:100%;height:100%;max-height:${dim.h}mm;display:flex;flex-direction:column;justify-content:space-between;padding:1mm 1.5mm !important;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:900;color:#000;background:#fff;overflow:hidden;direction:rtl;line-height:1.15;">
-      <!-- Row 1: Header (Shop Name + Prominent Receipt Number) -->
+    <div style="width:100%;height:100%;max-height:${dim.h}mm;display:flex;flex-direction:column;justify-content:space-between;padding:1mm 1.5mm !important;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:900;color:#000;background:#fff;overflow:hidden;direction:rtl;line-height:1.15;${borderCss}">
+      <!-- Row 1: Header -->
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #000;padding-bottom:0.2mm;flex-shrink:0;">
-        <span style="font-size:9px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:52%;color:#000;letter-spacing:-0.2px;">${shopName}</span>
+        ${opts.showShopName ? `<span style="font-size:9px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:52%;color:#000;letter-spacing:-0.2px;">${shopName}</span>` : '<span></span>'}
         <b class="mono" style="font-size:10.5px;font-weight:900;direction:ltr;display:inline-block;white-space:nowrap;color:#000;letter-spacing:0.3px;">#${rNum}</b>
       </div>
-
-      <!-- Row 2: Customer Name (Prominent Bold) -->
+      <!-- Row 2: Customer Name -->
+      ${opts.showCustomerName ? `
       <div style="font-size:9.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#000;flex-shrink:0;">
         <span style="font-size:8.5px;font-weight:800;color:#000;">العميل:</span> <b style="font-size:9.5px;font-weight:900;color:#000;">${cName}</b>
-      </div>
-
-      <!-- Row 3: Phone (Prominent Bold) -->
+      </div>` : ''}
+      <!-- Row 3: Phone -->
+      ${opts.showPhone ? `
       <div style="display:flex;justify-content:space-between;align-items:center;font-size:9.5px;font-weight:900;white-space:nowrap;overflow:hidden;color:#000;flex-shrink:0;">
         <span style="font-size:8.5px;font-weight:800;color:#000;">الهاتف:</span>
         <b class="mono" style="font-size:10px;font-weight:900;direction:ltr;display:inline-block;letter-spacing:0.5px;color:#000;">${cPhone}</b>
-      </div>
-
+      </div>` : ''}
       <!-- Row 4: Device & Model & Password -->
+      ${opts.showDevice ? `
       <div style="font-size:8.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#000;flex-shrink:0;">
-        <span style="font-size:8px;font-weight:800;color:#000;">الجهاز:</span> <b style="color:#000;">${dCat} ${dBrand} ${dModel}</b>${pass ? ` | <span style="font-size:7.5px;">ب:</span><b class="mono" style="font-size:8px;color:#000;">${pass}</b>` : ''}
-      </div>
+        <span style="font-size:8px;font-weight:800;color:#000;">الجهاز:</span> <b style="color:#000;">${dCat} ${dBrand} ${dModel}</b>${opts.showPassword && pass ? ` | <span style="font-size:7.5px;">ب:</span><b class="mono" style="font-size:8px;color:#000;">${pass}</b>` : ''}
+      </div>` : ''}
+      <!-- Row 5: Fault & Details -->
+      ${(opts.showFaults || (opts.showPrice && costStr) || opts.showDate) ? `
+      <div style="font-size:8px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#000;border-top:1px dashed #000;padding-top:0.2mm;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;">
+        <span style="overflow:hidden;text-overflow:ellipsis;max-width:65%;">${opts.showFaults ? `<b>العطل:</b> ${firstFault}` : ''}${(opts.showPrice && costStr) ? ` | <b>${costStr}</b>` : ''}</span>
+        ${opts.showDate ? `<span class="mono" style="font-size:7px;font-weight:800;">${dateTimeStr}</span>` : ''}
+      </div>` : ''}
+    </div>`;
+  }
 
-      <!-- Row 5: Fault (Clear text) -->
-      <div style="font-size:8px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#000;border-top:1px dashed #000;padding-top:0.2mm;flex-shrink:0;">
-        <span style="font-size:7.5px;font-weight:800;color:#000;">العطل:</span> <span style="font-weight:900;color:#000;">${firstFault}</span>
+  // ── Layout 3: Larger Labels (40x25, 40x30, 50x25, 50x30, 60x40 mm, etc.) ──
+  if(opts.barcodeMode === 'qr'){
+    const qrSvg = QRCodeGenerator.toSvg(trackUrl, 64);
+    return `
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:1.5mm 2mm !important;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:900;color:#000;background:#fff;overflow:hidden;direction:rtl;line-height:1.2;${borderCss}">
+      <!-- Header -->
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #000;padding-bottom:0.4mm;flex-shrink:0;">
+        ${opts.showShopName ? `<b style="font-size:10.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:58%;color:#000;">${shopName}</b>` : '<span></span>'}
+        <b class="mono" style="font-size:12.5px;font-weight:900;direction:ltr;display:inline-block;white-space:nowrap;color:#000;">#${rNum}</b>
+      </div>
+      <!-- Body Split (Data + QR) -->
+      <div style="display:flex;align-items:stretch;justify-content:space-between;gap:1.5mm;flex:1;overflow:hidden;margin:0.5mm 0;">
+        <div style="display:flex;flex-direction:column;justify-content:space-around;flex:1;min-width:0;">
+          ${opts.showCustomerName ? `<div style="font-size:10.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><span style="font-size:9px;font-weight:800;">العميل:</span> ${cName}</div>` : ''}
+          ${opts.showPhone ? `<div style="font-size:10.5px;font-weight:900;white-space:nowrap;overflow:hidden;"><span style="font-size:9px;font-weight:800;">الهاتف:</span> <b class="mono" style="font-size:10.5px;direction:ltr;">${cPhone}</b></div>` : ''}
+          ${opts.showDevice ? `<div style="font-size:9.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><span style="font-size:8.5px;font-weight:800;">الجهاز:</span> ${dCat} ${dBrand} ${dModel}${opts.showPassword && pass ? ` | <span style="font-size:8px;">ب:</span><b class="mono">${pass}</b>` : ''}</div>` : ''}
+          ${(opts.showPrice && costStr) ? `<div style="font-size:9.5px;font-weight:900;">المطلوب: <b class="mono" style="font-size:11px;">${costStr}</b></div>` : ''}
+        </div>
+        <div style="width:17mm;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;">
+          <div style="width:16mm;height:16mm;display:flex;align-items:center;justify-content:center;">
+            ${qrSvg}
+          </div>
+          <div style="font-size:7px;font-weight:900;margin-top:0.3mm;">تتبع الصيانة 📱</div>
+        </div>
+      </div>
+      <!-- Footer -->
+      <div style="border-top:1px dashed #000;padding-top:0.4mm;font-size:9px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#000;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;">
+        <span style="overflow:hidden;text-overflow:ellipsis;max-width:65%;">${opts.showFaults ? `<b>العطل:</b> ${firstFault}` : ''}</span>
+        ${opts.showDate ? `<span class="mono" style="font-size:8px;font-weight:800;">${dateTimeStr}</span>` : ''}
       </div>
     </div>`;
   }
 
-  // Larger Labels (40x25, 40x30, 50x30, etc.) - Spacious bold layout without barcode
+  if(opts.barcodeMode === 'barcode'){
+    return `
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:1.5mm 2mm !important;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:900;color:#000;background:#fff;overflow:hidden;direction:rtl;line-height:1.2;${borderCss}">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #000;padding-bottom:0.4mm;flex-shrink:0;">
+        ${opts.showShopName ? `<b style="font-size:10.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:58%;color:#000;">${shopName}</b>` : '<span></span>'}
+        <b class="mono" style="font-size:12px;font-weight:900;direction:ltr;display:inline-block;white-space:nowrap;color:#000;">#${rNum}</b>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;font-weight:900;white-space:nowrap;overflow:hidden;flex-shrink:0;">
+        ${opts.showCustomerName ? `<span>العميل: ${cName}</span>` : '<span></span>'}
+        ${opts.showPhone ? `<b class="mono" style="font-size:10.5px;direction:ltr;">${cPhone}</b>` : ''}
+      </div>
+      ${opts.showDevice ? `
+      <div style="font-size:9.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;">
+        الجهاز: ${dCat} ${dBrand} ${dModel}${opts.showPassword && pass ? ` | باسورد: <b class="mono">${pass}</b>` : ''}
+      </div>` : ''}
+      <div style="display:flex;align-items:center;justify-content:center;flex:1;max-height:8mm;overflow:hidden;margin:0.4mm 0;">
+        <svg id="${svgId}" style="width:100%;max-height:8mm;display:block;margin:0 auto;"></svg>
+      </div>
+      <div style="border-top:1px dashed #000;padding-top:0.4mm;font-size:9px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#000;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;">
+        <span style="overflow:hidden;text-overflow:ellipsis;max-width:65%;">${opts.showFaults ? `<b>العطل:</b> ${firstFault}` : ''}${(opts.showPrice && costStr) ? ` | <b>${costStr}</b>` : ''}</span>
+        ${opts.showDate ? `<span class="mono" style="font-size:8px;font-weight:800;">${dateTimeStr}</span>` : ''}
+      </div>
+    </div>`;
+  }
+
+  // None
   return `
-  <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:2mm !important;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:900;color:#000;background:#fff;overflow:hidden;direction:rtl;line-height:1.2;">
+  <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:2mm !important;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:900;color:#000;background:#fff;overflow:hidden;direction:rtl;line-height:1.2;${borderCss}">
     <!-- Header -->
     <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #000;padding-bottom:0.5mm;flex-shrink:0;">
-      <b style="font-size:10px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:58%;color:#000;">${shopName}</b>
+      ${opts.showShopName ? `<b style="font-size:10px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:58%;color:#000;">${shopName}</b>` : '<span></span>'}
       <b class="mono" style="font-size:12px;font-weight:900;direction:ltr;display:inline-block;white-space:nowrap;color:#000;">#${rNum}</b>
     </div>
-
     <!-- Customer -->
+    ${opts.showCustomerName ? `
     <div style="font-size:11px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#000;flex-shrink:0;">
       <span style="font-size:9.5px;font-weight:800;">العميل:</span> <b style="font-size:11px;font-weight:900;">${cName}</b>
-    </div>
-
+    </div>` : ''}
     <!-- Phone -->
+    ${opts.showPhone ? `
     <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:900;white-space:nowrap;overflow:hidden;color:#000;flex-shrink:0;">
       <span style="font-size:9.5px;font-weight:800;">الهاتف:</span>
       <b class="mono" style="font-size:11px;font-weight:900;direction:ltr;display:inline-block;letter-spacing:0.5px;">${cPhone}</b>
-    </div>
-
+    </div>` : ''}
     <!-- Device & Model -->
+    ${opts.showDevice ? `
     <div style="font-size:9.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#000;flex-shrink:0;">
-      <span style="font-size:9px;font-weight:800;">الجهاز:</span> <b>${dCat} - ${dBrand} ${dModel}</b>${pass ? ` | باسورد: <b class="mono">${pass}</b>` : ''}
-    </div>
-
+      <span style="font-size:9px;font-weight:800;">الجهاز:</span> <b>${dCat} - ${dBrand} ${dModel}</b>${opts.showPassword && pass ? ` | باسورد: <b class="mono">${pass}</b>` : ''}
+    </div>` : ''}
     <!-- Fault & Date -->
     <div style="border-top:1px dashed #000;padding-top:0.4mm;font-size:9px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#000;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;">
-      <span style="overflow:hidden;text-overflow:ellipsis;max-width:65%;"><b>العطل:</b> ${firstFault}</span>
-      <span class="mono" style="font-size:8px;font-weight:800;">${dateTimeStr}</span>
+      <span style="overflow:hidden;text-overflow:ellipsis;max-width:65%;">${opts.showFaults ? `<b>العطل:</b> ${firstFault}` : ''}${(opts.showPrice && costStr) ? ` | <b>${costStr}</b>` : ''}</span>
+      ${opts.showDate ? `<span class="mono" style="font-size:8px;font-weight:800;">${dateTimeStr}</span>` : ''}
     </div>
   </div>`;
 }
 
-function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0, offsetX = null, offsetY = null){
+function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0, offsetX = null, offsetY = null, customOpts = null){
   if(!cfg || !cfg.data) return;
   copies = Math.max(1, parseInt(copies) || 1);
   rotation = Number(rotation) || 0;
@@ -4443,23 +4631,56 @@ function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0, offsetX =
   if(offsetY === null || offsetY === undefined) offsetY = Number(savedSettings.offsetY) || 0;
 
   const isReceipt = (cfg.type === 'receipt');
+  const effectiveOpts = Object.assign({
+    barcodeMode: savedSettings.barcodeMode || 'qr',
+    showShopName: savedSettings.showShopName !== false,
+    showCustomerName: savedSettings.showCustomerName !== false,
+    showPhone: savedSettings.showPhone !== false,
+    showDevice: savedSettings.showDevice !== false,
+    showPassword: savedSettings.showPassword !== false,
+    showFaults: savedSettings.showFaults !== false,
+    showPrice: savedSettings.showPrice === true,
+    showDate: savedSettings.showDate !== false,
+    showBorder: savedSettings.showBorder === true
+  }, customOpts || {});
+
   const barcodeVal = !isReceipt
     ? (cfg.data.Barcode || cfg.data.SKU || cfg.data.barcode || cfg.data.sku || cfg.data.ID || '1001')
-    : '';
+    : (cfg.data.receiptNumber || '1001');
 
-  // ── Step 1: render barcode SVGs off-screen ONLY for product stickers (receipts have NO barcode) ──
-  const svgElements = [];
-  if(!isReceipt){
+  const needsBarcode = (!isReceipt) || (isReceipt && effectiveOpts.barcodeMode === 'barcode');
+
+  // ── Step 1: render barcode SVGs off-screen if barcodes are needed ──
+  const svgElements = {};
+  if(needsBarcode){
     const tempContainer = document.createElement('div');
-    tempContainer.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:40mm;visibility:hidden;';
+    tempContainer.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:60mm;visibility:hidden;';
     document.body.appendChild(tempContainer);
 
     for(let i = 0; i < copies; i++){
-      const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svgEl.id = `tmpBcSvg_${i}`;
-      tempContainer.appendChild(svgEl);
-      renderStickerBarcodeSVG(`#tmpBcSvg_${i}`, barcodeVal, dim);
-      svgElements.push(svgEl.outerHTML);
+      if(!isReceipt){
+        const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svgEl.id = `tmpBcSvg_${i}`;
+        tempContainer.appendChild(svgEl);
+        renderStickerBarcodeSVG(`#tmpBcSvg_${i}`, barcodeVal, dim, savedSettings.barcodeType || 'CODE128');
+        svgElements[`bcSvg_${i}`] = svgEl.outerHTML;
+      } else if(Array.isArray(cfg.data.devices) && cfg.data.devices.length > 1){
+        cfg.data.devices.forEach((dev, devIdx) => {
+          const key = `bcSvg_${i}_${devIdx}`;
+          const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          svgEl.id = `tmp_${key}`;
+          tempContainer.appendChild(svgEl);
+          renderStickerBarcodeSVG(`#tmp_${key}`, cfg.data.receiptNumber, dim, 'CODE128');
+          svgElements[key] = svgEl.outerHTML;
+        });
+      } else {
+        const key = `bcSvg_${i}`;
+        const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svgEl.id = `tmp_${key}`;
+        tempContainer.appendChild(svgEl);
+        renderStickerBarcodeSVG(`#tmp_${key}`, cfg.data.receiptNumber, dim, 'CODE128');
+        svgElements[key] = svgEl.outerHTML;
+      }
     }
     tempContainer.remove();
   }
@@ -4477,12 +4698,12 @@ function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0, offsetX =
           password: dev.password,
           receiptNumber: `${cfg.data.receiptNumber || ''}-${devIdx + 1}/${cfg.data.devices.length}`
         };
-        const sHtml = generateReceiptStickerHTML(subR, dim, `bcSvg_${i}_${devIdx}`);
+        const sHtml = generateReceiptStickerHTML(subR, dim, `bcSvg_${i}_${devIdx}`, effectiveOpts);
         pagesHtml += `<div class="sticker-page">${sHtml}</div>`;
       });
     } else {
       const innerHtml = isReceipt
-        ? generateReceiptStickerHTML(cfg.data, dim, `bcSvg_${i}`)
+        ? generateReceiptStickerHTML(cfg.data, dim, `bcSvg_${i}`, effectiveOpts)
         : generateProductStickerHTML(cfg.data, dim, `bcSvg_${i}`);
       pagesHtml += `<div class="sticker-page">${innerHtml}</div>`;
     }
@@ -4499,8 +4720,6 @@ function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0, offsetX =
   const offsetCss = transformRules.length ? `transform: ${transformRules.join(' ')};` : '';
 
   // ── Step 4: build full iframe HTML ──
-  // Enforce EXACT physical millimeter dimensions with Portrait orientation
-  // This prevents Chrome and driver from auto-rotating 90deg to landscape and spans across single label only.
   const iframeHtml = `<!DOCTYPE html>
 <html>
 <head>
@@ -4561,7 +4780,7 @@ function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0, offsetX =
 <body>${pagesHtml}</body>
 </html>`;
 
-  // ── Step 5: create hidden iframe, write HTML, inject SVGs (if products), print ──
+  // ── Step 5: create hidden iframe, write HTML, inject SVGs (if needed), print ──
   const iframe = document.createElement('iframe');
   iframe.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;border:none;visibility:hidden;';
   document.body.appendChild(iframe);
@@ -4571,19 +4790,19 @@ function executeDirectStickerPrint(cfg, dim, copies = 1, rotation = 0, offsetX =
   iDoc.write(iframeHtml);
   iDoc.close();
 
-  // Replace SVG placeholders with pre-rendered barcode SVGs for product stickers
-  if(!isReceipt){
-    for(let i = 0; i < copies; i++){
-      const svgPlaceholder = iDoc.getElementById(`bcSvg_${i}`);
-      if(svgPlaceholder && svgElements[i]){
+  // Replace SVG placeholders with pre-rendered barcode SVGs
+  if(needsBarcode && Object.keys(svgElements).length > 0){
+    Object.keys(svgElements).forEach(key => {
+      const svgPlaceholder = iDoc.getElementById(key);
+      if(svgPlaceholder && svgElements[key]){
         const parser = new DOMParser();
-        const parsed = parser.parseFromString(svgElements[i], 'image/svg+xml');
+        const parsed = parser.parseFromString(svgElements[key], 'image/svg+xml');
         const realSvg = parsed.documentElement;
         realSvg.removeAttribute('id');
-        realSvg.style.cssText = 'display:block;width:100%;max-height:' + (dim.h <= 12 ? '5.2mm' : dim.h <= 22 ? '7.5mm' : '10mm') + ';';
+        realSvg.style.cssText = 'display:block;width:100%;max-height:' + (dim.h <= 12 ? '5.2mm' : dim.h <= 22 ? '6.5mm' : '9.5mm') + ';margin:0 auto;';
         svgPlaceholder.parentNode.replaceChild(realSvg, svgPlaceholder);
       }
-    }
+    });
   }
 
   // ── Step 6: print and cleanup ──
@@ -4615,11 +4834,23 @@ function openStickerPrintModal(opts){
   let currentSizeKey = savedSettings.defaultSize || '40x20';
   let customW = Number(savedSettings.customWidth) || 40;
   let customH = Number(savedSettings.customHeight) || 20;
-  // الاتجاه الطبيعي 0° بدون تدوير أفقي
   let currentRotation = (savedSettings.rotation !== undefined && savedSettings.rotation !== null) ? Number(savedSettings.rotation) : 0;
   let currentOffsetX = Number(savedSettings.offsetX) || 0;
   let currentOffsetY = Number(savedSettings.offsetY) || 0;
   let copies = Math.max(1, Number(opts.copies) || 1);
+  let previewZoom = 1.0;
+
+  // Customization options for receipts
+  let currentBarcodeMode = savedSettings.barcodeMode || 'qr';
+  let showShopName = savedSettings.showShopName !== false;
+  let showCustomerName = savedSettings.showCustomerName !== false;
+  let showPhone = savedSettings.showPhone !== false;
+  let showDevice = savedSettings.showDevice !== false;
+  let showPassword = savedSettings.showPassword !== false;
+  let showFaults = savedSettings.showFaults !== false;
+  let showPrice = savedSettings.showPrice === true;
+  let showDate = savedSettings.showDate !== false;
+  let showBorder = savedSettings.showBorder === true;
 
   const existing = document.getElementById('stickerPrintModalOverlay');
   if(existing) existing.remove();
@@ -4634,7 +4865,7 @@ function openStickerPrintModal(opts){
     : `ملصق باركود الصنف (${escapeHtml((cfg.data.Name||cfg.data.name||'صنف').slice(0, 22))})`;
 
   overlay.innerHTML = `
-    <div class="modal-card" style="max-width: 500px; width: 95%; background: var(--bg-card, #fff); border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--border-color, #e2e8f0);">
+    <div class="modal-card" style="max-width: 520px; width: 95%; background: var(--bg-card, #fff); border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--border-color, #e2e8f0);">
       <!-- Header -->
       <div style="padding: 14px 18px; background: linear-gradient(135deg, #1e293b, #0f172a); color: #fff; display: flex; align-items: center; justify-content: space-between;">
         <div style="display:flex; align-items:center; gap: 10px;">
@@ -4707,8 +4938,100 @@ function openStickerPrintModal(opts){
           </div>
         </div>
 
+        ${cfg.type === 'receipt' ? `
+        <!-- Customization Studio Accordion for Receipt Stickers -->
+        <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+          <div id="spmCustomSectionHeader" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#f1f5f9;cursor:pointer;user-select:none;">
+            <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;color:#1e293b;">
+              <span>🎨 استوديو تخصيص وحقول استيكر الصيانة:</span>
+              <span id="spmModeBadge" style="font-size:10px;background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:999px;font-weight:800;">
+                ${currentBarcodeMode==='qr'?'📱 رمز QR للتتبع':(currentBarcodeMode==='barcode'?'🏷️ باركود Code128':'✍️ نصي فقط')}
+              </span>
+            </div>
+            <span id="spmCustomToggleIcon" style="font-size:11px;color:#64748b;font-weight:bold;">▼</span>
+          </div>
+
+          <div id="spmCustomSectionBody" style="padding:12px;display:flex;flex-direction:column;gap:10px;">
+            <!-- Code Mode Selector Pills -->
+            <div>
+              <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:5px;">
+                نوع وتنسيق الكود المطبوع على الاستيكر:
+              </label>
+              <div id="spmModePills" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
+                <button type="button" class="spm-mode-pill" data-mode="qr" style="padding:6px 4px;font-size:10.5px;font-weight:800;border-radius:8px;border:1.5px solid ${currentBarcodeMode==='qr'?'#2563eb':'#cbd5e1'};background:${currentBarcodeMode==='qr'?'#eff6ff':'#fff'};color:${currentBarcodeMode==='qr'?'#1d4ed8':'#334155'};cursor:pointer;text-align:center;">
+                  📱 كود QR للتتبع ✨
+                </button>
+                <button type="button" class="spm-mode-pill" data-mode="barcode" style="padding:6px 4px;font-size:10.5px;font-weight:800;border-radius:8px;border:1.5px solid ${currentBarcodeMode==='barcode'?'#2563eb':'#cbd5e1'};background:${currentBarcodeMode==='barcode'?'#eff6ff':'#fff'};color:${currentBarcodeMode==='barcode'?'#1d4ed8':'#334155'};cursor:pointer;text-align:center;">
+                  🏷️ باركود 128 ليزر
+                </button>
+                <button type="button" class="spm-mode-pill" data-mode="none" style="padding:6px 4px;font-size:10.5px;font-weight:800;border-radius:8px;border:1.5px solid ${currentBarcodeMode==='none'?'#2563eb':'#cbd5e1'};background:${currentBarcodeMode==='none'?'#eff6ff':'#fff'};color:${currentBarcodeMode==='none'?'#1d4ed8':'#334155'};cursor:pointer;text-align:center;">
+                  ✍️ نصي بولد بدون كود
+                </button>
+              </div>
+            </div>
+
+            <!-- Quick Presets -->
+            <div>
+              <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">
+                نماذج واستيلات سريعة بنقرة واحدة:
+              </label>
+              <div style="display:flex;gap:5px;flex-wrap:wrap;">
+                <button type="button" class="btn btn-ghost btn-xs spm-preset-btn" data-preset="smart_qr" style="font-size:10px;padding:3px 7px;">⭐ 40×20 كود QR الذكي</button>
+                <button type="button" class="btn btn-ghost btn-xs spm-preset-btn" data-preset="bold_text" style="font-size:10px;padding:3px 7px;">✍️ 40×20 نصي بولد واضح</button>
+                <button type="button" class="btn btn-ghost btn-xs spm-preset-btn" data-preset="barcode128" style="font-size:10px;padding:3px 7px;">🏷️ 40×20 باركود 128</button>
+                <button type="button" class="btn btn-ghost btn-xs spm-preset-btn" data-preset="slim" style="font-size:10px;padding:3px 7px;">⚡ 40×10 شريط رفيع</button>
+              </div>
+            </div>
+
+            <!-- Field Checkboxes -->
+            <div style="border-top:1px solid #e2e8f0;padding-top:8px;">
+              <label style="display:block;font-size:11px;font-weight:800;color:#334155;margin-bottom:6px;">
+                الحقول المراد إظهارها على الملصق:
+              </label>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                <label class="checkbox-row" style="font-size:11px;">
+                  <input type="checkbox" id="spmCheckShopName" ${showShopName?'checked':''}>
+                  <span>🏪 اسم المحل / المركز</span>
+                </label>
+                <label class="checkbox-row" style="font-size:11px;">
+                  <input type="checkbox" id="spmCheckCustomerName" ${showCustomerName?'checked':''}>
+                  <span>👤 اسم العميل</span>
+                </label>
+                <label class="checkbox-row" style="font-size:11px;">
+                  <input type="checkbox" id="spmCheckPhone" ${showPhone?'checked':''}>
+                  <span>📞 رقم الهاتف</span>
+                </label>
+                <label class="checkbox-row" style="font-size:11px;">
+                  <input type="checkbox" id="spmCheckDevice" ${showDevice?'checked':''}>
+                  <span>💻 الجهاز والموديل</span>
+                </label>
+                <label class="checkbox-row" style="font-size:11px;">
+                  <input type="checkbox" id="spmCheckPassword" ${showPassword?'checked':''}>
+                  <span>🔑 كلمة السر / النمط</span>
+                </label>
+                <label class="checkbox-row" style="font-size:11px;">
+                  <input type="checkbox" id="spmCheckFaults" ${showFaults?'checked':''}>
+                  <span>⚠️ شكوى وعطل الجهاز</span>
+                </label>
+                <label class="checkbox-row" style="font-size:11px;">
+                  <input type="checkbox" id="spmCheckPrice" ${showPrice?'checked':''}>
+                  <span>💵 المتبقي / التكلفة</span>
+                </label>
+                <label class="checkbox-row" style="font-size:11px;">
+                  <input type="checkbox" id="spmCheckDate" ${showDate?'checked':''}>
+                  <span>📅 تاريخ ووقت الاستلام</span>
+                </label>
+                <label class="checkbox-row" style="font-size:11px;">
+                  <input type="checkbox" id="spmCheckBorder" ${showBorder?'checked':''}>
+                  <span>🔲 إطار خارجي محدد</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>` : ''}
+
         <!-- Rotation Selector -->
-        <div style="display:flex; align-items:center; justify-content:space-between; padding: 6px 10px; background: #f1f5f9; border-radius: 8px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding: 6px 10px; background: #f1f5f9; border-radius: 8px;">
           <div style="font-size: 11.5px; font-weight: 700; color: #334155; display:flex; align-items:center; gap: 4px;">
             <span>🔄 تدوير اتجاه الطباعة:</span>
           </div>
@@ -4752,15 +5075,22 @@ function openStickerPrintModal(opts){
           </div>
         </div>
 
-        <!-- Live Preview Stage -->
+        <!-- Live Preview Stage with Zoom -->
         <div>
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 5px;">
             <label style="font-size: 11.5px; font-weight: 700; color: var(--text-muted, #64748b);">
               👁️ معاينة شكل الملصق وسنترته (حقيقي 100%):
             </label>
-            <span id="spmDimBadge" style="font-size: 10.5px; font-weight: 700; color: #2563eb; background: #eff6ff; padding: 2px 8px; border-radius: 999px; border: 1px solid #bfdbfe;">40×20 مم</span>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span id="spmDimBadge" style="font-size: 10px; font-weight: 700; color: #2563eb; background: #eff6ff; padding: 2px 8px; border-radius: 999px; border: 1px solid #bfdbfe;">40×20 مم</span>
+              <div style="display:flex; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden; background:#fff;">
+                <button type="button" id="spmZoomIn" style="border:none; background:#f8fafc; padding:2px 7px; font-size:11px; cursor:pointer; font-weight:bold;" title="تكبير المعاينة">🔍+</button>
+                <button type="button" id="spmZoomReset" style="border:none; border-left:1px solid #cbd5e1; border-right:1px solid #cbd5e1; background:#fff; padding:2px 6px; font-size:9.5px; cursor:pointer;" title="إعادة الحجم">100%</button>
+                <button type="button" id="spmZoomOut" style="border:none; background:#f8fafc; padding:2px 7px; font-size:11px; cursor:pointer; font-weight:bold;" title="تصغير المعاينة">🔍-</button>
+              </div>
+            </div>
           </div>
-          <div style="background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 10px; padding: 14px; display: flex; align-items: center; justify-content: center; min-height: 120px; overflow: hidden; position: relative;">
+          <div style="background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 10px; padding: 14px; display: flex; align-items: center; justify-content: center; min-height: 130px; overflow: hidden; position: relative;">
             <div id="spmScaleWrapper" style="display: flex; align-items: center; justify-content: center; transition: all 0.2s;">
               <div id="spmPreviewBox" style="background: #fff; box-shadow: 0 4px 14px rgba(0,0,0,0.12); border: 1px solid #000; border-radius: 2px; overflow: hidden; transition: all 0.2s;">
               </div>
@@ -4785,7 +5115,7 @@ function openStickerPrintModal(opts){
 
         <!-- Hint -->
         <div style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 7px 10px; font-size: 10px; color: #b45309; line-height: 1.4;">
-          💡 <b>نصيحة الكيوسك:</b> تأكد في نافذة الطباعة من اختيار <b>الهوامش: بلا (None)</b>. لتشغيل كروم في وضع الكيوسك الصامت تماماً بدون نافذة، راجع إعدادات الطابعات.
+          💡 <b>نصيحة الكيوسك:</b> تأكد في نافذة الطباعة من اختيار <b>الهوامش: بلا (None)</b>. يمكنك تعديل الإعدادات الافتراضية وحفظها لتطبيقها مباشرة في الكيوسك.
         </div>
       </div>
 
@@ -4801,18 +5131,55 @@ function openStickerPrintModal(opts){
 
   document.body.appendChild(overlay);
 
+  const getCustomOpts = () => ({
+    barcodeMode: currentBarcodeMode,
+    showShopName,
+    showCustomerName,
+    showPhone,
+    showDevice,
+    showPassword,
+    showFaults,
+    showPrice,
+    showDate,
+    showBorder
+  });
+
+  const syncInputs = () => {
+    const sShop = overlay.querySelector('#spmCheckShopName'); if(sShop) sShop.checked = showShopName;
+    const sCust = overlay.querySelector('#spmCheckCustomerName'); if(sCust) sCust.checked = showCustomerName;
+    const sPhone = overlay.querySelector('#spmCheckPhone'); if(sPhone) sPhone.checked = showPhone;
+    const sDev = overlay.querySelector('#spmCheckDevice'); if(sDev) sDev.checked = showDevice;
+    const sPass = overlay.querySelector('#spmCheckPassword'); if(sPass) sPass.checked = showPassword;
+    const sFault = overlay.querySelector('#spmCheckFaults'); if(sFault) sFault.checked = showFaults;
+    const sPrice = overlay.querySelector('#spmCheckPrice'); if(sPrice) sPrice.checked = showPrice;
+    const sDate = overlay.querySelector('#spmCheckDate'); if(sDate) sDate.checked = showDate;
+    const sBorder = overlay.querySelector('#spmCheckBorder'); if(sBorder) sBorder.checked = showBorder;
+
+    overlay.querySelectorAll('.spm-mode-pill').forEach(btn => {
+      const isSel = btn.dataset.mode === currentBarcodeMode;
+      btn.style.borderColor = isSel ? '#2563eb' : '#cbd5e1';
+      btn.style.background = isSel ? '#eff6ff' : '#fff';
+      btn.style.color = isSel ? '#1d4ed8' : '#334155';
+    });
+  };
+
   const updatePreview = () => {
     const dim = getThermalStickerDimensions(currentSizeKey, customW, customH);
     const previewBox = overlay.querySelector('#spmPreviewBox');
     const dimBadge = overlay.querySelector('#spmDimBadge');
     if(dimBadge) dimBadge.textContent = `${dim.w}×${dim.h} مم (${currentRotation}°) X:${currentOffsetX} Y:${currentOffsetY}`;
 
+    const modeBadge = overlay.querySelector('#spmModeBadge');
+    if(modeBadge){
+      modeBadge.textContent = currentBarcodeMode === 'qr' ? '📱 رمز QR للتتبع' : (currentBarcodeMode === 'barcode' ? '🏷️ باركود Code128' : '✍️ نصي فقط');
+    }
+
     // Screen pixel conversion: 3.78px per mm
     const baseW = dim.w * 3.78;
     const baseH = dim.h * 3.78;
-    const maxBoxW = 240;
-    const maxBoxH = 120;
-    const scaleFactor = Math.min(maxBoxW / baseW, maxBoxH / baseH, 2.0);
+    const maxBoxW = 240 * previewZoom;
+    const maxBoxH = 120 * previewZoom;
+    const scaleFactor = Math.min(maxBoxW / baseW, maxBoxH / baseH, 3.0);
     const boxW = Math.round(baseW * scaleFactor);
     const boxH = Math.round(baseH * scaleFactor);
 
@@ -4828,9 +5195,10 @@ function openStickerPrintModal(opts){
     }
     previewBox.style.transform = prevTransform.trim() || 'none';
 
+    const customOpts = getCustomOpts();
     const svgId = 'stickerLivePreviewSvg';
     const contentHtml = (cfg.type === 'receipt')
-      ? generateReceiptStickerHTML(cfg.data, dim, svgId)
+      ? generateReceiptStickerHTML(cfg.data, dim, svgId, customOpts)
       : generateProductStickerHTML(cfg.data, dim, svgId);
 
     previewBox.innerHTML = contentHtml;
@@ -4840,9 +5208,11 @@ function openStickerPrintModal(opts){
       ? cfg.data.receiptNumber
       : (cfg.data.Barcode || cfg.data.SKU || cfg.data.barcode || cfg.data.sku || cfg.data.ID || '1001');
 
-    setTimeout(() => {
-      renderStickerBarcodeSVG('#' + svgId, barcodeVal, dim);
-    }, 15);
+    if(cfg.type !== 'receipt' || currentBarcodeMode === 'barcode'){
+      setTimeout(() => {
+        renderStickerBarcodeSVG('#' + svgId, barcodeVal, dim, savedSettings.barcodeType || 'CODE128');
+      }, 15);
+    }
 
     overlay.querySelectorAll('.spm-chip-btn').forEach(btn => {
       const isSel = btn.dataset.size === currentSizeKey;
@@ -4864,6 +5234,75 @@ function openStickerPrintModal(opts){
 
   overlay.querySelector('#spmCloseBtn').onclick = () => overlay.remove();
   overlay.querySelector('#spmCancelBtn').onclick = () => overlay.remove();
+
+  // Mode Pills
+  overlay.querySelectorAll('.spm-mode-pill').forEach(btn => {
+    btn.onclick = () => {
+      currentBarcodeMode = btn.dataset.mode || 'qr';
+      syncInputs();
+      updatePreview();
+    };
+  });
+
+  // Presets
+  overlay.querySelectorAll('.spm-preset-btn').forEach(btn => {
+    btn.onclick = () => {
+      const preset = btn.dataset.preset;
+      if(preset === 'smart_qr'){
+        currentSizeKey = '40x20';
+        currentBarcodeMode = 'qr';
+        showShopName = true; showCustomerName = true; showPhone = true; showDevice = true; showPassword = true; showFaults = true; showDate = true; showBorder = false;
+      } else if(preset === 'bold_text'){
+        currentSizeKey = '40x20';
+        currentBarcodeMode = 'none';
+        showShopName = true; showCustomerName = true; showPhone = true; showDevice = true; showPassword = true; showFaults = true; showDate = true; showBorder = false;
+      } else if(preset === 'barcode128'){
+        currentSizeKey = '40x20';
+        currentBarcodeMode = 'barcode';
+        showShopName = true; showCustomerName = true; showPhone = true; showDevice = true; showFaults = true; showBorder = false;
+      } else if(preset === 'slim'){
+        currentSizeKey = '40x10';
+        currentBarcodeMode = 'none';
+      }
+      syncInputs();
+      updatePreview();
+    };
+  });
+
+  // Checkbox Event Listeners
+  const bindCheck = (id, setter) => {
+    const el = overlay.querySelector(id);
+    if(el) el.onchange = (e) => { setter(e.target.checked); updatePreview(); };
+  };
+  bindCheck('#spmCheckShopName', v => showShopName = v);
+  bindCheck('#spmCheckCustomerName', v => showCustomerName = v);
+  bindCheck('#spmCheckPhone', v => showPhone = v);
+  bindCheck('#spmCheckDevice', v => showDevice = v);
+  bindCheck('#spmCheckPassword', v => showPassword = v);
+  bindCheck('#spmCheckFaults', v => showFaults = v);
+  bindCheck('#spmCheckPrice', v => showPrice = v);
+  bindCheck('#spmCheckDate', v => showDate = v);
+  bindCheck('#spmCheckBorder', v => showBorder = v);
+
+  // Accordion Toggle
+  const customHeader = overlay.querySelector('#spmCustomSectionHeader');
+  const customBody = overlay.querySelector('#spmCustomSectionBody');
+  const customIcon = overlay.querySelector('#spmCustomToggleIcon');
+  if(customHeader && customBody){
+    customHeader.onclick = () => {
+      const isHidden = customBody.style.display === 'none';
+      customBody.style.display = isHidden ? 'flex' : 'none';
+      if(customIcon) customIcon.textContent = isHidden ? '▼' : '◀';
+    };
+  }
+
+  // Zoom Controls
+  const zIn = overlay.querySelector('#spmZoomIn');
+  const zOut = overlay.querySelector('#spmZoomOut');
+  const zReset = overlay.querySelector('#spmZoomReset');
+  if(zIn) zIn.onclick = () => { previewZoom = Math.min(2.5, previewZoom + 0.3); updatePreview(); };
+  if(zOut) zOut.onclick = () => { previewZoom = Math.max(0.6, previewZoom - 0.3); updatePreview(); };
+  if(zReset) zReset.onclick = () => { previewZoom = 1.0; updatePreview(); };
 
   overlay.querySelectorAll('.spm-chip-btn').forEach(btn => {
     btn.onclick = () => {
@@ -4925,7 +5364,8 @@ function openStickerPrintModal(opts){
   overlay.querySelector('#spmPrintBtn').onclick = () => {
     const dim = getThermalStickerDimensions(currentSizeKey, customW, customH);
     const isKioskChecked = overlay.querySelector('#spmKioskModeCheck') ? overlay.querySelector('#spmKioskModeCheck').checked : true;
-    
+    const customOpts = getCustomOpts();
+
     if(!state.settings.printers) state.settings.printers = {};
     if(!state.settings.printers.barcodePrinter) state.settings.printers.barcodePrinter = {};
     state.settings.printers.barcodePrinter.defaultSize = currentSizeKey;
@@ -4933,6 +5373,17 @@ function openStickerPrintModal(opts){
     state.settings.printers.barcodePrinter.offsetX = currentOffsetX;
     state.settings.printers.barcodePrinter.offsetY = currentOffsetY;
     state.settings.printers.barcodePrinter.kioskMode = isKioskChecked;
+    state.settings.printers.barcodePrinter.barcodeMode = currentBarcodeMode;
+    state.settings.printers.barcodePrinter.showShopName = showShopName;
+    state.settings.printers.barcodePrinter.showCustomerName = showCustomerName;
+    state.settings.printers.barcodePrinter.showPhone = showPhone;
+    state.settings.printers.barcodePrinter.showDevice = showDevice;
+    state.settings.printers.barcodePrinter.showPassword = showPassword;
+    state.settings.printers.barcodePrinter.showFaults = showFaults;
+    state.settings.printers.barcodePrinter.showPrice = showPrice;
+    state.settings.printers.barcodePrinter.showDate = showDate;
+    state.settings.printers.barcodePrinter.showBorder = showBorder;
+
     if(currentSizeKey === 'custom'){
       state.settings.printers.barcodePrinter.customWidth = customW;
       state.settings.printers.barcodePrinter.customHeight = customH;
@@ -4940,10 +5391,13 @@ function openStickerPrintModal(opts){
     try {
       localStorage.setItem('microerp_printers_settings', JSON.stringify(state.settings.printers));
       setCache('settings', state.settings);
+      if(typeof saveSettingRemote === 'function'){
+        saveSettingRemote('printers', JSON.stringify(state.settings.printers)).catch(()=>{});
+      }
     } catch(e){}
 
     overlay.remove();
-    executeDirectStickerPrint(cfg, dim, copies, currentRotation, currentOffsetX, currentOffsetY);
+    executeDirectStickerPrint(cfg, dim, copies, currentRotation, currentOffsetX, currentOffsetY, customOpts);
   };
 
   updatePreview();
@@ -4959,8 +5413,20 @@ function openStickerPrint(rawR, forceModal = false){
     const rot = (prnSettings.rotation !== undefined && prnSettings.rotation !== null) ? Number(prnSettings.rotation) : 0;
     const offX = Number(prnSettings.offsetX) || 0;
     const offY = Number(prnSettings.offsetY) || 0;
+    const customOpts = {
+      barcodeMode: prnSettings.barcodeMode || 'qr',
+      showShopName: prnSettings.showShopName !== false,
+      showCustomerName: prnSettings.showCustomerName !== false,
+      showPhone: prnSettings.showPhone !== false,
+      showDevice: prnSettings.showDevice !== false,
+      showPassword: prnSettings.showPassword !== false,
+      showFaults: prnSettings.showFaults !== false,
+      showPrice: prnSettings.showPrice === true,
+      showDate: prnSettings.showDate !== false,
+      showBorder: prnSettings.showBorder === true
+    };
     showToast('🏷️ جاري طباعة ملصق الصيانة فوراً (وضع الكيوسك ⚡)', 'info');
-    executeDirectStickerPrint({ type: 'receipt', data: r }, dim, 1, rot, offX, offY);
+    executeDirectStickerPrint({ type: 'receipt', data: r }, dim, 1, rot, offX, offY, customOpts);
     return;
   }
   openStickerPrintModal({ type: 'receipt', data: rawR });

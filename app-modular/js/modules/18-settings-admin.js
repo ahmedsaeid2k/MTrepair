@@ -693,6 +693,76 @@ function renderPrintersSettings(main){
           <input type="number" step="0.5" id="prnBarcodeOffsetY" value="${b.offsetY||0}" class="mono font-bold" placeholder="0 (أسفل موجب / أعلى سالب)">
         </div>
       </div>
+
+      <!-- Service Intake Sticker Configuration -->
+      <div style="background:rgba(124,58,237,0.04);border:1.5px solid rgba(124,58,237,0.2);border-radius:10px;padding:12px;margin-top:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
+          <h4 style="margin:0;font-size:13px;font-weight:900;color:var(--purple);display:flex;align-items:center;gap:6px;">
+            <span>🛠️ تخصيص استيكر وملصق أجهزة الصيانة الحراري (Thermal Service Label)</span>
+          </h4>
+          <button type="button" class="btn btn-ghost btn-xs test-maint-sticker-btn" style="color:var(--purple);font-weight:800;border-color:var(--purple);">🖨️ تجربة استيكر صيانة (معاينة حية)</button>
+        </div>
+        
+        <div class="grid2" style="margin-bottom:10px;">
+          <div class="field">
+            <label style="font-weight:700;font-size:11.5px;">صيغة ونوع الكود الافتراضي على ملصق الصيانة:</label>
+            <select id="prnBarcodeMaintMode">
+              <option value="qr" ${b.barcodeMode==='qr'||!b.barcodeMode?'selected':''}>📱 رمز QR ذكي لتتبع العميل المباشر (Smart Tracking QR - موصى به) ✨</option>
+              <option value="barcode" ${b.barcodeMode==='barcode'?'selected':''}>🏷️ باركود Code128 تقليدي (لقارئ الباركود الليزر USB)</option>
+              <option value="none" ${b.barcodeMode==='none'?'selected':''}>✍️ نصي بولد فقط عالي التباين (بدون كود)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label style="font-weight:700;font-size:11.5px;">توجيه الطباعة الافتراضي (Rotation):</label>
+            <select id="prnBarcodeMaintRotation">
+              <option value="0" ${(b.rotation==0||b.rotation==null)?'selected':''}>0° طبيعي (Portrait / Landscape الأصلي)</option>
+              <option value="90" ${b.rotation==90?'selected':''}>90° تدوير ربع دورة</option>
+              <option value="180" ${b.rotation==180?'selected':''}>180° تدوير معكوس</option>
+              <option value="270" ${b.rotation==270?'selected':''}>270° تدوير ثلاثة أرباع دورة</option>
+            </select>
+          </div>
+        </div>
+
+        <label style="font-weight:800;font-size:11.5px;margin-bottom:6px;display:block;">الحقول الافتراضية المعروضة على ملصق الصيانة:</label>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:8px;">
+          <label class="checkbox-row" style="font-size:12px;">
+            <input type="checkbox" id="prnBarcodeMaintShowShop" ${b.showShopName!==false?'checked':''}>
+            <span>🏪 اسم المحل / المركز</span>
+          </label>
+          <label class="checkbox-row" style="font-size:12px;">
+            <input type="checkbox" id="prnBarcodeMaintShowCustomer" ${b.showCustomerName!==false?'checked':''}>
+            <span>👤 اسم العميل</span>
+          </label>
+          <label class="checkbox-row" style="font-size:12px;">
+            <input type="checkbox" id="prnBarcodeMaintShowPhone" ${b.showPhone!==false?'checked':''}>
+            <span>📞 رقم الهاتف</span>
+          </label>
+          <label class="checkbox-row" style="font-size:12px;">
+            <input type="checkbox" id="prnBarcodeMaintShowDevice" ${b.showDevice!==false?'checked':''}>
+            <span>💻 الجهاز والموديل</span>
+          </label>
+          <label class="checkbox-row" style="font-size:12px;">
+            <input type="checkbox" id="prnBarcodeMaintShowPassword" ${b.showPassword!==false?'checked':''}>
+            <span>🔑 كلمة السر / النمط</span>
+          </label>
+          <label class="checkbox-row" style="font-size:12px;">
+            <input type="checkbox" id="prnBarcodeMaintShowFaults" ${b.showFaults!==false?'checked':''}>
+            <span>⚠️ الشكوى والعطل</span>
+          </label>
+          <label class="checkbox-row" style="font-size:12px;">
+            <input type="checkbox" id="prnBarcodeMaintShowPrice" ${b.showPrice===true?'checked':''}>
+            <span>💵 التكلفة / المتبقي</span>
+          </label>
+          <label class="checkbox-row" style="font-size:12px;">
+            <input type="checkbox" id="prnBarcodeMaintShowDate" ${b.showDate!==false?'checked':''}>
+            <span>📅 تاريخ ووقت الاستلام</span>
+          </label>
+          <label class="checkbox-row" style="font-size:12px;">
+            <input type="checkbox" id="prnBarcodeMaintShowBorder" ${b.showBorder===true?'checked':''}>
+            <span>🔲 إطار حدودي خارجي</span>
+          </label>
+        </div>
+      </div>
     </div>
 
     <!-- 3. Laser / Standard Office Printer Detailed Config -->
@@ -894,6 +964,9 @@ function attachPrintersSettingsEvents(main){
   main.querySelectorAll('.test-barcode-print-btn').forEach(btn => {
     btn.onclick = ()=>executeTestBarcodePrint();
   });
+  main.querySelectorAll('.test-maint-sticker-btn').forEach(btn => {
+    btn.onclick = ()=>executeTestMaintStickerPrint();
+  });
   main.querySelectorAll('.test-laser-print-btn').forEach(btn => {
     btn.onclick = ()=>executeTestLaserPrint();
   });
@@ -951,6 +1024,21 @@ function attachPrintersSettingsEvents(main){
     prn.barcodePrinter.kioskMode = document.getElementById('prnBarcodeKioskMode') ? document.getElementById('prnBarcodeKioskMode').checked : true;
     prn.barcodePrinter.offsetX = Number(document.getElementById('prnBarcodeOffsetX') ? document.getElementById('prnBarcodeOffsetX').value : 0) || 0;
     prn.barcodePrinter.offsetY = Number(document.getElementById('prnBarcodeOffsetY') ? document.getElementById('prnBarcodeOffsetY').value : 0) || 0;
+
+    // Maintenance sticker specific settings
+    const maintModeSel = document.getElementById('prnBarcodeMaintMode');
+    if(maintModeSel) prn.barcodePrinter.barcodeMode = maintModeSel.value;
+    const maintRotSel = document.getElementById('prnBarcodeMaintRotation');
+    if(maintRotSel) prn.barcodePrinter.rotation = Number(maintRotSel.value) || 0;
+    if(document.getElementById('prnBarcodeMaintShowShop')) prn.barcodePrinter.showShopName = document.getElementById('prnBarcodeMaintShowShop').checked;
+    if(document.getElementById('prnBarcodeMaintShowCustomer')) prn.barcodePrinter.showCustomerName = document.getElementById('prnBarcodeMaintShowCustomer').checked;
+    if(document.getElementById('prnBarcodeMaintShowPhone')) prn.barcodePrinter.showPhone = document.getElementById('prnBarcodeMaintShowPhone').checked;
+    if(document.getElementById('prnBarcodeMaintShowDevice')) prn.barcodePrinter.showDevice = document.getElementById('prnBarcodeMaintShowDevice').checked;
+    if(document.getElementById('prnBarcodeMaintShowPassword')) prn.barcodePrinter.showPassword = document.getElementById('prnBarcodeMaintShowPassword').checked;
+    if(document.getElementById('prnBarcodeMaintShowFaults')) prn.barcodePrinter.showFaults = document.getElementById('prnBarcodeMaintShowFaults').checked;
+    if(document.getElementById('prnBarcodeMaintShowPrice')) prn.barcodePrinter.showPrice = document.getElementById('prnBarcodeMaintShowPrice').checked;
+    if(document.getElementById('prnBarcodeMaintShowDate')) prn.barcodePrinter.showDate = document.getElementById('prnBarcodeMaintShowDate').checked;
+    if(document.getElementById('prnBarcodeMaintShowBorder')) prn.barcodePrinter.showBorder = document.getElementById('prnBarcodeMaintShowBorder').checked;
 
     // 3. Laser
     prn.laserPrinter.name = getChosenPrinterName('Laser', 'laser');
@@ -1028,6 +1116,22 @@ function executeTestBarcodePrint(){
     SKU: 'STK-8899'
   };
   openProductBarcodeSticker(sampleItem);
+}
+
+function executeTestMaintStickerPrint(){
+  const sampleReceipt = {
+    id: 'rec_sample_test',
+    receiptNumber: 'MT-2026-0001',
+    date: new Date().toISOString().slice(0, 10),
+    time: '14:30',
+    customer: { name: 'أحمد محمود التميمي', phone: '01098765432' },
+    device: { category: 'موبايل', brand: 'سامسونج', model: 'Galaxy S23 Ultra', password: 'Pattern 1-2-5' },
+    faults: ['تغيير شاشة أصلية', 'فحص سوكيت الشحن'],
+    cost: 1200,
+    deposit: 200,
+    status: 'check'
+  };
+  openStickerPrint(sampleReceipt, true);
 }
 
 function executeTestLaserPrint(){

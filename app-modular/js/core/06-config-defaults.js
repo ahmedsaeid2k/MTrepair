@@ -527,10 +527,21 @@ const DEFAULT_PRINTERS_SETTINGS = {
     customWidthMm: 40,
     customHeightMm: 20,
     barcodeType: 'CODE128',
+    barcodeMode: 'qr', // 'qr' (رمز QR ذكي للتتبع), 'barcode' (كود 128), 'none' (نصي فقط عالي التباين)
     defaultCopies: 1,
-    showPrice: true,
+    showPrice: false,
     showShopName: true,
-    showDate: false
+    showCustomerName: true,
+    showPhone: true,
+    showDevice: true,
+    showPassword: true,
+    showFaults: true,
+    showDate: true,
+    showBorder: false,
+    kioskMode: true,
+    rotation: 0,
+    offsetX: 0,
+    offsetY: 0
   },
   // 3. طابعة الليزر والمستندات الرسمية (Standard Laser / Inkjet Printer - A4 / A5)
   laserPrinter: {

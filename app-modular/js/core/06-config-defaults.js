@@ -582,6 +582,17 @@ function cleanDate(val){
   return val ? toEngDigits(String(val).slice(0, 10)) : ''; 
 }
 
+function cleanTime(val){
+  if(!val) return '';
+  try {
+    const d = new Date(val);
+    if(isNaN(d.getTime())) return String(val).slice(11, 16);
+    return d.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+  } catch(e) {
+    return String(val).slice(11, 16);
+  }
+}
+
 /**
  * Escapes unsafe HTML characters to prevent XSS vulnerabilities.
  * @param {string|number|null} str - Raw input text.

@@ -157,6 +157,55 @@ function renderPosSell(main){
       </div>
     </div>
 
+    <!-- Shift Status Ribbon -->
+    ${state.activeShift ? `
+      <div class="card" style="padding:10px 14px;margin-bottom:10px;background:linear-gradient(135deg, rgba(16,185,129,0.06), rgba(59,130,246,0.06));border:1px solid rgba(16,185,129,0.3);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <span class="status-badge st-delivered" style="font-size:12px;padding:4px 10px;background:rgba(16,185,129,0.15);color:var(--green);font-weight:800;">
+            🟢 الوردية مفتوحة #${state.activeShift.shiftNumber || 1}
+          </span>
+          <span style="font-size:12px;color:var(--ink);">
+            👤 <b>${escapeHtml(state.activeShift.cashierName || (state.user ? state.user.name : 'الكاشير'))}</b>
+          </span>
+          <span class="mono" style="font-size:11.5px;color:var(--ink-secondary);">
+            ⏰ بدأت: ${state.activeShift.startTime ? new Date(state.activeShift.startTime).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'}) : 'الآن'}
+          </span>
+          <span class="mono" style="font-size:11.5px;color:var(--ink-secondary);">
+            💵 عهدة البداية: <b>${Number(state.activeShift.openingFloat || 0).toLocaleString()} ج.م</b>
+          </span>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+          <button type="button" class="btn btn-ghost btn-sm" id="posPrintXReportBtn" style="background:var(--surface);border:1px solid var(--border);color:var(--ink);font-weight:700;">
+            📊 قراءة لحظية (X-Report)
+          </button>
+          <button type="button" class="btn btn-red btn-sm" id="posCloseShiftBtn" style="font-weight:800;">
+            🔒 تقفيل الوردية (Z-Report)
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm" id="posShiftsHistoryBtn" style="background:var(--surface);border:1px solid var(--border);" title="أرشيف الورديات السابقة">
+            📜 الأرشيف
+          </button>
+        </div>
+      </div>
+    ` : `
+      <div class="card" style="padding:10px 14px;margin-bottom:10px;background:linear-gradient(135deg, rgba(245,158,11,0.08), rgba(239,68,68,0.04));border:1px dashed rgba(245,158,11,0.5);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:18px;">⚠️</span>
+          <div>
+            <div style="font-weight:800;font-size:12.5px;color:var(--ink);">لا توجد وردية كاشير مفتوحة حالياً</div>
+            <div style="font-size:11px;color:var(--ink-secondary);">يُنصح بفتح وردية لتسجيل عهدة البداية واحتساب مبيعات وعجز/زيادة الصندوق بدقة.</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <button type="button" class="btn btn-primary btn-sm" id="posOpenShiftBtn" style="font-weight:800;">
+            ▶️ فتح وردية جديدة
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm" id="posShiftsHistoryBtn" style="background:var(--surface);border:1px solid var(--border);" title="أرشيف الورديات السابقة">
+            📜 الأرشيف
+          </button>
+        </div>
+      </div>
+    `}
+
     <div class="pos-terminal-grid">
 
       <!-- Right Column: Interactive Cart & Payment Settlement Panel (شاشة البيع في اليمين) -->
@@ -649,6 +698,30 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
   const posReturnBtn = document.getElementById('posOpenReturnBtn');
   if(posReturnBtn){
     posReturnBtn.onclick = ()=>openPosReturnLookupModal();
+  }
+
+  const posOpenShiftBtn = document.getElementById('posOpenShiftBtn');
+  if(posOpenShiftBtn){
+    posOpenShiftBtn.onclick = () => openStartShiftModal(() => renderPosSell(main));
+  }
+
+  const posCloseShiftBtn = document.getElementById('posCloseShiftBtn');
+  if(posCloseShiftBtn){
+    posCloseShiftBtn.onclick = () => openCloseShiftModal();
+  }
+
+  const posPrintXReportBtn = document.getElementById('posPrintXReportBtn');
+  if(posPrintXReportBtn){
+    posPrintXReportBtn.onclick = () => {
+      const active = getActiveShift();
+      if(active) openShiftPrint(active, 'X', 'thermal');
+      else showToast('لا توجد وردية نشطة حالياً', 'error');
+    };
+  }
+
+  const posShiftsHistoryBtn = document.getElementById('posShiftsHistoryBtn');
+  if(posShiftsHistoryBtn){
+    posShiftsHistoryBtn.onclick = () => openShiftsHistoryModal();
   }
 
   // Complete Sale Logic

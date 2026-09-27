@@ -935,7 +935,8 @@ async function savePaymentRemote(receiptId, amount, note, paymentMethod){
     ID: 'p_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
     ReceiptID: receiptId, Date: new Date().toISOString().slice(0,10),
     Amount: numAmt, Note: note || '', By: state.user ? state.user.name : 'نظام',
-    PaymentMethod: payMethod
+    PaymentMethod: payMethod,
+    ShiftID: state.activeShift ? state.activeShift.id : ''
   };
   state.payments.push(payment);
   setCache('payments', state.payments);
@@ -1076,7 +1077,8 @@ async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, cust
     ID: 'sale_' + Date.now(), Date: new Date().toISOString().slice(0,10),
     ItemsSummary: itemsSummary, ItemsJSON: itemsJson||'', Total: Number(total||0),
     PaymentMethod: paymentMethod||'نقدي', AmountPaid: amountPaid!=null?Number(amountPaid):Number(total||0),
-    CustomerName: customerName||'', CustomerPhone: customerPhone||'', By: state.user ? state.user.name : 'نظام'
+    CustomerName: customerName||'', CustomerPhone: customerPhone||'', By: state.user ? state.user.name : 'نظام',
+    ShiftID: state.activeShift ? state.activeShift.id : ''
   };
   state.sales.push(sale);
   setCache('sales', state.sales);
@@ -1240,6 +1242,7 @@ async function saveExpenseRemote(exp){
   if(!exp.ID) exp.ID = 'exp_' + Date.now();
   if(!exp.Date) exp.Date = new Date().toISOString().slice(0,10);
   exp.By = state.user ? state.user.name : 'نظام';
+  if(!exp.ShiftID && state.activeShift) exp.ShiftID = state.activeShift.id;
   const idx = state.expenses.findIndex(x=>x.ID===exp.ID);
   if(idx>-1) state.expenses[idx] = exp; else state.expenses.push(exp);
   setCache('expenses', state.expenses);

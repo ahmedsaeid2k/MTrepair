@@ -62,6 +62,8 @@ let state = {
   services: getCache('services', []),
   purchases: getCache('purchases', []),
   suppliers: getCache('suppliers', []),
+  shifts: getCache('shifts', []),
+  activeShift: getCache('activeShift', null),
   currentSection: null,
   cart: [],
   quoCart: [],

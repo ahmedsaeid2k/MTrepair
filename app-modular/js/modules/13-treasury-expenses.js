@@ -713,6 +713,55 @@ function renderCashDrawerPage(main){
       </div>
     </div>
 
+    <!-- Active Shift Status Ribbon in Cash Drawer -->
+    ${state.activeShift ? `
+      <div class="card" style="padding:10px 14px;margin-bottom:14px;background:linear-gradient(135deg, rgba(16,185,129,0.08), rgba(59,130,246,0.06));border:1px solid rgba(16,185,129,0.3);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <span class="status-badge st-delivered" style="font-size:12px;padding:4px 10px;background:rgba(16,185,129,0.18);color:var(--green);font-weight:800;">
+            🟢 الوردية الحالية #${state.activeShift.shiftNumber || 1}
+          </span>
+          <span style="font-size:12px;color:var(--ink);">
+            الكاشير: <b>${escapeHtml(state.activeShift.cashierName || (state.user ? state.user.name : 'الكاشير'))}</b>
+          </span>
+          <span class="mono" style="font-size:11.5px;color:var(--ink-secondary);">
+            ⏰ بدأت: ${state.activeShift.startTime ? new Date(state.activeShift.startTime).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'}) : 'الآن'}
+          </span>
+          <span class="mono" style="font-size:11.5px;color:var(--ink-secondary);">
+            💵 عهدة البداية: <b>${Number(state.activeShift.openingFloat || 0).toLocaleString()} ج.م</b>
+          </span>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+          <button type="button" class="btn btn-ghost btn-sm" id="drawerPrintXReportBtn" style="background:var(--surface);border:1px solid var(--border);color:var(--ink);font-weight:700;">
+            📊 قراءة لحظية (X-Report)
+          </button>
+          <button type="button" class="btn btn-red btn-sm" id="drawerCloseShiftBtn" style="font-weight:800;">
+            🔒 تقفيل الوردية (Z-Report)
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm" id="drawerShiftsHistoryBtn" style="background:var(--surface);border:1px solid var(--border);">
+            📜 أرشيف الورديات
+          </button>
+        </div>
+      </div>
+    ` : `
+      <div class="card" style="padding:10px 14px;margin-bottom:14px;background:linear-gradient(135deg, rgba(245,158,11,0.08), rgba(239,68,68,0.04));border:1px dashed rgba(245,158,11,0.5);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:18px;">⚠️</span>
+          <div>
+            <div style="font-weight:800;font-size:12.5px;color:var(--ink);">لا توجد وردية كاشير مفتوحة حالياً بالدرج</div>
+            <div style="font-size:11px;color:var(--ink-secondary);">افتح وردية جديدة لتعيين عهدة النقدية ومتابعة المبيعات والتقفيل اليومي بدقة.</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <button type="button" class="btn btn-primary btn-sm" id="drawerOpenShiftBtn" style="font-weight:800;">
+            ▶️ فتح وردية جديدة
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm" id="drawerShiftsHistoryBtn" style="background:var(--surface);border:1px solid var(--border);">
+            📜 أرشيف الورديات
+          </button>
+        </div>
+      </div>
+    `}
+
     <!-- Drawer KPIs Grid -->
     <div class="stat-grid" style="grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;margin-bottom:16px;">
       <div class="stat-card" style="border-top:3px solid #10b981;background:linear-gradient(180deg, #ecfdf5 0%, #fff 100%);">
@@ -912,6 +961,27 @@ function renderCashDrawerPage(main){
     const curDateStr = state.drawerDateFilter === 'custom' ? state.drawerCustomDate : (state.drawerDateFilter==='yesterday'?yesterdayStr:todayStr);
     openDailyClosePrint(curDateStr, { totalIn, totalOut, totalPetty, netCash: netShiftCash }, filtered);
   };
+
+  const drawerOpenShiftBtn = document.getElementById('drawerOpenShiftBtn');
+  if(drawerOpenShiftBtn){
+    drawerOpenShiftBtn.onclick = () => openStartShiftModal(() => renderCashDrawerPage(main));
+  }
+  const drawerCloseShiftBtn = document.getElementById('drawerCloseShiftBtn');
+  if(drawerCloseShiftBtn){
+    drawerCloseShiftBtn.onclick = () => openCloseShiftModal();
+  }
+  const drawerPrintXReportBtn = document.getElementById('drawerPrintXReportBtn');
+  if(drawerPrintXReportBtn){
+    drawerPrintXReportBtn.onclick = () => {
+      const active = getActiveShift();
+      if(active) openShiftPrint(active, 'X', 'thermal');
+      else showToast('لا توجد وردية نشطة حالياً', 'error');
+    };
+  }
+  const drawerShiftsHistoryBtn = document.getElementById('drawerShiftsHistoryBtn');
+  if(drawerShiftsHistoryBtn){
+    drawerShiftsHistoryBtn.onclick = () => openShiftsHistoryModal();
+  }
   const toDailyBtn = document.getElementById('drawerToDailyBtn');
   if(toDailyBtn) toDailyBtn.onclick = ()=>{ state.currentSection = 'daily'; render(); };
 

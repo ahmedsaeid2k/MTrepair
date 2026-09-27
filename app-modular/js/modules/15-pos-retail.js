@@ -73,6 +73,257 @@ function renderPosApp(app){
   else renderPosSalesLog(main);
 }
 
+/* ---------------- POS Held Carts Management (تعليق واسترجاع الفواتير والسلات المتعددة) ---------------- */
+function getHeldCarts(){
+  if(Array.isArray(state.heldCarts)) return state.heldCarts;
+  try {
+    const raw = localStorage.getItem('mterp_held_carts');
+    if(raw){
+      const parsed = JSON.parse(raw);
+      if(Array.isArray(parsed)){
+        state.heldCarts = parsed;
+        return state.heldCarts;
+      }
+    }
+  } catch(e){}
+  state.heldCarts = [];
+  return state.heldCarts;
+}
+
+function saveHeldCarts(carts){
+  state.heldCarts = Array.isArray(carts) ? carts : [];
+  try {
+    localStorage.setItem('mterp_held_carts', JSON.stringify(state.heldCarts));
+  } catch(e){}
+}
+
+function formatTimeAgo(isoString){
+  if(!isoString) return '';
+  const diffSec = Math.floor((Date.now() - new Date(isoString).getTime()) / 1000);
+  if(diffSec < 60) return 'الآن';
+  const diffMin = Math.floor(diffSec / 60);
+  if(diffMin < 60) return `منذ ${diffMin} دقيقة`;
+  const diffHours = Math.floor(diffMin / 60);
+  if(diffHours < 24) return `منذ ${diffHours} ساعة`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `منذ ${diffDays} يوم`;
+}
+
+function holdCurrentCart(){
+  const cart = state.cart || [];
+  if(!cart.length){
+    showToast('السلة فارغة حالياً، أضف أصنافاً أولاً لتعليق الفاتورة', 'info');
+    return;
+  }
+  const ps = state.posState || {};
+  const subtotal = cart.reduce((s, c) => s + (Number(c.qty)||1) * (Number(c.price)||0), 0);
+  const discountVal = Number(ps.discountValue) || 0;
+  const discountAmount = ps.discountType === 'percent' 
+    ? Math.round(subtotal * (discountVal / 100))
+    : Math.min(subtotal, discountVal);
+  const afterDiscount = Math.max(0, subtotal - discountAmount);
+  const posSettings = typeof getPosSettings === 'function' ? getPosSettings() : {};
+  const taxAmount = posSettings.enableTax ? Math.round(afterDiscount * (Number(posSettings.taxRate)||14) / 100) : 0;
+  const grandTotal = afterDiscount + taxAmount;
+
+  const heldList = getHeldCarts();
+  const nextNum = heldList.length > 0 ? (Math.max(...heldList.map(h => h.holdNum || 1)) + 1) : 1;
+  const custName = (ps.customerName && ps.customerName !== 'عميل زائر') ? ps.customerName : `عميل #${nextNum}`;
+
+  const heldObj = {
+    id: 'hold_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+    holdNum: nextNum,
+    timestamp: new Date().toISOString(),
+    customerTitle: ps.customerTitle || '',
+    customerName: custName,
+    customerPhone: ps.customerPhone || '',
+    notes: ps.notes || '',
+    discountType: ps.discountType || 'fixed',
+    discountValue: discountVal,
+    paymentMethod: ps.paymentMethod || 'cash',
+    cart: JSON.parse(JSON.stringify(cart)),
+    subtotal: subtotal,
+    grandTotal: grandTotal,
+    itemsCount: cart.reduce((s, c) => s + (Number(c.qty) || 1), 0)
+  };
+
+  heldList.unshift(heldObj);
+  saveHeldCarts(heldList);
+
+  // Clear current active cart
+  state.cart = [];
+  if(state.posState){
+    state.posState.customerTitle = '';
+    state.posState.customerName = 'عميل زائر';
+    state.posState.customerPhone = '';
+    state.posState.discountValue = 0;
+    state.posState.amountPaid = '';
+    state.posState.notes = '';
+  }
+
+  showToast(`تم تعليق الفاتورة بنجاح ⏸️ (#${heldObj.holdNum} - ${custName})`, 'success');
+  const main = document.getElementById('main') || document.querySelector('main');
+  if(main) renderPosSell(main);
+}
+
+function resumeHeldCart(holdId){
+  const heldList = getHeldCarts();
+  const target = heldList.find(h => h.id === holdId);
+  if(!target){
+    showToast('لم يتم العثور على الفاتورة المعلقة', 'error');
+    return;
+  }
+
+  // Check if active cart has items
+  if(state.cart && state.cart.length > 0){
+    const confirmSwap = confirm('توجد أصناف حالية في السلة! هل ترغب في استبدالها واسترجاع الفاتورة المعلقة؟\n(نصيحة: يمكنك تعليق الفاتورة الحالية أولاً لعدم فقدانها)');
+    if(!confirmSwap) return;
+  }
+
+  state.cart = JSON.parse(JSON.stringify(target.cart || []));
+  if(!state.posState) state.posState = {};
+  state.posState.customerTitle = target.customerTitle || '';
+  state.posState.customerName = target.customerName || 'عميل زائر';
+  state.posState.customerPhone = target.customerPhone || '';
+  state.posState.discountType = target.discountType || 'fixed';
+  state.posState.discountValue = target.discountValue || 0;
+  state.posState.paymentMethod = target.paymentMethod || 'cash';
+  state.posState.notes = target.notes || '';
+  state.posState.amountPaid = '';
+
+  saveHeldCarts(heldList.filter(h => h.id !== holdId));
+
+  const existingOverlay = document.getElementById('posHeldCartsModal');
+  if(existingOverlay) existingOverlay.remove();
+
+  showToast(`تم استرجاع الفاتورة المعلقة #${target.holdNum} بنجاح ▶️`, 'success');
+  const main = document.getElementById('main') || document.querySelector('main');
+  if(main) renderPosSell(main);
+}
+
+function openHeldCartsModal(){
+  const existing = document.getElementById('posHeldCartsModal');
+  if(existing) existing.remove();
+
+  const heldList = getHeldCarts();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'posHeldCartsModal';
+  overlay.className = 'modal-overlay';
+  overlay.style.zIndex = '10060';
+
+  overlay.innerHTML = `
+    <div class="modal-card" style="max-width:650px; width:95%; max-height:85vh; display:flex; flex-direction:column; background:var(--bg-card, #fff); border-radius:16px; overflow:hidden; border:1px solid var(--border-color, #cbd5e1); box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);">
+      <!-- Header -->
+      <div style="padding:14px 18px; background:linear-gradient(135deg, #1e293b, #0f172a); color:#fff; display:flex; justify-content:space-between; align-items:center;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div style="width:36px; height:36px; border-radius:8px; background:rgba(245,158,11,0.2); display:flex; align-items:center; justify-content:center; font-size:18px; border:1px solid rgba(245,158,11,0.3);">⏸️</div>
+          <div>
+            <h3 style="margin:0; font-size:15px; font-weight:800; color:#fff;">سجل الفواتير المعلقة في نقطة البيع</h3>
+            <div style="font-size:11.5px; color:#94a3b8;">إدارة واسترجاع السلات المحفوظة (${heldList.length} فواتير معلقة)</div>
+          </div>
+        </div>
+        <button type="button" id="closeHeldCartsModalBtn" style="background:rgba(255,255,255,0.1); border:none; color:#cbd5e1; width:28px; height:28px; border-radius:50%; cursor:pointer; font-size:14px;">✕</button>
+      </div>
+
+      <!-- Body -->
+      <div style="padding:14px 18px; flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:10px; max-height:55vh;">
+        ${heldList.length === 0 ? `
+          <div style="text-align:center; padding:40px 20px; color:var(--ink-secondary);">
+            <div style="font-size:36px; margin-bottom:8px;">⏸️</div>
+            <div style="font-size:14px; font-weight:800; color:var(--ink); margin-bottom:4px;">لا توجد فواتير معلقة حالياً</div>
+            <div style="font-size:12px; color:var(--ink-secondary);">يمكنك تعليق أي سلة نشطة في نقطة البيع عبر زر <b>⏸️ تعليق الفاتورة (F6)</b> لخدمة عميل آخر فوراً دون فقدان الأصناف.</div>
+          </div>
+        ` : heldList.map(h => {
+          const timeAgo = formatTimeAgo(h.timestamp);
+          const itemsSummary = (h.cart || []).map(c => `${escapeHtml(c.name || 'صنف')} (x${c.qty||1})`).join('، ');
+          return `
+            <div class="card" style="padding:12px; border-radius:10px; border:1.5px solid var(--line); background:var(--paper2); display:flex; flex-direction:column; gap:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span class="badge" style="background:rgba(245,158,11,0.15); color:var(--amber-text); font-weight:900; font-size:12px; padding:3px 8px; border-radius:6px;">
+                    #${h.holdNum || 1}
+                  </span>
+                  <b style="font-size:13px; color:var(--ink);">${escapeHtml(h.customerName || 'عميل زائر')}</b>
+                  ${h.customerPhone ? `<span class="mono" style="font-size:11px; color:var(--ink-secondary); direction:ltr;">📞 ${escapeHtml(h.customerPhone)}</span>` : ''}
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span class="mono" style="font-size:11px; color:var(--ink-secondary);">⏰ ${timeAgo}</span>
+                  <b class="mono" style="font-size:15px; color:var(--primary); font-weight:900;">${Number(h.grandTotal || h.subtotal || 0).toLocaleString()} ج.م</b>
+                </div>
+              </div>
+
+              <!-- Items snippet -->
+              <div style="font-size:11.5px; color:var(--ink-secondary); background:var(--paper); padding:6px 10px; border-radius:6px; border:1px solid var(--line); line-height:1.5;">
+                <b>الأصناف (${h.itemsCount || (h.cart||[]).length}):</b> ${itemsSummary || 'بدون تفاصيل'}
+                ${h.notes ? `<div style="font-size:10.5px; color:var(--amber-text); margin-top:2px;"><b>ملاحظات:</b> ${escapeHtml(h.notes)}</div>` : ''}
+              </div>
+
+              <!-- Actions -->
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-top:2px;">
+                <button type="button" class="btn btn-ghost btn-xs delete-held-cart-btn" data-id="${h.id}" style="color:var(--red); font-size:11px;">
+                  🗑️ إلغاء وحذف
+                </button>
+                <button type="button" class="btn btn-primary btn-sm resume-held-cart-btn" data-id="${h.id}" style="font-weight:800; font-size:12px; padding:5px 14px; display:flex; align-items:center; gap:4px;">
+                  <span>▶️ استرجاع ومتابعة البيع</span>
+                </button>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+
+      <!-- Footer -->
+      <div style="padding:12px 18px; background:var(--paper3); border-top:1px solid var(--line); display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          ${heldList.length > 0 ? `
+            <button type="button" class="btn btn-ghost btn-xs" id="clearAllHeldCartsBtn" style="color:var(--red); font-weight:700;">
+              🗑️ تفريغ كافة المعلقات
+            </button>
+          ` : ''}
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" id="cancelHeldCartsModalBtn">إغلاق</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  overlay.querySelectorAll('.resume-held-cart-btn').forEach(btn => {
+    btn.onclick = () => resumeHeldCart(btn.dataset.id);
+  });
+
+  overlay.querySelectorAll('.delete-held-cart-btn').forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.dataset.id;
+      if(confirm('هل تريد بالتأكيد حذف هذه الفاتورة المعلقة؟')){
+        const list = getHeldCarts().filter(x => x.id !== id);
+        saveHeldCarts(list);
+        showToast('تم حذف الفاتورة المعلقة', 'info');
+        openHeldCartsModal();
+        const main = document.getElementById('main') || document.querySelector('main');
+        if(main) renderPosSell(main);
+      }
+    };
+  });
+
+  const clearAllBtn = overlay.querySelector('#clearAllHeldCartsBtn');
+  if(clearAllBtn){
+    clearAllBtn.onclick = () => {
+      if(confirm('هل تريد بالتأكيد تفريغ كافة الفواتير المعلقة؟')){
+        saveHeldCarts([]);
+        showToast('تم تفريغ كافة الفواتير المعلقة', 'info');
+        overlay.remove();
+        const main = document.getElementById('main') || document.querySelector('main');
+        if(main) renderPosSell(main);
+      }
+    };
+  }
+
+  overlay.querySelector('#closeHeldCartsModalBtn').onclick = () => overlay.remove();
+  overlay.querySelector('#cancelHeldCartsModalBtn').onclick = () => overlay.remove();
+}
+
 function renderPosSell(main){
   const posSettings = getPosSettings();
   const cart = state.cart || [];
@@ -144,6 +395,7 @@ function renderPosSell(main){
 
   // Enabled payment methods
   const enabledPayMethods = (posSettings.paymentMethods || []).filter(p => p.enabled !== false);
+  const heldCartsCount = getHeldCarts().length;
 
   main.innerHTML = `
     <div class="top-header" style="margin-bottom:8px;">
@@ -152,6 +404,17 @@ function renderPosSell(main){
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <button class="btn btn-amber btn-sm" id="posOpenReturnBtn">↩️ استرجاع فاتورة (14 يوم)</button>
+        <button type="button" class="btn btn-blue btn-sm" id="posHoldCartBtn" title="تعليق السلة الحالية لخدمة عميل آخر (F6)">
+          ⏸️ تعليق الفاتورة (Hold)
+        </button>
+        <button type="button" class="btn btn-ghost btn-sm" id="posHeldCartsBtn" style="position:relative;border:1.5px solid ${heldCartsCount > 0 ? 'var(--amber)' : 'var(--line)'};background:${heldCartsCount > 0 ? 'rgba(245,158,11,0.08)' : 'transparent'};font-weight:700;" title="عرض واسترجاع الفواتير المعلقة (F7)">
+          <span>📂 الفواتير المعلقة</span>
+          ${heldCartsCount > 0 ? `
+            <span class="badge" style="background:var(--amber);color:#fff;border-radius:999px;padding:1px 7px;font-size:11px;font-weight:900;margin-right:4px;box-shadow:0 1px 3px rgba(0,0,0,0.2);">
+              ${heldCartsCount}
+            </span>
+          ` : ''}
+        </button>
         <button class="btn btn-ghost btn-sm" id="posGoToSettingsBtn">⚙️ إعدادات الـ POS</button>
         <button class="btn btn-ghost btn-sm" id="posClearCartTopBtn" style="color:var(--red);">🗑️ تفريغ السلة</button>
       </div>
@@ -351,6 +614,9 @@ function renderPosSell(main){
           </button>
           <button class="btn btn-blue" id="completeSaleWithTaxInvBtn" style="padding:7px;font-weight:800;font-size:11.5px;display:flex;align-items:center;justify-content:center;gap:6px;" ${cart.length===0?'disabled':''}>
             <span>📄 إتمام البيع وإصدار فاتورة ضريبية</span>
+          </button>
+          <button type="button" class="btn btn-ghost" id="posHoldCurrentCartQuickBtn" style="padding:6px;font-weight:800;font-size:11px;border:1px dashed var(--blue);color:var(--blue);display:flex;align-items:center;justify-content:center;gap:6px;" ${cart.length===0?'disabled':''}>
+            <span>⏸️ تعليق هذه الفاتورة لخدمة عميل آخر (Hold)</span>
           </button>
         </div>
 
@@ -699,6 +965,14 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
   if(posReturnBtn){
     posReturnBtn.onclick = ()=>openPosReturnLookupModal();
   }
+
+  const posHoldBtn = document.getElementById('posHoldCartBtn');
+  const posHoldQuickBtn = document.getElementById('posHoldCurrentCartQuickBtn');
+  if(posHoldBtn) posHoldBtn.onclick = () => holdCurrentCart();
+  if(posHoldQuickBtn) posHoldQuickBtn.onclick = () => holdCurrentCart();
+
+  const posHeldCartsBtn = document.getElementById('posHeldCartsBtn');
+  if(posHeldCartsBtn) posHeldCartsBtn.onclick = () => openHeldCartsModal();
 
   const posOpenShiftBtn = document.getElementById('posOpenShiftBtn');
   if(posOpenShiftBtn){

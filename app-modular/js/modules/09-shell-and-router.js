@@ -527,11 +527,17 @@ function openCommandPalette(initialQuery=''){
   performSearch(initialQuery);
 }
 
-// Global Keyboard Shortcut listener (Cmd+K / Ctrl+K)
+// Global Keyboard Shortcut listener (Cmd+K / Ctrl+K / F6 / F7)
 window.addEventListener('keydown', (e)=>{
   if((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K' || e.key === 'ك')){
     e.preventDefault();
     openCommandPalette();
+  } else if(e.key === 'F6' && state.currentSection === 'pos'){
+    e.preventDefault();
+    if(typeof holdCurrentCart === 'function') holdCurrentCart();
+  } else if(e.key === 'F7' && state.currentSection === 'pos'){
+    e.preventDefault();
+    if(typeof openHeldCartsModal === 'function') openHeldCartsModal();
   }
 });
 

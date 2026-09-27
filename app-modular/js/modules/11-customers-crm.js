@@ -2998,6 +2998,156 @@ function openReIntakeDeviceModal(previousReceipt){
   };
 }
 
+/* ---------------- Inventory Spare Part Picker Modal ---------------- */
+function openInventoryPartPickerModal(onSelect){
+  const existing = document.getElementById('invPartPickerOverlay');
+  if(existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'invPartPickerOverlay';
+  overlay.className = 'modal-overlay';
+  overlay.style.zIndex = '10060';
+
+  const inventory = Array.isArray(state.inventory) ? state.inventory : [];
+  let filterCategory = 'all';
+  let searchQuery = '';
+
+  const categories = ['all', 'صيانة', 'كمبيوتر', 'إكسسوار', 'أخرى'];
+
+  overlay.innerHTML = `
+    <div class="modal-card" style="max-width: 600px; width: 95%; max-height: 85vh; display:flex; flex-direction:column; background:var(--bg-card, #fff); border-radius:14px; overflow:hidden; border:1px solid var(--border-color, #cbd5e1); box-shadow:0 20px 40px rgba(0,0,0,0.25);">
+      <div style="padding:12px 16px; background:linear-gradient(135deg, #1e293b, #0f172a); color:#fff; display:flex; justify-content:space-between; align-items:center;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:18px;">📦</span>
+          <div>
+            <h3 style="margin:0; font-size:14px; font-weight:800; color:#fff;">اختيار قطعة غيار من رصيد المخزن</h3>
+            <div style="font-size:11px; color:#94a3b8;">حدد الصنف لإدراجه في إيصال الصيانة وخصمه آلياً</div>
+          </div>
+        </div>
+        <button type="button" id="closePartPickerBtn" style="background:rgba(255,255,255,0.1); border:none; color:#cbd5e1; width:28px; height:28px; border-radius:50%; cursor:pointer; font-size:13px;">✕</button>
+      </div>
+
+      <div style="padding:12px 16px; display:flex; flex-direction:column; gap:10px; flex:1; overflow:hidden;">
+        <!-- Search & Filter Controls -->
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <input type="text" id="partPickerSearchInp" placeholder="بحث باسم الصنف أو الباركود..." style="flex:1; min-width:200px; padding:7px 10px; font-size:12.5px; border:1.5px solid var(--line); border-radius:8px;" autofocus>
+        </div>
+        <div style="display:flex; gap:5px; flex-wrap:wrap;" id="partPickerCatChips">
+          ${categories.map(c => `
+            <button type="button" class="btn btn-xs part-cat-btn ${c==='all'?'btn-primary':'btn-ghost'}" data-cat="${c}" style="font-size:11px; padding:3px 8px; border-radius:6px;">
+              ${c==='all' ? '📦 الكل' : (c==='صيانة' ? '🛠️ قطع صيانة' : c)}
+            </button>
+          `).join('')}
+        </div>
+
+        <!-- Items List -->
+        <div id="partPickerItemsContainer" style="flex:1; overflow-y:auto; min-height:220px; max-height:48vh; border:1px solid var(--line); border-radius:8px; padding:6px; background:var(--paper2); display:flex; flex-direction:column; gap:6px;">
+          <!-- Items rendered here -->
+        </div>
+      </div>
+
+      <div style="padding:10px 16px; background:var(--paper3); border-top:1px solid var(--line); display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-size:11px; color:var(--ink-secondary);" id="partPickerCountText">جارٍ التحميل...</span>
+        <button type="button" class="btn btn-ghost btn-xs" id="cancelPartPickerBtn">إلغاء</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  function renderItems(){
+    const container = overlay.querySelector('#partPickerItemsContainer');
+    const countText = overlay.querySelector('#partPickerCountText');
+    if(!container) return;
+
+    let items = [...inventory];
+    if(filterCategory !== 'all'){
+      items = items.filter(x => (x.Category || 'صيانة') === filterCategory);
+    }
+    if(searchQuery.trim()){
+      const q = searchQuery.trim().toLowerCase();
+      items = items.filter(x => 
+        (x.Name && x.Name.toLowerCase().includes(q)) || 
+        (x.Barcode && String(x.Barcode).includes(q)) || 
+        (x.Category && x.Category.toLowerCase().includes(q))
+      );
+    }
+
+    if(countText) countText.innerText = `عدد الأصناف المتاحة: ${items.length} صنف`;
+
+    if(!items.length){
+      container.innerHTML = `
+        <div style="text-align:center; padding:30px 10px; color:var(--ink-secondary); font-size:12px;">
+          🔍 لا توجد أصناف مطابقة في المخزن.
+        </div>`;
+      return;
+    }
+
+    container.innerHTML = items.map(item => {
+      const qty = Number(item.Quantity || 0);
+      const isOut = qty <= 0;
+      const sellPrice = Number(item.SellPrice || item.PurchasePrice || 0);
+      const costPrice = Number(item.PurchasePrice || 0);
+      return `
+        <div class="part-item-row" data-id="${escapeHtml(item.ID)}" style="display:flex; justify-content:space-between; align-items:center; background:var(--paper); padding:8px 10px; border-radius:6px; border:1px solid var(--line); cursor:pointer; transition:all 0.15s;">
+          <div>
+            <div style="font-size:12.5px; font-weight:800; color:var(--ink);">${escapeHtml(item.Name)}</div>
+            <div style="display:flex; gap:8px; align-items:center; font-size:11px; color:var(--ink-secondary); margin-top:2px;">
+              <span class="mono">باركود: ${escapeHtml(item.Barcode || '-')}</span>
+              <span>•</span>
+              <span class="badge" style="background:${isOut ? '#fee2e2' : '#dcfce7'}; color:${isOut ? '#991b1b' : '#166534'}; font-size:10px; font-weight:800; padding:1px 6px;">
+                ${isOut ? '⚠️ الرصيد 0' : `الرصيد المتاح: ${qty}`}
+              </span>
+            </div>
+          </div>
+          <div style="text-align:left;">
+            <div class="mono" style="font-size:13px; font-weight:900; color:var(--primary);">${sellPrice.toLocaleString()} ج.م</div>
+            <div style="font-size:10px; color:var(--slate-400);">تكلفة: ${costPrice.toLocaleString()} ج.م</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    container.querySelectorAll('.part-item-row').forEach(row => {
+      row.onclick = () => {
+        const id = row.dataset.id;
+        const sel = inventory.find(x => x.ID === id);
+        if(sel){
+          if(typeof onSelect === 'function') onSelect(sel);
+          overlay.remove();
+        }
+      };
+    });
+  }
+
+  renderItems();
+
+  const searchInp = overlay.querySelector('#partPickerSearchInp');
+  if(searchInp){
+    searchInp.oninput = (e) => {
+      searchQuery = e.target.value;
+      renderItems();
+    };
+  }
+
+  overlay.querySelectorAll('.part-cat-btn').forEach(btn => {
+    btn.onclick = () => {
+      filterCategory = btn.dataset.cat;
+      overlay.querySelectorAll('.part-cat-btn').forEach(b => {
+        if(b.dataset.cat === filterCategory){
+          b.className = 'btn btn-xs part-cat-btn btn-primary';
+        } else {
+          b.className = 'btn btn-xs part-cat-btn btn-ghost';
+        }
+      });
+      renderItems();
+    };
+  });
+
+  overlay.querySelector('#closePartPickerBtn').onclick = () => overlay.remove();
+  overlay.querySelector('#cancelPartPickerBtn').onclick = () => overlay.remove();
+}
+
 /* ---------------- Receipt Detail & Full Edit ---------------- */
 async function openReceiptDetail(rawR){
   if(!rawR){
@@ -3172,6 +3322,41 @@ async function openReceiptDetail(rawR){
       </div>
     </div>
 
+    <!-- قطع الغيار ومستلزمات الصيانة المستهلكة من المخزن -->
+    <div class="card" style="background:var(--paper3);padding:12px;border-radius:var(--radius-sm);margin-top:10px;border:1px solid var(--line);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
+        <div>
+          <h4 style="margin:0;font-size:13.5px;display:flex;align-items:center;gap:6px;">
+            <span>⚙️</span>
+            <span>قطع الغيار ومستلزمات الصيانة المستهلكة</span>
+            <span class="badge" id="detailPartsCountBadge" style="background:var(--primary-bg);color:var(--primary);font-size:11px;font-weight:800;">
+              ${(r.partsList||[]).length} قطع
+            </span>
+          </h4>
+          <div style="font-size:11px;color:var(--ink-secondary);margin-top:2px;">
+            اختر القطعة من المخزن لخصمها آلياً، أو أضف قطعة خارجية يدوياً مع الضمان
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+          <button type="button" class="btn btn-primary btn-xs" id="detailAddInventoryPartBtn">📦 إضافة من المخزن</button>
+          <button type="button" class="btn btn-ghost btn-xs" id="detailAddCustomPartBtn" style="border:1px solid var(--line);background:var(--paper2);">+ قطعة خارجية يدوية</button>
+        </div>
+      </div>
+      <div id="detailSparePartsList" style="display:flex;flex-direction:column;gap:6px;">
+        <!-- dynamic spare parts rendered here -->
+      </div>
+      <div id="detailPartsSummaryBox" style="margin-top:8px;padding:8px 12px;background:rgba(59,130,246,0.06);border-radius:8px;border:1px solid rgba(59,130,246,0.2);display:flex;justify-content:space-between;align-items:center;font-size:12px;flex-wrap:wrap;gap:6px;">
+        <div>
+          <span style="color:var(--ink-secondary);">إجمالي قطع الغيار:</span>
+          <b class="mono" id="detailPartsSellTotalDisplay" style="color:var(--primary);font-size:13px;margin-right:4px;">${Number(r.partsCost||0).toLocaleString()} ج.م</b>
+          <span style="font-size:10.5px;color:var(--ink-secondary);margin-right:8px;">(تكلفة المحل: <span class="mono" id="detailPartsCostTotalDisplay">${Number(r.partsBuyCost||0).toLocaleString()}</span> ج.م)</span>
+        </div>
+        <div id="detailPartsStockNotice" style="font-size:11px;color:var(--green);font-weight:700;">
+          ✓ يتم خصم الكميات من رصيد المخزن تلقائياً
+        </div>
+      </div>
+    </div>
+
     <!-- حساب آخر على العميل -->
     <div class="card" style="background:var(--paper3);padding:12px;border-radius:var(--radius-sm);margin-top:10px;border:1px solid var(--line);">
       <h4 style="margin:0 0 8px 0;font-size:13.5px;display:flex;align-items:center;gap:6px;">
@@ -3190,11 +3375,12 @@ async function openReceiptDetail(rawR){
       </div>
     </div>
 
-    <div class="grid4" style="margin-top:10px;">
-      <div class="field"><label>تكلفة الصيانة (ج.م)</label><input id="eCost" type="number" value="${r.cost||0}"></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(115px, 1fr));gap:8px;margin-top:10px;">
+      <div class="field"><label>أجور الصيانة (ج.م)</label><input id="eCost" type="number" value="${r.cost||0}"></div>
+      <div class="field"><label>قطع الغيار (ج.م)</label><input id="ePartsCost" type="number" value="${r.partsCost||0}" disabled style="background:var(--paper3);font-weight:bold;color:var(--purple);"></div>
       <div class="field"><label>حساب إضافي (ج.م)</label><input id="eOtherDisplay" type="number" value="${r.otherAccountAmount||0}" disabled style="background:var(--paper3);"></div>
       <div class="field"><label>إجمالي المدفوع (ج.م)</label><input id="eDeposit" type="number" value="${r.deposit||0}" disabled style="background:var(--paper3);"></div>
-      <div class="field"><label>المتبقي حاليًا (ج.م)</label><input id="eRem" type="number" value="${remaining}" disabled style="background:var(--paper3);font-weight:bold;color:var(--primary);"></div>
+      <div class="field"><label>المتبقي المطلوب (ج.م)</label><input id="eRem" type="number" value="${remaining}" disabled style="background:var(--paper3);font-weight:bold;color:var(--primary);"></div>
     </div>
 
     <div class="card" style="background:var(--paper3);padding:12px;border-radius:var(--radius-sm);margin-top:8px;">
@@ -3319,6 +3505,12 @@ async function openReceiptDetail(rawR){
     });
   }
 
+  // Detail Spare Parts State
+  let detailSpareParts = (Array.isArray(r.partsList) && r.partsList.length)
+    ? JSON.parse(JSON.stringify(r.partsList))
+    : [];
+  const initiallyDeductedParts = detailSpareParts.filter(p => p.isStockDeducted && p.itemId);
+
   function recalcDetailFinances(){
     const sumSvc = detailServiceItems.reduce((acc, cur) => acc + Number(cur.price || 0), 0);
     const costInput = overlay.querySelector('#eCost');
@@ -3327,14 +3519,31 @@ async function openReceiptDetail(rawR){
     }
     const costVal = Number(costInput ? costInput.value : 0) || 0;
     const otherVal = Number(overlay.querySelector('#eOtherAmount')?.value || 0);
-    const partsVal = Number(r.partsCost || 0);
+
+    // Calculate spare parts (sell price to client and cost price to shop)
+    const partsSellTotal = detailSpareParts.reduce((acc, cur) => acc + (Number(cur.sellPrice || 0) * Number(cur.qty || 1)), 0);
+    const partsCostTotal = detailSpareParts.reduce((acc, cur) => acc + (Number(cur.costPrice || 0) * Number(cur.qty || 1)), 0);
+    r.partsCost = partsSellTotal;
+    r.partsBuyCost = partsCostTotal;
+
+    const partsCostInp = overlay.querySelector('#ePartsCost');
+    if(partsCostInp) partsCostInp.value = partsSellTotal;
+
+    const partsSellDisp = overlay.querySelector('#detailPartsSellTotalDisplay');
+    if(partsSellDisp) partsSellDisp.innerText = `${partsSellTotal.toLocaleString()} ج.م`;
+    const partsCostDisp = overlay.querySelector('#detailPartsCostTotalDisplay');
+    if(partsCostDisp) partsCostDisp.innerText = partsCostTotal.toLocaleString();
+
+    const partsBadge = overlay.querySelector('#detailPartsCountBadge');
+    if(partsBadge) partsBadge.innerText = `${detailSpareParts.length} قطع`;
+
     const depositVal = Number(r.deposit || 0);
     const refundedVal = Number(r.refunded || 0);
 
     const otherDisplay = overlay.querySelector('#eOtherDisplay');
     if(otherDisplay) otherDisplay.value = otherVal;
 
-    const totalDue = costVal + partsVal + otherVal;
+    const totalDue = costVal + partsSellTotal + otherVal;
     const currentRem = Math.max(0, totalDue - depositVal + refundedVal);
 
     const remInput = overlay.querySelector('#eRem');
@@ -3348,7 +3557,119 @@ async function openReceiptDetail(rawR){
     if(addPayBtn) addPayBtn.disabled = (currentRem <= 0);
   }
 
+  function renderDetailSpareParts(){
+    const list = overlay.querySelector('#detailSparePartsList');
+    const summaryBox = overlay.querySelector('#detailPartsSummaryBox');
+    if(!list) return;
+
+    if(!detailSpareParts.length){
+      list.innerHTML = `
+        <div style="text-align:center;padding:12px;background:var(--paper2);border-radius:var(--radius-xs);color:var(--ink-secondary);font-size:12px;">
+          لا توجد قطع غيار مسجلة لهذا الجهاز. اضغط <b>📦 إضافة من المخزن</b> لاختيار قطع من رصيد المحل، أو <b>+ قطعة خارجية يدوية</b>.
+        </div>`;
+      if(summaryBox) summaryBox.style.display = 'none';
+      recalcDetailFinances();
+      return;
+    }
+
+    if(summaryBox) summaryBox.style.display = 'flex';
+
+    list.innerHTML = detailSpareParts.map((part, idx) => {
+      const invItem = part.itemId ? (state.inventory || []).find(x => x.ID === part.itemId) : null;
+      const currentStock = invItem ? Number(invItem.Quantity || 0) : null;
+      const stockBadge = (currentStock !== null)
+        ? `<span class="badge" style="background:${currentStock > 0 ? '#dcfce7' : '#fee2e2'};color:${currentStock > 0 ? '#166534' : '#991b1b'};font-size:10.5px;padding:2px 6px;">مخزن: ${currentStock}</span>`
+        : `<span class="badge" style="background:#f1f5f9;color:#475569;font-size:10.5px;padding:2px 6px;">قطعة خارجية</span>`;
+
+      const partTotal = (Number(part.qty || 1) * Number(part.sellPrice || 0));
+
+      return `
+        <div style="display:flex;gap:6px;align-items:center;background:var(--paper2);padding:7px 10px;border-radius:var(--radius-xs);border:1px solid var(--line);flex-wrap:wrap;">
+          <span style="font-size:11px;color:var(--ink-secondary);font-weight:bold;width:18px;text-align:center;">${idx + 1}</span>
+          <div style="flex:3;min-width:170px;display:flex;align-items:center;gap:6px;">
+            <input type="text" class="detail-part-name" data-idx="${idx}" value="${escapeHtml(part.name || '')}" placeholder="اسم القطعة وموديلها..." style="flex:1;padding:5px 8px;font-size:12px;font-weight:700;">
+            ${stockBadge}
+          </div>
+          <div style="display:flex;align-items:center;gap:3px;flex:1;min-width:70px;">
+            <label style="font-size:10px;color:var(--ink-secondary);">كمية:</label>
+            <input type="number" min="1" step="1" class="detail-part-qty" data-idx="${idx}" value="${part.qty || 1}" style="width:100%;padding:5px 4px;text-align:center;font-size:12px;font-weight:bold;">
+          </div>
+          <div style="display:flex;align-items:center;gap:3px;flex:1.2;min-width:90px;">
+            <label style="font-size:10px;color:var(--ink-secondary);">بيع:</label>
+            <input type="number" min="0" step="any" class="detail-part-price" data-idx="${idx}" value="${part.sellPrice != null ? part.sellPrice : ''}" placeholder="0" style="width:100%;padding:5px 4px;font-size:12px;font-weight:bold;color:var(--primary);">
+            <span style="font-size:10px;color:var(--ink-secondary);">ج.م</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:3px;flex:1.4;min-width:105px;">
+            <label style="font-size:10px;color:var(--ink-secondary);">ضمان:</label>
+            <select class="detail-part-warranty" data-idx="${idx}" style="width:100%;padding:4px 3px;font-size:11px;font-weight:700;">
+              <option value="0" ${Number(part.warrantyDays) === 0 ? 'selected' : ''}>بدون ضمان</option>
+              <option value="14" ${Number(part.warrantyDays) === 14 ? 'selected' : ''}>14 يوم تجربة</option>
+              <option value="30" ${Number(part.warrantyDays) === 30 || !part.warrantyDays ? 'selected' : ''}>شهر (30 يوم) ⭐</option>
+              <option value="90" ${Number(part.warrantyDays) === 90 ? 'selected' : ''}>3 أشهر</option>
+              <option value="180" ${Number(part.warrantyDays) === 180 ? 'selected' : ''}>6 أشهر</option>
+              <option value="365" ${Number(part.warrantyDays) === 365 ? 'selected' : ''}>سنة كاملة</option>
+            </select>
+          </div>
+          <div style="font-size:11.5px;font-weight:800;color:var(--green);min-width:65px;text-align:left;">
+            ${partTotal.toLocaleString()} ج.م
+          </div>
+          <button type="button" class="btn btn-ghost btn-xs detail-part-del-btn" data-idx="${idx}" title="حذف هذه القطعة" style="color:var(--red);padding:4px 6px;">✕</button>
+        </div>
+      `;
+    }).join('');
+
+    attachDetailSparePartEvents();
+    recalcDetailFinances();
+  }
+
+  function attachDetailSparePartEvents(){
+    overlay.querySelectorAll('.detail-part-name').forEach(inp => {
+      inp.oninput = (e) => {
+        const idx = Number(e.target.dataset.idx);
+        if(detailSpareParts[idx]) detailSpareParts[idx].name = e.target.value;
+      };
+    });
+    overlay.querySelectorAll('.detail-part-qty').forEach(inp => {
+      inp.onchange = (e) => {
+        const idx = Number(e.target.dataset.idx);
+        if(detailSpareParts[idx]){
+          detailSpareParts[idx].qty = Math.max(1, Number(e.target.value || 1));
+          renderDetailSpareParts();
+        }
+      };
+    });
+    overlay.querySelectorAll('.detail-part-price').forEach(inp => {
+      inp.oninput = (e) => {
+        const idx = Number(e.target.dataset.idx);
+        if(detailSpareParts[idx]){
+          detailSpareParts[idx].sellPrice = Number(e.target.value || 0);
+          recalcDetailFinances();
+        }
+      };
+    });
+    overlay.querySelectorAll('.detail-part-warranty').forEach(sel => {
+      sel.onchange = (e) => {
+        const idx = Number(e.target.dataset.idx);
+        if(detailSpareParts[idx]) detailSpareParts[idx].warrantyDays = Number(e.target.value);
+      };
+    });
+    overlay.querySelectorAll('.detail-part-del-btn').forEach(btn => {
+      btn.onclick = (e) => {
+        const idx = Number(btn.dataset.idx);
+        const removed = detailSpareParts.splice(idx, 1)[0];
+        if(removed && removed.isStockDeducted && removed.itemId){
+          try {
+            adjustInventoryQtyRemote(removed.itemId, Number(removed.qty || 1));
+            showToast(`تمت إعادة ${removed.qty} من (${removed.name}) إلى رصيد المخزن 📦`, 'info');
+          } catch(err){}
+        }
+        renderDetailSpareParts();
+      };
+    });
+  }
+
   renderDetailServiceItems();
+  renderDetailSpareParts();
 
   const addSvcBtn = overlay.querySelector('#detailAddServiceItemBtn');
   if(addSvcBtn){
@@ -3357,6 +3678,53 @@ async function openReceiptDetail(rawR){
       renderDetailServiceItems();
       const lastDesc = overlay.querySelector(`.detail-svc-desc[data-idx="${detailServiceItems.length - 1}"]`);
       if(lastDesc) lastDesc.focus();
+    };
+  }
+
+  const addInvPartBtn = overlay.querySelector('#detailAddInventoryPartBtn');
+  if(addInvPartBtn){
+    addInvPartBtn.onclick = () => {
+      openInventoryPartPickerModal((item) => {
+        const existing = detailSpareParts.find(p => p.itemId === item.ID);
+        if(existing){
+          existing.qty = Number(existing.qty || 1) + 1;
+          showToast(`تم زيادة كمية (${item.Name}) إلى ${existing.qty} 📦`, 'info');
+        } else {
+          detailSpareParts.push({
+            id: 'part_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+            itemId: item.ID,
+            barcode: item.Barcode || '',
+            name: item.Name,
+            qty: 1,
+            costPrice: Number(item.PurchasePrice || 0),
+            sellPrice: Number(item.SellPrice || item.PurchasePrice || 0),
+            warrantyDays: 30,
+            isStockDeducted: false
+          });
+          showToast(`تمت إضافة (${item.Name}) بنجاح 📦`, 'success');
+        }
+        renderDetailSpareParts();
+      });
+    };
+  }
+
+  const addCustomPartBtn = overlay.querySelector('#detailAddCustomPartBtn');
+  if(addCustomPartBtn){
+    addCustomPartBtn.onclick = () => {
+      detailSpareParts.push({
+        id: 'part_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+        itemId: '',
+        barcode: '',
+        name: '',
+        qty: 1,
+        costPrice: 0,
+        sellPrice: 0,
+        warrantyDays: 30,
+        isStockDeducted: false
+      });
+      renderDetailSpareParts();
+      const lastPartName = overlay.querySelector(`.detail-part-name[data-idx="${detailSpareParts.length - 1}"]`);
+      if(lastPartName) lastPartName.focus();
     };
   }
 
@@ -3588,6 +3956,10 @@ async function openReceiptDetail(rawR){
       }
     }
     r.serviceItems = detailServiceItems.filter(it => (it.desc && it.desc.trim()) || Number(it.price) > 0);
+    r.partsList = detailSpareParts;
+    r.partsCost = detailSpareParts.reduce((sum, p) => sum + (Number(p.sellPrice || 0) * Number(p.qty || 1)), 0);
+    r.partsBuyCost = detailSpareParts.reduce((sum, p) => sum + (Number(p.costPrice || 0) * Number(p.qty || 1)), 0);
+    r.partsUsed = detailSpareParts.map(p => `${p.name} (x${p.qty||1})`).join('، ');
     r.otherAccountDesc = (overlay.querySelector('#eOtherDesc')?.value || '').trim();
     r.otherAccountAmount = Number(overlay.querySelector('#eOtherAmount')?.value || 0);
     r.cost = Number(overlay.querySelector('#eCost').value || 0);
@@ -3597,6 +3969,28 @@ async function openReceiptDetail(rawR){
 
   overlay.querySelector('#saveEditBtn').onclick = async ()=>{
     collectEdits();
+
+    // Deduct un-deducted inventory parts
+    for(const p of detailSpareParts){
+      if(p.itemId && !p.isStockDeducted){
+        try {
+          await adjustInventoryQtyRemote(p.itemId, -Number(p.qty || 1));
+          p.isStockDeducted = true;
+        } catch(e){
+          console.warn('Error deducting stock for part:', p.name, e);
+        }
+      }
+    }
+    // Restock any removed initially deducted parts
+    for(const initP of initiallyDeductedParts){
+      const stillPresent = detailSpareParts.some(p => p.id === initP.id || (p.itemId === initP.itemId && p.isStockDeducted));
+      if(!stillPresent){
+        try {
+          await adjustInventoryQtyRemote(initP.itemId, Number(initP.qty || 1));
+        } catch(e){}
+      }
+    }
+
     const totalDue = Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0);
     const totalPaid = Number(r.deposit||0);
 
@@ -4064,12 +4458,25 @@ function openReceiptPrint(rawR, kind){
           </table>
         `}
 
+        <!-- Spare Parts Info if any -->
+        ${(Array.isArray(r.partsList) && r.partsList.length > 0) ? `
+          <div style="font-size:6.5px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:2px;padding:1.5px 3px;margin-bottom:1.5px;color:#5b21b6;">
+            <b>⚙️ قطع الغيار المستبدلة:</b> ${r.partsList.map(p => `${escapeHtml(p.name||'قطعة')} (${p.qty||1}) [${p.warrantyDays ? p.warrantyDays+'يوم' : 'بدون ضمان'}]`).join(' • ')}
+          </div>
+        ` : ''}
+
         <!-- Financial Box -->
-        <div style="display:grid;grid-template-columns:1fr 1fr 1.3fr;gap:2px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:3px;padding:2px;text-align:center;font-size:7.5px;margin-bottom:1.5px;">
+        <div style="display:grid;grid-template-columns:${Number(r.partsCost||0) > 0 ? '1fr 1fr 1fr 1.2fr' : '1fr 1fr 1.3fr'};gap:2px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:3px;padding:2px;text-align:center;font-size:7.5px;margin-bottom:1.5px;">
           <div style="padding:1px;">
-            <div style="color:#64748b;font-size:6.5px;">تكلفة الخدمة</div>
+            <div style="color:#64748b;font-size:6.5px;">أجور الصيانة</div>
             <div class="mono" style="font-weight:800;font-size:8px;">${Number(r.cost||0)} ج.م</div>
           </div>
+          ${Number(r.partsCost||0) > 0 ? `
+          <div style="padding:1px;">
+            <div style="color:#64748b;font-size:6.5px;">قطع الغيار</div>
+            <div class="mono" style="font-weight:800;font-size:8px;color:#7c3aed;">${Number(r.partsCost||0)} ج.م</div>
+          </div>
+          ` : ''}
           <div style="padding:1px;">
             <div style="color:#64748b;font-size:6.5px;">مدفوع مقدم${(Number(r.deposit||0) > 0 && r.depositPaymentMethod) ? ` (${escapeHtml(r.depositPaymentMethod)})` : ''}</div>
             <div class="mono" style="font-weight:800;font-size:8px;color:#047857;">${Number(r.deposit||0)} ج.م</div>

@@ -471,6 +471,35 @@ async function renderPublicTrackingPortal(receiptNum = ''){
             <span>المقايسة وتفاصيل الحساب المالي</span>
           </h4>
 
+          ${(Array.isArray(r.partsList) && r.partsList.length > 0) ? `
+            <div style="margin-bottom:12px;border:1px solid rgba(124,58,237,0.25);border-radius:var(--radius-xs);overflow:hidden;background:var(--paper);">
+              <div style="background:rgba(124,58,237,0.08);padding:6px 10px;font-size:11.5px;font-weight:800;color:var(--purple);display:flex;justify-content:space-between;align-items:center;">
+                <span>⚙️ قطع الغيار ومستلزمات الصيانة المستبدلة</span>
+                <span class="mono" style="font-size:12px;">${Number(r.partsCost || 0).toLocaleString()} ج.م</span>
+              </div>
+              <table style="width:100%;border-collapse:collapse;font-size:11.5px;">
+                <thead>
+                  <tr style="background:var(--paper2);border-bottom:1px solid var(--line);color:var(--ink-secondary);">
+                    <th style="padding:6px 10px;text-align:right;">القطعة المستبدلة</th>
+                    <th style="padding:6px 10px;text-align:center;width:60px;">الكمية</th>
+                    <th style="padding:6px 10px;text-align:center;width:90px;">الضمان المعتمد</th>
+                    <th style="padding:6px 10px;text-align:left;width:80px;">السعر</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${r.partsList.map(p => `
+                    <tr style="border-bottom:1px dashed var(--line);">
+                      <td style="padding:6px 10px;font-weight:700;">${escapeHtml(p.name || 'قطعة غيار')}</td>
+                      <td class="mono" style="padding:6px 10px;text-align:center;">${p.qty || 1}</td>
+                      <td style="padding:6px 10px;text-align:center;"><span class="badge" style="background:#e0e7ff;color:#3730a3;font-size:10px;font-weight:700;">${p.warrantyDays ? p.warrantyDays + ' يوم' : 'بدون ضمان'}</span></td>
+                      <td class="mono" style="padding:6px 10px;text-align:left;font-weight:800;color:var(--purple);">${(Number(p.sellPrice || 0) * Number(p.qty || 1)).toLocaleString()} ج.م</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          ` : ''}
+
           ${(Array.isArray(r.serviceItems) && r.serviceItems.length > 0) ? `
             <div style="margin-bottom:12px;border:1px solid var(--line);border-radius:var(--radius-xs);overflow:hidden;background:var(--paper);">
               <table style="width:100%;border-collapse:collapse;font-size:11.5px;">

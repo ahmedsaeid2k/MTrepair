@@ -1483,13 +1483,16 @@ function renderWhatsappSettings(main){
 
   const waKeys = [
     {k:'cost_estimate', icon:'💰', label:'0. عرض ومقايسة التكلفة (موافقة / رفض وفحص)'},
-    {k:'check', icon:'🔍', label:'1. استلام وفحص الجهاز (قيد الفحص)'},
-    {k:'repair', icon:'🛠️', label:'2. بدء الإصلاح الفعلي (الصيانة)'},
-    {k:'done', icon:'✅', label:'3. جاهز للاستلام (مكتمل)'},
-    {k:'delivered', icon:'🤝', label:'4. تسليم الجهاز وتفعيل الضمان'},
-    {k:'overdue', icon:'⏳', label:'5. تذكير بالأجهزة المتروكة (+7 أيام)'},
-    {k:'unrepairable', icon:'🚫', label:'6. تعذر الصيانة'},
-    {k:'rejected', icon:'❌', label:'7. رفض العميل'}
+    {k:'intake', icon:'📥', label:'1. استلام الجهاز وحجز الإيصال (جديد)'},
+    {k:'check', icon:'🔍', label:'2. فحص وتشخيص الجهاز (قيد الفحص)'},
+    {k:'repair', icon:'🛠️', label:'3. بدء الإصلاح الفعلي (الصيانة)'},
+    {k:'done', icon:'✅', label:'4. جاهز للاستلام (مكتمل)'},
+    {k:'delivered', icon:'🤝', label:'5. تسليم الجهاز وتفعيل الضمان'},
+    {k:'pending', icon:'⏸️', label:'6. صيانة معلقة بانتظار العميل'},
+    {k:'warranty', icon:'🛡️', label:'7. صيانة تحت الضمان'},
+    {k:'overdue', icon:'⏳', label:'8. تذكير بالأجهزة المتروكة (+7 أيام)'},
+    {k:'unrepairable', icon:'🚫', label:'9. تعذر الصيانة'},
+    {k:'rejected', icon:'❌', label:'10. رفض العميل'}
   ];
 
   const placeholders = [
@@ -1501,14 +1504,17 @@ function renderWhatsappSettings(main){
     {p:'{faults_report}', label:'🔍 تقرير الفحص'},
     {p:'{cost}', label:'💰 إجمالي التكلفة'},
     {p:'{deposit}', label:'💵 المدفوع مقدماً'},
+    {p:'{deposit_info}', label:'💵 بند العربون'},
     {p:'{remaining}', label:'🔴 المتبقي المطلوب'},
     {p:'{inspection_fee}', label:'❌ تكلفة الفحص (رفض)'},
     {p:'{estimate_time}', label:'⏳ مدة الإصلاح'},
     {p:'{warranty}', label:'🛡️ فترة الضمان'},
+    {p:'{warranty_info}', label:'🛡️ بند الضمان'},
     {p:'{status}', label:'📌 الحالة'},
     {p:'{track_url}', label:'🔗 رابط التتبع المباشر'},
     {p:'{shop_name}', label:'🏪 اسم المحل'},
-    {p:'{shop_phone}', label:'📞 هاتف المحل'}
+    {p:'{shop_phone}', label:'📞 هاتف المحل'},
+    {p:'{shop_address}', label:'📍 عنوان المحل'}
   ];
 
   main.innerHTML = `
@@ -1537,6 +1543,17 @@ function renderWhatsappSettings(main){
       <div class="field">
         <label>نص قالب الرسالة لحالة: <b>${(waKeys.find(w=>w.k===activeWaKey)||{}).label}</b></label>
         <textarea id="waTemplateTextarea" style="min-height:160px;font-size:13.5px;line-height:1.6;font-family:inherit;">${currentContent}</textarea>
+      </div>
+
+      <!-- Live Simulated WhatsApp Preview Card -->
+      <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:12px 14px;margin-top:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <label style="font-size:12px;font-weight:700;color:#14532d;margin:0;display:flex;align-items:center;gap:6px;">
+            <span>💬</span> معاينة حية لشكل رسالة واتساب كما ستصل للعميل:
+          </label>
+          <span style="font-size:11px;color:#15803d;">بيانات محاكاة ذكية</span>
+        </div>
+        <div id="waSettingsLivePreview" style="background:#fff;border:1px solid #bbf7d0;border-radius:8px;padding:12px;font-size:13px;line-height:1.6;white-space:pre-wrap;color:#14532d;max-height:160px;overflow-y:auto;direction:rtl;box-shadow:inset 0 1px 2px rgba(0,0,0,0.02);"></div>
       </div>
 
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;flex-wrap:wrap;gap:10px;">
@@ -1584,6 +1601,40 @@ function renderWhatsappSettings(main){
 
   const textarea = document.getElementById('waTemplateTextarea');
 
+  function updateSettingsLivePreview(){
+    const previewBox = document.getElementById('waSettingsLivePreview');
+    if(!previewBox || !textarea) return;
+    const rawText = textarea.value;
+    const trackUrl = `${window.location.origin}${window.location.pathname}?track=MT-2026-0001`;
+    const rendered = rawText
+      .replace(/{customer_name}/g, 'أحمد محمود')
+      .replace(/{receipt_no}/g, 'MT-2026-0001')
+      .replace(/{date}/g, new Date().toISOString().slice(0,10))
+      .replace(/{time}/g, '04:30 م')
+      .replace(/{device}/g, 'لابتوب - Dell G15 5511')
+      .replace(/{faults}/g, 'شاشة مكسورة، فحص المذربورد')
+      .replace(/{faults_report}/g, 'شاشة مكسورة، فحص المذربورد')
+      .replace(/{status}/g, (waKeys.find(w=>w.k===activeWaKey)||{}).label || 'قيد الفحص')
+      .replace(/{cost}/g, '1,800')
+      .replace(/{deposit}/g, '500')
+      .replace(/{deposit_info}/g, '• العربون المدفوع مسبقاً: *500 ج.م*')
+      .replace(/{remaining}/g, '1,300')
+      .replace(/{inspection_fee}/g, '100')
+      .replace(/{estimate_time}/g, 'خلال 24-48 ساعة')
+      .replace(/{warranty}/g, '3 شهور ضد عيوب الصناعة')
+      .replace(/{warranty_info}/g, '• فترة الضمان المعتمدة: *3 شهور ضد عيوب الصناعة*')
+      .replace(/{track_url}/g, trackUrl)
+      .replace(/{shop_name}/g, (state.settings && state.settings.shopName) || 'صيانة ميكروتك')
+      .replace(/{shop_phone}/g, (state.settings && (state.settings.shopPhone || state.settings.phone)) || '01000000000')
+      .replace(/{shop_address}/g, (state.settings && (state.settings.shopAddress || state.settings.address)) || 'شارع التحرير')
+      .replace(/\n\s*\n\s*\n+/g, '\n\n');
+    previewBox.textContent = rendered;
+  }
+  if(textarea){
+    textarea.oninput = updateSettingsLivePreview;
+    updateSettingsLivePreview();
+  }
+
   main.querySelectorAll('[data-insert-placeholder]').forEach(chip => {
     chip.onclick = ()=>{
       const p = chip.dataset.insertPlaceholder;
@@ -1593,6 +1644,7 @@ function renderWhatsappSettings(main){
       textarea.value = val.substring(0, start) + p + val.substring(end);
       textarea.focus();
       textarea.setSelectionRange(start + p.length, start + p.length);
+      updateSettingsLivePreview();
     };
   });
 

@@ -1571,7 +1571,10 @@ function renderDashboard(main){
         <div style="font-size:13px;font-weight:700;">
           ⚠️ يوجد <b>${overdueList.length}</b> أجهزة جاهزة ومكتملة الصيانة ولم يستلمها العملاء لأكثر من أسبوع!
         </div>
-        <button class="btn btn-amber btn-sm" id="viewOverdueBtn">عرض الأجهزة وإرسال تذكير</button>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button class="btn btn-whatsapp btn-sm" id="dashBulkOverdueWaBtn">${WA_ICON} إرسال تذكيرات واتساب</button>
+          <button class="btn btn-amber btn-sm" id="viewOverdueBtn">عرض الأجهزة بالأرشيف</button>
+        </div>
       </div>
     </div>` : ''}
 
@@ -1621,6 +1624,8 @@ function renderDashboard(main){
     state.tab = 'archive';
     renderMain();
   };
+  const dashBulkWaBtn = document.getElementById('dashBulkOverdueWaBtn');
+  if(dashBulkWaBtn) dashBulkWaBtn.onclick = ()=>openBulkOverdueWhatsappModal(7);
   attachRowActions(main);
   if(typeof window.renderUnifiedSelectionBar === 'function'){
     window.renderUnifiedSelectionBar();

@@ -3161,6 +3161,7 @@ function renderArchive(main){
           <button type="button" class="view-mode-btn ${state.maintenanceViewMode!=='cards'?'active':''}" id="archViewTableBtn" title="عرض جدول">📋 جدول</button>
           <button type="button" class="view-mode-btn ${state.maintenanceViewMode==='cards'?'active':''}" id="archViewCardsBtn" title="عرض بطاقات ذكية">🗂️ بطاقات ذكية</button>
         </div>
+        <button class="btn btn-whatsapp btn-sm" id="archBulkOverdueBtn" title="إرسال تذكيرات واتساب دفعة واحدة للأجهزة المتروكة">${WA_ICON} تذكير المتروكة</button>
         <button class="btn btn-ghost btn-sm" id="archRecoverPhonesBtn" style="color:var(--primary);font-weight:800;" title="فحص كافة السجلات واسترداد أرقام الهواتف التائهة">🔄 استرداد الهواتف</button>
         <button class="btn btn-ghost btn-sm" id="archGotoCustBtn">👥 دليل العملاء</button>
         <button class="btn btn-ghost btn-sm" id="exportArchiveExcelBtn">📥 تصدير Excel</button>
@@ -3196,6 +3197,9 @@ function renderArchive(main){
     try{ localStorage.setItem('microerp_maint_view_mode', 'cards'); }catch(e){}
     renderArchive(main);
   };
+
+  const archBulkWa = document.getElementById('archBulkOverdueBtn');
+  if(archBulkWa) archBulkWa.onclick = ()=>openBulkOverdueWhatsappModal(7);
 
   document.getElementById('archNewReceiptBtn').onclick = ()=>{ state.tab='new'; startNewDraft(); };
   document.getElementById('exportArchiveExcelBtn').onclick = ()=>exportReceiptsToExcel(list);

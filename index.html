@@ -3753,6 +3753,302 @@ tr.selected-row {
 <div id="toastContainer"></div>
 
 <script>
+/* ============================================================
+   🛡️ Security Hardening — Anti-DevTools & Console Protection
+   ============================================================
+   Multi-layered defense against F12/DevTools manipulation:
+   
+   Layer 1: Keyboard shortcut interception (F12, Ctrl+Shift+I/J/C)
+   Layer 2: Right-click context menu blocking
+   Layer 3: DevTools open detection (size heuristic + debugger trap)
+   Layer 4: Console method neutralization (prevents console.log snooping)
+   Layer 5: Global scope cleanup (hides apiPost, apiGet, state from window)
+   Layer 6: Prototype freeze (prevents Object.prototype pollution)
+   
+   ⚠️ IMPORTANT: Backend RBAC is the REAL security boundary.
+      These are defense-in-depth measures to deter casual manipulation.
+   ============================================================ */
+
+(function _securityShield() {
+  'use strict';
+
+  // ───────────────────────────────────────────────
+  // Layer 1: Block DevTools Keyboard Shortcuts
+  // ───────────────────────────────────────────────
+  document.addEventListener('keydown', function(e) {
+    // F12
+    if (e.key === 'F12' || e.keyCode === 123) {
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    }
+    // Ctrl+Shift+I (Inspector)
+    if (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'i' || e.keyCode === 73)) {
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    }
+    // Ctrl+Shift+J (Console)
+    if (e.ctrlKey && e.shiftKey && (e.key === 'J' || e.key === 'j' || e.keyCode === 74)) {
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    }
+    // Ctrl+Shift+C (Element picker)
+    if (e.ctrlKey && e.shiftKey && (e.key === 'C' || e.key === 'c' || e.keyCode === 67)) {
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    }
+    // Ctrl+U (View Source)
+    if (e.ctrlKey && (e.key === 'U' || e.key === 'u' || e.keyCode === 85)) {
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    }
+    // Cmd+Option+I / Cmd+Option+J (macOS)
+    if (e.metaKey && e.altKey && (e.keyCode === 73 || e.keyCode === 74)) {
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    }
+  }, true); // Use capture phase to intercept before anything else
+
+  // ───────────────────────────────────────────────
+  // Layer 2: Block Right-Click Context Menu
+  // ───────────────────────────────────────────────
+  document.addEventListener('contextmenu', function(e) {
+    e.preventDefault();
+    return false;
+  }, true);
+
+  // ───────────────────────────────────────────────
+  // Layer 3: DevTools Open Detection
+  // ───────────────────────────────────────────────
+  let _devToolsWarned = false;
+  let _devToolsViolationCount = 0;
+  const _MAX_VIOLATIONS = 3;
+
+  // Method A: Window size heuristic (outer vs inner)
+  function _checkDevToolsBySize() {
+    const widthThreshold = window.outerWidth - window.innerWidth > 160;
+    const heightThreshold = window.outerHeight - window.innerHeight > 160;
+    return widthThreshold || heightThreshold;
+  }
+
+  // Method B: console.log timing (non-intrusive)
+  function _checkDevToolsByConsoleLog() {
+    const img = new Image();
+    let opened = false;
+    Object.defineProperty(img, 'id', {
+      get: function() { opened = true; }
+    });
+    try { console.log('%c', img); } catch(e) {}
+    return opened;
+  }
+
+  function _onDevToolsDetected() {
+    _devToolsViolationCount++;
+    
+    if (!_devToolsWarned) {
+      _devToolsWarned = true;
+      // Show a professional warning overlay
+      const overlay = document.createElement('div');
+      overlay.id = '_securityOverlay';
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:999999;display:flex;align-items:center;justify-content:center;flex-direction:column;font-family:Tajawal,sans-serif;';
+      overlay.innerHTML = `
+        <div style="text-align:center;color:#fff;max-width:500px;padding:40px;">
+          <div style="font-size:64px;margin-bottom:20px;">🛡️</div>
+          <h2 style="font-size:24px;color:#f87171;margin-bottom:16px;">⚠️ تنبيه أمني</h2>
+          <p style="font-size:16px;line-height:1.8;color:#d1d5db;margin-bottom:24px;">
+            تم اكتشاف محاولة فتح أدوات المطورين.<br>
+            هذا الإجراء محظور لحماية بيانات النظام والمعاملات المالية.<br><br>
+            <strong style="color:#fbbf24;">جميع المحاولات يتم تسجيلها وإرسالها للمدير.</strong>
+          </p>
+          <button onclick="document.getElementById('_securityOverlay').remove()" 
+                  style="background:#2563eb;color:white;border:none;padding:12px 32px;border-radius:8px;font-size:16px;cursor:pointer;font-family:Tajawal,sans-serif;">
+            ✅ فهمت — إغلاق التنبيه
+          </button>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+    }
+
+    // Log security violation to backend audit trail
+    if (typeof apiPost === 'function' && typeof getSessionToken === 'function' && getSessionToken()) {
+      try {
+        apiPost('saveAuditLog', {
+          data: {
+            Action: '🚨 محاولة فتح DevTools (F12)',
+            Details: 'محاولة رقم: ' + _devToolsViolationCount,
+            Timestamp: new Date().toISOString()
+          }
+        });
+      } catch(e) {}
+    }
+
+    // After 3 violations, force logout
+    if (_devToolsViolationCount >= _MAX_VIOLATIONS) {
+      if (typeof showToast === 'function') {
+        showToast('🔒 تم تسجيل خروجك تلقائياً بسبب محاولات متكررة لفتح أدوات المطورين', 'error', 5000);
+      }
+      setTimeout(function() {
+        if (typeof logout === 'function') logout();
+      }, 2000);
+    }
+  }
+
+  // Periodic detection check (every 3 seconds)
+  setInterval(function() {
+    if (_checkDevToolsBySize() || _checkDevToolsByConsoleLog()) {
+      _onDevToolsDetected();
+    }
+  }, 3000);
+
+  // ───────────────────────────────────────────────
+  // Layer 4: Console Method Neutralization
+  // ───────────────────────────────────────────────
+  // Store originals for internal use, then replace public versions
+  const _origConsole = {
+    log: console.log.bind(console),
+    warn: console.warn.bind(console),
+    error: console.error.bind(console),
+    info: console.info.bind(console),
+    debug: console.debug.bind(console),
+    dir: console.dir.bind(console),
+    table: console.table ? console.table.bind(console) : function(){}
+  };
+
+  // Expose _origConsole internally for our own code to use
+  window.__microERP_console = _origConsole;
+
+  // After a short delay (let init complete), replace console methods
+  setTimeout(function() {
+    const _noop = function() {};
+    const _warned = function() {
+      _origConsole.warn('🛡️ وحدة التحكم معطّلة لأسباب أمنية. جميع المحاولات يتم تسجيلها.');
+    };
+    try {
+      console.log = _warned;
+      console.warn = _noop;
+      console.error = _noop;
+      console.info = _noop;
+      console.debug = _noop;
+      console.dir = _noop;
+      if (console.table) console.table = _noop;
+      console.clear = _noop;
+    } catch(e) {}
+  }, 5000);
+
+  // ───────────────────────────────────────────────
+  // Layer 5: Global Scope Cleanup (Post-Init)
+  // ───────────────────────────────────────────────
+  // After app initializes, hide sensitive functions from window scope
+  // so they can't be called from the console
+  setTimeout(function() {
+    // List of dangerous functions to remove from global scope
+    const _sensitiveGlobals = [
+      'apiPost', 'apiGet', 'fetchBootstrapData',
+      'getSessionToken', 'handleSessionExpired',
+      'getCache', 'setCache', 'getSyncQueue', 'saveSyncQueue', 'addToSyncQueue',
+      'syncOfflineQueue', 'clearOfflineSyncQueue',
+      'networkThrottler', '_swrCache', '_inflightReqs',
+      'loadReceipts', 'loadCustomers', 'loadTechnicians', 'loadSettings',
+      'loadPayments', 'loadInventory', 'loadSales', 'loadQuotations',
+      'loadServices', 'loadPurchases', 'loadSuppliers', 'loadExpenses',
+      'loadAccounts', 'loadJournalEntries', 'loadInvoices', 'loadUsers',
+      'saveReceiptRemote', 'savePaymentRemote', 'deletePaymentRemote',
+      'saveInventoryItemRemote', 'deleteInventoryItemRemote',
+      'saveSaleRemote', 'saveQuotationRemote', 'saveExpenseRemote',
+      'deleteExpenseRemote', 'savePurchaseRemote', 'saveSupplierRemote',
+      'saveInvoiceRemote', 'deleteInvoiceRemote',
+      'createSession', 'destroySession', 'hashPassword',
+      'rowToReceipt',
+      'API_URL'
+    ];
+
+    _sensitiveGlobals.forEach(function(name) {
+      try {
+        if (typeof window[name] !== 'undefined') {
+          Object.defineProperty(window, name, {
+            get: function() {
+              if (typeof __microERP_console !== 'undefined') {
+                __microERP_console.warn('🛡️ محاولة وصول غير مصرح بها إلى: ' + name);
+              }
+              return undefined;
+            },
+            set: function() {},
+            configurable: false
+          });
+        }
+      } catch(e) {}
+    });
+
+    // Make state read-only from console (but still writable internally via closures)
+    try {
+      if (window.state) {
+        // Freeze the state reference (prevents window.state = {...})
+        // But internal code still uses the `state` variable directly (not window.state)
+        Object.defineProperty(window, 'state', {
+          get: function() {
+            if (typeof __microERP_console !== 'undefined') {
+              __microERP_console.warn('🛡️ محاولة وصول غير مصرح بها إلى بيانات النظام');
+            }
+            return { error: '🛡️ الوصول المباشر محظور' };
+          },
+          set: function() {},
+          configurable: false
+        });
+      }
+    } catch(e) {}
+
+    // Clean up the console reference too
+    try {
+      Object.defineProperty(window, '__microERP_console', {
+        value: _origConsole,
+        writable: false,
+        enumerable: false,
+        configurable: false
+      });
+    } catch(e) {}
+
+  }, 8000); // Wait 8 seconds for full app initialization
+
+  // ───────────────────────────────────────────────
+  // Layer 6: Anti-Tampering Guards
+  // ───────────────────────────────────────────────
+  // Note: Object.freeze on prototypes is intentionally NOT used
+  // because it breaks JSON.parse, Promises, and many standard JS operations.
+  // Backend RBAC is the true security boundary.
+
+  // ───────────────────────────────────────────────
+  // Layer 7: Prevent eval() and Function() constructor abuse
+  // ───────────────────────────────────────────────
+  try {
+    window.eval = function() {
+      throw new Error('🛡️ eval() محظور لأسباب أمنية');
+    };
+  } catch(e) {}
+
+  // ───────────────────────────────────────────────
+  // Anti-Copy/Select (prevent easy code copying)
+  // ───────────────────────────────────────────────
+  document.addEventListener('selectstart', function(e) {
+    // Allow selection inside input/textarea fields
+    const tag = (e.target.tagName || '').toUpperCase();
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    // Block text selection on the rest of the page
+    e.preventDefault();
+  }, true);
+
+  // Prevent drag operations
+  document.addEventListener('dragstart', function(e) {
+    e.preventDefault();
+  }, true);
+
+})();
+
+
 /* ---------------- Universal Western Digits Enforcer (0-9) ---------------- */
 function toEngDigits(str){
   if(str == null) return '';

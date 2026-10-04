@@ -5,6 +5,7 @@
   "main": "main.js",
   "author": "MicroTech",
   "scripts": {
+    "verify": "node app-modular/build.js",
     "start": "node app-modular/build.js && electron .",
     "bundle": "node app-modular/build.js",
     "build:win": "node app-modular/build.js && electron-builder --win",

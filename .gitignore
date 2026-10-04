@@ -3,4 +3,5 @@ node_modules/
 dist-desktop/
 dist-electron/
 release/
+app-modular/dist/
 

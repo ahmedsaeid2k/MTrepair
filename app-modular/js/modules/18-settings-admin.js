@@ -4,7 +4,7 @@ function renderSettingsSectionApp(app){
     try {
       recordAuditLog('محاولة وصول محظورة', 'settings', `المستخدم (${state.user ? state.user.name : 'مجهول'}) حاول الدخول إلى قسم الإعدادات المتاح حصراً للمدير العام`, '', 'محظور');
     } catch(e){}
-    showToast('⛔ قسم الإعدادات متاح حصراً لمدير النظام العام', 'error');
+    showToast('قسم الإعدادات متاح حصراً لمدير النظام العام', 'error');
     state.currentSection = null;
     return render();
   }
@@ -16,34 +16,34 @@ function renderSettingsSectionApp(app){
       <div class="sidebar-nav-wrap">
         <div class="nav-section">إعدادات وتخصيص النظام</div>
         <div class="nav-item ${activeTab==='appearance'?'active':''}" data-stab="appearance">
-          <span class="nav-item-icon">🎨</span><span>المظهر والثيمات والخط</span>
+          <span class="nav-item-icon">${getSvgIcon("palette", 16)}</span><span>المظهر والثيمات والخط</span>
         </div>
         <div class="nav-item ${activeTab==='company'?'active':''}" data-stab="company">
-          <span class="nav-item-icon">🏪</span><span>بيانات الشركة والمطبوعات</span>
+          <span class="nav-item-icon">${getSvgIcon("store", 16)}</span><span>بيانات الشركة والمطبوعات</span>
         </div>
         <div class="nav-item ${activeTab==='printers'?'active':''}" data-stab="printers">
-          <span class="nav-item-icon">🖨️</span><span>تخصيص وإعدادات الطابعات</span>
+          <span class="nav-item-icon">${getSvgIcon("printer", 16)}</span><span>تخصيص وإعدادات الطابعات</span>
         </div>
         <div class="nav-item ${activeTab==='pos'?'active':''}" data-stab="pos">
-          <span class="nav-item-icon">🧾</span><span>نقطة البيع وخيارات الدفع</span>
+          <span class="nav-item-icon">${getSvgIcon("pos", 16)}</span><span>نقطة البيع وخيارات الدفع</span>
         </div>
         <div class="nav-item ${activeTab==='whatsapp'?'active':''}" data-stab="whatsapp">
-          <span class="nav-item-icon">📱</span><span>رسائل واتساب الذكية</span>
+          <span class="nav-item-icon">${getSvgIcon("message", 16)}</span><span>رسائل واتساب الذكية</span>
         </div>
         <div class="nav-item ${activeTab==='warranty'?'active':''}" data-stab="warranty">
-          <span class="nav-item-icon">📜</span><span>بنود الضمان والشروط</span>
+          <span class="nav-item-icon">${getSvgIcon("shield", 16)}</span><span>بنود الضمان والشروط</span>
         </div>
         <div class="nav-item ${activeTab==='devices'?'active':''}" data-stab="devices">
-          <span class="nav-item-icon">🛠️</span><span>تصنيفات وماركات الأجهزة</span>
+          <span class="nav-item-icon">${getSvgIcon("tool", 16)}</span><span>تصنيفات وماركات الأجهزة</span>
         </div>
         <div class="nav-item ${activeTab==='faults'?'active':''}" data-stab="faults">
-          <span class="nav-item-icon">⚠️</span><span>الأعطال والفنيين</span>
+          <span class="nav-item-icon">${getSvgIcon("users", 16)}</span><span>الأعطال والفنيين</span>
         </div>
         <div class="nav-item ${activeTab==='ai'?'active':''}" data-stab="ai">
-          <span class="nav-item-icon">🤖</span><span>الذكاء الاصطناعي (Gemini)</span>
+          <span class="nav-item-icon">${getSvgIcon("chart", 16)}</span><span>الذكاء الاصطناعي (Gemini)</span>
         </div>
         <div class="nav-item ${activeTab==='sync'?'active':''}" data-stab="sync">
-          <span class="nav-item-icon">🔄</span><span>المزامنة السحابية والكاش</span>
+          <span class="nav-item-icon">${getSvgIcon("refresh", 16)}</span><span>المزامنة السحابية والكاش</span>
         </div>
       </div>
       ${sidebarFootHtml()}
@@ -71,16 +71,16 @@ function renderSettings(main){
 function renderSettingsNavHeader(activeTabTitle, activeTabSubtitle){
   const activeTab = state.settingsTab || 'appearance';
   const tabs = [
-    {k:'appearance', label:'🎨 المظهر والثيمات'},
-    {k:'company', label:'🏪 بيانات الشركة'},
-    {k:'printers', label:'🖨️ تخصيص الطابعات'},
-    {k:'pos', label:'🧾 نقطة البيع والدفع'},
-    {k:'whatsapp', label:'📱 رسائل واتساب'},
-    {k:'warranty', label:'📜 بنود الضمان'},
-    {k:'devices', label:'🛠️ تصنيفات الأجهزة'},
-    {k:'faults', label:'⚠️ الأعطال والفنيين'},
-    {k:'ai', label:'🤖 الذكاء الاصطناعي'},
-    {k:'sync', label:'🔄 المزامنة السحابية'}
+    {k:'appearance', label:'المظهر والثيمات'},
+    {k:'company', label:'بيانات الشركة'},
+    {k:'printers', label:'تخصيص الطابعات'},
+    {k:'pos', label:'نقطة البيع والدفع'},
+    {k:'whatsapp', label:'رسائل واتساب'},
+    {k:'warranty', label:'بنود الضمان'},
+    {k:'devices', label:'تصنيفات الأجهزة'},
+    {k:'faults', label:'الأعطال والفنيين'},
+    {k:'ai', label:'الذكاء الاصطناعي'},
+    {k:'sync', label:'المزامنة السحابية'}
   ];
 
   return `
@@ -89,8 +89,8 @@ function renderSettingsNavHeader(activeTabTitle, activeTabSubtitle){
         <h2 class="page-title">${activeTabTitle}</h2>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-ghost btn-sm" onclick="openCommandPalette()">🔍 بحث ⌘K</button>
-        <div id="networkSyncPill" class="sync-pill online" onclick="syncOfflineQueue(true)">🟢 متصل</div>
+        <button class="btn btn-ghost btn-sm" onclick="openCommandPalette()">بحث ⌘K</button>
+        <div id="networkSyncPill" class="sync-pill online" onclick="syncOfflineQueue(true)">متصل</div>
       </div>
     </div>
     <div class="chip-group" style="margin-bottom:18px;background:var(--paper2);padding:10px 14px;border-radius:var(--radius);border:1px solid var(--line);">
@@ -146,25 +146,25 @@ function renderAppearanceSettings(main){
   ];
 
   main.innerHTML = `
-    ${renderSettingsNavHeader('🎨 تخصيص المظهر والثيمات والخطوط', 'تعديل لون الواجهة المميز، وضع الإضاءة، وحجم الخطوط لكافة الشاشات')}
+    ${renderSettingsNavHeader('تخصيص المظهر والثيمات والخطوط', 'تعديل لون الواجهة المميز، وضع الإضاءة، وحجم الخطوط لكافة الشاشات')}
 
     <!-- Theme Selection -->
     <div class="card">
-      <h3 style="margin-top:0;font-size:15.5px;">🌓 نمط إضاءة الواجهة (Themes)</h3>
+      <h3 style="margin-top:0;font-size:15.5px;">نمط إضاءة الواجهة (Themes)</h3>
       <p style="font-size:12.5px;color:var(--ink-secondary);margin-bottom:14px;">اختر النمط المفضل لبيئة عملك:</p>
       <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:14px;">
         <div id="themeCardLight" style="cursor:pointer;border:2px solid ${currentTheme==='light'?'var(--primary)':'var(--line)'};background:#ffffff;color:#0f172a;padding:16px;border-radius:var(--radius);box-shadow:var(--card-shadow);transition:all 0.2s ease;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <b style="font-size:14px;">☀️ المظهر الفاتح (Light Mode)</b>
-            ${currentTheme==='light'?'<span class="status-badge st-done">مفعل الآن ✓</span>':''}
+            <b style="font-size:14px;">المظهر الفاتح (Light Mode)</b>
+            ${currentTheme==='light'?'<span class="status-badge st-done">مفعل الآن</span>':''}
           </div>
           <div style="font-size:11.5px;color:#64748b;">واجهة ناصعة عالية التباين مثالية لأوقات النهار والطباعة.</div>
         </div>
 
         <div id="themeCardDark" style="cursor:pointer;border:2px solid ${currentTheme==='dark'?'var(--primary)':'var(--line)'};background:#0e1524;color:#f8fafc;padding:16px;border-radius:var(--radius);box-shadow:var(--card-shadow);transition:all 0.2s ease;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <b style="font-size:14px;">🌙 المظهر الليلي (Dark Obsidian)</b>
-            ${currentTheme==='dark'?'<span class="status-badge st-done">مفعل الآن ✓</span>':''}
+            <b style="font-size:14px;">المظهر الليلي (Dark Obsidian)</b>
+            ${currentTheme==='dark'?'<span class="status-badge st-done">مفعل الآن</span>':''}
           </div>
           <div style="font-size:11.5px;color:#94a3b8;">خلفيات سبجية داكنة وتأثيرات زجاجية مريحة جداً للعين.</div>
         </div>
@@ -173,34 +173,34 @@ function renderAppearanceSettings(main){
 
     <!-- Theme Presets -->
     <div class="card">
-      <h3 style="margin-top:0;font-size:15.5px;">✨ إعدادات مسبقة للثيم (Theme Presets)</h3>
+      <h3 style="margin-top:0;font-size:15.5px;">إعدادات مسبقة للثيم (Theme Presets)</h3>
       <p style="font-size:12.5px;color:var(--ink-secondary);margin-bottom:14px;">اختر أحد الثيمات الجاهزة لتغيير الواجهة بسرعة:</p>
       <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:14px;">
         <div id="presetOdoo" style="cursor:pointer;border:2px solid ${state.settings && state.settings.appTheme==='odoo'?'var(--primary)':'var(--line)'};background:#1e293b;color:#f1f5f9;padding:16px;border-radius:var(--radius);box-shadow:var(--card-shadow);transition:all 0.2s ease;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <b style="font-size:14px;">🟣 Odoo (Dark)</b>
-            ${state.settings && state.settings.appTheme==='odoo'?'<span class="status-badge st-done">مفعل الآن ✓</span>':''}
+            <b style="font-size:14px;">Odoo (Dark)</b>
+            ${state.settings && state.settings.appTheme==='odoo'?'<span class="status-badge st-done">مفعل الآن</span>':''}
           </div>
           <div style="font-size:11.5px;color:#c4b5fd;">ثيم أودو مع اللون البنفسجي المميز.</div>
         </div>
         <div id="presetApple" style="cursor:pointer;border:2px solid ${state.settings && state.settings.appTheme==='apple'?'var(--primary)':'var(--line)'};background:#f8fafc;color:#0f172a;padding:16px;border-radius:var(--radius);box-shadow:var(--card-shadow);transition:all 0.2s ease;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <b style="font-size:14px;">🍎 Apple (Light)</b>
-            ${state.settings && state.settings.appTheme==='apple'?'<span class="status-badge st-done">مفعل الآن ✓</span>':''}
+            <b style="font-size:14px;">Apple (Light)</b>
+            ${state.settings && state.settings.appTheme==='apple'?'<span class="status-badge st-done">مفعل الآن</span>':''}
           </div>
           <div style="font-size:11.5px;color:#007aff;">ثيم شفاف ونظيف يشبه نظام macOS.</div>
         </div>
         <div id="presetGlass" style="cursor:pointer;border:2px solid ${state.settings && state.settings.appTheme==='glass'?'var(--primary)':'var(--line)'};background:#e0f2fe;color:#0f172a;padding:16px;border-radius:var(--radius);box-shadow:var(--card-shadow);transition:all 0.2s ease;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <b style="font-size:14px;">🪟 Glass (Light)</b>
-            ${state.settings && state.settings.appTheme==='glass'?'<span class="status-badge st-done">مفعل الآن ✓</span>':''}
+            <b style="font-size:14px;">Glass (Light)</b>
+            ${state.settings && state.settings.appTheme==='glass'?'<span class="status-badge st-done">مفعل الآن</span>':''}
           </div>
           <div style="font-size:11.5px;color:#0284c7;">مظهر زجاجي مع خلفية شفافة خفيفة.</div>
         </div>
         <div id="presetWin11" style="cursor:pointer;border:2px solid ${state.settings && state.settings.appTheme==='win11'?'var(--primary)':'var(--line)'};background:#f1f5f9;color:#0f172a;padding:16px;border-radius:var(--radius);box-shadow:var(--card-shadow);transition:all 0.2s ease;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <b style="font-size:14px;">🪟 Windows 11 (Light)</b>
-            ${state.settings && state.settings.appTheme==='win11'?'<span class="status-badge st-done">مفعل الآن ✓</span>':''}
+            <b style="font-size:14px;">Windows 11 (Light)</b>
+            ${state.settings && state.settings.appTheme==='win11'?'<span class="status-badge st-done">مفعل الآن</span>':''}
           </div>
           <div style="font-size:11.5px;color:#0078d7;">ثيم Windows 11 مع الألوان الرسمية.</div>
         </div>
@@ -209,14 +209,14 @@ function renderAppearanceSettings(main){
 
     <!-- Primary Accent Color Picker -->
     <div class="card">
-      <h3 style="margin-top:0;font-size:15.5px;">🎨 لون النظام المميز (Primary Accent Color)</h3>
+      <h3 style="margin-top:0;font-size:15.5px;">لون النظام المميز (Primary Accent Color)</h3>
       <p style="font-size:12.5px;color:var(--ink-secondary);margin-bottom:14px;">انقر على أي لون لتطبيقه فورياً على الأزرار والشارات والعناصر النشطة:</p>
       <div style="display:flex;flex-wrap:wrap;gap:12px;">
         ${colorPalettes.map(c => `
           <div class="accent-color-btn" data-color="${c.hex}" style="display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:var(--radius-sm);border:2px solid ${currentPrimary===c.hex?c.hex:'var(--line-strong)'};background:var(--paper2);cursor:pointer;box-shadow:var(--shadow-sm);transition:all 0.15s ease;">
             <span style="width:20px;height:20px;border-radius:50%;background:${c.hex};display:inline-block;box-shadow:0 2px 6px rgba(0,0,0,0.2);"></span>
             <span style="font-size:12px;font-weight:700;color:var(--ink);">${c.name}</span>
-            ${currentPrimary===c.hex?'<span style="color:'+c.hex+';font-weight:900;">✓</span>':''}
+            ${currentPrimary===c.hex?'' + getSvgIcon('check', 12) + '':''}
           </div>
         `).join('')}
       </div>
@@ -224,7 +224,7 @@ function renderAppearanceSettings(main){
 
     <!-- Font Size Options -->
     <div class="card">
-      <h3 style="margin-top:0;font-size:15.5px;">🔤 حجم الخط العام للواجهة (Typography Scale)</h3>
+      <h3 style="margin-top:0;font-size:15.5px;">حجم الخط العام للواجهة (Typography Scale)</h3>
       <p style="font-size:12.5px;color:var(--ink-secondary);margin-bottom:14px;">حدد مقاس الخط المريح لك على الشاشة:</p>
       <div style="display:flex;gap:12px;flex-wrap:wrap;">
         <label style="flex:1;min-width:180px;display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--paper2);border:1px solid var(--line-strong);border-radius:var(--radius-sm);cursor:pointer;">
@@ -244,13 +244,13 @@ function renderAppearanceSettings(main){
 
     <!-- Live Interactive Preview Box -->
     <div class="card" style="border:1px dashed var(--line-strong);background:var(--paper3);">
-      <h3 style="margin-top:0;font-size:14px;">👁️ معاينة حية للمظهر والعناصر:</h3>
+      <h3 style="margin-top:0;font-size:14px;">معاينة حية للمظهر والعناصر:</h3>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px;">
         <button class="btn btn-primary">زر رئيسي Primary</button>
         <button class="btn btn-ghost">زر افتراضي Ghost</button>
         <span class="status-badge st-check">قيد الفحص</span>
-        <span class="status-badge st-done">مكتمل ✅</span>
-        <span class="status-badge st-delivered">تم التسليم 🤝</span>
+        <span class="status-badge st-done">مكتمل</span>
+        <span class="status-badge st-delivered">تم التسليم</span>
         <span class="chip sel">شريحة مفعلة</span>
       </div>
     </div>
@@ -281,7 +281,7 @@ function renderAppearanceSettings(main){
     try { await saveSettingRemote('appTheme', presetName); } catch(e){}
     try { await saveSettingRemote('primaryColor', primaryColor); } catch(e){}
     try { await saveSettingRemote('theme', themeMode); } catch(e){}
-    showToast('تم تفعيل الثيم بنجاح ✨', 'success');
+    showToast('تم تفعيل الثيم بنجاح', 'success');
     renderAppearanceSettings(main);
   };
 
@@ -325,7 +325,7 @@ function renderAppearanceSettings(main){
 function renderCompanySettings(main){
   const s = state.settings || {};
   main.innerHTML = `
-    ${renderSettingsNavHeader('🏪 بيانات الشركة والمطبوعات', 'تخصيص الاسم والشعار وأرقام الهواتف والعناوين الظاهرة على الفواتير والإيصالات')}
+    ${renderSettingsNavHeader('بيانات الشركة والمطبوعات', 'تخصيص الاسم والشعار وأرقام الهواتف والعناوين الظاهرة على الفواتير والإيصالات')}
 
     <div class="card">
       <div class="grid2">
@@ -374,7 +374,7 @@ function renderCompanySettings(main){
       </div>
 
       <div style="text-align:left;margin-top:16px;">
-        <button class="btn btn-primary" id="saveCompanySettingsBtn">💾 حفظ بيانات الشركة</button>
+        <button class="btn btn-primary" id="saveCompanySettingsBtn">${getSvgIcon("check", 14)} حفظ بيانات الشركة</button>
       </div>
     </div>
   `;
@@ -400,7 +400,7 @@ function renderCompanySettings(main){
       await saveSettingRemote('shopAddress', s.shopAddress);
       await saveSettingRemote('shopTaxNumber', s.shopTaxNumber);
       await saveSettingRemote('printFooterText', s.printFooterText);
-      showToast('تم حفظ بيانات الشركة والمطبوعات بنجاح ✅', 'success');
+      showToast('تم حفظ بيانات الشركة والمطبوعات بنجاح', 'success');
       renderCompanySettings(main);
     } catch(e) {
       showToast('تم حفظ بيانات الشركة محلياً (وضع غير متصل)', 'info');
@@ -416,9 +416,9 @@ function buildPrinterSelectHtml(category, currentName){
   let selectedRendered = false;
 
   const optGroups = {
-    receipt: { label: '🧾 طابعات إيصالات الكاشير والبون الحراري (POS / Receipt)', list: [] },
-    barcode: { label: '🏷️ طابعات ملصقات الباركود (Barcode / Labels)', list: [] },
-    laser: { label: '📄 طابعات الليزر والمستندات العادية (A4 / A5 / Laser / PDF)', list: [] }
+    receipt: { label: 'طابعات إيصالات الكاشير والبون الحراري (POS / Receipt)', list: [] },
+    barcode: { label: 'طابعات ملصقات الباركود (Barcode / Labels)', list: [] },
+    laser: { label: 'طابعات الليزر والمستندات العادية (A4 / A5 / Laser / PDF)', list: [] }
   };
 
   known.forEach(p => {
@@ -429,7 +429,7 @@ function buildPrinterSelectHtml(category, currentName){
 
   let optionsHtml = '';
   if(currentTrimmed && !hasExactMatch){
-    optionsHtml += `<option value="${escapeHtml(currentTrimmed)}" selected>⭐ [طابعة محفوظة ومخصصة] ${escapeHtml(currentTrimmed)}</option>`;
+    optionsHtml += `<option value="${escapeHtml(currentTrimmed)}" selected>[طابعة محفوظة ومخصصة] ${escapeHtml(currentTrimmed)}</option>`;
     selectedRendered = true;
   }
 
@@ -448,7 +448,7 @@ function buildPrinterSelectHtml(category, currentName){
     }
   });
 
-  optionsHtml += `<option value="__custom__">➕ كتابة / إضافة اسم طابعة أخرى معرفة على ويندوز...</option>`;
+  optionsHtml += `<option value="__custom__">كتابة / إضافة اسم طابعة أخرى معرفة على ويندوز...</option>`;
   return optionsHtml;
 }
 
@@ -461,20 +461,20 @@ function renderPrintersSettings(main){
   const knownPrns = getKnownWindowsPrinters();
 
   main.innerHTML = `
-    ${renderSettingsNavHeader('🖨️ تخصيص وإعدادات الطابعات', 'قراءة وتعيين طابعات ويندوز الفعلية من القوائم المنسدلة، تخصيص مقاسات الورق وعرض الطباعة والخطوط الواضحة')}
+    ${renderSettingsNavHeader('تخصيص وإعدادات الطابعات', 'قراءة وتعيين طابعات ويندوز الفعلية من القوائم المنسدلة، تخصيص مقاسات الورق وعرض الطباعة والخطوط الواضحة')}
 
     <!-- Hero Hardware Configuration Summary Box -->
     <div class="card" style="background:linear-gradient(135deg, rgba(79,70,229,0.06), rgba(16,185,129,0.06));border:1.5px solid var(--primary);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
         <div>
-          <h3 style="margin:0;font-size:16px;color:var(--ink);">🎛️ الطابعات المعرفة على جهازك بنظام (Windows 11 / Mac)</h3>
+          <h3 style="margin:0;font-size:16px;color:var(--ink);">الطابعات المعرفة على جهازك بنظام (Windows 11 / Mac)</h3>
           <p style="font-size:12.5px;color:var(--ink-secondary);margin:2px 0 0;">يمكنك اختيار الطابعة المعرفة من القوائم المنسدلة أدناه أو فحص واكتشاف طابعات ويندوز بنقرة زر (${knownPrns.length} طابعة مسجلة):</p>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
           <button class="btn btn-ghost btn-sm" id="detectWindowsPrintersBtn" style="color:var(--primary);border-color:var(--primary);font-weight:800;" title="فحص وقراءة الطابعات المتصلة بنظام ويندوز">
-            🔍 فحص واكتشاف طابعات ويندوز
+            ${getSvgIcon("search", 13)} فحص واكتشاف طابعات ويندوز
           </button>
-          <button class="btn btn-primary btn-sm" id="saveAllPrintersSettingsBtnTop">💾 حفظ وتطبيق الإعدادات</button>
+          <button class="btn btn-primary btn-sm" id="saveAllPrintersSettingsBtnTop">${getSvgIcon("check", 13)} حفظ وتطبيق الإعدادات</button>
         </div>
       </div>
 
@@ -484,7 +484,7 @@ function renderPrintersSettings(main){
         <div style="background:var(--paper);border:1.5px solid var(--line);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;justify-content:space-between;">
           <div>
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-              <span style="font-size:24px;">🧾</span>
+              <span style="display:inline-flex;">' + getSvgIcon('pos', 24) + '</span>
               <div>
                 <b style="font-size:13.5px;display:block;">1. طابعة الريسيت / الكاشير</b>
                 <span class="status-badge st-done" style="font-size:10.5px;">رول حراري عريض ${r.paperSize||'80mm'}</span>
@@ -496,7 +496,7 @@ function renderPrintersSettings(main){
             </div>
           </div>
           <button class="btn btn-ghost btn-xs test-receipt-print-btn" style="border-color:var(--primary);color:var(--primary);font-weight:800;width:100%;">
-            🖨️ طباعة بون تجريبي (80mm عريض واضح)
+            ${getSvgIcon("printer", 13)} طباعة بون تجريبي (80mm عريض واضح)
           </button>
         </div>
 
@@ -504,7 +504,7 @@ function renderPrintersSettings(main){
         <div style="background:var(--paper);border:1.5px solid var(--line);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;justify-content:space-between;">
           <div>
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-              <span style="font-size:24px;">🏷️</span>
+              <span style="display:inline-flex;">' + getSvgIcon('tag', 24) + '</span>
               <div>
                 <b style="font-size:13.5px;display:block;">2. طابعة ملصقات الباركود</b>
                 <span class="status-badge st-repair" style="font-size:10.5px;">رول ملصقات ${b.defaultSize||'50x30'} مم</span>
@@ -516,7 +516,7 @@ function renderPrintersSettings(main){
             </div>
           </div>
           <button class="btn btn-ghost btn-xs test-barcode-print-btn" style="border-color:var(--purple);color:var(--purple);font-weight:800;width:100%;">
-            🖨️ طباعة ملصق تجريبي (50x30)
+            ${getSvgIcon("printer", 13)} طباعة ملصق تجريبي (50x30)
           </button>
         </div>
 
@@ -524,7 +524,7 @@ function renderPrintersSettings(main){
         <div style="background:var(--paper);border:1.5px solid var(--line);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;justify-content:space-between;">
           <div>
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-              <span style="font-size:24px;">📄</span>
+              <span style="display:inline-flex;">' + getSvgIcon('fileText', 24) + '</span>
               <div>
                 <b style="font-size:13.5px;display:block;">3. طابعة الليزر والمستندات العادية</b>
                 <span class="status-badge st-check" style="font-size:10.5px;">أوراق A4 / A5</span>
@@ -536,7 +536,7 @@ function renderPrintersSettings(main){
             </div>
           </div>
           <button class="btn btn-ghost btn-xs test-laser-print-btn" style="border-color:var(--green);color:var(--green-text);font-weight:800;width:100%;">
-            🖨️ طباعة صفحة A4/A5 تجريبية
+            ${getSvgIcon("printer", 13)} طباعة صفحة A4/A5 تجريبية
           </button>
         </div>
 
@@ -546,15 +546,15 @@ function renderPrintersSettings(main){
     <!-- 1. Receipt Thermal Printer Detailed Config -->
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-        <h3 style="margin:0;font-size:15.5px;">🧾 1. طابعة إيصالات الكاشير والبون الحراري (POS Receipt Printer - Xprinter 808)</h3>
-        <button class="btn btn-ghost btn-xs test-receipt-print-btn" style="color:var(--primary);">🖨️ تجربة الطباعة</button>
+        <h3 style="margin:0;font-size:15.5px;">1. طابعة إيصالات الكاشير والبون الحراري (POS Receipt Printer - Xprinter 808)</h3>
+        <button class="btn btn-ghost btn-xs test-receipt-print-btn" style="color:var(--primary);">${getSvgIcon("printer", 13)} تجربة الطباعة</button>
       </div>
 
       <div class="grid2" style="margin-bottom:12px;">
         <div class="field">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
             <label style="margin:0;font-weight:800;">اختر الطابعة المعرفة في ويندوز (Windows Printer Menu)</label>
-            <button type="button" class="btn btn-ghost btn-xs toggle-custom-prn-btn" data-target="Receipt" style="font-size:11px;color:var(--primary);padding:1px 6px;">➕ إضافة اسم طابعة يدوي</button>
+            <button type="button" class="btn btn-ghost btn-xs toggle-custom-prn-btn" data-target="Receipt" style="font-size:11px;color:var(--primary);padding:1px 6px;">${getSvgIcon("plus", 11)} إضافة اسم طابعة يدوي</button>
           </div>
           <select id="prnReceiptSelect" class="prn-dropdown-select" data-target="Receipt">
             ${buildPrinterSelectHtml('receipt', r.name)}
@@ -566,7 +566,7 @@ function renderPrintersSettings(main){
         <div class="field">
           <label>مقاس رول الورق ومساحة الطباعة (Receipt Width)</label>
           <select id="prnReceiptSize">
-            <option value="80mm" ${r.paperSize==='80mm'?'selected':''}>80mm (عرض عريض 79 مم - أقصى مساحة طباعة بدون اقتصاص لإكس برنتر 808) ✨</option>
+            <option value="80mm" ${r.paperSize==='80mm'?'selected':''}>80mm (عرض عريض 79 مم - أقصى مساحة طباعة بدون اقتصاص لإكس برنتر 808)</option>
             <option value="58mm" ${r.paperSize==='58mm'?'selected':''}>58mm (عرض مدمج 58 مم - طابعات بلوتوث ومدمجة)</option>
           </select>
         </div>
@@ -576,7 +576,7 @@ function renderPrintersSettings(main){
         <div class="field">
           <label>وضوح وحجم الخطوط على الورق الحراري (Receipt Scale & Size)</label>
           <select id="prnReceiptFontScale">
-            <option value="compact" ${r.fontScale==='compact'||!r.fontScale?'selected':''}>مدمج وموفر للورق (نصف الحجم وأنيق ومقروء - موصى به) ✨</option>
+            <option value="compact" ${r.fontScale==='compact'||!r.fontScale?'selected':''}>مدمج وموفر للورق (نصف الحجم وأنيق ومقروء - موصى به)</option>
             <option value="normal" ${r.fontScale==='normal'?'selected':''}>عادي متوسط قياسي (Standard 80mm)</option>
             <option value="large" ${r.fontScale==='large'||r.fontScale==='max'?'selected':''}>كبير وعريض عالي التباين (Full Large)</option>
           </select>
@@ -595,19 +595,19 @@ function renderPrintersSettings(main){
       <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;margin-top:10px;">
         <label class="checkbox-row" style="font-size:12.5px;">
           <input type="checkbox" id="prnReceiptAutoPrint" ${r.autoPrint!==false?'checked':''}>
-          <span>🖨️ طباعة البون تلقائياً فور إتمام البيع</span>
+          <span>طباعة البون تلقائياً فور إتمام البيع</span>
         </label>
         <label class="checkbox-row" style="font-size:12.5px;">
           <input type="checkbox" id="prnReceiptShowLogo" ${r.showLogo!==false?'checked':''}>
-          <span>🖼️ إظهار شعار المحل أعلى البون</span>
+          <span>إظهار شعار المحل أعلى البون</span>
         </label>
         <label class="checkbox-row" style="font-size:12.5px;">
           <input type="checkbox" id="prnReceiptShowCashier" ${r.showCashier!==false?'checked':''}>
-          <span>👤 إظهار اسم الكاشير على البون</span>
+          <span>إظهار اسم الكاشير على البون</span>
         </label>
         <label class="checkbox-row" style="font-size:12.5px;">
           <input type="checkbox" id="prnReceiptPrintBarcode" ${r.printBarcode!==false?'checked':''}>
-          <span>⚡ توليد باركود SVG أسفل البون لسهولة المرتجع</span>
+          <span>توليد باركود SVG أسفل البون لسهولة المرتجع</span>
         </label>
       </div>
     </div>
@@ -615,15 +615,15 @@ function renderPrintersSettings(main){
     <!-- 2. Barcode Label Printer Detailed Config -->
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-        <h3 style="margin:0;font-size:15.5px;">🏷️ 2. طابعة ملصقات الباركود الحرارية (Barcode Label Printer - Xprinter 365B)</h3>
-        <button class="btn btn-ghost btn-xs test-barcode-print-btn" style="color:var(--purple);">🖨️ تجربة الطباعة</button>
+        <h3 style="margin:0;font-size:15.5px;">2. طابعة ملصقات الباركود الحرارية (Barcode Label Printer - Xprinter 365B)</h3>
+        <button class="btn btn-ghost btn-xs test-barcode-print-btn" style="color:var(--purple);">${getSvgIcon("printer", 13)} تجربة الطباعة</button>
       </div>
 
       <div class="grid2" style="margin-bottom:12px;">
         <div class="field">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
             <label style="margin:0;font-weight:800;">اختر طابعة الباركود المعرفة في ويندوز (Windows Printer Menu)</label>
-            <button type="button" class="btn btn-ghost btn-xs toggle-custom-prn-btn" data-target="Barcode" style="font-size:11px;color:var(--purple);padding:1px 6px;">➕ إضافة اسم طابعة يدوي</button>
+            <button type="button" class="btn btn-ghost btn-xs toggle-custom-prn-btn" data-target="Barcode" style="font-size:11px;color:var(--purple);padding:1px 6px;">${getSvgIcon("plus", 11)} إضافة اسم طابعة يدوي</button>
           </div>
           <select id="prnBarcodeSelect" class="prn-dropdown-select" data-target="Barcode">
             ${buildPrinterSelectHtml('barcode', b.name)}
@@ -635,8 +635,8 @@ function renderPrintersSettings(main){
         <div class="field">
           <label>المقاس الافتراضي لملصقات الباركود (Default Label Size)</label>
           <select id="prnBarcodeDefaultSize">
-            <option value="40x20" ${b.defaultSize==='40x20'?'selected':''}>40 مم × 20 مم (عرض 4 سم × ارتفاع 2 سم - المقاس الأساسي الأكثر استخداماً) ✨</option>
-            <option value="40x10" ${b.defaultSize==='40x10'?'selected':''}>40 مم × 10 مم (عرض 4 سم × ارتفاع 1 سم - شريط رفيع للبضائع والإكسسوارات) ⚡</option>
+            <option value="40x20" ${b.defaultSize==='40x20'?'selected':''}>40 مم × 20 مم (عرض 4 سم × ارتفاع 2 سم - المقاس الأساسي الأكثر استخداماً)</option>
+            <option value="40x10" ${b.defaultSize==='40x10'?'selected':''}>40 مم × 10 مم (عرض 4 سم × ارتفاع 1 سم - شريط رفيع للبضائع والإكسسوارات)</option>
             <option value="40x25" ${b.defaultSize==='40x25'?'selected':''}>40 مم × 25 مم (4×2.5 سم - ملصق أطول للبيانات الواسعة)</option>
             <option value="40x30" ${b.defaultSize==='40x30'?'selected':''}>40 مم × 30 مم (4×3 سم - واسع جداً ومريح للصيانة)</option>
             <option value="40x15" ${b.defaultSize==='40x15'?'selected':''}>40 مم × 15 مم (4×1.5 سم - مدمج)</option>
@@ -667,29 +667,29 @@ function renderPrintersSettings(main){
       <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;">
         <label class="checkbox-row" style="font-size:12.5px;grid-column:1/-1;background:rgba(124,58,237,0.06);padding:6px 10px;border-radius:6px;border:1px solid rgba(124,58,237,0.15);font-weight:700;color:var(--purple);">
           <input type="checkbox" id="prnBarcodeKioskMode" ${b.kioskMode!==false?'checked':''}>
-          <span>⚡ تفعيل وضع الكيوسك المباشر لملصقات الباركود (طباعة فورية بنقرة واحدة بدون فتح نوافذ تأكيد)</span>
+          <span>تفعيل وضع الكيوسك المباشر لملصقات الباركود (طباعة فورية بنقرة واحدة بدون فتح نوافذ تأكيد)</span>
         </label>
         <label class="checkbox-row" style="font-size:12.5px;">
           <input type="checkbox" id="prnBarcodeShowPrice" ${b.showPrice!==false?'checked':''}>
-          <span>💵 إظهار سعر البيع على الملصق</span>
+          <span>إظهار سعر البيع على الملصق</span>
         </label>
         <label class="checkbox-row" style="font-size:12.5px;">
           <input type="checkbox" id="prnBarcodeShowShopName" ${b.showShopName!==false?'checked':''}>
-          <span>🏪 إظهار اسم المحل أعلى الملصق</span>
+          <span>إظهار اسم المحل أعلى الملصق</span>
         </label>
         <label class="checkbox-row" style="font-size:12.5px;">
           <input type="checkbox" id="prnBarcodeShowDate" ${b.showDate?'checked':''}>
-          <span>📅 إظهار تاريخ الطباعة على الملصق</span>
+          <span>إظهار تاريخ الطباعة على الملصق</span>
         </label>
       </div>
 
       <div class="grid2" style="margin-top:12px;background:rgba(124,58,237,0.04);padding:10px;border-radius:8px;border:1px solid rgba(124,58,237,0.15);">
         <div class="field">
-          <label style="font-weight:700;font-size:12px;">🎯 إزاحة أفقية لسنترة الملصق (X Offset مم):</label>
+          <label style="font-weight:700;font-size:12px;">إزاحة أفقية لسنترة الملصق (X Offset مم):</label>
           <input type="number" step="0.5" id="prnBarcodeOffsetX" value="${b.offsetX||0}" class="mono font-bold" placeholder="0 (يمين موجب / يسار سالب)">
         </div>
         <div class="field">
-          <label style="font-weight:700;font-size:12px;">🎯 إزاحة رأسية لسنترة الملصق (Y Offset مم):</label>
+          <label style="font-weight:700;font-size:12px;">إزاحة رأسية لسنترة الملصق (Y Offset مم):</label>
           <input type="number" step="0.5" id="prnBarcodeOffsetY" value="${b.offsetY||0}" class="mono font-bold" placeholder="0 (أسفل موجب / أعلى سالب)">
         </div>
       </div>
@@ -698,18 +698,18 @@ function renderPrintersSettings(main){
       <div style="background:rgba(124,58,237,0.04);border:1.5px solid rgba(124,58,237,0.2);border-radius:10px;padding:12px;margin-top:12px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
           <h4 style="margin:0;font-size:13px;font-weight:900;color:var(--purple);display:flex;align-items:center;gap:6px;">
-            <span>🛠️ تخصيص استيكر وملصق أجهزة الصيانة الحراري (Thermal Service Label)</span>
+            <span>تخصيص استيكر وملصق أجهزة الصيانة الحراري (Thermal Service Label)</span>
           </h4>
-          <button type="button" class="btn btn-ghost btn-xs test-maint-sticker-btn" style="color:var(--purple);font-weight:800;border-color:var(--purple);">🖨️ تجربة استيكر صيانة (معاينة حية)</button>
+          <button type="button" class="btn btn-ghost btn-xs test-maint-sticker-btn" style="color:var(--purple);font-weight:800;border-color:var(--purple);">${getSvgIcon("printer", 13)} تجربة استيكر صيانة</button>
         </div>
         
         <div class="grid2" style="margin-bottom:10px;">
           <div class="field">
             <label style="font-weight:700;font-size:11.5px;">صيغة ونوع الكود الافتراضي على ملصق الصيانة:</label>
             <select id="prnBarcodeMaintMode">
-              <option value="qr" ${b.barcodeMode==='qr'||!b.barcodeMode?'selected':''}>📱 رمز QR ذكي لتتبع العميل المباشر (Smart Tracking QR - موصى به) ✨</option>
-              <option value="barcode" ${b.barcodeMode==='barcode'?'selected':''}>🏷️ باركود Code128 تقليدي (لقارئ الباركود الليزر USB)</option>
-              <option value="none" ${b.barcodeMode==='none'?'selected':''}>✍️ نصي بولد فقط عالي التباين (بدون كود)</option>
+              <option value="qr" ${b.barcodeMode==='qr'||!b.barcodeMode?'selected':''}>رمز QR للتتبع لتتبع العميل المباشر (Smart Tracking QR - موصى به)</option>
+              <option value="barcode" ${b.barcodeMode==='barcode'?'selected':''}>باركود Code128 تقليدي (لقارئ الباركود الليزر USB)</option>
+              <option value="none" ${b.barcodeMode==='none'?'selected':''}>نصي بولد فقط (بدون كود)</option>
             </select>
           </div>
           <div class="field">
@@ -727,39 +727,39 @@ function renderPrintersSettings(main){
         <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:8px;">
           <label class="checkbox-row" style="font-size:12px;">
             <input type="checkbox" id="prnBarcodeMaintShowShop" ${b.showShopName!==false?'checked':''}>
-            <span>🏪 اسم المحل / المركز</span>
+            <span>اسم المحل / المركز</span>
           </label>
           <label class="checkbox-row" style="font-size:12px;">
             <input type="checkbox" id="prnBarcodeMaintShowCustomer" ${b.showCustomerName!==false?'checked':''}>
-            <span>👤 اسم العميل</span>
+            <span>اسم العميل</span>
           </label>
           <label class="checkbox-row" style="font-size:12px;">
             <input type="checkbox" id="prnBarcodeMaintShowPhone" ${b.showPhone!==false?'checked':''}>
-            <span>📞 رقم الهاتف</span>
+            <span>رقم الهاتف</span>
           </label>
           <label class="checkbox-row" style="font-size:12px;">
             <input type="checkbox" id="prnBarcodeMaintShowDevice" ${b.showDevice!==false?'checked':''}>
-            <span>💻 الجهاز والموديل</span>
+            <span>الجهاز والموديل</span>
           </label>
           <label class="checkbox-row" style="font-size:12px;">
             <input type="checkbox" id="prnBarcodeMaintShowPassword" ${b.showPassword!==false?'checked':''}>
-            <span>🔑 كلمة السر / النمط</span>
+            <span>كلمة السر / النمط</span>
           </label>
           <label class="checkbox-row" style="font-size:12px;">
             <input type="checkbox" id="prnBarcodeMaintShowFaults" ${b.showFaults!==false?'checked':''}>
-            <span>⚠️ الشكوى والعطل</span>
+            <span>الشكوى والعطل</span>
           </label>
           <label class="checkbox-row" style="font-size:12px;">
             <input type="checkbox" id="prnBarcodeMaintShowPrice" ${b.showPrice===true?'checked':''}>
-            <span>💵 التكلفة / المتبقي</span>
+            <span>التكلفة / المتبقي</span>
           </label>
           <label class="checkbox-row" style="font-size:12px;">
             <input type="checkbox" id="prnBarcodeMaintShowDate" ${b.showDate!==false?'checked':''}>
-            <span>📅 تاريخ ووقت الاستلام</span>
+            <span>تاريخ ووقت الاستلام</span>
           </label>
           <label class="checkbox-row" style="font-size:12px;">
             <input type="checkbox" id="prnBarcodeMaintShowBorder" ${b.showBorder===true?'checked':''}>
-            <span>🔲 إطار حدودي خارجي</span>
+            <span>إطار حدودي خارجي</span>
           </label>
         </div>
       </div>
@@ -768,15 +768,15 @@ function renderPrintersSettings(main){
     <!-- 3. Laser / Standard Office Printer Detailed Config -->
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-        <h3 style="margin:0;font-size:15.5px;">📄 3. طابعة الليزر والمستندات الرسمية (Laser / Inkjet A4 & A5)</h3>
-        <button class="btn btn-ghost btn-xs test-laser-print-btn" style="color:var(--green-text);">🖨️ تجربة الطباعة</button>
+        <h3 style="margin:0;font-size:15.5px;">3. طابعة الليزر والمستندات الرسمية (Laser / Inkjet A4 & A5)</h3>
+        <button class="btn btn-ghost btn-xs test-laser-print-btn" style="color:var(--green-text);">${getSvgIcon("printer", 13)} تجربة الطباعة</button>
       </div>
 
       <div class="grid2" style="margin-bottom:12px;">
         <div class="field">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
             <label style="margin:0;font-weight:800;">اختر طابعة الليزر المعرفة في ويندوز (Windows Printer Menu)</label>
-            <button type="button" class="btn btn-ghost btn-xs toggle-custom-prn-btn" data-target="Laser" style="font-size:11px;color:var(--green-text);padding:1px 6px;">➕ إضافة اسم طابعة يدوي</button>
+            <button type="button" class="btn btn-ghost btn-xs toggle-custom-prn-btn" data-target="Laser" style="font-size:11px;color:var(--green-text);padding:1px 6px;">${getSvgIcon("plus", 11)} إضافة اسم طابعة يدوي</button>
           </div>
           <select id="prnLaserSelect" class="prn-dropdown-select" data-target="Laser">
             ${buildPrinterSelectHtml('laser', l.name)}
@@ -788,7 +788,7 @@ function renderPrintersSettings(main){
         <div class="field">
           <label>مقاس وتنسيق إيصال الصيانة والضمان</label>
           <select id="prnLaserMaintSize">
-            <option value="A5" ${l.maintenanceReceiptSize==='A5'?'selected':''}>A5 بالعرض Landscape (ورقة واحدة فقط مدمجة وشاملة للضمان والشروط) ✨</option>
+            <option value="A5" ${l.maintenanceReceiptSize==='A5'?'selected':''}>A5 بالعرض Landscape (ورقة واحدة فقط مدمجة وشاملة للضمان والشروط)</option>
             <option value="A4" ${l.maintenanceReceiptSize==='A4'?'selected':''}>A4 بالطول Portrait</option>
           </select>
         </div>
@@ -805,7 +805,7 @@ function renderPrintersSettings(main){
         <div class="field">
           <label>توزيع ملصقات الباركود على ورق A4 في الطابعة العادية</label>
           <select id="prnLaserBarcodeLayout">
-            <option value="30" ${l.barcodeSheetLayout==='30'?'selected':''}>30 ملصق في الصفحة A4 (3 أعمدة × 10 صفوف) ✨</option>
+            <option value="30" ${l.barcodeSheetLayout==='30'?'selected':''}>30 ملصق في الصفحة A4 (3 أعمدة × 10 صفوف)</option>
             <option value="24" ${l.barcodeSheetLayout==='24'?'selected':''}>24 ملصق في الصفحة A4 (3 أعمدة × 8 صفوف)</option>
             <option value="40" ${l.barcodeSheetLayout==='40'?'selected':''}>40 ملصق في الصفحة A4 (4 أعمدة × 10 صفوف)</option>
             <option value="65" ${l.barcodeSheetLayout==='65'?'selected':''}>65 ملصق في الصفحة A4 (5 أعمدة × 13 صفوف)</option>
@@ -816,18 +816,18 @@ function renderPrintersSettings(main){
       <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;">
         <label class="checkbox-row" style="font-size:12.5px;">
           <input type="checkbox" id="prnLaserShowTerms" ${l.showTerms!==false?'checked':''}>
-          <span>📜 طباعة بنود الضمان والشروط القانونية أسفل المستند</span>
+          <span>طباعة بنود الضمان والشروط القانونية أسفل المستند</span>
         </label>
         <label class="checkbox-row" style="font-size:12.5px;">
           <input type="checkbox" id="prnLaserShowWatermark" ${l.showWatermark!==false?'checked':''}>
-          <span>🛡️ إظهار ختم وعلامة مائية أصلية للمحل</span>
+          <span>إظهار ختم وعلامة مائية للمحل</span>
         </label>
       </div>
     </div>
 
     <!-- 4. Workflow to Printer Assignment Matrix -->
     <div class="card">
-      <h3 style="margin-top:0;font-size:15.5px;">🧭 4. مصفوفة توجيه العمليات للطابعات (Workflow-to-Printer Assignment)</h3>
+      <h3 style="margin-top:0;font-size:15.5px;">4. مصفوفة توجيه العمليات للطابعات (Workflow-to-Printer Assignment)</h3>
       <p style="font-size:12px;color:var(--ink-secondary);margin-bottom:12px;">اختر الطابعة المستهدفة تلقائياً لكل عملية ومستند داخل النظام:</p>
 
       <div class="table-wrap">
@@ -842,7 +842,7 @@ function renderPrintersSettings(main){
           </thead>
           <tbody>
             <tr>
-              <td><b>🧾 إيصالات مبيعات نقطة البيع (POS Cashier)</b></td>
+              <td><b>إيصالات مبيعات نقطة البيع (POS Cashier)</b></td>
               <td><span class="status-badge st-done">80mm Roll</span></td>
               <td>
                 <select class="workflow-prn-sel" data-wf="posSale" style="padding:4px 8px;font-size:12px;">
@@ -850,10 +850,10 @@ function renderPrintersSettings(main){
                   <option value="laserPrinter" ${w.posSale==='laserPrinter'?'selected':''}>طابعة الليزر (A4/A5)</option>
                 </select>
               </td>
-              <td style="text-align:center;"><button class="btn btn-ghost btn-xs test-receipt-print-btn">🖨️ بون</button></td>
+              <td style="text-align:center;"><button class="btn btn-ghost btn-xs test-receipt-print-btn">${getSvgIcon("printer", 12)} بون</button></td>
             </tr>
             <tr>
-              <td><b>🛠️ إيصال استلام وضمان الصيانة للعميل</b></td>
+              <td><b>إيصال استلام وضمان الصيانة للعميل</b></td>
               <td><span class="status-badge st-repair">A5 ورقة واحدة</span></td>
               <td>
                 <select class="workflow-prn-sel" data-wf="maintenanceReceipt" style="padding:4px 8px;font-size:12px;">
@@ -861,20 +861,20 @@ function renderPrintersSettings(main){
                   <option value="receiptPrinter" ${w.maintenanceReceipt==='receiptPrinter'?'selected':''}>طابعة الريسيت الحراري (80mm)</option>
                 </select>
               </td>
-              <td style="text-align:center;"><button class="btn btn-ghost btn-xs test-laser-print-btn">🖨️ A5</button></td>
+              <td style="text-align:center;"><button class="btn btn-ghost btn-xs test-laser-print-btn">${getSvgIcon("printer", 12)} A5</button></td>
             </tr>
             <tr>
-              <td><b>📄 الفواتير الضريبية وعروض الأسعار</b></td>
+              <td><b>الفواتير الضريبية وعروض الأسعار</b></td>
               <td><span class="status-badge st-check">A4 Portrait</span></td>
               <td>
                 <select class="workflow-prn-sel" data-wf="taxInvoice" style="padding:4px 8px;font-size:12px;">
                   <option value="laserPrinter" ${w.taxInvoice==='laserPrinter'?'selected':''}>طابعة الليزر العادية (A4)</option>
                 </select>
               </td>
-              <td style="text-align:center;"><button class="btn btn-ghost btn-xs test-laser-print-btn">🖨️ A4</button></td>
+              <td style="text-align:center;"><button class="btn btn-ghost btn-xs test-laser-print-btn">${getSvgIcon("printer", 12)} A4</button></td>
             </tr>
             <tr>
-              <td><b>🏷️ ملصق باركود صنف فردي أو جهاز صيانة</b></td>
+              <td><b>ملصق باركود صنف فردي أو جهاز صيانة</b></td>
               <td><span class="status-badge st-repair">50x30mm ملصق</span></td>
               <td>
                 <select class="workflow-prn-sel" data-wf="singleBarcode" style="padding:4px 8px;font-size:12px;">
@@ -882,17 +882,17 @@ function renderPrintersSettings(main){
                   <option value="laserPrinter" ${w.singleBarcode==='laserPrinter'?'selected':''}>طابعة الليزر (ورق A4 مجمع)</option>
                 </select>
               </td>
-              <td style="text-align:center;"><button class="btn btn-ghost btn-xs test-barcode-print-btn">🖨️ باركود</button></td>
+              <td style="text-align:center;"><button class="btn btn-ghost btn-xs test-barcode-print-btn">${getSvgIcon("printer", 12)} باركود</button></td>
             </tr>
             <tr>
-              <td><b>📊 دفاتر اليومية وكشوف الحسابات وميزان المراجعة</b></td>
+              <td><b>دفاتر اليومية وكشوف الحسابات وميزان المراجعة</b></td>
               <td><span class="status-badge st-done">A4 Portrait</span></td>
               <td>
                 <select class="workflow-prn-sel" data-wf="financialReports" style="padding:4px 8px;font-size:12px;">
                   <option value="laserPrinter" ${w.financialReports==='laserPrinter'?'selected':''}>طابعة الليزر العادية (A4)</option>
                 </select>
               </td>
-              <td style="text-align:center;"><button class="btn btn-ghost btn-xs test-laser-print-btn">🖨️ تقرير</button></td>
+              <td style="text-align:center;"><button class="btn btn-ghost btn-xs test-laser-print-btn">${getSvgIcon("printer", 12)} تقرير</button></td>
             </tr>
           </tbody>
         </table>
@@ -900,7 +900,7 @@ function renderPrintersSettings(main){
 
       <div style="text-align:left;margin-top:16px;border-top:1px solid var(--line);padding-top:12px;">
         <button class="btn btn-primary" id="saveAllPrintersSettingsBtn" style="padding:9px 24px;font-weight:900;">
-          💾 حفظ وتطبيق كافة إعدادات وتخصيص الطابعات
+          ${getSvgIcon("check", 14)} حفظ وتطبيق كافة إعدادات وتخصيص الطابعات
         </button>
       </div>
     </div>
@@ -950,7 +950,7 @@ function attachPrintersSettingsEvents(main){
   if(detectBtn){
     detectBtn.onclick = async ()=>{
       detectBtn.disabled = true;
-      detectBtn.innerHTML = '⏳ جاري الفحص...';
+      detectBtn.innerHTML = 'جاري الفحص...';
       await detectWindowsPrinters(true);
       detectBtn.disabled = false;
       renderPrintersSettings(main);
@@ -1066,9 +1066,9 @@ function attachPrintersSettingsEvents(main){
       await saveSettingRemote('printers', JSON.stringify(prn));
       await saveSettingRemote('pos', JSON.stringify(state.settings.pos));
       await saveSettingRemote('knownWindowsPrinters', JSON.stringify(getKnownWindowsPrinters()));
-      showToast('تم حفظ وتطبيق كافة إعدادات وأسماء الطابعات بنجاح ✅', 'success');
+      showToast('تم حفظ وتطبيق كافة إعدادات وأسماء الطابعات بنجاح', 'success');
     } catch(e) {
-      showToast('تم حفظ إعدادات وأسماء الطابعات محلياً بنجاح ✅', 'success');
+      showToast('تم حفظ إعدادات وأسماء الطابعات محلياً بنجاح', 'success');
     }
     renderPrintersSettings(main);
   };
@@ -1181,14 +1181,14 @@ function executeTestLaserPrint(){
         </div>
         <div style="text-align:left;">
           <div style="display:inline-block;border:2px solid #000;padding:6px 14px;border-radius:6px;font-weight:900;font-size:14px;">
-            📄 صفحة اختبار طابعة الليزر A4 / A5
+            صفحة اختبار طابعة الليزر A4 / A5
           </div>
           <div style="font-size:11px;font-weight:700;margin-top:4px;" class="mono">${cleanDate(new Date())}</div>
         </div>
       </div>
 
       <div style="border:1.5px solid #000;border-radius:6px;padding:14px;margin-bottom:14px;background:#fcfcfc;">
-        <h4 style="margin:0 0 8px;font-size:14.5px;">✅ نجاح اختبار الطباعة والتوافق مع طابعة الليزر (Laser Printer Test):</h4>
+        <h4 style="margin:0 0 8px;font-size:14.5px;">نجاح اختبار الطباعة والتوافق مع طابعة الليزر (Laser Printer Test):</h4>
         <p style="margin:0;font-size:12.5px;line-height:1.7;">
           هذه الصفحة النموذجية تؤكد أن طابعة الليزر العادية (Laser / Office Printer) متوافقة تماماً مع طباعة إيصالات الصيانة والضمان بمقاس <b>A5 Landscape (ورقة واحدة مدمجة)</b>، وكذلك طباعة <b>الفواتير الضريبية وعروض الأسعار بمقاس A4</b> وتقارير الحسابات بدقة ووضوح عالي.
         </p>
@@ -1208,26 +1208,26 @@ function executeTestLaserPrint(){
             <td style="padding:6px;border:1px solid #000;">إيصال استلام وضمان الصيانة</td>
             <td style="padding:6px;border:1px solid #000;text-align:center;" class="mono">A5 (210×148mm)</td>
             <td style="padding:6px;border:1px solid #000;text-align:center;">بالعرض Landscape</td>
-            <td style="padding:6px;border:1px solid #000;text-align:center;font-weight:bold;">متوافق بنسبة 100% ✓</td>
+            <td style="padding:6px;border:1px solid #000;text-align:center;font-weight:bold;">متوافق بنسبة 100%</td>
           </tr>
           <tr>
             <td style="padding:6px;border:1px solid #000;">الفواتير الضريبية وعروض الأسعار</td>
             <td style="padding:6px;border:1px solid #000;text-align:center;" class="mono">A4 (210×297mm)</td>
             <td style="padding:6px;border:1px solid #000;text-align:center;">بالطول Portrait</td>
-            <td style="padding:6px;border:1px solid #000;text-align:center;font-weight:bold;">متوافق بنسبة 100% ✓</td>
+            <td style="padding:6px;border:1px solid #000;text-align:center;font-weight:bold;">متوافق بنسبة 100%</td>
           </tr>
           <tr>
             <td style="padding:6px;border:1px solid #000;">دفتر اليومية وكشوف الحسابات والميزان</td>
             <td style="padding:6px;border:1px solid #000;text-align:center;" class="mono">A4 (210×297mm)</td>
             <td style="padding:6px;border:1px solid #000;text-align:center;">بالطول Portrait</td>
-            <td style="padding:6px;border:1px solid #000;text-align:center;font-weight:bold;">متوافق بنسبة 100% ✓</td>
+            <td style="padding:6px;border:1px solid #000;text-align:center;font-weight:bold;">متوافق بنسبة 100%</td>
           </tr>
         </tbody>
       </table>
 
       <div style="border-top:1.5px dashed #000;padding-top:10px;display:flex;justify-content:space-between;align-items:center;font-size:11.5px;font-weight:700;">
         <span>نظام ميكروERP لإدارة المبيعات والصيانة والمخازن</span>
-        <span class="mono">Laser Print Alignment Passed ✓</span>
+        <span class="mono">Laser Print Alignment Passed</span>
       </div>
     </div>
   `;
@@ -1256,22 +1256,22 @@ function renderPosSettings(main){
   const quickServices = posSettings.quickServices || [];
 
   main.innerHTML = `
-    ${renderSettingsNavHeader('🧾 إعدادات نقطة البيع وخيارات الدفع', 'تخصيص طرق الدفع، خدمات البيع السريعة، إعدادات طابعة الإيصالات، والسياسات المالية')}
+    ${renderSettingsNavHeader('إعدادات نقطة البيع وخيارات الدفع', 'تخصيص طرق الدفع، خدمات البيع السريعة، إعدادات طابعة الإيصالات، والسياسات المالية')}
 
     <!-- 1. Payment Methods Management -->
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
         <div>
-          <h3 style="margin:0;font-size:15px;">💳 طرق وخيارات الدفع المتاحة</h3>
+          <h3 style="margin:0;font-size:15px;">طرق وخيارات الدفع المتاحة</h3>
                   </div>
-        <button class="btn btn-primary btn-xs" id="addNewPayMethodBtn">➕ إضافة طريقة دفع جديدة</button>
+        <button class="btn btn-primary btn-xs" id="addNewPayMethodBtn">${getSvgIcon("plus", 13)} إضافة طريقة دفع جديدة</button>
       </div>
 
       <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(250px, 1fr));gap:10px;margin-bottom:10px;">
         ${payMethods.map((pm, idx) => `
           <div style="border:1.5px solid ${pm.enabled!==false?'var(--primary)':'var(--line)'};background:var(--paper2);border-radius:var(--radius);padding:12px;display:flex;justify-content:space-between;align-items:center;">
             <div style="display:flex;align-items:center;gap:10px;">
-              <span style="font-size:22px;">${pm.icon||'💵'}</span>
+              <span style="font-size:22px;"></span>
               <div>
                 <b style="font-size:13px;display:block;color:var(--ink);">${escapeHtml(pm.name)}</b>
                 <span style="font-size:10.5px;color:var(--ink-secondary);">${pm.id}</span>
@@ -1283,7 +1283,7 @@ function renderPosSettings(main){
                 <span style="font-weight:700;">${pm.enabled!==false?'مفعل':'معطل'}</span>
               </label>
               ${['cash','vodafone','card','instapay','credit'].includes(pm.id)?'':`
-                <button class="btn btn-ghost btn-xs remove-custom-pm-btn" data-pmidx="${idx}" style="color:var(--red);padding:2px 6px;" title="حذف">✕</button>
+                <button class="btn btn-ghost btn-xs remove-custom-pm-btn" data-pmidx="${idx}" style="color:var(--red);padding:2px 6px;" title="حذف">&times;</button>
               `}
             </div>
           </div>
@@ -1295,7 +1295,7 @@ function renderPosSettings(main){
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
         <div>
-          <h3 style="margin:0;font-size:15px;">⚡ أزرار الخدمات السريعة الفورية</h3>
+          <h3 style="margin:0;font-size:15px;">أزرار الخدمات السريعة الفورية</h3>
                   </div>
       </div>
 
@@ -1303,13 +1303,13 @@ function renderPosSettings(main){
         ${quickServices.map((srv, idx) => `
           <div style="border:1px solid var(--line);background:var(--paper);border-radius:var(--radius);padding:10px 12px;display:flex;justify-content:space-between;align-items:center;">
             <div style="display:flex;align-items:center;gap:8px;">
-              <span style="font-size:18px;">${srv.icon||'⚡'}</span>
+              <span style="font-size:18px;"></span>
               <div>
                 <b style="font-size:12.5px;display:block;">${escapeHtml(srv.name)}</b>
                 <span class="mono font-bold" style="color:var(--primary);font-size:12px;">${Number(srv.price).toLocaleString()} ج.م</span>
               </div>
             </div>
-            <button class="btn btn-ghost btn-xs remove-quick-srv-btn" data-srvidx="${idx}" style="color:var(--red);padding:2px 6px;" title="حذف">✕</button>
+            <button class="btn btn-ghost btn-xs remove-quick-srv-btn" data-srvidx="${idx}" style="color:var(--red);padding:2px 6px;" title="حذف">&times;</button>
           </div>
         `).join('')}
       </div>
@@ -1317,8 +1317,8 @@ function renderPosSettings(main){
       <div style="display:flex;gap:8px;background:var(--paper2);padding:10px;border-radius:var(--radius-sm);border:1px solid var(--line);flex-wrap:wrap;">
         <input id="newSrvName" placeholder="اسم الخدمة (مثال: صيانة سوفت وير)" style="flex:2;min-width:180px;">
         <input id="newSrvPrice" type="number" placeholder="السعر (ج.م)" style="flex:1;min-width:90px;" class="mono">
-        <input id="newSrvIcon" placeholder="أيقونة (⚡)" style="width:70px;text-align:center;">
-        <button class="btn btn-primary btn-sm" id="addNewQuickSrvBtn">➕ إضافة خدمة</button>
+        <input id="newSrvIcon" placeholder="أيقونة" style="width:70px;text-align:center;">
+        <button class="btn btn-primary btn-sm" id="addNewQuickSrvBtn">${getSvgIcon("plus", 13)} إضافة خدمة</button>
       </div>
     </div>
 
@@ -1326,7 +1326,7 @@ function renderPosSettings(main){
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
         <div>
-          <h3 style="margin:0;font-size:15px;">⭐ الأصناف السريعة والمختصرة في الكاشير (POS Shortcuts)</h3>
+          <h3 style="margin:0;font-size:15px;">الأصناف السريعة والمختصرة في الكاشير (POS Shortcuts)</h3>
                   </div>
         <span class="status-badge st-check" style="font-size:11.5px;">${(posSettings.shortcutItemIds||[]).length} صنف محدد</span>
       </div>
@@ -1334,7 +1334,7 @@ function renderPosSettings(main){
       <!-- Current Shortcut Items Chips -->
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;min-height:48px;padding:10px;background:var(--paper2);border-radius:var(--radius-sm);border:1px solid var(--line);align-items:center;">
         ${(!posSettings.shortcutItemIds || posSettings.shortcutItemIds.length === 0) ? `
-          <div style="color:var(--ink-secondary);font-size:12px;padding:6px 0;">لم يتم تعيين أصناف سريعة بعد. يمكنك اختيار صنف من القائمة أدناه أو الضغط على رمز النجمة ⭐ في بطاقة أي صنف بشاشة البيع.</div>
+          <div style="color:var(--ink-secondary);font-size:12px;padding:6px 0;">لم يتم تعيين أصناف سريعة بعد. يمكنك اختيار صنف من القائمة أدناه أو الضغط على رمز النجمة في بطاقة أي صنف بشاشة البيع.</div>
         ` : posSettings.shortcutItemIds.map(id => {
           const it = (state.inventory||[]).find(x => String(x.ID||x.id) === String(id));
           const name = it ? it.Name : `صنف #${id}`;
@@ -1342,11 +1342,11 @@ function renderPosSettings(main){
           const price = it ? Number(it.SellPrice||it.PurchasePrice||0).toLocaleString() : '';
           return `
             <div style="display:inline-flex;align-items:center;gap:6px;background:var(--paper);border:1.5px solid var(--primary);border-radius:20px;padding:4px 10px;box-shadow:var(--shadow-sm);">
-              <span style="color:#f59e0b;font-size:13px;">★</span>
+              
               <span style="font-size:12px;font-weight:800;color:var(--ink);">${escapeHtml(name)}</span>
               ${cat ? `<span style="font-size:10.5px;color:var(--ink-secondary);">[${escapeHtml(cat)}]</span>` : ''}
               ${price ? `<span class="mono" style="font-size:11px;color:var(--primary);font-weight:700;">(${price} ج.م)</span>` : ''}
-              <button type="button" class="remove-pos-shortcut-btn" data-rmshortid="${id}" style="background:transparent;border:none;color:var(--red);cursor:pointer;font-weight:900;font-size:13px;padding:0 2px;margin-right:2px;" title="إلغاء التثبيت">✕</button>
+              <button type="button" class="remove-pos-shortcut-btn" data-rmshortid="${id}" style="background:transparent;border:none;color:var(--red);cursor:pointer;font-weight:900;font-size:13px;padding:0 2px;margin-right:2px;" title="إلغاء التثبيت">&times;</button>
             </div>
           `;
         }).join('')}
@@ -1365,18 +1365,18 @@ function renderPosSettings(main){
             `).join('')}
         </select>
         <button type="button" class="btn btn-primary btn-sm" id="posAddShortcutBtn" style="padding:7px 14px;">
-          ➕ إضافة إلى الأصناف السريعة
+          ${getSvgIcon("plus", 13)} إضافة إلى الأصناف السريعة
         </button>
       </div>
     </div>
 
     <!-- 3. Receipt & Thermal Printer Settings -->
     <div class="card">
-      <h3 style="margin-top:0;font-size:15px;">🖨️ إعدادات طابعة الإيصالات والبون الحراري</h3>
+      <h3 style="margin-top:0;font-size:15px;">إعدادات طابعة الإيصالات والبون الحراري</h3>
             
       <div class="grid2" style="margin-bottom:14px;">
         <div class="field">
-          <label>📐 مقاس ورق الطابعة الحرارية (Receipt Size)</label>
+          <label>مقاس ورق الطابعة الحرارية (Receipt Size)</label>
           <select id="posReceiptPaperSize">
             <option value="80mm" ${posSettings.receiptPaperSize==='80mm'?'selected':''}>80mm (عرض قياسي 80 مم - طابعات إيصالات كاشير)</option>
             <option value="58mm" ${posSettings.receiptPaperSize==='58mm'?'selected':''}>58mm (عرض مدمج 58 مم - طابعات بلوتوث وحرارية صغيرة)</option>
@@ -1391,22 +1391,22 @@ function renderPosSettings(main){
       <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:10px;">
         <label class="checkbox-row" style="font-size:12.5px;">
           <input type="checkbox" id="posAutoPrintReceipt" ${posSettings.autoPrintReceipt!==false?'checked':''}>
-          <span>🖨️ طباعة الإيصال الحراري تلقائياً فور إتمام البيع</span>
+          <span>طباعة الإيصال الحراري تلقائياً فور إتمام البيع</span>
         </label>
         <label class="checkbox-row" style="font-size:12.5px;">
           <input type="checkbox" id="posShowCashierName" ${posSettings.showCashierName!==false?'checked':''}>
-          <span>👤 إظهار اسم الكاشير على بون العميل</span>
+          <span>إظهار اسم الكاشير على بون العميل</span>
         </label>
         <label class="checkbox-row" style="font-size:12.5px;">
           <input type="checkbox" id="posShowLogoOnReceipt" ${posSettings.showLogoOnReceipt!==false?'checked':''}>
-          <span>🖼️ إظهار شعار المحل في أعلى الإيصال</span>
+          <span>إظهار شعار المحل في أعلى الإيصال</span>
         </label>
       </div>
     </div>
 
     <!-- 4. Inventory & Tax Policies -->
     <div class="card">
-      <h3 style="margin-top:0;font-size:15px;">⚖️ السياسات المالية والمخزنية</h3>
+      <h3 style="margin-top:0;font-size:15px;">السياسات المالية والمخزنية</h3>
       
       <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:14px;margin-bottom:14px;">
         <div style="background:var(--paper2);padding:12px;border-radius:var(--radius-sm);border:1px solid var(--line);">
@@ -1438,7 +1438,7 @@ function renderPosSettings(main){
 
       <div style="text-align:left;margin-top:16px;border-top:1px solid var(--line);padding-top:12px;">
         <button class="btn btn-primary" id="savePosSettingsBtn" style="padding:9px 24px;font-weight:900;">
-          💾 حفظ كافة إعدادات نقطة البيع
+          ${getSvgIcon("check", 14)} حفظ كافة إعدادات نقطة البيع
         </button>
       </div>
     </div>
@@ -1483,7 +1483,7 @@ function attachPosSettingsEvents(main){
         setCache('settings', state.settings);
         try { await saveSettingRemote('pos', JSON.stringify(posSettings)); } catch(e){}
         renderPosSettings(main);
-        showToast('تمت إضافة الصنف إلى الأصناف السريعة بنجاح ⭐', 'success');
+        showToast('تمت إضافة الصنف إلى الأصناف السريعة بنجاح', 'success');
       }
     };
   }
@@ -1514,7 +1514,7 @@ function attachPosSettingsEvents(main){
     addPmBtn.onclick = ()=>{
       const name = prompt('أدخل اسم طريقة أو محفظة الدفع الجديدة (مثال: أورنج كاش / كاش بلس):');
       if(!name || !name.trim()) return;
-      const icon = prompt('أدخل أيقونة لطريقة الدفع (مثال: 📱 / 💳 / ⚡):', '📱') || '📱';
+      const icon = '';
       const id = 'pm_' + Date.now();
       payMethods.push({ id, name: name.trim(), icon, enabled: true });
       posSettings.paymentMethods = payMethods;
@@ -1529,7 +1529,7 @@ function attachPosSettingsEvents(main){
     addSrvBtn.onclick = ()=>{
       const name = document.getElementById('newSrvName').value.trim();
       const price = Number(document.getElementById('newSrvPrice').value);
-      const icon = document.getElementById('newSrvIcon').value.trim() || '⚡';
+      const icon = document.getElementById('newSrvIcon').value.trim() || '';
       if(!name){ showToast('يرجى كتابة اسم الخدمة', 'error'); return; }
       if(!price || price < 0){ showToast('يرجى تحديد سعر الخدمة', 'error'); return; }
 
@@ -1570,7 +1570,7 @@ function attachPosSettingsEvents(main){
 
       try {
         await saveSettingRemote('pos', JSON.stringify(posSettings));
-        showToast('تم حفظ كافة إعدادات نقطة البيع وخيارات الدفع بنجاح ✅', 'success');
+        showToast('تم حفظ كافة إعدادات نقطة البيع وخيارات الدفع بنجاح', 'success');
       } catch(e) {
         showToast('تم حفظ إعدادات الـ POS محلياً', 'info');
       }
@@ -1586,43 +1586,43 @@ function renderWhatsappSettings(main){
   const currentContent = templates[activeWaKey] || DEFAULT_WA_TEMPLATES[activeWaKey] || '';
 
   const waKeys = [
-    {k:'cost_estimate', icon:'💰', label:'0. عرض ومقايسة التكلفة (موافقة / رفض وفحص)'},
-    {k:'intake', icon:'📥', label:'1. استلام الجهاز وحجز الإيصال (جديد)'},
-    {k:'check', icon:'🔍', label:'2. فحص وتشخيص الجهاز (قيد الفحص)'},
-    {k:'repair', icon:'🛠️', label:'3. بدء الإصلاح الفعلي (الصيانة)'},
-    {k:'done', icon:'✅', label:'4. جاهز للاستلام (مكتمل)'},
-    {k:'delivered', icon:'🤝', label:'5. تسليم الجهاز وتفعيل الضمان'},
-    {k:'pending', icon:'⏸️', label:'6. صيانة معلقة بانتظار العميل'},
-    {k:'warranty', icon:'🛡️', label:'7. صيانة تحت الضمان'},
-    {k:'overdue', icon:'⏳', label:'8. تذكير بالأجهزة المتروكة (+7 أيام)'},
-    {k:'unrepairable', icon:'🚫', label:'9. تعذر الصيانة'},
-    {k:'rejected', icon:'❌', label:'10. رفض العميل'}
+    {k:'cost_estimate', icon: getSvgIcon('wallet', 14), label:'0. عرض ومقايسة التكلفة (موافقة / رفض وفحص)'},
+    {k:'intake', icon: getSvgIcon('download', 14), label:'1. استلام الجهاز وحجز الإيصال (جديد)'},
+    {k:'check', icon: getSvgIcon('search', 14), label:'2. فحص وتشخيص الجهاز (قيد الفحص)'},
+    {k:'repair', icon: getSvgIcon('tool', 14), label:'3. بدء الإصلاح الفعلي (الصيانة)'},
+    {k:'done', icon: getSvgIcon('check', 14), label:'4. جاهز للاستلام (مكتمل)'},
+    {k:'delivered', icon: getSvgIcon('truck', 14), label:'5. تسليم الجهاز وتفعيل الضمان'},
+    {k:'pending', icon: getSvgIcon('pause', 14), label:'6. صيانة معلقة بانتظار العميل'},
+    {k:'warranty', icon: getSvgIcon('shield', 14), label:'7. صيانة تحت الضمان'},
+    {k:'overdue', icon: getSvgIcon('clock', 14), label:'8. تذكير بالأجهزة المتروكة (+7 أيام)'},
+    {k:'unrepairable', icon: getSvgIcon('alert', 14), label:'9. تعذر الصيانة'},
+    {k:'rejected', icon: getSvgIcon('x', 14), label:'10. رفض العميل'}
   ];
 
   const placeholders = [
-    {p:'{customer_name}', label:'👤 اسم العميل'},
-    {p:'{receipt_no}', label:'🔢 رقم الإيصال'},
-    {p:'{date}', label:'📅 تاريخ الاستلام'},
-    {p:'{time}', label:'⏰ وقت الاستلام'},
-    {p:'{device}', label:'💻 الجهاز والماركة'},
-    {p:'{faults_report}', label:'🔍 تقرير الفحص'},
-    {p:'{cost}', label:'💰 إجمالي التكلفة'},
-    {p:'{deposit}', label:'💵 المدفوع مقدماً'},
-    {p:'{deposit_info}', label:'💵 بند العربون'},
-    {p:'{remaining}', label:'🔴 المتبقي المطلوب'},
-    {p:'{inspection_fee}', label:'❌ تكلفة الفحص (رفض)'},
-    {p:'{estimate_time}', label:'⏳ مدة الإصلاح'},
-    {p:'{warranty}', label:'🛡️ فترة الضمان'},
-    {p:'{warranty_info}', label:'🛡️ بند الضمان'},
-    {p:'{status}', label:'📌 الحالة'},
-    {p:'{track_url}', label:'🔗 رابط التتبع المباشر'},
-    {p:'{shop_name}', label:'🏪 اسم المحل'},
-    {p:'{shop_phone}', label:'📞 هاتف المحل'},
-    {p:'{shop_address}', label:'📍 عنوان المحل'}
+    {p:'{customer_name}', label:'اسم العميل'},
+    {p:'{receipt_no}', label:'رقم الإيصال'},
+    {p:'{date}', label:'تاريخ الاستلام'},
+    {p:'{time}', label:'وقت الاستلام'},
+    {p:'{device}', label:'الجهاز والماركة'},
+    {p:'{faults_report}', label:'تقرير الفحص'},
+    {p:'{cost}', label:'إجمالي التكلفة'},
+    {p:'{deposit}', label:'المدفوع مقدماً'},
+    {p:'{deposit_info}', label:'بند العربون'},
+    {p:'{remaining}', label:'المتبقي المطلوب'},
+    {p:'{inspection_fee}', label:'تكلفة الفحص (رفض)'},
+    {p:'{estimate_time}', label:'مدة الإصلاح'},
+    {p:'{warranty}', label:'فترة الضمان'},
+    {p:'{warranty_info}', label:'بند الضمان'},
+    {p:'{status}', label:'الحالة'},
+    {p:'{track_url}', label:'رابط التتبع المباشر'},
+    {p:'{shop_name}', label:'اسم المحل'},
+    {p:'{shop_phone}', label:'هاتف المحل'},
+    {p:'{shop_address}', label:'عنوان المحل'}
   ];
 
   main.innerHTML = `
-    ${renderSettingsNavHeader('📱 قوالب رسائل واتساب الذكية', 'تخصيص صيغ الرسائل التلقائية المرسلة للعملاء حسب حالة الصيانة مع دعم المتغيرات الفورية')}
+    ${renderSettingsNavHeader('قوالب رسائل واتساب الذكية', 'تخصيص صيغ الرسائل التلقائية المرسلة للعملاء حسب حالة الصيانة مع دعم المتغيرات الفورية')}
 
     <div class="card">
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
@@ -1653,7 +1653,7 @@ function renderWhatsappSettings(main){
       <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:12px 14px;margin-top:12px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
           <label style="font-size:12px;font-weight:700;color:#14532d;margin:0;display:flex;align-items:center;gap:6px;">
-            <span>💬</span> معاينة حية لشكل رسالة واتساب كما ستصل للعميل:
+            معاينة حية لشكل رسالة واتساب كما ستصل للعميل:
           </label>
           <span style="font-size:11px;color:#15803d;">بيانات محاكاة ذكية</span>
         </div>
@@ -1662,14 +1662,14 @@ function renderWhatsappSettings(main){
 
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;flex-wrap:wrap;gap:10px;">
         <button class="btn btn-ghost btn-sm" id="resetCurrentWaBtn">↩ استعادة القالب الافتراضي لهذه الحالة</button>
-        <button class="btn btn-primary" id="saveWaTemplateBtn">💾 حفظ تعديل قالب الرسالة</button>
+        <button class="btn btn-primary" id="saveWaTemplateBtn">${getSvgIcon("check", 14)} حفظ تعديل قالب الرسالة</button>
       </div>
     </div>
 
     <!-- Default Cost Estimate & Inspection Settings -->
     <div class="card" style="margin-top:16px;border-right:4px solid #10b981;">
       <h3 style="margin-top:0;font-size:15px;color:#047857;display:flex;align-items:center;gap:6px;">
-        <span>⚙️</span> إعدادات مقايسة التكلفة وفحص الأجهزة الافتراضية
+        إعدادات مقايسة التكلفة وفحص الأجهزة الافتراضية
       </h3>
       <p style="font-size:12px;color:var(--ink-secondary);margin-bottom:12px;">تحديد القيم الافتراضية التي تظهر تلقائياً في نافذة عرض التكلفة ومقايسة واتساب قبل إرسالها للعميل:</p>
       
@@ -1689,7 +1689,7 @@ function renderWhatsappSettings(main){
       </div>
 
       <div style="display:flex;justify-content:flex-end;margin-top:14px;">
-        <button class="btn btn-primary btn-sm" id="saveEstimateDefaultsBtn">💾 حفظ إعدادات المقايسة الافتراضية</button>
+        <button class="btn btn-primary btn-sm" id="saveEstimateDefaultsBtn">${getSvgIcon("check", 14)} حفظ إعدادات المقايسة الافتراضية</button>
       </div>
     </div>
   `;
@@ -1758,7 +1758,7 @@ function renderWhatsappSettings(main){
     setCache('settings', state.settings);
     try {
       await saveSettingRemote('waTemplates', JSON.stringify(state.settings.waTemplates));
-      showToast('تم حفظ قالب رسالة واتساب بنجاح ✅', 'success');
+      showToast('تم حفظ قالب رسالة واتساب بنجاح', 'success');
     } catch(e){
       showToast('تم حفظ القالب محلياً', 'info');
     }
@@ -1788,7 +1788,7 @@ function renderWhatsappSettings(main){
         await saveSettingRemote('defaultInspectionFee', String(state.settings.defaultInspectionFee));
         await saveSettingRemote('defaultEstimateTime', state.settings.defaultEstimateTime);
         await saveSettingRemote('defaultWarranty', state.settings.defaultWarranty);
-        showToast('تم حفظ إعدادات مقايسة التكلفة الافتراضية بنجاح ✅', 'success');
+        showToast('تم حفظ إعدادات مقايسة التكلفة الافتراضية بنجاح', 'success');
       } catch(e){
         showToast('تم حفظ الإعدادات محلياً', 'info');
       }
@@ -1804,45 +1804,45 @@ function renderWarrantySettings(main){
   const currentAgreementTerms = getQuoteAgreementTerms();
 
   main.innerHTML = `
-    ${renderSettingsNavHeader('📜 بنود الضمان وعقود الاتفاق', 'تخصيص وكتابة بنود وشروط إيصال الصيانة (A5) والفواتير وعروض الأسعار وعقود التوريد والتركيب')}
+    ${renderSettingsNavHeader('بنود الضمان وعقود الاتفاق', 'تخصيص وكتابة بنود وشروط إيصال الصيانة (A5) والفواتير وعروض الأسعار وعقود التوريد والتركيب')}
 
     <!-- Maintenance A5 Receipt Terms -->
     <div class="card" style="border-right:4px solid var(--blue);">
-      <h3 style="margin-top:0;font-size:15px;color:var(--blue-text);">🛠️ بنود وشروط إيصال استلام الصيانة (ورقة A5)</h3>
+      <h3 style="margin-top:0;font-size:15px;color:var(--blue-text);">بنود وشروط إيصال استلام الصيانة (ورقة A5)</h3>
       <p style="font-size:12px;color:var(--ink-secondary);margin-bottom:10px;">هذه البنود تطبع أسفل إيصال استلام الصيانة الأصلي:</p>
       <textarea id="setTermsText" style="min-height:120px;font-size:12.5px;line-height:1.6;">${currentTerms}</textarea>
       <div style="display:flex;justify-content:space-between;margin-top:10px;">
         <button class="btn btn-ghost btn-xs" id="resetTermsBtn">↩ استعادة البنود الافتراضية</button>
-        <button class="btn btn-primary btn-sm" id="saveTermsBtn">💾 حفظ بنود إيصال الصيانة</button>
+        <button class="btn btn-primary btn-sm" id="saveTermsBtn">${getSvgIcon("check", 14)} حفظ بنود إيصال الصيانة</button>
       </div>
     </div>
 
     <!-- Tax Invoice Terms -->
     <div class="card" style="border-right:4px solid var(--purple);">
-      <h3 style="margin-top:0;font-size:15px;color:var(--purple-text);">📄 شروط وملاحظات الفاتورة الضريبية الرسمية</h3>
+      <h3 style="margin-top:0;font-size:15px;color:var(--purple-text);">شروط وملاحظات الفاتورة الضريبية الرسمية</h3>
       <p style="font-size:12px;color:var(--ink-secondary);margin-bottom:10px;">تظهر أسفل الفواتير الضريبية ومبيعات الكاشير:</p>
       <textarea id="setInvTermsText" style="min-height:90px;font-size:12.5px;line-height:1.6;">${currentInvTerms}</textarea>
       <div style="display:flex;justify-content:space-between;margin-top:10px;">
         <button class="btn btn-ghost btn-xs" id="resetInvTermsBtn">↩ استعادة الافتراضي</button>
-        <button class="btn btn-primary btn-sm" id="saveInvTermsBtn">💾 حفظ شروط الفاتورة</button>
+        <button class="btn btn-primary btn-sm" id="saveInvTermsBtn">${getSvgIcon("check", 14)} حفظ شروط الفاتورة</button>
       </div>
     </div>
 
     <!-- Quotation Terms -->
     <div class="card" style="border-right:4px solid var(--cyan);">
-      <h3 style="margin-top:0;font-size:15px;color:var(--cyan-text);">📋 شروط وأحكام عرض الأسعار وبيان التكلفة</h3>
+      <h3 style="margin-top:0;font-size:15px;color:var(--cyan-text);">شروط وأحكام عرض الأسعار وبيان التكلفة</h3>
       <p style="font-size:12px;color:var(--ink-secondary);margin-bottom:10px;">تظهر أسفل صفحة عرض السعر الصادر للعميل:</p>
       <textarea id="setQuoteTermsText" style="min-height:90px;font-size:12.5px;line-height:1.6;">${currentQuoteTerms}</textarea>
       <div style="display:flex;justify-content:space-between;margin-top:10px;">
         <button class="btn btn-ghost btn-xs" id="resetQuoteTermsBtn">↩ استعادة الافتراضي</button>
-        <button class="btn btn-primary btn-sm" id="saveQuoteTermsBtn">💾 حفظ شروط عرض السعر</button>
+        <button class="btn btn-primary btn-sm" id="saveQuoteTermsBtn">${getSvgIcon("check", 14)} حفظ شروط عرض السعر</button>
       </div>
     </div>
 
     <!-- Quotation Agreement & Contract Terms -->
     <div class="card" style="border-right:4px solid var(--green);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-        <h3 style="margin:0;font-size:15px;color:var(--green-text);">📜 بنود وشروط عقد واتفاق التوريد والتركيب (عقد المشروع)</h3>
+        <h3 style="margin:0;font-size:15px;color:var(--green-text);">بنود وشروط عقد واتفاق التوريد والتركيب</h3>
       </div>
       <p style="font-size:12px;color:var(--ink-secondary);margin-bottom:10px;">
         تطبع هذه البنود عند الضغط على زر <b>"طباعة اتفاق وشروط العرض"</b> لطباعة عقد رسمي ملزم للطرفين مع جدول سداد الدفعات وتوقيعات الاستلام:
@@ -1850,7 +1850,7 @@ function renderWarrantySettings(main){
       <textarea id="setAgreementTermsText" style="min-height:140px;font-size:12.5px;line-height:1.7;">${currentAgreementTerms}</textarea>
       <div style="display:flex;justify-content:space-between;margin-top:10px;">
         <button class="btn btn-ghost btn-xs" id="resetAgreementTermsBtn">↩ استعادة بنود العقد الافتراضية</button>
-        <button class="btn btn-primary btn-sm" id="saveAgreementTermsBtn">💾 حفظ بنود العقد والاتفاق</button>
+        <button class="btn btn-primary btn-sm" id="saveAgreementTermsBtn">${getSvgIcon("check", 14)} حفظ بنود العقد والاتفاق</button>
       </div>
     </div>
   `;
@@ -1862,7 +1862,7 @@ function renderWarrantySettings(main){
     state.settings.terms = v;
     setCache('settings', state.settings);
     await saveSettingRemote('terms', v);
-    showToast('تم حفظ بنود إيصال الصيانة بنجاح ✅', 'success');
+    showToast('تم حفظ بنود إيصال الصيانة بنجاح', 'success');
   };
   document.getElementById('resetTermsBtn').onclick = ()=>{
     document.getElementById('setTermsText').value = DEFAULT_TERMS;
@@ -1876,7 +1876,7 @@ function renderWarrantySettings(main){
     state.settings.invoiceTerms = v;
     setCache('settings', state.settings);
     await saveSettingRemote('invoiceTerms', v);
-    showToast('تم حفظ شروط الفاتورة بنجاح ✅', 'success');
+    showToast('تم حفظ شروط الفاتورة بنجاح', 'success');
   };
   document.getElementById('resetInvTermsBtn').onclick = ()=>{
     document.getElementById('setInvTermsText').value = DEFAULT_INVOICE_TERMS;
@@ -1890,7 +1890,7 @@ function renderWarrantySettings(main){
     state.settings.quoteTerms = v;
     setCache('settings', state.settings);
     await saveSettingRemote('quoteTerms', v);
-    showToast('تم حفظ شروط عرض السعر بنجاح ✅', 'success');
+    showToast('تم حفظ شروط عرض السعر بنجاح', 'success');
   };
   document.getElementById('resetQuoteTermsBtn').onclick = ()=>{
     document.getElementById('setQuoteTermsText').value = DEFAULT_QUOTE_TERMS;
@@ -1904,7 +1904,7 @@ function renderWarrantySettings(main){
     state.settings.quoteAgreementTerms = v;
     setCache('settings', state.settings);
     await saveSettingRemote('quoteAgreementTerms', v);
-    showToast('تم حفظ بنود عقد واتفاق التوريد بنجاح ✅', 'success');
+    showToast('تم حفظ بنود عقد واتفاق التوريد بنجاح', 'success');
   };
   document.getElementById('resetAgreementTermsBtn').onclick = ()=>{
     document.getElementById('setAgreementTermsText').value = DEFAULT_QUOTE_AGREEMENT_TERMS;
@@ -1922,7 +1922,7 @@ function renderDevicesSettings(main){
   const brandsList = brandsObj[selectedCat] || [];
 
   main.innerHTML = `
-    ${renderSettingsNavHeader('🛠️ تصنيفات وماركات الأجهزة', 'إدارة فئات الأجهزة (لابتوب، موبايل، شاشات، كاميرات...) وتخصيص الماركات التابعة لكل فئة')}
+    ${renderSettingsNavHeader('تصنيفات وماركات الأجهزة', 'إدارة فئات الأجهزة (لابتوب، موبايل، شاشات، كاميرات...) وتخصيص الماركات التابعة لكل فئة')}
 
     <div class="card">
       <h3 style="margin-top:0;font-size:15px;">1. تصنيفات وفئات الأجهزة</h3>
@@ -1938,28 +1938,28 @@ function renderDevicesSettings(main){
 
       <div style="display:flex;gap:10px;margin-bottom:20px;">
         <input id="newCatInput" placeholder="اسم فئة جديدة (مثال: أجهزة منزلية / بلايستيشن)" style="flex:1;">
-        <button class="btn btn-primary btn-sm" id="addNewCatBtn">➕ إضافة فئة جديدة</button>
+        <button class="btn btn-primary btn-sm" id="addNewCatBtn">${getSvgIcon("plus", 13)} إضافة فئة جديدة</button>
       </div>
 
       <hr style="border:none;border-top:1px solid var(--line);margin:18px 0;">
 
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
         <h3 style="margin:0;font-size:15px;">2. الماركات والأنواع التابعة لـ: <span style="color:var(--primary);">${selectedCat}</span></h3>
-        ${categories.length > 1 ? `<button class="btn btn-ghost btn-xs" id="deleteCurrentCatBtn" style="color:var(--red);">🗑️ حذف فئة "${selectedCat}"</button>` : ''}
+        ${categories.length > 1 ? `<button class="btn btn-ghost btn-xs" id="deleteCurrentCatBtn" style="color:var(--red);">${getSvgIcon("trash", 13)} حذف فئة "${selectedCat}"</button>` : ''}
       </div>
 
       <div class="chip-group" style="margin-bottom:16px;">
         ${brandsList.map(b => `
           <div class="chip sel" style="display:inline-flex;align-items:center;gap:6px;">
             <span>${b}</span>
-            <span class="remove-brand-btn" data-brand="${b}" style="cursor:pointer;color:#fca5a5;font-weight:900;" title="حذف الماركة">✕</span>
+            <span class="remove-brand-btn" data-brand="${b}" style="cursor:pointer;color:#fca5a5;font-weight:900;" title="حذف الماركة">&times;</span>
           </div>
         `).join('')}
       </div>
 
       <div style="display:flex;gap:10px;">
         <input id="newBrandInput" placeholder="إضافة ماركة جديدة لـ ${selectedCat} (مثال: Sony / Xiaomi)" style="flex:1;">
-        <button class="btn btn-primary btn-sm" id="addNewBrandBtn">➕ إضافة ماركة</button>
+        <button class="btn btn-primary btn-sm" id="addNewBrandBtn">${getSvgIcon("plus", 13)} إضافة ماركة</button>
       </div>
     </div>
   `;
@@ -2034,45 +2034,45 @@ function renderFaultsSettings(main){
   const techsList = state.technicians || [];
 
   main.innerHTML = `
-    ${renderSettingsNavHeader('⚠️ الأعطال الشائعة والفنيين', 'تخصيص شرائح الأعطال السريعة في إيصال الاستلام وإدارة قائمة الفنيين')}
+    ${renderSettingsNavHeader('الأعطال الشائعة والفنيين', 'تخصيص شرائح الأعطال السريعة في إيصال الاستلام وإدارة قائمة الفنيين')}
 
     <!-- Common Faults Chips Management -->
     <div class="card">
-      <h3 style="margin-top:0;font-size:15px;">⚠️ شرائح الأعطال الشائعة السريعة (${faultsList.length} عطل)</h3>
+      <h3 style="margin-top:0;font-size:15px;">شرائح الأعطال الشائعة السريعة (${faultsList.length} عطل)</h3>
       <p style="font-size:12px;color:var(--ink-secondary);margin-bottom:12px;">هذه الأعطال تظهر كشرائح سريعة عند استلام وتعديل أجهزة الصيانة:</p>
       
       <div class="chip-group" style="margin-bottom:16px;">
         ${faultsList.map(f => `
           <div class="chip sel" style="display:inline-flex;align-items:center;gap:6px;">
             <span>${f}</span>
-            <span class="remove-fault-btn" data-fault="${f}" style="cursor:pointer;color:#fca5a5;font-weight:900;" title="حذف العطل">✕</span>
+            <span class="remove-fault-btn" data-fault="${f}" style="cursor:pointer;color:#fca5a5;font-weight:900;" title="حذف العطل">&times;</span>
           </div>
         `).join('')}
       </div>
 
       <div style="display:flex;gap:10px;">
         <input id="newFaultInput" placeholder="إضافة عطل شائع جديد (مثال: تغيير باغة / صيانة كيبورد)" style="flex:1;">
-        <button class="btn btn-primary btn-sm" id="addNewFaultBtn">➕ إضافة عطل</button>
+        <button class="btn btn-primary btn-sm" id="addNewFaultBtn">${getSvgIcon("plus", 13)} إضافة عطل</button>
       </div>
     </div>
 
     <!-- Technicians Management -->
     <div class="card">
-      <h3 style="margin-top:0;font-size:15px;">👨‍🔧 قائمة الفنيين المعتمدين (${techsList.length} فني)</h3>
+      <h3 style="margin-top:0;font-size:15px;">قائمة الفنيين المعتمدين (${techsList.length} فني)</h3>
       <p style="font-size:12px;color:var(--ink-secondary);margin-bottom:12px;">الفنيين المتاح إسناد أوامر الشغل وحساب المكافآت لهم:</p>
       
       <div class="chip-group" style="margin-bottom:16px;">
         ${techsList.map(t => `
           <div class="chip sel" style="display:inline-flex;align-items:center;gap:6px;">
-            <span>👨‍🔧 ${t}</span>
-            <span class="remove-tech-btn" data-tech="${t}" style="cursor:pointer;color:#fca5a5;font-weight:900;" title="حذف الفني">✕</span>
+            <span>${t}</span>
+            <span class="remove-tech-btn" data-tech="${t}" style="cursor:pointer;color:#fca5a5;font-weight:900;" title="حذف الفني">&times;</span>
           </div>
         `).join('')}
       </div>
 
       <div style="display:flex;gap:10px;">
         <input id="newTechNameInput" placeholder="اسم فني جديد" style="flex:1;">
-        <button class="btn btn-primary btn-sm" id="addNewTechBtn">➕ إضافة فني</button>
+        <button class="btn btn-primary btn-sm" id="addNewTechBtn">${getSvgIcon("plus", 13)} إضافة فني</button>
       </div>
     </div>
   `;
@@ -2131,12 +2131,12 @@ function renderSyncSettings(main){
   const isOnline = navigator.onLine;
 
   main.innerHTML = `
-    ${renderSettingsNavHeader('🔄 المزامنة السحابية والصيانة', 'فحص حالة الاتصال بـ Google Sheets، مزامنة العمليات المعلقة، وإدارة الكاش المحلي')}
+    ${renderSettingsNavHeader('المزامنة السحابية والصيانة', 'فحص حالة الاتصال بـ Google Sheets، مزامنة العمليات المعلقة، وإدارة الكاش المحلي')}
 
     <div class="card" style="border-right:4px solid ${isOnline?'var(--green)':'var(--amber)'};">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
         <h3 style="margin:0;font-size:16px;">حالة الاتصال والبيئة السحابية</h3>
-        <span class="status-badge ${isOnline?'st-done':'st-repair'}">${isOnline?'🟢 متصل بالإنترنت':'🟡 وضع غير متصل (Offline)'}</span>
+        <span class="status-badge ${isOnline?'st-done':'st-repair'}">${isOnline?'متصل بالإنترنت':'وضع غير متصل (Offline)'}</span>
       </div>
       <p style="font-size:13px;color:var(--ink-secondary);line-height:1.6;">
         يعمل نظام <b>ميكروERP</b> بتقنية <b>Dual-Sync Hybrid Engine</b> التي تسمح لك بالعمل وتسجيل الإيصالات والمبيعات واليومية حتى في حالة انقطاع الإنترنت، ويتم رفع وتزامن كافة العمليات فور عودة الاتصال دون أي فقدان للبيانات.
@@ -2145,24 +2145,24 @@ function renderSyncSettings(main){
       <div style="background:var(--paper3);border-radius:var(--radius-sm);padding:14px;margin:16px 0;display:flex;justify-content:space-between;align-items:center;">
         <div>
           <div style="font-weight:800;font-size:13.5px;">العمليات المعلقة في طابور المزامنة (Offline Queue):</div>
-          <div style="font-size:12px;color:var(--ink-secondary);margin-top:2px;">${queue.length === 0 ? 'لا توجد عمليات معلقة - كافة البيانات متزامنة تماماً مع السحابة ✨' : `${queue.length} عملية بانتظار الرفع للسحابة`}</div>
+          <div style="font-size:12px;color:var(--ink-secondary);margin-top:2px;">${queue.length === 0 ? 'لا توجد عمليات معلقة - كافة البيانات متزامنة تماماً مع السحابة' : `${queue.length} عملية بانتظار الرفع للسحابة`}</div>
         </div>
         <div class="num mono" style="font-size:22px;color:${queue.length>0?'var(--amber-text)':'var(--green-text)'};">${queue.length}</div>
       </div>
 
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        <button class="btn btn-primary" id="forceSyncBtn">🔄 مزامنة كافة العمليات المعلقة الآن</button>
-        ${queue.length > 0 ? `<button class="btn btn-ghost" id="clearQueueBtn" style="color:var(--red);">🗑️ تفريغ طابور المزامنة المعلق</button>` : ''}
-        <button class="btn btn-ghost" id="reloadCloudDataBtn">☁️ إعادة تحميل البيانات من السحابة</button>
+        <button class="btn btn-primary" id="forceSyncBtn">${getSvgIcon("refresh", 14)} مزامنة كافة العمليات المعلقة الآن</button>
+        ${queue.length > 0 ? `<button class="btn btn-ghost" id="clearQueueBtn" style="color:var(--red);">${getSvgIcon("trash", 13)} تفريغ طابور المزامنة المعلق</button>` : ''}
+        <button class="btn btn-ghost" id="reloadCloudDataBtn">${getSvgIcon("refresh", 14)} إعادة تحميل البيانات من السحابة</button>
       </div>
     </div>
 
     <div class="card" style="border-right:4px solid var(--red);">
-      <h3 style="margin-top:0;font-size:15px;color:var(--red-text);">🗑️ تفريغ الكاش وإعادة التهيئة المحلية</h3>
+      <h3 style="margin-top:0;font-size:15px;color:var(--red-text);">تفريغ الكاش وإعادة التهيئة المحلية</h3>
       <p style="font-size:12px;color:var(--ink-secondary);margin-bottom:12px;">
         في حال واجهت أي تعليق في المتصفح، يمكنك تفريغ الذاكرة المؤقتة المحلية وإعادة تحميل أحدث نسخة من السحابة بأمان:
       </p>
-      <button class="btn btn-ghost btn-sm" id="clearLocalCacheBtn" style="color:var(--red);">🗑️ تفريغ الكاش وإعادة التحميل</button>
+      <button class="btn btn-ghost btn-sm" id="clearLocalCacheBtn" style="color:var(--red);">${getSvgIcon("trash", 13)} تفريغ الكاش وإعادة التحميل</button>
     </div>
   `;
 
@@ -2189,7 +2189,7 @@ function renderSyncSettings(main){
       [state.users, state.receipts, state.customers, state.technicians, state.settings, state.payments, state.inventory, state.sales, state.quotations, state.services, state.purchases, state.suppliers, state.expenses, state.accounts, state.journalEntries, state.invoices] = await Promise.all([
         loadUsers(), loadReceipts(), loadCustomers(), loadTechnicians(), loadSettings(), loadPayments(), loadInventory(), loadSales(), loadQuotations(), loadServices(), loadPurchases(), loadSuppliers(), loadExpenses(), loadAccounts(), loadJournalEntries(), loadInvoices()
       ]);
-      showToast('تم تحديث البيانات من السحابة بنجاح ✅', 'success');
+      showToast('تم تحديث البيانات من السحابة بنجاح', 'success');
       renderSyncSettings(main);
     } catch(e) {
       showToast('تعذر التحديث من السحابة: ' + e.message, 'error');
@@ -2211,16 +2211,16 @@ function renderAiSettings(main){
   const hasKey = !!cfg.apiKey;
 
   main.innerHTML = `
-    ${renderSettingsNavHeader('🤖 الذكاء الاصطناعي (Google Gemini)', 'تكامل نماذج الذكاء الاصطناعي لتشخيص الأعطال، واقتراح القياسات، وصياغة تقارير المقايسة')}
+    ${renderSettingsNavHeader('الذكاء الاصطناعي (Google Gemini)', 'تكامل نماذج الذكاء الاصطناعي لتشخيص الأعطال، واقتراح القياسات، وصياغة تقارير المقايسة')}
 
     <div class="card" style="border-right:4px solid #7c3aed;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
         <div style="display:flex;align-items:center;gap:8px;">
-          <span style="font-size:22px;">🤖</span>
+          <span style="display:inline-flex;">' + getSvgIcon('chart', 22) + '</span>
           <h3 style="margin:0;font-size:16px;">إعدادات وتكامل Google Gemini API</h3>
         </div>
         <span class="status-badge ${hasKey ? 'st-done' : 'st-repair'}">
-          ${hasKey ? '🟢 تم ضبط المفتاح بنجاح' : '🟡 غير مهيأ (بانتظار المفتاح)'}
+          ${hasKey ? 'تم ضبط المفتاح بنجاح' : 'غير مهيأ (بانتظار المفتاح)'}
         </span>
       </div>
 
@@ -2239,7 +2239,7 @@ function renderAiSettings(main){
           </label>
           <div style="display:flex;gap:6px;">
             <input type="password" id="geminiApiKeyInput" value="${escapeHtml(cfg.apiKey)}" placeholder="AIzaSy..." class="mono" style="flex:1;direction:ltr;font-size:13px;padding:8px 10px;">
-            <button type="button" class="btn btn-ghost btn-sm" id="toggleApiKeyVisBtn" title="إظهار/إخفاء المفتاح">👁️</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="toggleApiKeyVisBtn" title="إظهار/إخفاء المفتاح">${getSvgIcon("eye", 13)}</button>
           </div>
           <div style="font-size:11.5px;color:var(--ink-secondary);margin-top:4px;">
             يتم حفظ المفتاح بأمان في المتصفح ومزامنته مع إعدادات النظام.
@@ -2278,10 +2278,10 @@ function renderAiSettings(main){
         <!-- Action Buttons -->
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;">
           <button type="button" class="btn btn-primary" id="saveAiSettingsBtn" style="background:#7c3aed;border-color:#7c3aed;font-weight:700;padding:8px 20px;">
-            💾 حفظ إعدادات الذكاء الاصطناعي
+            ${getSvgIcon("check", 14)} حفظ إعدادات الذكاء الاصطناعي
           </button>
           <button type="button" class="btn btn-ghost" id="testAiConnBtn" style="font-weight:700;display:inline-flex;align-items:center;gap:6px;">
-            <span>⚡</span> اختبار الاتصال الآن
+            <span>${getSvgIcon("refresh", 13)}</span> اختبار الاتصال الآن
           </button>
         </div>
       </div>
@@ -2290,7 +2290,7 @@ function renderAiSettings(main){
     <!-- Quick Guide Card -->
     <div class="card" style="margin-top:16px;">
       <h3 style="margin:0 0 10px 0;font-size:15px;display:flex;align-items:center;gap:6px;">
-        <span>💡</span> كيف تحصل على مفتاح Google Gemini API مجاناً؟
+        <span>${getSvgIcon("info", 13)}</span> كيف تحصل على مفتاح Google Gemini API مجاناً؟
       </h3>
       <ol style="font-size:13px;color:var(--ink-secondary);line-height:1.8;padding-right:20px;margin:0;">
         <li>قم بزيارة <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--primary);font-weight:700;">Google AI Studio ↗</a> وسجل الدخول بحساب Google الخاص بك.</li>
@@ -2326,7 +2326,7 @@ function renderAiSettings(main){
       const m = document.getElementById('geminiModelSelect').value;
       testBtn.disabled = true;
       const origHtml = testBtn.innerHTML;
-      testBtn.innerHTML = '<span>⏳</span> جاري الاختبار...';
+      testBtn.innerHTML = '<span>جاري الاختبار...</span>';
       resultBox.style.display = 'none';
 
       try {
@@ -2336,20 +2336,20 @@ function renderAiSettings(main){
         resultBox.style.border = '1px solid var(--green)';
         resultBox.style.color = '#047857';
         resultBox.innerHTML = `
-          <div style="font-weight:700;">✅ الاتصال ناجح ومستقر!</div>
+          <div style="font-weight:700;display:flex;align-items:center;gap:6px;">${getSvgIcon("check", 14)} الاتصال ناجح ومستقر!</div>
           <div style="font-size:11.5px;margin-top:2px;">النموذج: <b>${res.model}</b> • زمن الاستجابة: <b>${res.latencyMs} مللي ثانية</b> • رد الذكاء: "${escapeHtml(res.reply)}"</div>
         `;
-        showToast('تم التحقق من الاتصال بنجاح ✨', 'success');
+        showToast('تم التحقق من الاتصال بنجاح', 'success');
       } catch(err){
         resultBox.style.display = 'block';
         resultBox.style.background = 'rgba(239,68,68,0.1)';
         resultBox.style.border = '1px solid var(--red)';
         resultBox.style.color = '#b91c1c';
         resultBox.innerHTML = `
-          <div style="font-weight:700;">❌ فشل الاتصال:</div>
+          <div style="font-weight:700;display:flex;align-items:center;gap:6px;">${getSvgIcon("alert", 14)} فشل الاتصال:</div>
           <div style="font-size:11.5px;margin-top:2px;">${escapeHtml(err.message || 'حدث خطأ في الاتصال')}</div>
         `;
-        showToast('فشل اختبار الاتصال ⚠️', 'error');
+        showToast('فشل اختبار الاتصال', 'error');
       } finally {
         testBtn.disabled = false;
         testBtn.innerHTML = origHtml;
@@ -2382,12 +2382,12 @@ function renderAiSettings(main){
 
       try {
         await saveSettingRemote('gemini', JSON.stringify(newSettings));
-        showToast('تم حفظ إعدادات الذكاء الاصطناعي بنجاح ✅', 'success');
+        showToast('تم حفظ إعدادات الذكاء الاصطناعي بنجاح', 'success');
       } catch(err){
-        showToast('تم الحفظ محلياً في المتصفح بنجاح ✅', 'info');
+        showToast('تم الحفظ محلياً في المتصفح بنجاح', 'info');
       } finally {
         saveBtn.disabled = false;
-        saveBtn.textContent = '💾 حفظ إعدادات الذكاء الاصطناعي';
+        saveBtn.textContent = '${getSvgIcon("check", 14)} حفظ إعدادات الذكاء الاصطناعي';
         renderAiSettings(main);
       }
     };
@@ -2399,7 +2399,7 @@ function renderAiSettings(main){
    ============================================================ */
 function renderBarcodeStudioApp(app){
   if(!canUserAccessSection('barcode')){
-    showToast('⛔ ليس لديك صلاحية للوصول إلى استوديو الباركود', 'error');
+    showToast('ليس لديك صلاحية للوصول إلى استوديو الباركود', 'error');
     state.currentSection = null;
     return render();
   }
@@ -2435,38 +2435,38 @@ function renderBarcodeStudioApp(app){
       <div class="sidebar-nav-wrap">
         <div class="nav-section">مصدر بيانات الملصق</div>
         <div class="nav-item ${state.barcodeTab==='inventory'?'active':''}" data-barcodetab="inventory">
-          <span class="nav-item-icon">📦</span><span>أصناف المخزن العام</span>
+          <span class="nav-item-icon">${getSvgIcon("package", 16)}</span><span>أصناف المخزن العام</span>
         </div>
         <div class="nav-item ${state.barcodeTab==='invoice'?'active':''}" data-barcodetab="invoice">
-          <span class="nav-item-icon">🧾</span><span>فواتير الشراء والمخزن</span>
+          <span class="nav-item-icon">${getSvgIcon("invoices", 16)}</span><span>فواتير الشراء والمخزن</span>
         </div>
         <div class="nav-item ${state.barcodeTab==='maintenance'?'active':''}" data-barcodetab="maintenance">
-          <span class="nav-item-icon">🛠️</span><span>ملصقات أجهزة الصيانة</span>
+          <span class="nav-item-icon">${getSvgIcon("tool", 16)}</span><span>ملصقات أجهزة الصيانة</span>
         </div>
         <div class="nav-item ${state.barcodeTab==='custom'?'active':''}" data-barcodetab="custom">
-          <span class="nav-item-icon">✏️</span><span>توليد باركود حر ومخصص</span>
+          <span class="nav-item-icon">${getSvgIcon("barcode", 16)}</span><span>توليد باركود حر ومخصص</span>
         </div>
         
         ${hasRelatedNav ? `
           <div class="nav-section">أقسام ذات صلة</div>
           ${canUserAccessSection('inventory') ? `
             <div class="nav-item" id="navToInvFromBarcode">
-              <span class="nav-item-icon">🏬</span><span>المخزن والمشتريات</span>
+              <span class="nav-item-icon">${getSvgIcon("inventory", 16)}</span><span>المخزن والمشتريات</span>
             </div>
           ` : ''}
           ${canUserAccessSection('maintenance') ? `
             <div class="nav-item" id="navToMaintFromBarcode">
-              <span class="nav-item-icon">🔧</span><span>قسم الصيانة</span>
+              <span class="nav-item-icon">${getSvgIcon("maintenance", 16)}</span><span>قسم الصيانة</span>
             </div>
           ` : ''}
           ${canUserAccessSection('pos') ? `
             <div class="nav-item" id="navToPosFromBarcode">
-              <span class="nav-item-icon">🧾</span><span>نقطة البيع (POS)</span>
+              <span class="nav-item-icon">${getSvgIcon("pos", 16)}</span><span>نقطة البيع (POS)</span>
             </div>
           ` : ''}
           ${canUserAccessSection('settings') ? `
             <div class="nav-item" id="navToSettingsFromBarcode">
-              <span class="nav-item-icon">⚙️</span><span>مركز الإعدادات</span>
+              <span class="nav-item-icon">${getSvgIcon("settings", 16)}</span><span>مركز الإعدادات</span>
             </div>
           ` : ''}
         ` : ''}
@@ -2537,12 +2537,12 @@ function renderBarcodeStudioContent(main){
   main.innerHTML = `
     <div class="top-header">
       <div>
-        <h2 class="page-title">🏷️ استوديو طباعة الباركود والملصقات</h2>
+        <h2 class="page-title">${getSvgIcon("barcode", 22)} استوديو طباعة الباركود والملصقات</h2>
               </div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <button class="btn btn-ghost btn-sm" id="bsResetBtn">🔄 إعادة التعيين</button>
+        <button class="btn btn-ghost btn-sm" id="bsResetBtn">${getSvgIcon("refresh", 13)} إعادة التعيين</button>
         <button class="btn btn-primary" id="bsPrintBtn" style="font-weight:900;padding:9px 18px;font-size:14px;box-shadow:0 4px 14px rgba(79,70,229,0.35);">
-          🖨️ طباعة الملصقات الآن
+          ${getSvgIcon("printer", 14)} طباعة الملصقات الآن
         </button>
       </div>
     </div>
@@ -2554,7 +2554,7 @@ function renderBarcodeStudioContent(main){
         <div class="barcode-config-card">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;border-bottom:1px solid var(--line);padding-bottom:10px;">
             <h3 style="margin:0;font-size:15px;font-weight:900;display:flex;align-items:center;gap:6px;">
-              <span>⚙️ خيارات ومحتوى الملصق</span>
+              <span>خيارات ومحتوى الملصق</span>
             </h3>
             <span class="status-badge st-check" style="font-size:11px;">
               ${mode==='inventory'?'أصناف المخزن':(mode==='maintenance'?'أجهزة الصيانة':'توليد حر')}
@@ -2564,7 +2564,7 @@ function renderBarcodeStudioContent(main){
           <!-- Source Specific Selectors -->
           ${mode === 'inventory' ? `
             <div class="field" style="margin-bottom:14px;">
-              <label>📦 اختر الصنف من المخزن</label>
+              <label>اختر الصنف من المخزن</label>
               <select id="bsInvSelect">
                 ${invList.length === 0 ? '<option value="">لا توجد أصناف بالمخزن</option>' : invList.map(item => {
                   const itmName = item.Name || item.name || 'صنف';
@@ -2583,7 +2583,7 @@ function renderBarcodeStudioContent(main){
 
           ${mode === 'maintenance' ? `
             <div class="field" style="margin-bottom:14px;">
-              <label>🛠️ اختر إيصال / جهاز الصيانة</label>
+              <label>اختر إيصال / جهاز الصيانة</label>
               <select id="bsMaintSelect">
                 ${recList.length === 0 ? '<option value="">لا توجد إيصالات صيانة</option>' : recList.map(r => `
                   <option value="${r.id}" ${r.receiptNumber===bs.customBarcode?'selected':''}>
@@ -2614,16 +2614,16 @@ function renderBarcodeStudioContent(main){
           <div class="field" style="margin-bottom:14px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
               <label style="margin:0;">كود الباركود *</label>
-              <button class="btn btn-ghost btn-xs" id="bsRandomBarcodeBtn" style="padding:2px 8px;font-size:11px;">🎲 توليد كود عشوائي</button>
+              <button class="btn btn-ghost btn-xs" id="bsRandomBarcodeBtn" style="padding:2px 8px;font-size:11px;">${getSvgIcon("refresh", 11)} توليد كود عشوائي</button>
             </div>
             <input type="text" id="bsInputBarcode" value="${escapeHtml(bs.customBarcode||'')}" class="mono font-bold" placeholder="أدخل أرقام أو حروف الباركود" style="letter-spacing:1px;">
           </div>
 
           <!-- Paper & Printer Presets -->
           <div class="field" style="margin-bottom:12px;">
-            <label>📐 مقاس الورق ونوع الطابعة</label>
+            <label>مقاس الورق ونوع الطابعة</label>
             <select id="bsPresetSelect">
-                <option value="thermal_40x20" ${bs.preset==='thermal_40x20'?'selected':''}>40mm × 20mm (أربعة في اثنين 4×2 سم - الأكثر شيوعاً) ✨</option>
+                <option value="thermal_40x20" ${bs.preset==='thermal_40x20'?'selected':''}>40mm × 20mm (أربعة في اثنين 4×2 سم - قياسي)</option>
                 <option value="thermal_40x10" ${bs.preset==='thermal_40x10'?'selected':''}>40mm × 10mm (أربعة في واحد 4×1 سم - شريط رفيع للإكسسوارات والموبايل)</option>
                 <option value="thermal_40x15" ${bs.preset==='thermal_40x15'?'selected':''}>40mm × 15mm (4×1.5 سم - مدمج)</option>
                 <option value="thermal_50x25" ${bs.preset==='thermal_50x25'?'selected':''}>50mm × 25mm (5×2.5 سم)</option>
@@ -2631,13 +2631,13 @@ function renderBarcodeStudioContent(main){
                 <option value="thermal_40x25" ${bs.preset==='thermal_40x25'?'selected':''}>40mm × 25mm (مدمج للموبايل)</option>
                 <option value="thermal_38x25" ${bs.preset==='thermal_38x25'?'selected':''}>38mm × 25mm (مقاس تجاري شائع)</option>
                 <option value="thermal_60x40" ${bs.preset==='thermal_60x40'?'selected':''}>60mm × 40mm (كبير للمعدات والطرود)</option>
-              <optgroup label="📄 صفحات A4 مقسمة (A4 Sheet Labels)">
+              <optgroup label="صفحات A4 مقسمة (A4 Sheet Labels)">
                 <option value="a4_24" ${bs.preset==='a4_24'?'selected':''}>ورق A4 — 24 ملصق (3 أعمدة × 8 صفوف)</option>
                 <option value="a4_30" ${bs.preset==='a4_30'?'selected':''}>ورق A4 — 30 ملصق (3 أعمدة × 10 صفوف)</option>
                 <option value="a4_40" ${bs.preset==='a4_40'?'selected':''}>ورق A4 — 40 ملصق (4 أعمدة × 10 صفوف)</option>
                 <option value="a4_65" ${bs.preset==='a4_65'?'selected':''}>ورق A4 — 65 ملصق (5 أعمدة × 13 صفوف)</option>
               </optgroup>
-              <optgroup label="🛠️ تخصيص يدوي">
+              <optgroup label="تخصيص يدوي">
                 <option value="custom" ${bs.preset==='custom'?'selected':''}>مقاس مخصص (Custom Dimensions in mm)</option>
               </optgroup>
             </select>
@@ -2718,14 +2718,14 @@ function renderBarcodeStudioContent(main){
           <div style="width:100%;display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;border-bottom:1px solid var(--line);padding-bottom:10px;">
             <div>
               <h3 style="margin:0;font-size:15px;font-weight:900;display:flex;align-items:center;gap:6px;">
-                <span>👁️ المعاينة الحية المباشرة (Live Preview)</span>
+                <span>المعاينة الحية المباشرة (Live Preview)</span>
               </h3>
               <div id="bsDimBadge" style="font-size:11.5px;color:var(--ink-secondary);margin-top:2px;">
                 المقاس المختار: <b>50mm × 30mm</b> • نوع الطابعة: <b>حراري فردي</b>
               </div>
             </div>
             <div style="display:flex;gap:8px;">
-              <button class="btn btn-primary btn-sm" id="bsPrintBtn2" style="font-weight:800;">🖨️ طباعة الملصقات</button>
+              <button class="btn btn-primary btn-sm" id="bsPrintBtn2" style="font-weight:800;">${getSvgIcon("printer", 13)} طباعة الملصقات</button>
             </div>
           </div>
 
@@ -2734,7 +2734,7 @@ function renderBarcodeStudioContent(main){
           </div>
 
           <div style="width:100%;background:var(--paper3);border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px 14px;margin-top:16px;display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:var(--ink-secondary);">
-            <span>💡 <b>تلميح للطباعة المثالية:</b> في نافذة الطباعة (Ctrl+P)، اختر الهوامش <b>"بلا / None"</b> وتأكد من ضبط مقاس الورق لمطابقة إعدادات طابعتك.</span>
+            <span><b>تلميح للطباعة المثالية:</b> في نافذة الطباعة (Ctrl+P)، اختر الهوامش <b>"بلا / None"</b> وتأكد من ضبط مقاس الورق لمطابقة إعدادات طابعتك.</span>
           </div>
         </div>
 
@@ -2926,7 +2926,7 @@ function attachBarcodeStudioEvents(main){
       bs.customBarcode = code;
       if(barcodeInput) barcodeInput.value = code;
       renderBarcodeLivePreview();
-      showToast('تم توليد باركود جديد 🎲', 'info');
+      showToast('تم توليد باركود جديد', 'info');
     };
   }
 
@@ -3188,7 +3188,7 @@ function executeBatchInvoiceBarcodePrint(itemsToPrint, presetKey = 'thermal_40x2
       try {
         iframe.contentWindow.focus();
         iframe.contentWindow.print();
-        showToast(`جاري طباعة ${flattenedList.length} ملصق على ورق مقسم A4... ✅`, 'success');
+        showToast(`جاري طباعة ${flattenedList.length} ملصق على ورق مقسم A4...`, 'success');
       } catch(e) { window.print(); }
       setTimeout(() => iframe.remove(), 1200);
     }, 250);
@@ -3296,7 +3296,7 @@ function executeBatchInvoiceBarcodePrint(itemsToPrint, presetKey = 'thermal_40x2
       try {
         iframe.contentWindow.focus();
         iframe.contentWindow.print();
-        showToast(`جاري إرسال ${flattenedList.length} ملصق إلى طابعة الباركود... ✅`, 'success');
+        showToast(`جاري إرسال ${flattenedList.length} ملصق إلى طابعة الباركود...`, 'success');
       } catch(e) {
         console.warn('iframe batch print failed, falling back', e);
         window.print();
@@ -3401,11 +3401,11 @@ function createInvoiceBarcodeWorkspace(opts){
         ${!isModal ? `
           <div class="top-header" style="margin-bottom:6px;">
             <div>
-              <h2 class="page-title">🧾 طباعة ملصقات الباركود من فواتير الشراء والمخزن</h2>
+              <h2 class="page-title">${getSvgIcon("barcode", 22)} طباعة ملصقات الباركود من فواتير الشراء والمخزن</h2>
             </div>
             <div style="display:flex;gap:10px;align-items:center;">
               <button class="btn btn-primary" id="btnDoBatchPrintTop" style="font-weight:900;padding:9px 18px;font-size:14px;box-shadow:0 4px 14px rgba(79,70,229,0.35);">
-                🖨️ طباعة الملصقات المحددة (${totalCopies} ملصق)
+                ${getSvgIcon("printer", 14)} طباعة الملصقات المحددة (${totalCopies} ملصق)
               </button>
             </div>
           </div>
@@ -3416,16 +3416,16 @@ function createInvoiceBarcodeWorkspace(opts){
           <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:12px;align-items:flex-end;">
             
             <div class="field" style="margin:0;">
-              <label style="font-weight:800;">📄 اختر الفاتورة المطلوبة</label>
+              <label style="font-weight:800;">اختر الفاتورة المطلوبة</label>
               <select id="wksInvoiceSelect" style="font-weight:700;">
-                <optgroup label="📥 فواتير الشراء والتوريد من الموردين (${purchases.length})">
+                <optgroup label="فواتير الشراء والتوريد من الموردين (${purchases.length})">
                   ${purchases.slice().reverse().map(p => `
                     <option value="purchase:${p.ID}" ${(selectedType==='purchase'&&String(selectedId)===String(p.ID))?'selected':''}>
                       شراء: ${escapeHtml(p.Supplier||'مورد')} — ${cleanDate(p.Date)} (${Number(p.Total||0).toLocaleString()} ج.م)
                     </option>
                   `).join('')}
                 </optgroup>
-                <optgroup label="📄 الفواتير الرسمية والمبيعات (${invoices.length})">
+                <optgroup label="الفواتير الرسمية والمبيعات (${invoices.length})">
                   ${invoices.slice().reverse().map(inv => `
                     <option value="invoice:${inv.ID}" ${(selectedType==='invoice'&&String(selectedId)===String(inv.ID))?'selected':''}>
                       فاتورة #${escapeHtml(inv.InvoiceNumber||'')}: ${escapeHtml(inv.CustomerName||'عميل')} — ${cleanDate(inv.Date)} (${Number(inv.Total||0).toLocaleString()} ج.م)
@@ -3436,15 +3436,15 @@ function createInvoiceBarcodeWorkspace(opts){
             </div>
 
             <div class="field" style="margin:0;">
-              <label style="font-weight:800;">📐 مقاس الملصق ونوع الطابعة</label>
+              <label style="font-weight:800;">مقاس الملصق ونوع الطابعة</label>
               <select id="wksPresetSelect" style="font-weight:700;">
-                <option value="thermal_40x20" ${selectedPreset==='thermal_40x20'?'selected':''}>40mm × 20mm (حراري 4×2 سم قياسي - XP-246B) ⭐</option>
+                <option value="thermal_40x20" ${selectedPreset==='thermal_40x20'?'selected':''}>40mm × 20mm (حراري 4×2 سم قياسي - XP-246B)</option>
                 <option value="thermal_40x10" ${selectedPreset==='thermal_40x10'?'selected':''}>40mm × 10mm (حراري 4×1 سم شريط رفيع للبضائع)</option>
                 <option value="thermal_40x15" ${selectedPreset==='thermal_40x15'?'selected':''}>40mm × 15mm (حراري 4×1.5 سم)</option>
                 <option value="thermal_50x25" ${selectedPreset==='thermal_50x25'?'selected':''}>50mm × 25mm (حراري 5×2.5 سم)</option>
                 <option value="thermal_50x30" ${selectedPreset==='thermal_50x30'?'selected':''}>50mm × 30mm (حراري 5×3 سم)</option>
                 <option value="thermal_60x40" ${selectedPreset==='thermal_60x40'?'selected':''}>60mm × 40mm (حراري كبير)</option>
-                <optgroup label="📄 صفحات A4 مقسمة">
+                <optgroup label="صفحات A4 مقسمة">
                   <option value="a4_24" ${selectedPreset==='a4_24'?'selected':''}>ورق A4 مقسم (24 ملصق)</option>
                   <option value="a4_30" ${selectedPreset==='a4_30'?'selected':''}>ورق A4 مقسم (30 ملصق)</option>
                   <option value="a4_40" ${selectedPreset==='a4_40'?'selected':''}>ورق A4 مقسم (40 ملصق)</option>
@@ -3459,7 +3459,7 @@ function createInvoiceBarcodeWorkspace(opts){
                 <div class="mono font-bold" style="font-size:18px;color:var(--primary);">${totalCopies}</div>
               </div>
               <button class="btn btn-primary" id="btnDoBatchPrint" style="font-weight:900;padding:10px 20px;font-size:14px;height:44px;box-shadow:0 4px 14px rgba(79,70,229,0.3);">
-                🖨️ طباعة الملصقات الآن
+                ${getSvgIcon("printer", 14)} طباعة الملصقات الآن
               </button>
             </div>
 
@@ -3468,9 +3468,9 @@ function createInvoiceBarcodeWorkspace(opts){
           <!-- Quick Quantity & Selection Bar -->
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-top:14px;padding-top:12px;border-top:1px dashed var(--line);">
             <div style="display:flex;gap:6px;flex-wrap:wrap;">
-              <button class="btn btn-ghost btn-xs" id="wksBtnSelectAll">☑️ تحديد الكل</button>
+              <button class="btn btn-ghost btn-xs" id="wksBtnSelectAll">${getSvgIcon("check", 11)} تحديد الكل</button>
               <button class="btn btn-ghost btn-xs" id="wksBtnDeselectAll">⬜ إلغاء التحديد</button>
-              <button class="btn btn-ghost btn-xs" id="wksBtnResetInvoiceQty">🔄 استعادة كميات الفاتورة</button>
+              <button class="btn btn-ghost btn-xs" id="wksBtnResetInvoiceQty">${getSvgIcon("refresh", 11)} استعادة كميات الفاتورة</button>
               <button class="btn btn-ghost btn-xs" id="wksBtnSetOneQty">1️⃣ ملصق واحد لكل صنف</button>
               <button class="btn btn-ghost btn-xs" id="wksBtnSetZeroQty">0️⃣ تصفير الكميات</button>
             </div>
@@ -3502,13 +3502,13 @@ function createInvoiceBarcodeWorkspace(opts){
         <!-- Items Table Card -->
         <div class="card" style="padding:0;overflow:hidden;border:1px solid var(--line);margin:0;">
           <div style="padding:10px 16px;background:var(--paper2,#f8fafc);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;">
-            <b style="font-size:13px;">📋 جدول أصناف الفاتورة المحددة (${items.length} صنف مسجل)</b>
+            <b style="font-size:13px;">جدول أصناف الفاتورة المحددة (${items.length} صنف مسجل)</b>
             <span class="status-badge st-check" style="font-size:11px;">المحدد للطباعة: ${totalSelected} صنف • ${totalCopies} ملصق</span>
           </div>
 
           ${items.length === 0 ? `
             <div class="empty" style="padding:40px 20px;">
-              <div style="font-size:32px;margin-bottom:10px;">📦</div>
+              <div style="display:flex;justify-content:center;margin-bottom:10px;">${getSvgIcon("package", 32)}</div>
               <b>لا توجد أصناف مسجلة في هذه الفاتورة أو تعذر قراءة بنودها.</b>
               <div style="font-size:12px;color:var(--ink-secondary);margin-top:4px;">يمكنك اختيار فاتورة أخرى من القائمة بالأعلى.</div>
             </div>
@@ -3556,9 +3556,9 @@ function createInvoiceBarcodeWorkspace(opts){
                       </td>
                       <td style="text-align:center;">
                         ${it.inInventory ? `
-                          <span class="status-badge st-done" style="font-size:10px;">بالمخزن ✅</span>
+                          <span class="status-badge st-done" style="font-size:10px;">بالمخزن</span>
                         ` : `
-                          <span class="status-badge st-pending" style="font-size:10px;">فاتورة 📄</span>
+                          <span class="status-badge st-pending" style="font-size:10px;">فاتورة</span>
                         `}
                       </td>
                     </tr>
@@ -3571,11 +3571,11 @@ function createInvoiceBarcodeWorkspace(opts){
 
         ${isModal ? `
           <div style="display:flex;justify-content:space-between;align-items:center;padding-top:10px;border-top:1px solid var(--line);">
-            <button class="btn btn-ghost btn-sm" id="wksNavToStudioBtn">🖥️ فتح كامل في استوديو الباركود ➔</button>
+            <button class="btn btn-ghost btn-sm" id="wksNavToStudioBtn">${getSvgIcon("barcode", 13)} فتح كامل في استوديو الباركود</button>
             <div style="display:flex;gap:8px;">
               <button class="btn btn-ghost btn-sm" id="wksModalCancelBtn">إلغاء وإغلاق</button>
               <button class="btn btn-primary btn-sm" id="wksModalSubmitBtn" style="font-weight:900;padding:8px 18px;">
-                🖨️ طباعة (${totalCopies} ملصق)
+                ${getSvgIcon("printer", 13)} طباعة (${totalCopies} ملصق)
               </button>
             </div>
           </div>
@@ -3752,13 +3752,13 @@ function openInvoiceBarcodePrintModal(type = 'purchase', targetId = ''){
   modal.innerHTML = `
     <div style="padding: 14px 20px; background: linear-gradient(135deg, #1e293b, #0f172a); color: #fff; display: flex; align-items: center; justify-content: space-between;">
       <div style="display:flex; align-items:center; gap: 10px;">
-        <div style="width: 36px; height: 36px; border-radius: 8px; background: rgba(124, 58, 237, 0.25); display:flex; align-items:center; justify-content:center; font-size: 19px; border: 1px solid rgba(124, 58, 237, 0.4);">🧾</div>
+        <div style="width: 36px; height: 36px; border-radius: 8px; background: rgba(124, 58, 237, 0.25); display:flex; align-items:center; justify-content:center; border: 1px solid rgba(124, 58, 237, 0.4);">${getSvgIcon("barcode", 18)}</div>
         <div>
           <h3 style="margin: 0; font-size: 15px; font-weight: 900; color: #fff;">طباعة ملصقات الباركود من الفاتورة</h3>
           <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">تحديد الأصناف والكميات المطلوب طباعتها لطابعة الباركود</div>
         </div>
       </div>
-      <button id="closeInvoiceBarcodeModalBtn" style="background: rgba(255,255,255,0.1); border: none; color: #cbd5e1; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;">✕</button>
+      <button id="closeInvoiceBarcodeModalBtn" style="background: rgba(255,255,255,0.1); border: none; color: #cbd5e1; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;">&times;</button>
     </div>
     <div id="invoiceBarcodeWorkspaceMount" style="padding: 16px 20px; overflow-y: auto; max-height: calc(90vh - 65px);"></div>
   `;

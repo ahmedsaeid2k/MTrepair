@@ -1,0 +1,64 @@
+name: Build Desktop Apps (Windows & Mac)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+jobs:
+  build-windows:
+    name: Build Windows Application (.exe)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Build Windows Installer & Portable EXE
+        run: npm run build:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Windows Artifacts (.exe)
+        uses: actions/upload-artifact@v4
+        with:
+          name: microERP-Windows-EXE
+          path: dist-desktop/*.exe
+
+  build-mac:
+    name: Build macOS Application (.dmg)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Build macOS DMG
+        run: npm run build:mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Mac Artifacts (.dmg)
+        uses: actions/upload-artifact@v4
+        with:
+          name: microERP-Mac-DMG
+          path: dist-desktop/*.dmg

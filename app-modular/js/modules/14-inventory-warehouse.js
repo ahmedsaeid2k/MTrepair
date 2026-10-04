@@ -1,7 +1,7 @@
 /* ---------------- Inventory Hub ---------------- */
 function renderInventoryHubApp(app){
   if(!canUserAccessSection('inventory')){
-    showToast('⛔ ليس لديك صلاحية للوصول إلى قسم المخزن والمشتريات', 'error');
+    showToast('ليس لديك صلاحية للوصول إلى قسم المخزن والمشتريات', 'error');
     state.currentSection = null;
     return render();
   }
@@ -15,39 +15,39 @@ function renderInventoryHubApp(app){
       <div class="sidebar-nav-wrap">
         <div class="nav-section">المخزون والأصناف</div>
         <div class="nav-item ${state.invHubTab==='all'?'active':''}" data-invhubtab="all">
-          <span class="nav-item-icon">📦</span><span>كل الأصناف</span>
+          <span class="nav-item-icon">${getSvgIcon('package', 16)}</span><span>كل الأصناف</span>
         </div>
         <div class="nav-item ${state.invHubTab==='صيانة'?'active':''}" data-invhubtab="صيانة">
-          <span class="nav-item-icon">🛠️</span><span>قطع غيار الصيانة</span>
+          <span class="nav-item-icon">${getSvgIcon('maintenance', 16)}</span><span>قطع غيار الصيانة</span>
         </div>
         <div class="nav-item ${state.invHubTab==='كاميرات'?'active':''}" data-invhubtab="كاميرات">
-          <span class="nav-item-icon">📷</span><span>مهمات الكاميرات</span>
+          <span class="nav-item-icon">${getSvgIcon('cameras', 16)}</span><span>مهمات الكاميرات</span>
         </div>
         <div class="nav-item ${state.invHubTab==='كمبيوتر'?'active':''}" data-invhubtab="كمبيوتر">
-          <span class="nav-item-icon">💻</span><span>أجهزة الكمبيوتر</span>
+          <span class="nav-item-icon">${getSvgIcon('laptop', 16)}</span><span>أجهزة الكمبيوتر</span>
         </div>
         <div class="nav-item ${state.invHubTab==='إكسسوار'?'active':''}" data-invhubtab="إكسسوار">
-          <span class="nav-item-icon">🎧</span><span>الإكسسوارات</span>
+          <span class="nav-item-icon">${getSvgIcon('headphones', 16)}</span><span>الإكسسوارات</span>
         </div>
 
         <div class="nav-section">المشتريات والموردين</div>
         <div class="nav-item ${state.invHubTab==='purchases'?'active':''}" data-invhubtab="purchases">
-          <span class="nav-item-icon">📥</span><span>فواتير الشراء</span>
+          <span class="nav-item-icon">${getSvgIcon('download', 16)}</span><span>فواتير الشراء</span>
         </div>
         <div class="nav-item ${state.invHubTab==='suppliers'?'active':''}" data-invhubtab="suppliers">
-          <span class="nav-item-icon">👥</span><span>سجل الموردين</span>
+          <span class="nav-item-icon">${getSvgIcon('users', 16)}</span><span>سجل الموردين</span>
         </div>
 
         ${hasQuickTools ? `
           <div class="nav-section">أدوات الربط السريع</div>
           ${canUserAccessSection('barcode') ? `
             <div class="nav-item" id="invToBarcodeNav">
-              <span class="nav-item-icon">🏷️</span><span>استوديو طباعة الباركود</span>
+              <span class="nav-item-icon">${getSvgIcon('barcode', 16)}</span><span>استوديو طباعة الباركود</span>
             </div>
           ` : ''}
           ${canUserAccessSection('pos') ? `
             <div class="nav-item" id="invToPosNav">
-              <span class="nav-item-icon">🧾</span><span>نقطة البيع (POS)</span>
+              <span class="nav-item-icon">${getSvgIcon('pos', 16)}</span><span>نقطة البيع (POS)</span>
             </div>
           ` : ''}
         ` : ''}
@@ -136,53 +136,53 @@ function renderInventory(main, categoryFilter, titleOverride){
   main.innerHTML = `
     <div class="top-header">
       <div>
-        <h2 class="page-title">📦 ${titleOverride || 'إدارة المخازن والأصناف'}</h2>
+        <h2 class="page-title">${titleOverride || 'إدارة المخازن والأصناف'}</h2>
         <div class="subtitle mono" style="font-size:12px;color:var(--ink-secondary);">${list.length} صنف معروض من إجمالي ${totalItemsCount}</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-ghost btn-sm" id="btnManageWarehouses" style="border-color:var(--line-strong);">🏢 إدارة المخازن (${whNames.length})</button>
-        <button class="btn btn-ghost btn-sm" id="btnTransferWarehouses" style="color:var(--primary);border-color:var(--primary);">🔄 تحويل بين المخازن</button>
-        <button class="btn btn-ghost btn-sm" id="exportInvExcelBtn">📥 تصدير Excel</button>
-        <button class="btn btn-ghost btn-sm" id="importInvExcelBtn">📂 استيراد من Excel</button>
-        <button class="btn btn-primary btn-sm" id="addNewItemMasterBtn">➕ إضافة صنف جديد</button>
+        <button class="btn btn-ghost btn-sm" id="btnManageWarehouses" style="border-color:var(--line-strong);">${getSvgIcon('store', 14)} إدارة المخازن (${whNames.length})</button>
+        <button class="btn btn-ghost btn-sm" id="btnTransferWarehouses" style="color:var(--primary);border-color:var(--primary);">${getSvgIcon('refresh', 14)} تحويل بين المخازن</button>
+        <button class="btn btn-ghost btn-sm" id="exportInvExcelBtn">${getSvgIcon('download', 14)} تصدير Excel</button>
+        <button class="btn btn-ghost btn-sm" id="importInvExcelBtn">${getSvgIcon('upload', 14)} استيراد من Excel</button>
+        <button class="btn btn-primary btn-sm" id="addNewItemMasterBtn">${getSvgIcon('plus', 14)} إضافة صنف جديد</button>
       </div>
     </div>
 
     <!-- Inventory KPIs -->
     <div class="stat-grid">
       <div class="stat-card blue">
-        <div class="top-row"><span class="lbl">إجمالي الأصناف</span><div class="icon-box">📦</div></div>
+        <div class="top-row"><span class="lbl">إجمالي الأصناف</span><div class="icon-box">${getSvgIcon('package', 16)}</div></div>
         <div class="num mono">${totalItemsCount}</div>
       </div>
       <div class="stat-card amber">
-        <div class="top-row"><span class="lbl">قيمة المخزون (تكلفة)</span><div class="icon-box">💵</div></div>
+        <div class="top-row"><span class="lbl">قيمة المخزون (تكلفة)</span><div class="icon-box">${getSvgIcon('dollar', 16)}</div></div>
         <div class="num mono">${totalCostValue.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
       </div>
       <div class="stat-card green">
-        <div class="top-row"><span class="lbl">القيمة البيعية المتوقعة</span><div class="icon-box">📈</div></div>
+        <div class="top-row"><span class="lbl">القيمة البيعية المتوقعة</span><div class="icon-box">${getSvgIcon('trendUp', 16)}</div></div>
         <div class="num mono">${totalRetailValue.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
       </div>
       <div class="stat-card red">
-        <div class="top-row"><span class="lbl">النواقص وحد الأمان</span><div class="icon-box">⚠️</div></div>
+        <div class="top-row"><span class="lbl">النواقص وحد الأمان</span><div class="icon-box">${getSvgIcon('alert', 16)}</div></div>
         <div class="num mono">${lowStockCount}</div>
       </div>
     </div>
 
     <!-- Filters & Quick Actions Bar -->
     <div class="filters-bar" style="margin-bottom:14px;display:flex;gap:10px;flex-wrap:wrap;">
-      <input id="invSearchInput" placeholder="🔍 بحث بالاسم، الباركود، رقم الموديل SKU، المخزن، الرف..." value="${state.invSearchQ}" style="flex:1;min-width:220px;">
+      <input id="invSearchInput" placeholder="بحث بالاسم، الباركود، رقم الموديل SKU، المخزن، الرف..." value="${state.invSearchQ}" style="flex:1;min-width:220px;">
       
       <!-- Multi-Warehouse Selector -->
       <select id="invWarehouseFilterSelect" style="min-width:160px;font-weight:700;">
-        <option value="all" ${state.selectedWarehouseFilter==='all'?'selected':''}>🏢 كل المخازن والفروع</option>
-        ${whNames.map(w=>`<option value="${w}" ${state.selectedWarehouseFilter===w?'selected':''}>🏢 ${w}</option>`).join('')}
+        <option value="all" ${state.selectedWarehouseFilter==='all'?'selected':''}>كل المخازن والفروع</option>
+        ${whNames.map(w=>`<option value="${w}" ${state.selectedWarehouseFilter===w?'selected':''}>${w}</option>`).join('')}
       </select>
 
       <select id="invStockFilterSelect" style="min-width:140px;">
-        <option value="all" ${state.invStockFilter==='all'?'selected':''}>📦 كل مستويات المخزون</option>
-        <option value="available" ${state.invStockFilter==='available'?'selected':''}>✅ متوفر بالمخزن</option>
-        <option value="low" ${state.invStockFilter==='low'?'selected':''}>⚠️ قارب على النفاد (حد الأمان)</option>
-        <option value="out" ${state.invStockFilter==='out'?'selected':''}>🚫 رصيد صفري (منتهي)</option>
+        <option value="all" ${state.invStockFilter==='all'?'selected':''}>كل مستويات المخزون</option>
+        <option value="available" ${state.invStockFilter==='available'?'selected':''}>متوفر بالمخزن</option>
+        <option value="low" ${state.invStockFilter==='low'?'selected':''}>قارب على النفاد (حد الأمان)</option>
+        <option value="out" ${state.invStockFilter==='out'?'selected':''}>رصيد صفري (منتهي)</option>
       </select>
       ${(state.invSearchQ || state.invStockFilter!=='all' || state.selectedWarehouseFilter!=='all') ? `<button class="btn btn-ghost btn-sm" id="clearInvFiltersBtn">مسح الفلاتر</button>` : ''}
     </div>
@@ -230,24 +230,24 @@ function renderInventory(main, categoryFilter, titleOverride){
                     <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:var(--ink-secondary);margin-top:2px;">
                       ${it.SKU ? `<span class="mono" style="color:var(--primary);font-weight:700;">#${escapeHtml(it.SKU)}</span>` : ''}
                       ${it.SubCategory ? `<span>• ${escapeHtml(it.SubCategory)}</span>` : ''}
-                      ${it.WarrantyMonths ? `<span>• 🛡️ ضمان ${it.WarrantyMonths} شهر</span>` : ''}
+                      ${it.WarrantyMonths ? `<span>• ضمان ${it.WarrantyMonths} شهر</span>` : ''}
                     </div>
-                    ${it.CompatibleModels ? `<div style="font-size:10.5px;color:var(--slate-500);margin-top:1px;">💻 متوافق: ${escapeHtml(it.CompatibleModels)}</div>` : ''}
+                    ${it.CompatibleModels ? `<div style="font-size:10.5px;color:var(--slate-500);margin-top:1px;">متوافق: ${escapeHtml(it.CompatibleModels)}</div>` : ''}
                   </td>
                   <td>
                     <span style="background:rgba(0,122,255,0.08);color:var(--primary);padding:3px 8px;border-radius:6px;font-size:11px;font-weight:800;white-space:nowrap;">
-                      🏢 ${escapeHtml(whName)}
+                      ${escapeHtml(whName)}
                     </span>
                   </td>
                   ${categoryFilter==='all'?`<td style="text-align:center;"><span class="status-badge st-check" style="font-size:10px;">${escapeHtml(it.Category||'صيانة')}</span></td>`:''}
                   <td>
-                    ${it.ShelfLocation ? `<span style="background:var(--paper3);border:1px solid var(--line-strong);padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700;color:var(--ink);">📍 ${escapeHtml(it.ShelfLocation)}</span>` : '<span style="color:var(--slate-400);font-size:11px;">-</span>'}
+                    ${it.ShelfLocation ? `<span style="background:var(--paper3);border:1px solid var(--line-strong);padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700;color:var(--ink);">${escapeHtml(it.ShelfLocation)}</span>` : '<span style="color:var(--slate-400);font-size:11px;">-</span>'}
                   </td>
                   <td>
                     ${it.Barcode ? `
                       <div style="display:flex;align-items:center;gap:4px;">
                         <span class="mono" style="font-size:11px;font-weight:700;color:var(--ink-secondary);">${escapeHtml(it.Barcode)}</span>
-                        <button class="btn btn-xs btn-amber" onclick="printInventoryStickerDirect('${it.ID}'); event.stopPropagation();" title="طباعة ملصق الباركود الحراري" style="padding:2px 5px;line-height:1;">🏷️</button>
+                        <button class="btn btn-xs btn-amber" onclick="printInventoryStickerDirect('${it.ID}'); event.stopPropagation();" title="طباعة ملصق الباركود الحراري" style="padding:2px 5px;line-height:1;">${getSvgIcon('tag', 12)}</button>
                       </div>
                     ` : '<span style="color:var(--slate-400);font-size:11px;">بدون</span>'}
                   </td>
@@ -255,7 +255,7 @@ function renderInventory(main, categoryFilter, titleOverride){
                     <div style="display:flex;align-items:center;justify-content:center;gap:4px;">
                       <span class="mono" style="font-weight:900;font-size:13.5px;color:${isLowStock?'var(--red)':'var(--ink)'};">${qty}</span>
                       <span style="font-size:11px;color:var(--ink-secondary);">${escapeHtml(it.Unit||'قطعة')}</span>
-                      ${isLowStock ? '<span title="الكمية وصلت لحد الأمان أو نفدت" style="font-size:11px;">⚠️</span>' : ''}
+                      ${isLowStock ? `<span title="الكمية وصلت لحد الأمان أو نفدت" style="color:var(--amber);display:inline-flex;">${getSvgIcon('alert', 12)}</span>` : ''}
                     </div>
                   </td>
                   <td class="mono font-bold" style="text-align:center;">${buy.toLocaleString()} ج.م</td>
@@ -413,18 +413,18 @@ function openInventoryItemModal(editItem, cloneMode=false, defaultCategory='صي
         <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:16px;">
           <div>
             <h3 style="margin:0;font-size:17px;font-weight:900;">
-              ${isEdit ? '✏️ تعديل بيانات الصنف' : (isClone ? '📋 استنساخ صنف جديد' : '➕ إضافة صنف جديد للمخزن')}
+              ${isEdit ? 'تعديل بيانات الصنف' : (isClone ? 'استنساخ صنف جديد' : 'إضافة صنف جديد للمخزن')}
             </h3>
             <div style="font-size:12px;color:var(--ink-secondary);margin-top:2px;">
               ${isEdit ? `كود الصنف: <span class="mono font-bold" style="color:var(--primary);">${item.ID}</span>` : 'أدخل المواصفات والأسعار وموقع الرف وحد الأمان'}
             </div>
           </div>
-          <button class="btn btn-ghost btn-xs" id="closeItemModal">✕ إغلاق</button>
+          <button class="btn btn-ghost btn-xs" id="closeItemModal">&times; إغلاق</button>
         </div>
 
         <!-- Section 1: Basic Product Identity -->
         <div class="card" style="padding:14px 16px;background:var(--paper3);border-color:var(--line-strong);margin-bottom:14px;">
-          <h3 style="font-size:13.5px;margin-bottom:10px;">📌 البيانات الأساسية والتصنيف</h3>
+          <h3 style="font-size:13.5px;margin-bottom:10px;">البيانات الأساسية والتصنيف</h3>
           <div class="grid3">
             <div class="field" style="grid-column: span 2;">
               <label>اسم الصنف والموديل *</label>
@@ -447,13 +447,13 @@ function openInventoryItemModal(editItem, cloneMode=false, defaultCategory='صي
               </datalist>
             </div>
             <div class="field">
-              <label>المخزن أو الفرع 🏢 *</label>
+              <label>المخزن أو الفرع *</label>
               <select id="mItemWarehouse">
-                ${whNames.map(w=>`<option value="${w}" ${(item.Warehouse||'المخزن الرئيسي')===w?'selected':''}>🏢 ${w}</option>`).join('')}
+                ${whNames.map(w=>`<option value="${w}" ${(item.Warehouse||'المخزن الرئيسي')===w?'selected':''}>${w}</option>`).join('')}
               </select>
             </div>
             <div class="field">
-              <label>مكان التخزين والرف 📍</label>
+              <label>مكان التخزين والرف</label>
               <input id="mItemShelf" value="${item.ShelfLocation}" placeholder="مثال: رف A-2 / درج 4">
             </div>
           </div>
@@ -473,8 +473,8 @@ function openInventoryItemModal(editItem, cloneMode=false, defaultCategory='صي
         <!-- Section 2: Barcode & Label -->
         <div class="card" style="padding:14px 16px;margin-bottom:14px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <h3 style="font-size:13.5px;margin:0;">🏷️ الباركود والملصقات</h3>
-            <button class="btn btn-ghost btn-xs" id="genRandomBarcodeBtn" type="button">🎲 توليد باركود تلقائي</button>
+            <h3 style="font-size:13.5px;margin:0;">الباركود والملصقات</h3>
+            <button class="btn btn-ghost btn-xs" id="genRandomBarcodeBtn" type="button">توليد باركود تلقائي</button>
           </div>
           <div class="grid2">
             <div class="field" style="margin-bottom:0;">
@@ -483,7 +483,7 @@ function openInventoryItemModal(editItem, cloneMode=false, defaultCategory='صي
             </div>
             <div style="display:flex;align-items:flex-end;gap:8px;">
               <button class="btn btn-amber btn-sm" id="modalPrintStickerPreviewBtn" type="button" style="width:100%;">
-                🏷️ طباعة ملصق باركود حراري
+                ${getSvgIcon('tag', 14)} طباعة ملصق باركود حراري
               </button>
             </div>
           </div>
@@ -491,7 +491,7 @@ function openInventoryItemModal(editItem, cloneMode=false, defaultCategory='صي
 
         <!-- Section 3: Smart Pricing & Profit Margin Calculator -->
         <div class="card" style="padding:14px 16px;margin-bottom:14px;background:var(--paper3);">
-          <h3 style="font-size:13.5px;margin-bottom:10px;">💰 التسعير الذكي وهوامش الربح</h3>
+          <h3 style="font-size:13.5px;margin-bottom:10px;">التسعير وهوامش الربح</h3>
           <div class="grid3">
             <div class="field">
               <label>سعر التكلفة / الشراء (ج.م) *</label>
@@ -526,7 +526,7 @@ function openInventoryItemModal(editItem, cloneMode=false, defaultCategory='صي
 
         <!-- Section 4: Stock Levels & Warranty -->
         <div class="card" style="padding:14px 16px;margin-bottom:14px;">
-          <h3 style="font-size:13.5px;margin-bottom:10px;">📦 المخزون، حد الأمان، والضمان</h3>
+          <h3 style="font-size:13.5px;margin-bottom:10px;">المخزون وحد الأمان والضمان</h3>
           <div class="grid4">
             <div class="field">
               <label>الكمية الحالية *</label>
@@ -553,8 +553,8 @@ function openInventoryItemModal(editItem, cloneMode=false, defaultCategory='صي
         <div class="actions-row" style="margin-top:16px;">
           <button class="btn btn-ghost" id="cancelItemModalBtn" type="button">إلغاء</button>
           <div style="display:flex;gap:8px;">
-            ${!isEdit ? `<button class="btn btn-green" id="saveAndNewItemBtn" type="button">➕💾 حفظ وإضافة صنف آخر</button>` : ''}
-            <button class="btn btn-primary" id="saveItemMasterBtn" type="button">💾 حفظ الصنف</button>
+            ${!isEdit ? `<button class="btn btn-green" id="saveAndNewItemBtn" type="button">${getSvgIcon('plus', 14)} حفظ وإضافة صنف آخر</button>` : ''}
+            <button class="btn btn-primary" id="saveItemMasterBtn" type="button">${getSvgIcon('check', 14)} حفظ الصنف</button>
           </div>
         </div>
       </div>
@@ -577,7 +577,7 @@ function openInventoryItemModal(editItem, cloneMode=false, defaultCategory='صي
     overlay.querySelector('#genRandomBarcodeBtn').onclick = ()=>{
       const rnd = '20' + String(Date.now()).slice(-8) + Math.floor(Math.random()*90+10);
       overlay.querySelector('#mItemBarcode').value = rnd;
-      showToast('تم توليد كود باركود فريد للصنف 🎲', 'info');
+      showToast('تم توليد كود باركود فريد للصنف', 'info');
     };
 
     // Live Profit & Margin Calculation
@@ -641,7 +641,7 @@ function openInventoryItemModal(editItem, cloneMode=false, defaultCategory='صي
 
       try{
         await saveInventoryItemRemote(item);
-        showToast(`تم حفظ الصنف "${item.Name}" بنجاح ✅`, 'success');
+        showToast(`تم حفظ الصنف "${item.Name}" بنجاح`, 'success');
         refreshInventorySectionOrTab();
 
         if(keepOpen){
@@ -679,18 +679,18 @@ function openInventoryImportModal(){
   overlay.innerHTML = `
     <div class="modal-content" style="max-width:650px;">
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:16px;">
-        <h3 style="margin:0;font-size:16px;">📂 استيراد أصناف جماعي من ملف Excel / CSV</h3>
-        <button class="btn btn-ghost btn-xs" id="closeImportModal">✕</button>
+        <h3 style="margin:0;font-size:16px;">استيراد أصناف جماعي من ملف Excel / CSV</h3>
+        <button class="btn btn-ghost btn-xs" id="closeImportModal" style="font-size:18px;line-height:1;">&times;</button>
       </div>
 
       <div style="background:var(--paper3);border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px;margin-bottom:16px;font-size:12.5px;line-height:1.7;">
-        <b>💡 تعليمات الاستيراد:</b>
+        <b>تعليمات الاستيراد:</b>
         <ol style="margin-right:18px;margin-top:4px;">
           <li>يمكنك تنزيل النموذج الجاهز وتعبئته ببيانات أصنافك.</li>
           <li>الأعمدة المطلوبة: <b>الاسم، القسم، الباركود، الكمية، سعر الشراء، سعر البيع، مكان الرف</b>.</li>
           <li>يدعم الملفات بصيغة CSV أو Excel (.csv).</li>
         </ol>
-        <button class="btn btn-ghost btn-xs" id="downloadImportTemplateBtn" style="margin-top:6px;">📥 تنزيل نموذج الاستيراد الفارغ (Template)</button>
+        <button class="btn btn-ghost btn-xs" id="downloadImportTemplateBtn" style="margin-top:6px;">${getSvgIcon('download', 14)} تنزيل نموذج الاستيراد الفارغ (Template)</button>
       </div>
 
       <div class="field">
@@ -702,7 +702,7 @@ function openInventoryImportModal(){
 
       <div class="actions-row" style="margin-top:16px;">
         <button class="btn btn-ghost" id="cancelImportBtn">إلغاء</button>
-        <button class="btn btn-primary" id="processImportBtn" disabled>🚀 استيراد الأصناف إلى المخزن</button>
+        <button class="btn btn-primary" id="processImportBtn" disabled>${getSvgIcon('upload', 14)} استيراد الأصناف إلى المخزن</button>
       </div>
     </div>
   `;
@@ -757,7 +757,7 @@ function openInventoryImportModal(){
       const previewMount = overlay.querySelector('#importPreviewMount');
       previewMount.innerHTML = `
         <div style="background:var(--green-bg);color:var(--green-text);padding:8px 12px;border-radius:var(--radius-sm);font-size:12px;font-weight:700;margin-bottom:8px;">
-          ✅ تم قراءة <b>${parsedItems.length}</b> صنف بنجاح وجاهز للاستيراد.
+          <span style="display:inline-flex;align-items:center;gap:4px;color:var(--green);">${getSvgIcon('check', 14)} تم قراءة <b>${parsedItems.length}</b> صنف بنجاح وجاهز للاستيراد.</span>
         </div>
       `;
       overlay.querySelector('#processImportBtn').disabled = parsedItems.length === 0;
@@ -771,7 +771,7 @@ function openInventoryImportModal(){
     for(const it of parsedItems){
       try{ await saveInventoryItemRemote(it); }catch(e){}
     }
-    showToast(`تم استيراد ${parsedItems.length} صنف بنجاح إلى المخزن! 🎉`, 'success');
+    showToast(`تم استيراد ${parsedItems.length} صنف بنجاح إلى المخزن`, 'success');
     overlay.remove();
     refreshInventorySectionOrTab();
   };
@@ -794,21 +794,23 @@ function openWarehouseManagerModal(){
       <div class="modal-content" style="max-width:680px;">
         <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:16px;">
           <div style="display:flex;align-items:center;gap:10px;">
-            <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#FF9500,#e05300);display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;box-shadow:0 4px 10px rgba(255,149,0,0.3);">🏢</div>
+            <div style="width:36px;height:36px;border-radius:var(--radius-sm);background:var(--primary-light);display:flex;align-items:center;justify-content:center;color:var(--primary);border:1px solid var(--line);">
+              ${getSvgIcon('store', 18)}
+            </div>
             <div>
               <h3 style="margin:0;font-size:17px;font-weight:900;">إدارة المخازن والفروع المتعددة</h3>
               <div style="font-size:12px;color:var(--ink-secondary);">إضافة وحذف وتخصيص المخازن ونقاط التخزين للشركة</div>
             </div>
           </div>
-          <button class="btn btn-ghost btn-xs" id="closeWhModal">✕ إغلاق</button>
+          <button class="btn btn-ghost btn-xs" id="closeWhModal">&times; إغلاق</button>
         </div>
 
         <!-- Add New Warehouse Input -->
         <div class="card" style="padding:14px;background:var(--paper3);border:1px solid var(--line-strong);margin-bottom:16px;">
-          <div style="font-weight:800;font-size:13px;margin-bottom:8px;color:var(--ink);">➕ إنشاء مخزن أو نقطة توزيع جديدة</div>
+          <div style="font-weight:800;font-size:13px;margin-bottom:8px;color:var(--ink);">إنشاء مخزن أو نقطة توزيع جديدة</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <input type="text" id="newWhNameInput" placeholder="اسم المخزن أو الفرع (مثال: مخزن فرع المعادي، مخزن الصيانة)..." style="flex:1;min-width:200px;">
-            <button class="btn btn-primary" id="addNewWhBtn">➕ إضافة المخزن</button>
+            <button class="btn btn-primary" id="addNewWhBtn">${getSvgIcon('plus', 14)} إضافة المخزن</button>
           </div>
         </div>
 
@@ -822,9 +824,11 @@ function openWarehouseManagerModal(){
             const isMain = wName === 'المخزن الرئيسي' || idx === 0;
 
             return `
-              <div style="display:flex;justify-content:space-between;align-items:center;background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:12px 14px;box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+              <div style="display:flex;justify-content:space-between;align-items:center;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 14px;box-shadow:0 1px 3px rgba(0,0,0,0.03);">
                 <div style="display:flex;align-items:center;gap:12px;">
-                  <div style="width:34px;height:34px;border-radius:10px;background:rgba(255,149,0,0.12);color:#ea580c;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:900;">🏢</div>
+                  <div style="width:32px;height:32px;border-radius:var(--radius-sm);background:var(--paper3);color:var(--primary);display:flex;align-items:center;justify-content:center;border:1px solid var(--line);">
+                    ${getSvgIcon('store', 16)}
+                  </div>
                   <div>
                     <div style="font-weight:800;font-size:13.5px;color:var(--ink);display:flex;align-items:center;gap:6px;">
                       ${wName}
@@ -837,9 +841,9 @@ function openWarehouseManagerModal(){
                   </div>
                 </div>
                 <div style="display:flex;align-items:center;gap:8px;">
-                  <button class="btn btn-xs btn-ghost" data-filterwh="${wName}" title="عرض أصناف هذا المخزن">👁️ استعراض</button>
+                  <button class="btn btn-xs btn-ghost" data-filterwh="${wName}" title="عرض أصناف هذا المخزن">${getSvgIcon('eye', 12)} استعراض</button>
                   ${!isMain ? `
-                    <button class="btn btn-xs btn-red" data-delwh="${wName}" title="حذف المخزن">🗑️ حذف</button>
+                    <button class="btn btn-xs btn-red" data-delwh="${wName}" title="حذف المخزن">${getSvgIcon('trash', 12)} حذف</button>
                   ` : ''}
                 </div>
               </div>
@@ -866,7 +870,7 @@ function openWarehouseManagerModal(){
       state.warehouses = current;
       setCache('warehouses', state.warehouses);
       recordAuditLog('إنشاء مخزن جديد', 'المخزن', `تم إنشاء مخزن جديد باسم: (${val})`, val);
-      showToast(`تم إضافة المخزن "${val}" بنجاح 🏢`, 'success');
+      showToast(`تم إضافة المخزن "${val}" بنجاح`, 'success');
       renderModal();
       refreshInventorySectionOrTab();
     };
@@ -937,13 +941,15 @@ function openWarehouseTransferModal(preselectedItem=null){
       <div class="modal-content" style="max-width:640px;">
         <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:16px;">
           <div style="display:flex;align-items:center;gap:10px;">
-            <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#007AFF,#0051a8);display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;box-shadow:0 4px 10px rgba(0,122,255,0.3);">🔄</div>
+            <div style="width:36px;height:36px;border-radius:var(--radius-sm);background:var(--primary-light);display:flex;align-items:center;justify-content:center;color:var(--primary);border:1px solid var(--line);">
+              ${getSvgIcon('refresh', 18)}
+            </div>
             <div>
               <h3 style="margin:0;font-size:17px;font-weight:900;">تحويل أرصدة بين المخازن والفروع</h3>
               <div style="font-size:12px;color:var(--ink-secondary);">نقل كميات الأصناف وتحديث الأرصدة وسجل الحركات آلياً</div>
             </div>
           </div>
-          <button class="btn btn-ghost btn-xs" id="closeWhTransModal">✕ إغلاق</button>
+          <button class="btn btn-ghost btn-xs" id="closeWhTransModal">&times; إغلاق</button>
         </div>
 
         <!-- Step 1: Select Item -->
@@ -979,13 +985,13 @@ function openWarehouseTransferModal(preselectedItem=null){
           <div class="field">
             <label>من المخزن (المصدر) *</label>
             <select id="transFromWh">
-              ${whs.map(w => `<option value="${w}" ${fromWh===w ? 'selected' : ''}>🏢 ${w}</option>`).join('')}
+              ${whs.map(w => `<option value="${w}" ${fromWh===w ? 'selected' : ''}>${w}</option>`).join('')}
             </select>
           </div>
           <div class="field">
             <label>إلى المخزن (الوجهة) *</label>
             <select id="transToWh">
-              ${whs.map(w => `<option value="${w}" ${toWh===w ? 'selected' : ''} ${fromWh===w ? 'disabled' : ''}>🏢 ${w}</option>`).join('')}
+              ${whs.map(w => `<option value="${w}" ${toWh===w ? 'selected' : ''} ${fromWh===w ? 'disabled' : ''}>${w}</option>`).join('')}
             </select>
           </div>
         </div>
@@ -1004,7 +1010,7 @@ function openWarehouseTransferModal(preselectedItem=null){
 
         <div class="actions-row" style="margin-top:16px;border-top:1px solid var(--line);padding-top:12px;">
           <button class="btn btn-ghost" id="cancelWhTransBtn">إلغاء</button>
-          <button class="btn btn-primary" id="confirmWhTransBtn" ${availQty<=0?'disabled':''}>🚀 تنفيذ التحويل المخزني</button>
+          <button class="btn btn-primary" id="confirmWhTransBtn" ${availQty<=0?'disabled':''}>${getSvgIcon('check', 14)} تنفيذ التحويل المخزني</button>
         </div>
       </div>
     `;
@@ -1103,7 +1109,7 @@ function openWarehouseTransferModal(preselectedItem=null){
           await saveInventoryItemRemote(destItem);
         }catch(e){}
 
-        showToast(`تم تحويل ${qty} قطعة من "${selItem.Name}" إلى ${toWh} بنجاح ✅`, 'success');
+        showToast(`تم تحويل ${qty} قطعة من "${selItem.Name}" إلى ${toWh} بنجاح`, 'success');
         playNotificationChime();
         overlay.remove();
         refreshInventorySectionOrTab();

@@ -16,12 +16,12 @@ const DEFAULT_COMMON_FAULTS = ['باور / لا يعمل','شاشة / كسر','�
 const COMMON_FAULTS = DEFAULT_COMMON_FAULTS;
 
 const STATUSES = [
-  {v:'قيد الفحص', cls:'st-check', icon:'🔍', desc:'جاري الفحص والتشخيص'},
-  {v:'الصيانة', cls:'st-repair', icon:'🛠️', desc:'قيد الإصلاح الفعلي'},
-  {v:'مكتمل', cls:'st-done', icon:'✅', desc:'تم الانتهاء وجاهز للتسليم'},
-  {v:'تم التسليم', cls:'st-delivered', icon:'🤝', desc:'تم تسليم الجهاز للعميل بنجاح'},
-  {v:'تعذرت الصيانة', cls:'st-failed', icon:'🚫', desc:'تعذر الإصلاح'},
-  {v:'رفض العميل', cls:'st-rejected', icon:'❌', desc:'رفض العميل التكلفة/الإصلاح'}
+  {v:'قيد الفحص', cls:'st-check', icon:'', desc:'جاري الفحص والتشخيص'},
+  {v:'الصيانة', cls:'st-repair', icon:'', desc:'قيد الإصلاح الفعلي'},
+  {v:'مكتمل', cls:'st-done', icon:'', desc:'تم الانتهاء وجاهز للتسليم'},
+  {v:'تم التسليم', cls:'st-delivered', icon:'', desc:'تم تسليم الجهاز للعميل بنجاح'},
+  {v:'تعذرت الصيانة', cls:'st-failed', icon:'', desc:'تعذر الإصلاح'},
+  {v:'رفض العميل', cls:'st-rejected', icon:'', desc:'رفض العميل التكلفة/الإصلاح'}
 ];
 const EXPENSE_CATEGORIES = ['إيجار','كهرباء ومياه','بوفيه ونثريات','أدوات وصيانة مقر','شحن وتوصيل','رواتب وسلفيات','دعاية وإعلانات','أخرى'];
 
@@ -47,48 +47,48 @@ const DEFAULT_QUOTE_AGREEMENT_TERMS = `بند (1): موضوع العقد: يلت
 بند (5): الملكية ومحضر التسليم: تظل كافة المهمات والأجهزة ملكاً للطرف الأول حتى سداد كامل المستحقات المالية، ويحرر محضر تسليم وتشغيل رسمي موقع من الطرفين فور إتمام المشروع.`;
 
 const DEFAULT_WA_TEMPLATES = {
-  cost_estimate: `مرحبًا {customer_name} 👋
+  cost_estimate: `مرحبًا {customer_name}
 بخصوص جهازكم المسجل لدينا بمركز {shop_name}:
-📱 الجهاز: {device}
-🔢 إيصال صيانة رقم: #{receipt_no}
-📅 تاريخ الاستلام: {date}
+الجهاز: {device}
+إيصال صيانة رقم: #{receipt_no}
+تاريخ الاستلام: {date}
 
-🔍 تقرير الفحص وتشخيص العطل:
+تقرير الفحص وتشخيص العطل:
 {faults_report}
 
 ━━━━━━━━━━━━━━━━━━━━
-📊 عرض ومقايسة تكلفة الصيانة:
+عرض ومقايسة تكلفة الصيانة:
 
-✅ في حالة الموافقة على الإصلاح:
+[في حالة الموافقة على الإصلاح]:
 • إجمالي تكلفة الصيانة وقطع الغيار: *{cost} ج.م*
 {deposit_info}
 • المبلغ المطلوب سداده عند الاستلام: *{remaining} ج.م*
 • مدة الإصلاح المتوقعة: *{estimate_time}*
 {warranty_info}
 
-❌ في حالة عدم الرغبة في الإصلاح (رفض الصيانة):
+[في حالة عدم الرغبة في الإصلاح (رفض الصيانة)]:
 • تكلفة فحص الجهاز وتشخيص العطل الفني: *{inspection_fee} ج.م* فقط.
 (ملاحظة: لا تُدفع أي رسوم فحص في حالة الموافقة على الإصلاح).
 ━━━━━━━━━━━━━━━━━━━━
 
-💬 يرجى الرد على هذه الرسالة بتأكيد (موافق) للبدء في صيانة الجهاز فوراً، أو إبلاغنا في حال رغبتكم بالاستلام.
+يرجى الرد على هذه الرسالة بتأكيد (موافق) للبدء في صيانة الجهاز فوراً، أو إبلاغنا في حال رغبتكم بالاستلام.
 
-🔗 تتبع حالة جهازك مباشرة عبر الرابط:
+تتبع حالة جهازك مباشرة عبر الرابط:
 {track_url}
 
 {shop_name}
-📞 {shop_phone}
-📍 {shop_address}`,
-  intake: `مرحبًا {customer_name} 👋\nتم استلام جهازكم ({device}) بنجاح وقيده برقم إيصال: #{receipt_no} بمركز {shop_name} 📥\n📅 التاريخ: {date} {time}\n⚠️ العطل المسجل: {faults}\n{deposit_info}\n🔗 لمتابعة مراحل الفحص والصيانة مباشرة:\n{track_url}\n\nسعداء بخدمتكم دائماً! ✨`,
-  check: `مرحبًا {customer_name} 👋\nنحيطكم علماً بأن جهازكم ({device}) قيد الفحص والتشخيص الفني الدقيق حالياً 🔍\nرقم الإيصال: #{receipt_no}\n🔗 تتبع حالة الفحص مباشرة: {track_url}\n{shop_name}`,
-  repair: `مرحبًا {customer_name} 👋\nتمت المباشرة والبدء في أعمال صيانة وإصلاح جهازكم ({device}) بمركز {shop_name} 🛠️\nرقم الإيصال: #{receipt_no}\n🔗 تتبع حالة جهازك مباشرة: {track_url}`,
-  done: `مرحبًا {customer_name} 👋\nيسعدنا إبلاغكم بأنه تم الانتهاء من صيانة جهازكم ({device}) بنجاح وهو جاهز للاستلام الآن بفرع {shop_name} 🎉✅\n\n📌 رقم الإيصال: #{receipt_no}\n💵 المبلغ المتبقي المطلوب: *{remaining} ج.م*\n🔗 تفاصيل الإيصال والمتابعة:\n{track_url}\n\nشكراً لثقتكم الغالية بنا!`,
-  delivered: `مرحبًا {customer_name} 👋\nتم تسليم جهازكم ({device}) بنجاح بموجب الإيصال رقم #{receipt_no} 🤝\nيسري الضمان المعتمد على الخدمة وقطع الغيار المبدلة وفق شروط الإيصال.\nسعدنا بخدمتكم في {shop_name}، ونتطلع دائماً لخدمتكم! ✨`,
-  pending: `مرحبًا {customer_name} 👋\nنود إحاطتكم بأن صيانة جهازكم ({device}) بموجب الإيصال #{receipt_no} معلقة مؤقتاً ⏸️\nيرجى التواصل معنا لتأكيد مقايسة التكلفة أو التوجيه بشأن الصيانة.\n🔗 تتبع الجهاز: {track_url}\n{shop_name} 📞 {shop_phone}`,
-  warranty: `مرحبًا {customer_name} 👋\nتم قيد جهازكم ({device}) بموجب الإيصال #{receipt_no} تحت مظلة الضمان المعتمد 🛡️\nجاري المتابعة والفحص الفني اللازم مجاناً.\n🔗 رابط المتابعة: {track_url}\n{shop_name}`,
-  overdue: `مرحبًا {customer_name} 👋\nنود تذكيركم بوجود جهازكم ({device}) جاهزاً للاستلام لدينا في {shop_name} بموجب الإيصال رقم #{receipt_no} ⏳\n💵 المتبقي المطلوب: *{remaining} ج.م*.\nيرجى التفضل بالاستلام خلال أوقات العمل الرسمية.\n🔗 تتبع الجهاز: {track_url}`,
-  unrepairable: `مرحبًا {customer_name} 👋\nبخصوص جهازكم ({device}) بموجب الإيصال رقم #{receipt_no}، نعتذر منك حيث تعذر الإصلاح لعدم توفر قطع الغيار أو طبيعة العطل 🚫.\nيمكنك التفضل لاستلام الجهاز في أي وقت من {shop_name}.`,
-  rejected: `مرحبًا {customer_name} 👋\nبناءً على طلبكم، تم إلغاء الصيانة لجهازكم ({device}) بموجب الإيصال رقم #{receipt_no} والجهاز جاهز للاستلام في {shop_name} ❌.`
+هاتف: {shop_phone}
+العنوان: {shop_address}`,
+  intake: `مرحبًا {customer_name}\nتم استلام جهازكم ({device}) بنجاح وقيده برقم إيصال: #{receipt_no} بمركز {shop_name}\nالتاريخ: {date} {time}\nالعطل المسجل: {faults}\n{deposit_info}\nلمتابعة مراحل الفحص والصيانة مباشرة:\n{track_url}\n\nسعداء بخدمتكم دائماً!`,
+  check: `مرحبًا {customer_name}\nنحيطكم علماً بأن جهازكم ({device}) قيد الفحص والتشخيص الفني الدقيق حالياً\nرقم الإيصال: #{receipt_no}\nتتبع حالة الفحص مباشرة: {track_url}\n{shop_name}`,
+  repair: `مرحبًا {customer_name}\nتمت المباشرة والبدء في أعمال صيانة وإصلاح جهازكم ({device}) بمركز {shop_name}\nرقم الإيصال: #{receipt_no}\nتتبع حالة جهازك مباشرة: {track_url}`,
+  done: `مرحبًا {customer_name}\nيسعدنا إبلاغكم بأنه تم الانتهاء من صيانة جهازكم ({device}) بنجاح وهو جاهز للاستلام الآن بفرع {shop_name}\n\nرقم الإيصال: #{receipt_no}\nالمبلغ المتبقي المطلوب: *{remaining} ج.م*\nتفاصيل الإيصال والمتابعة:\n{track_url}\n\nشكراً لثقتكم الغالية بنا!`,
+  delivered: `مرحبًا {customer_name}\nتم تسليم جهازكم ({device}) بنجاح بموجب الإيصال رقم #{receipt_no}\nيسري الضمان المعتمد على الخدمة وقطع الغيار المبدلة وفق شروط الإيصال.\nسعدنا بخدمتكم في {shop_name}، ونتطلع دائماً لخدمتكم!`,
+  pending: `مرحبًا {customer_name}\nنود إحاطتكم بأن صيانة جهازكم ({device}) بموجب الإيصال #{receipt_no} معلقة مؤقتاً\nيرجى التواصل معنا لتأكيد مقايسة التكلفة أو التوجيه بشأن الصيانة.\nتتبع الجهاز: {track_url}\n{shop_name} - هاتف: {shop_phone}`,
+  warranty: `مرحبًا {customer_name}\nتم قيد جهازكم ({device}) بموجب الإيصال #{receipt_no} تحت مظلة الضمان المعتمد\nجاري المتابعة والفحص الفني اللازم مجاناً.\nرابط المتابعة: {track_url}\n{shop_name}`,
+  overdue: `مرحبًا {customer_name}\nنود تذكيركم بوجود جهازكم ({device}) جاهزاً للاستلام لدينا في {shop_name} بموجب الإيصال رقم #{receipt_no}\nالمتبقي المطلوب: *{remaining} ج.م*.\nيرجى التفضل بالاستلام خلال أوقات العمل الرسمية.\nتتبع الجهاز: {track_url}`,
+  unrepairable: `مرحبًا {customer_name}\nبخصوص جهازكم ({device}) بموجب الإيصال رقم #{receipt_no}، نعتذر منك حيث تعذر الإصلاح لعدم توفر قطع الغيار أو طبيعة العطل.\nيمكنك التفضل لاستلام الجهاز في أي وقت من {shop_name}.`,
+  rejected: `مرحبًا {customer_name}\nبناءً على طلبكم، تم إلغاء الصيانة لجهازكم ({device}) بموجب الإيصال رقم #{receipt_no} والجهاز جاهز للاستلام في {shop_name}.`
 };
 
 /* Settings Getter Helpers */
@@ -117,7 +117,7 @@ function getGeminiSettings(){
   const s = (state.settings && state.settings.gemini) || {};
   return {
     enabled: s.enabled !== false,
-    apiKey: (s.apiKey || localStorage.getItem('microtech_gemini_api_key') || '').trim(),
+    apiKey: (s.apiKey || (function(){ try{ return localStorage.getItem('microtech_gemini_api_key'); }catch(e){ return ''; } })() || '').trim(),
     model: s.model || 'gemini-3.5-flash',
     temperature: s.temperature ?? 0.7,
     systemInstruction: s.systemInstruction || DEFAULT_GEMINI_SETTINGS.systemInstruction
@@ -127,18 +127,18 @@ function getGeminiSettings(){
 const DEFAULT_POS_SETTINGS = {
   shortcutItemIds: [],
   paymentMethods: [
-    { id: 'cash', name: 'نقدي (كاش)', icon: '💵', enabled: true },
-    { id: 'vodafone', name: 'فودافون كاش ومحافظ', icon: '📱', enabled: true },
-    { id: 'card', name: 'فيزا وبطاقات بنكية', icon: '💳', enabled: true },
-    { id: 'instapay', name: 'إنستاباي InstaPay', icon: '⚡', enabled: true },
-    { id: 'credit', name: 'آجل / على الحساب', icon: '📝', enabled: true }
+    { id: 'cash', name: 'نقدي (كاش)', iconName: 'dollar', enabled: true },
+    { id: 'vodafone', name: 'فودافون كاش ومحافظ', iconName: 'phone', enabled: true },
+    { id: 'card', name: 'فيزا وبطاقات بنكية', iconName: 'creditCard', enabled: true },
+    { id: 'instapay', name: 'إنستاباي InstaPay', iconName: 'refresh', enabled: true },
+    { id: 'credit', name: 'آجل / على الحساب', iconName: 'fileText', enabled: true }
   ],
   quickServices: [
-    { name: 'صيانة وفحص سريع', price: 100, icon: '🛠️' },
-    { name: 'تنزيل ويندوز وبرامج', price: 150, icon: '💻' },
-    { name: 'تنظيف وتغيير معجون حراري', price: 120, icon: '💨' },
-    { name: 'تركيب حماية / اسكرينة', price: 50, icon: '🛡️' },
-    { name: 'شحن سوفت وير / باقة', price: 80, icon: '⚡' }
+    { name: 'صيانة وفحص سريع', price: 100, iconName: 'maintenance' },
+    { name: 'تنزيل ويندوز وبرامج', price: 150, iconName: 'laptop' },
+    { name: 'تنظيف وتغيير معجون حراري', price: 120, iconName: 'tool' },
+    { name: 'تركيب حماية / اسكرينة', price: 50, iconName: 'tool' },
+    { name: 'شحن سوفت وير / باقة', price: 80, iconName: 'pos' }
   ],
   allowNegativeStock: false,
   autoPrintReceipt: true,
@@ -169,21 +169,21 @@ function getActivePaymentMethods(){
 }
 
 function getPaymentMethodBadge(methodName){
-  if(!methodName) return '<span class="badge" style="background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;font-weight:700;">💵 نقدي (كاش)</span>';
+  if(!methodName) return `<span class="badge" style="background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;font-weight:700;">${getSvgIcon('dollar', 12)} نقدي</span>`;
   const str = String(methodName).toLowerCase();
   if(str.includes('فيزا') || str.includes('card') || str.includes('بطاق') || str.includes('visa')){
-    return '<span class="badge" style="background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;font-weight:700;">💳 فيزا وبطاقات</span>';
+    return `<span class="badge" style="background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;font-weight:700;">${getSvgIcon('creditCard', 12)} فيزا وبطاقات</span>`;
   }
   if(str.includes('إنستاباي') || str.includes('انستاباي') || str.includes('instapay')){
-    return '<span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;font-weight:700;">⚡ إنستاباي</span>';
+    return `<span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;font-weight:700;">${getSvgIcon('refresh', 12)} إنستاباي</span>`;
   }
   if(str.includes('محفظ') || str.includes('فودافون') || str.includes('vodafone') || str.includes('wallet')){
-    return '<span class="badge" style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca;font-weight:700;">📱 محفظة نقدية</span>';
+    return `<span class="badge" style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca;font-weight:700;">${getSvgIcon('phone', 12)} محفظة إلكترونية</span>`;
   }
   if(str.includes('آجل') || str.includes('اجل') || str.includes('حساب') || str.includes('credit')){
-    return '<span class="badge" style="background:#f3e8ff;color:#6b21a8;border:1px solid #e9d5ff;font-weight:700;">📝 آجل / على الحساب</span>';
+    return `<span class="badge" style="background:#f3e8ff;color:#6b21a8;border:1px solid #e9d5ff;font-weight:700;">${getSvgIcon('fileText', 12)} آجل / على الحساب</span>`;
   }
-  return `<span class="badge" style="background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;font-weight:700;">💵 ${escapeHtml(methodName)}</span>`;
+  return `<span class="badge" style="background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;font-weight:700;">${getSvgIcon('dollar', 12)} ${escapeHtml(methodName)}</span>`;
 }
 
 // ---------------- Pure Offline QR Code SVG Generator (0ms, Zero Network Dependency) ----------------
@@ -499,9 +499,9 @@ async function detectWindowsPrinters(verbose = false){
 
   if(verbose){
     if(addedCount > 0){
-      showToast(`تم اكتشاف وإضافة (${addedCount}) طابعة جديدة معرفة على نظام ويندوز بنجاح ✅`, 'success');
+      showToast(`تم اكتشاف وإضافة (${addedCount}) طابعة جديدة معرفة على نظام ويندوز بنجاح`, 'success');
     } else {
-      showToast(`تم فحص وتحديث قائمة الطابعات المعرفة على ويندوز (${current.length} طابعة متاحة في القوائم) 🖨️`, 'info');
+      showToast(`تم فحص وتحديث قائمة الطابعات المعرفة على ويندوز (${current.length} طابعة متاحة في القوائم)`, 'info');
     }
   }
   return current;
@@ -676,20 +676,20 @@ function openImageLightbox(photo, allPhotos = [], onDelete = null){
       <!-- Lightbox Header -->
       <div style="padding:12px 16px;background:#0f172a;border-bottom:1px solid #334155;display:flex;justify-content:space-between;align-items:center;color:#fff;">
         <div style="display:flex;align-items:center;gap:8px;">
-          <span style="font-size:18px;">📷</span>
+          <span>${getSvgIcon('camera', 18)}</span>
           <div>
             <div style="font-weight:800;font-size:14px;color:#f8fafc;">${escapeHtml(angleTitle)} <span class="badge" style="background:#3b82f6;color:#fff;font-size:10.5px;margin-right:4px;">${stageTitle}</span></div>
-            <div style="font-size:11px;color:#94a3b8;">${timeStr ? '📅 ' + timeStr : ''}</div>
+            <div style="font-size:11px;color:#94a3b8;">${timeStr || ''}</div>
           </div>
         </div>
         
         <div style="display:flex;gap:6px;align-items:center;">
-          <button type="button" class="btn btn-ghost btn-xs" id="lbRotateBtn" style="color:#cbd5e1;background:#1e293b;" title="تدوير 90 درجة">🔄 تدوير</button>
-          <button type="button" class="btn btn-ghost btn-xs" id="lbZoomInBtn" style="color:#cbd5e1;background:#1e293b;" title="تكبير">🔍 +</button>
-          <button type="button" class="btn btn-ghost btn-xs" id="lbZoomOutBtn" style="color:#cbd5e1;background:#1e293b;" title="تصغير">🔍 -</button>
-          <button type="button" class="btn btn-ghost btn-xs" id="lbDownloadBtn" style="color:#38bdf8;background:#1e293b;" title="تحميل الصورة">📥 تحميل</button>
-          ${onDelete ? `<button type="button" class="btn btn-ghost btn-xs" id="lbDeleteBtn" style="color:#f87171;background:#1e293b;" title="حذف الصورة">🗑️ حذف</button>` : ''}
-          <button type="button" class="btn btn-ghost btn-xs" id="lbCloseBtn" style="color:#fff;background:#334155;font-weight:900;margin-right:6px;">✕</button>
+          <button type="button" class="btn btn-ghost btn-xs" id="lbRotateBtn" style="color:#cbd5e1;background:#1e293b;display:inline-flex;align-items:center;gap:4px;" title="تدوير 90 درجة">${getSvgIcon('refresh', 12)} تدوير</button>
+          <button type="button" class="btn btn-ghost btn-xs" id="lbZoomInBtn" style="color:#cbd5e1;background:#1e293b;font-weight:700;" title="تكبير">+</button>
+          <button type="button" class="btn btn-ghost btn-xs" id="lbZoomOutBtn" style="color:#cbd5e1;background:#1e293b;font-weight:700;" title="تصغير">-</button>
+          <button type="button" class="btn btn-ghost btn-xs" id="lbDownloadBtn" style="color:#38bdf8;background:#1e293b;display:inline-flex;align-items:center;gap:4px;" title="تحميل الصورة">${getSvgIcon('download', 12)} تحميل</button>
+          ${onDelete ? `<button type="button" class="btn btn-ghost btn-xs" id="lbDeleteBtn" style="color:#f87171;background:#1e293b;display:inline-flex;align-items:center;gap:4px;" title="حذف الصورة">${getSvgIcon('trash', 12)} حذف</button>` : ''}
+          <button type="button" class="btn btn-ghost btn-xs" id="lbCloseBtn" style="color:#fff;background:#334155;font-size:16px;line-height:1;margin-right:6px;">&times;</button>
         </div>
       </div>
 
@@ -759,7 +759,7 @@ function renderDevicePhotosThumbnails(photos, containerEl, options = {}){
   if(list.length === 0){
     containerEl.innerHTML = `
       <div style="grid-column:1/-1;padding:14px;text-align:center;color:var(--ink-secondary);font-size:11.5px;background:var(--paper);border:1px dashed var(--line);border-radius:6px;">
-        <span style="font-size:18px;display:block;margin-bottom:3px;">📷</span>
+        <div style="display:inline-flex;color:var(--ink-secondary);margin-bottom:4px;">${getSvgIcon('camera', 24)}</div>
         لم يتم إرفاق صور لهذا الجهاز بعد.<br>
         <span style="font-size:10.5px;opacity:0.8;">التقط بالكاميرا أو اختر صوراً لتوثيق حالة الشاشة والخدوش والملحقات.</span>
       </div>
@@ -782,7 +782,7 @@ function renderDevicePhotosThumbnails(photos, containerEl, options = {}){
           </span>
         </div>
         ${options.canDelete !== false ? `
-          <button type="button" class="del-photo-btn" data-delpidx="${idx}" style="position:absolute;top:3px;left:3px;background:rgba(239,68,68,0.85);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:900;display:flex;align-items:center;justify-content:center;cursor:pointer;" title="حذف الصورة">✕</button>
+          <button type="button" class="del-photo-btn" data-delpidx="${idx}" style="position:absolute;top:3px;left:3px;background:rgba(239,68,68,0.85);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;" title="حذف الصورة">&times;</button>
         ` : ''}
       </div>
     `;

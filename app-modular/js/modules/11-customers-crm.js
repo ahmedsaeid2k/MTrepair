@@ -116,15 +116,15 @@ function renderCustomersPage(main){
   main.innerHTML = `
     <div class="top-header">
       <div>
-        <h2 class="page-title">👥 دليل وسجل هواتف العملاء</h2>
+        <h2 class="page-title">${getSvgIcon("users", 20)} دليل وسجل هواتف العملاء</h2>
         <div class="subtitle mono" style="font-size:12px;color:var(--ink-secondary);">${allCusts.length} عميل مسجل ${state.custSearch ? `(مطابق للبحث: <b>${filtered.length}</b>)` : ''}</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <button class="btn btn-ghost btn-sm" id="custRecoverBtn" style="color:var(--primary);font-weight:800;">
-          🔄 فحص واسترداد الأرقام المفقودة
+          ${getSvgIcon("refresh", 14)} فحص واسترداد الأرقام المفقودة
         </button>
-        <button class="btn btn-ghost btn-sm" id="exportCustsExcelBtn">📥 تصدير Excel</button>
-        <button class="btn btn-primary btn-sm" id="addNewCustModalBtn">➕ إضافة عميل جديد</button>
+        <button class="btn btn-ghost btn-sm" id="exportCustsExcelBtn">${getSvgIcon("download", 14)} تصدير Excel</button>
+        <button class="btn btn-primary btn-sm" id="addNewCustModalBtn">${getSvgIcon("plus", 14)} إضافة عميل جديد</button>
       </div>
     </div>
 
@@ -147,12 +147,12 @@ function renderCustomersPage(main){
     <!-- Search Box (Spotlight Search Style) -->
     <div class="card" style="padding:12px;margin-bottom:14px;background:var(--paper2);border:1.5px solid var(--primary);">
       <div style="display:flex;gap:10px;align-items:center;">
-        <span style="font-size:16px;">🔍</span>
+        <span style="display:inline-flex;align-items:center;color:var(--ink-secondary);">${getSvgIcon("search", 16)}</span>
         <input id="custSearchInput" value="${escapeHtml(state.custSearch)}" placeholder="بحث فوري بنمط Spotlight (اكتب أجزاء من الاسم أو الحروف مثل: مح عل، أو رقم الهاتف، أو الجهاز)..." style="flex:1;font-weight:700;font-size:13.5px;" autofocus>
-        ${state.custSearch ? `<button class="btn btn-ghost btn-sm" id="resetCustSearchBtn">✕ مسح البحث</button>` : ''}
+        ${state.custSearch ? `<button class="btn btn-ghost btn-sm" id="resetCustSearchBtn">مسح البحث</button>` : ''}
       </div>
       <div style="font-size:11px;color:var(--ink-secondary);margin-top:6px;display:flex;justify-content:space-between;">
-        <span>⚡ يدعم البحث بالهمزة وبدونها (أ/إ/آ)، التاء والهاء (ة/ه)، وأجزاء الكلمات المتفرقة.</span>
+        <span>يدعم البحث بالهمزة وبدونها (أ/إ/آ)، التاء والهاء (ة/ه)، وأجزاء الكلمات المتفرقة.</span>
         ${state.custSearch ? `<span class="mono" style="font-weight:800;color:var(--primary);">${filtered.length} نتيجة</span>` : ''}
       </div>
     </div>
@@ -187,7 +187,7 @@ function renderCustomersPage(main){
                 <tr class="selectable-row ${isSelectedCust ? 'selected-row' : ''}" data-cust-name="${escapeHtml(cName)}" data-cust-phone="${escapeHtml(cPhone||'')}" onclick="handleCustomerRowClick('${escapeHtml(cName)}', '${escapeHtml(cPhone||'')}', event)" style="cursor:pointer;">
                   <td>
                     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                      ${isSelectedCust ? '<span class="selected-badge-indicator">✓</span>' : ''}
+                      ${isSelectedCust ? '<span class="selected-badge-indicator">' + getSvgIcon('check', 11) + '</span>' : ''}
                       ${cTitle ? `<span class="badge" style="background:var(--paper2);color:var(--primary);font-size:11px;font-weight:700;border:1px solid var(--line);padding:1px 6px;border-radius:4px;white-space:nowrap;">${escapeHtml(cTitle)}</span>` : ''}
                       <span style="font-weight:800;font-size:13.5px;color:var(--ink);">${highlightSpotlightMatch(cName, state.custSearch)}</span>
                     </div>
@@ -196,19 +196,19 @@ function renderCustomersPage(main){
                     ${cPhone && cPhone !== '0000000000' ? `
                       <div style="display:inline-flex;align-items:center;gap:6px;">
                         <span class="mono font-bold" style="font-size:13px;direction:ltr;">${highlightSpotlightMatch(cPhone, state.custSearch)}</span>
-                        <a href="tel:${cPhone}" class="btn btn-ghost btn-xs" style="padding:2px 6px;" title="اتصال هاتفي" onclick="event.stopPropagation();">📞</a>
-                        <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" class="btn btn-ghost btn-xs" style="padding:2px 6px;color:#22c55e;" title="محادثة واتساب" onclick="event.stopPropagation();">💬</a>
+                        <a href="tel:${cPhone}" class="btn btn-ghost btn-xs" style="padding:2px 6px;" title="اتصال هاتفي" onclick="event.stopPropagation();">${getSvgIcon("phone", 13)}</a>
+                        <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" class="btn btn-ghost btn-xs" style="padding:2px 6px;color:#22c55e;" title="محادثة واتساب" onclick="event.stopPropagation();">${getSvgIcon("message", 13)}</a>
                       </div>
                     ` : `
                       <button class="btn btn-ghost btn-xs edit-cust-quick-phone-btn" style="color:var(--amber-text);border-color:var(--amber);font-weight:700;" onclick="event.stopPropagation(); openQuickAddPhoneModal('${escapeHtml(cName)}', '${escapeHtml(cTitle||'')}');" title="إضافة رقم هاتف للعميل">
-                        ⚠️ إضافة رقم الهاتف
+                        ${getSvgIcon("alert", 12)} إضافة رقم الهاتف
                       </button>
                     `}
                   </td>
                   <td style="text-align:center;">
                     ${clientReceipts.length > 0 ? `
                       <button class="btn btn-ghost btn-xs view-cust-receipts-btn" style="font-weight:800;color:var(--primary);" onclick="event.stopPropagation(); viewCustomerReceiptsInArchive('${escapeHtml(cName)}');" title="استعراض أجهزة العميل بالأرشيف">
-                        🛠️ ${clientReceipts.length} جهاز
+                        ${getSvgIcon("maintenance", 12)} ${clientReceipts.length} جهاز
                       </button>
                     ` : `<span style="color:var(--ink-secondary);font-size:11px;">-</span>`}
                   </td>
@@ -312,8 +312,8 @@ function openEditCustomerModal(c, targetReceiptId='', targetReceiptNum=''){
   overlay.innerHTML = `
     <div class="modal-content" style="max-width:480px;">
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
-        <h3 style="margin:0;font-size:16px;font-weight:900;">${isEdit ? '✏️ تعديل بيانات العميل وربط الإيصالات' : '➕ إضافة عميل جديد'}</h3>
-        <button class="btn btn-ghost btn-xs" id="closeCustModalBtn">✕</button>
+        <h3 style="margin:0;font-size:16px;font-weight:900;">${isEdit ? 'تعديل بيانات العميل وربط الإيصالات' : 'إضافة عميل جديد'}</h3>
+        <button class="btn btn-ghost btn-xs" id="closeCustModalBtn">&times;</button>
       </div>
       <div style="display:grid;grid-template-columns:140px 1fr;gap:10px;">
         <div class="field">
@@ -328,7 +328,7 @@ function openEditCustomerModal(c, targetReceiptId='', targetReceiptNum=''){
       <div class="field"><label>البريد الإلكتروني (اختياري)</label><input id="editCustEmail" value="${escapeHtml(c ? c.email : '')}" placeholder="example@mail.com"></div>
       <div style="display:flex;justify-content:space-between;margin-top:14px;">
         <button class="btn btn-ghost" id="cancelCustModalBtn">إلغاء</button>
-        <button class="btn btn-primary" id="saveCustModalBtn">💾 حفظ ومزامنة البيانات</button>
+        <button class="btn btn-primary" id="saveCustModalBtn">${getSvgIcon("check", 14)} حفظ ومزامنة البيانات</button>
       </div>
     </div>
   `;
@@ -437,7 +437,7 @@ function openEditCustomerModal(c, targetReceiptId='', targetReceiptNum=''){
       }
     }
 
-    showToast(`تم حفظ وتحديث بيانات (${name}) وتحديث ${updatedReceipts.length} إيصال بنجاح ✅`, 'success');
+    showToast(`تم حفظ وتحديث بيانات (${name}) وتحديث ${updatedReceipts.length} إيصال بنجاح`, 'success');
     overlay.remove();
 
     // Re-render UI immediately
@@ -511,7 +511,7 @@ function promptDeliveryRemainingPayment(r, remaining, onProceed){
 
   pOverlay.innerHTML = `
     <div class="modal-content" style="max-width:460px;text-align:center;padding:22px;border-top:4px solid var(--amber);">
-      <div style="font-size:38px;margin-bottom:6px;">🤝</div>
+      <div style="display:inline-flex;padding:12px;border-radius:50%;background:rgba(59,130,246,0.1);color:var(--primary);margin-bottom:8px;">${getSvgIcon("pos", 28)}</div>
       <h3 style="margin:0 0 6px;font-size:16.5px;color:var(--ink);">تسليم الجهاز للعميل ${rNum}</h3>
       <div style="font-size:12.5px;color:var(--ink-secondary);margin-bottom:12px;">العميل: <b>${escapeHtml(custName)}</b> ${devName ? '| الجهاز: ' + escapeHtml(devName) : ''}</div>
       
@@ -527,11 +527,11 @@ function promptDeliveryRemainingPayment(r, remaining, onProceed){
 
       <!-- خيارات طريقة الدفع المتطابقة مع POS -->
       <div style="text-align:right;margin-bottom:14px;">
-        <label style="font-size:11.5px;font-weight:800;color:var(--ink);display:block;margin-bottom:6px;">💳 طريقة التحصيل / السداد:</label>
+        <label style="font-size:11.5px;font-weight:800;color:var(--ink);display:flex;align-items:center;gap:5px;margin-bottom:6px;">${getSvgIcon("creditCard", 14)} طريقة التحصيل / السداد:</label>
         <div class="pos-pay-grid" id="delPromptPayGrid">
           ${getActivePaymentMethods().map(pm => `
             <div class="pos-pay-btn ${pm.id==='cash'?'selected':''}" data-delpm="${pm.id}">
-              <span>${pm.icon||'💵'}</span>
+              
               <span>${pm.name}</span>
             </div>
           `).join('')}
@@ -540,10 +540,10 @@ function promptDeliveryRemainingPayment(r, remaining, onProceed){
 
       <div style="display:flex;flex-direction:column;gap:8px;">
         <button class="btn btn-green" id="promptBtnPayAndDeliver" style="justify-content:center;font-weight:800;padding:10px;">
-          💰 تحصيل نقدي (${Number(remaining).toLocaleString()} ج.م) وتسليم الجهاز
+          ${getSvgIcon("check", 14)} تحصيل نقدي (${Number(remaining).toLocaleString()} ج.م) وتسليم الجهاز
         </button>
         <button class="btn btn-ghost" id="promptBtnDeliverOnly" style="justify-content:center;font-weight:700;border-color:var(--line);">
-          📝 تسليم الجهاز فقط (تأجيل السداد / آجل)
+          تسليم الجهاز فقط (تأجيل السداد / آجل)
         </button>
         <button class="btn btn-ghost btn-sm" id="promptBtnCancel" style="justify-content:center;color:var(--ink-secondary);margin-top:4px;">
           إلغاء التغيير
@@ -560,9 +560,9 @@ function promptDeliveryRemainingPayment(r, remaining, onProceed){
       curMethod = btn.dataset.delpm;
       const pmObj = getActivePaymentMethods().find(x=>x.id===curMethod) || {name:'نقدي'};
       if(curMethod === 'credit'){
-        pOverlay.querySelector('#promptBtnPayAndDeliver').textContent = `📝 تسليم الجهاز على الحساب (آجل)`;
+        pOverlay.querySelector('#promptBtnPayAndDeliver').textContent = `تسليم الجهاز على الحساب (آجل)`;
       } else {
-        pOverlay.querySelector('#promptBtnPayAndDeliver').textContent = `💰 تحصيل ${pmObj.name} (${Number(remaining).toLocaleString()} ج.م) وتسليم الجهاز`;
+        pOverlay.querySelector('#promptBtnPayAndDeliver').textContent = `تحصيل ${pmObj.name} (${Number(remaining).toLocaleString()} ج.م) وتسليم الجهاز`;
       }
     };
   });
@@ -572,7 +572,7 @@ function promptDeliveryRemainingPayment(r, remaining, onProceed){
     if(isHandshakeHandled) return;
     isHandshakeHandled = true;
     const btn = pOverlay.querySelector('#promptBtnPayAndDeliver');
-    if(btn){ btn.disabled = true; btn.textContent = '⏳ جارٍ التحصيل والتسليم...'; }
+    if(btn){ btn.disabled = true; btn.textContent = 'جارٍ التحصيل والتسليم...'; }
     pOverlay.querySelectorAll('button').forEach(b => b.disabled = true);
     setTimeout(() => pOverlay.remove(), 100);
     const pmObj = getActivePaymentMethods().find(x=>x.id===curMethod) || {name:'نقدي (كاش)'};
@@ -610,13 +610,13 @@ function promptPaymentDeliveryStatus(r, amt, onProceed){
 
   pOverlay.innerHTML = `
     <div class="modal-content" style="max-width:460px;text-align:center;padding:22px;border-top:4px solid var(--green);">
-      <div style="font-size:38px;margin-bottom:6px;">💰</div>
+      <div style="display:inline-flex;padding:12px;border-radius:50%;background:rgba(16,185,129,0.1);color:var(--green);margin-bottom:8px;">${getSvgIcon("dollar", 28)}</div>
       <h3 style="margin:0 0 6px;font-size:16.5px;color:var(--ink);">سداد المبلغ المتبقي (${Number(amt).toLocaleString()} ج.م)</h3>
       <div style="font-size:12.5px;color:var(--ink-secondary);margin-bottom:12px;">الإيصال: <b class="mono">${rNum}</b> | العميل: <b>${escapeHtml(custName)}</b></div>
 
       <div style="background:var(--green-bg);border:1.5px solid var(--green);border-radius:var(--radius-sm);padding:12px;margin-bottom:14px;text-align:right;">
         <div style="font-size:12.5px;font-weight:900;color:var(--green-text);margin-bottom:4px;">
-          ✅ سيتم تسجيل إتمام سداد المبلغ كاملاً وإيداعه في الخزينة والحسابات.
+          سيتم تسجيل إتمام سداد المبلغ كاملاً وإيداعه في الخزينة والحسابات.
         </div>
         <div style="font-size:12px;color:var(--ink);margin-top:4px;line-height:1.4;">
           اختر طريقة التحصيل وتحديد حالة الجهاز:
@@ -625,11 +625,11 @@ function promptPaymentDeliveryStatus(r, amt, onProceed){
 
       <!-- خيارات طريقة الدفع -->
       <div style="text-align:right;margin-bottom:14px;">
-        <label style="font-size:11.5px;font-weight:800;color:var(--ink);display:block;margin-bottom:6px;">💳 اختر طريقة التحصيل:</label>
+        <label style="font-size:11.5px;font-weight:800;color:var(--ink);display:flex;align-items:center;gap:5px;margin-bottom:6px;">${getSvgIcon("creditCard", 14)} اختر طريقة التحصيل:</label>
         <div class="pos-pay-grid" id="statusPromptPayGrid">
           ${getActivePaymentMethods().filter(p=>p.id!=='credit').map(pm => `
             <div class="pos-pay-btn ${pm.id==='cash'?'selected':''}" data-statuspm="${pm.id}">
-              <span>${pm.icon||'💵'}</span>
+              
               <span>${pm.name}</span>
             </div>
           `).join('')}
@@ -638,10 +638,10 @@ function promptPaymentDeliveryStatus(r, amt, onProceed){
 
       <div style="display:flex;flex-direction:column;gap:8px;">
         <button class="btn btn-green" id="promptBtnDeliver" style="justify-content:center;font-weight:800;padding:10px;">
-          🤝 نعم، سداد وتغيير الحالة إلى "تم التسليم"
+          ${getSvgIcon("check", 14)} نعم، سداد وتغيير الحالة إلى "تم التسليم"
         </button>
         <button class="btn btn-primary" id="promptBtnKeepStatus" style="justify-content:center;font-weight:700;padding:9px;">
-          📦 سداد المبلغ فقط دون تسليم (الاحتفاظ بالحالة)
+          سداد المبلغ فقط دون تسليم (الاحتفاظ بالحالة)
         </button>
         <button class="btn btn-ghost btn-sm" id="promptBtnCancelPay" style="justify-content:center;color:var(--ink-secondary);margin-top:4px;">
           إلغاء
@@ -664,7 +664,7 @@ function promptPaymentDeliveryStatus(r, amt, onProceed){
     if(isPayStatusHandled) return;
     isPayStatusHandled = true;
     const btn = pOverlay.querySelector('#promptBtnDeliver');
-    if(btn){ btn.disabled = true; btn.textContent = '⏳ جارٍ تسجيل السداد والتسليم...'; }
+    if(btn){ btn.disabled = true; btn.textContent = 'جارٍ تسجيل السداد والتسليم...'; }
     pOverlay.querySelectorAll('button').forEach(b => b.disabled = true);
     setTimeout(() => pOverlay.remove(), 100);
     const pmObj = getActivePaymentMethods().find(x=>x.id===curMethod) || {name:'نقدي (كاش)'};
@@ -674,7 +674,7 @@ function promptPaymentDeliveryStatus(r, amt, onProceed){
     if(isPayStatusHandled) return;
     isPayStatusHandled = true;
     const btn = pOverlay.querySelector('#promptBtnKeepStatus');
-    if(btn){ btn.disabled = true; btn.textContent = '⏳ جارٍ تسجيل السداد...'; }
+    if(btn){ btn.disabled = true; btn.textContent = 'جارٍ تسجيل السداد...'; }
     pOverlay.querySelectorAll('button').forEach(b => b.disabled = true);
     setTimeout(() => pOverlay.remove(), 100);
     const pmObj = getActivePaymentMethods().find(x=>x.id===curMethod) || {name:'نقدي (كاش)'};
@@ -703,8 +703,8 @@ function openQuickStatusModal(rawR){
   overlay.innerHTML = `
     <div class="modal-content" style="max-width:460px;">
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
-        <h3 style="margin:0;font-size:16px;">⚡ تغيير حالة الجهاز السريع</h3>
-        <button class="btn btn-ghost btn-xs" id="closeStatusModal">✕ إغلاق</button>
+        <h3 style="margin:0;font-size:16px;">تغيير حالة الجهاز السريع</h3>
+        <button class="btn btn-ghost btn-xs" id="closeStatusModal">إغلاق</button>
       </div>
 
       <div style="background:var(--paper3);padding:10px 12px;border-radius:var(--radius-sm);margin-bottom:14px;font-size:12.5px;line-height:1.6;">
@@ -724,7 +724,7 @@ function openQuickStatusModal(rawR){
                 <div style="font-size:10.5px;color:var(--ink-secondary);font-weight:normal;">${s.desc}</div>
               </div>
             </div>
-            ${r.status===s.v ? '<span style="color:var(--primary);font-size:11.5px;">(الحالية)</span>' : '<span>➔</span>'}
+            ${r.status===s.v ? '<span style="color:var(--primary);font-size:11.5px;">(الحالية)</span>' : ''}
           </button>
         `).join('')}
       </div>
@@ -743,7 +743,7 @@ function openQuickStatusModal(rawR){
       </div>
 
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-        <button class="btn btn-whatsapp btn-xs" id="quickStatusCostEstBtn" type="button" style="padding:6px 12px;font-weight:700;">💰 عرض ومقايسة التكلفة للعميل</button>
+        <button class="btn btn-whatsapp btn-xs" id="quickStatusCostEstBtn" type="button" style="padding:6px 12px;font-weight:700;">${getSvgIcon("wallet", 13)} عرض ومقايسة التكلفة للعميل</button>
         <button class="btn btn-ghost btn-sm" id="cancelQuickStatus">إلغاء</button>
       </div>
     </div>
@@ -782,12 +782,37 @@ function openQuickStatusModal(rawR){
               r.paid = true;
               await refreshPayments();
             } catch(e){}
+          } else {
+            // التسليم بالآجل: تسجيل المتبقي كمديونية على العميل وترحيل قيد للعملاء (أرصدة مدينة)
+            try {
+              const custName = r.customer ? r.customer.name : '';
+              const custPhone = r.customer ? r.customer.phone : '';
+              const cust = (state.customers || []).find(c => (custName && (c.name||'').trim().toLowerCase() === custName.trim().toLowerCase()) || (custPhone && c.phone === custPhone));
+              if(cust){
+                cust.Debt = Number(cust.Debt || cust.debt || 0) + remaining;
+                await saveCustomerRemote(cust);
+              }
+              if(typeof autoPostJournalEntry === 'function'){
+                await autoPostJournalEntry({
+                  date: new Date().toISOString().slice(0, 10),
+                  description: `مستحقات آجل تسليم جهاز إيصال #${r.receiptNumber || r.id} - عميل: ${custName || 'عميل'}`,
+                  referenceType: 'DeliveryCredit',
+                  referenceId: r.receiptNumber || r.id,
+                  entries: [
+                    { accountId: '1103', accountName: 'العملاء (أرصدة مدينة)', debit: remaining, credit: 0 },
+                    { accountId: '4101', accountName: 'إيرادات خدمات الصيانة', debit: 0, credit: remaining }
+                  ]
+                });
+              }
+            } catch(errDebt) {
+              console.warn('Auto debt recording error:', errDebt);
+            }
           }
           overlay.remove();
           renderMain();
           try {
             await saveReceiptRemote(r);
-            showToast(shouldPay ? `تم سداد ${remaining.toLocaleString()} ج.م وتسليم الجهاز بنجاح 🤝✅` : 'تم تسليم الجهاز بنجاح (المتبقي آجل) 🤝', 'success');
+            showToast(shouldPay ? `تم سداد ${remaining.toLocaleString()} ج.م وتسليم الجهاز بنجاح` : 'تم تسليم الجهاز بنجاح (المتبقي آجل)', 'success');
             if(sendWa){
               setTimeout(()=>sendWhatsappByStatus(r, 'تم التسليم'), 400);
             }
@@ -810,7 +835,7 @@ function openQuickStatusModal(rawR){
 
       try{
         await saveReceiptRemote(r);
-        showToast(`تم حفظ وتحديث حالة الجهاز بنجاح: ${newStatus} ✅`, 'success');
+        showToast(`تم حفظ وتحديث حالة الجهاز بنجاح: ${newStatus} `, 'success');
         if(sendWa){
           setTimeout(()=>sendWhatsappByStatus(r, newStatus), 400);
         }
@@ -943,16 +968,16 @@ function openWhatsappStatusNotificationModal(rawR, statusOrKey, onSent){
   else if(DEFAULT_WA_TEMPLATES[s]) currentKey = s;
 
   const templateOptions = [
-    { k: 'intake', icon: '📥', label: 'استلام جديد' },
-    { k: 'check', icon: '🔍', label: 'قيد الفحص' },
-    { k: 'repair', icon: '🛠️', label: 'الصيانة' },
-    { k: 'done', icon: '✅', label: 'جاهز للاستلام' },
-    { k: 'delivered', icon: '🤝', label: 'تم التسليم' },
-    { k: 'pending', icon: '⏸️', label: 'معلق' },
-    { k: 'warranty', icon: '🛡️', label: 'تحت الضمان' },
-    { k: 'overdue', icon: '⏳', label: 'تذكير (+7 أيام)' },
-    { k: 'unrepairable', icon: '🚫', label: 'تعذر الإصلاح' },
-    { k: 'rejected', icon: '❌', label: 'رفض الصيانة' }
+    { k: 'intake', icon: getSvgIcon('download', 14), label: 'استلام جديد' },
+    { k: 'check', icon: getSvgIcon('search', 14), label: 'قيد الفحص' },
+    { k: 'repair', icon: getSvgIcon('tool', 14), label: 'الصيانة' },
+    { k: 'done', icon: getSvgIcon('check', 14), label: 'جاهز للاستلام' },
+    { k: 'delivered', icon: getSvgIcon('truck', 14), label: 'تم التسليم' },
+    { k: 'pending', icon: getSvgIcon('pause', 14), label: 'معلق' },
+    { k: 'warranty', icon: getSvgIcon('shield', 14), label: 'تحت الضمان' },
+    { k: 'overdue', icon: getSvgIcon('clock', 14), label: 'تذكير (+7 أيام)' },
+    { k: 'unrepairable', icon: getSvgIcon('alert', 14), label: 'تعذر الإصلاح' },
+    { k: 'rejected', icon: getSvgIcon('x', 14), label: 'رفض الصيانة' }
   ];
 
   const cFullName = (typeof formatCustomerFullName === 'function') ? formatCustomerFullName(r) : ((r.customer && r.customer.name) || extractCustomerName(r) || 'عميل');
@@ -991,7 +1016,7 @@ function openWhatsappStatusNotificationModal(rawR, statusOrKey, onSent){
           </h3>
           <p style="margin:4px 0 0 0;font-size:12px;color:var(--ink-secondary);">معاينة وتخصيص نص الرسالة الذكية قبل إرسالها للعميل مباشرة</p>
         </div>
-        <button class="btn btn-ghost btn-xs" id="closeWaStatusModal" style="font-size:16px;line-height:1;padding:4px 8px;">✕</button>
+        <button class="btn btn-ghost btn-xs" id="closeWaStatusModal" style="font-size:16px;line-height:1;padding:4px 8px;">&times;</button>
       </div>
 
       <!-- Recipient & Device Card -->
@@ -1005,7 +1030,7 @@ function openWhatsappStatusNotificationModal(rawR, statusOrKey, onSent){
           <div><b>حالة الإيصال:</b> <span class="status-badge ${(STATUSES.find(st=>st.v===r.status)||{}).cls||'st-check'}">${escapeHtml(r.status)}</span></div>
         </div>
         <div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <label style="font-size:11.5px;font-weight:700;margin-bottom:0;color:var(--ink);">📱 رقم هاتف واتساب:</label>
+          <label style="font-size:11.5px;font-weight:700;margin-bottom:0;color:var(--ink);">رقم هاتف واتساب:</label>
           <input type="text" id="waRecipientPhone" value="${escapeHtml(rawPhone)}" placeholder="مثال: 01012345678" style="padding:4px 8px;font-size:12px;width:150px;font-weight:700;" class="mono">
           <span id="waPhoneStatusMsg" style="font-size:11px;"></span>
         </div>
@@ -1015,12 +1040,12 @@ function openWhatsappStatusNotificationModal(rawR, statusOrKey, onSent){
       <div style="margin-bottom:12px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
           <label style="font-size:12px;font-weight:700;color:var(--ink);margin:0;">اختر قالب الرسالة المناسب:</label>
-          <button type="button" class="btn btn-xs" id="switchToCostEstBtn" style="background:#047857;color:#fff;border:none;border-radius:5px;padding:2px 7px;font-size:11px;font-weight:700;">💰 مقايسة التكلفة</button>
+          <button type="button" class="btn btn-xs" id="switchToCostEstBtn" style="background:#047857;color:#fff;border:none;border-radius:5px;padding:2px 7px;font-size:11px;font-weight:700;">مقايسة التكلفة</button>
         </div>
         <div style="display:flex;gap:5px;flex-wrap:wrap;" id="waTemplatePillsContainer">
           ${templateOptions.map(t => `
             <button type="button" class="btn btn-xs ${t.k === currentKey ? 'btn-primary' : 'btn-ghost'}" data-wa-tmpl="${t.k}" style="padding:4px 8px;font-size:11.5px;">
-              ${t.icon} ${t.label}
+              ${t.label}
             </button>
           `).join('')}
         </div>
@@ -1051,15 +1076,15 @@ function openWhatsappStatusNotificationModal(rawR, statusOrKey, onSent){
 
       <!-- Tracking Link & Direct Actions -->
       <div style="background:rgba(4,120,87,0.06);border:1px solid rgba(4,120,87,0.2);border-radius:8px;padding:8px 12px;margin-bottom:14px;font-size:11.5px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
-        <span style="color:#047857;">🔗 رابط تتبع الصيانة للعميل مضمن تلقائياً داخل الرسالة</span>
-        <button type="button" class="btn btn-xs btn-ghost" id="openTrackPreviewBtn" style="color:#047857;padding:2px 8px;font-weight:700;">👁️ تجربة الرابط</button>
+        <span style="color:#047857;">${getSvgIcon("externalLink", 12)} رابط تتبع الصيانة للعميل مضمن تلقائياً داخل الرسالة</span>
+        <button type="button" class="btn btn-xs btn-ghost" id="openTrackPreviewBtn" style="color:#047857;padding:2px 8px;font-weight:700;">${getSvgIcon("eye", 13)} تجربة الرابط</button>
       </div>
 
       <!-- Footer Action Buttons -->
       <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding-top:14px;flex-wrap:wrap;gap:10px;">
         <button class="btn btn-ghost btn-sm" id="cancelWaStatusModal">إلغاء</button>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button class="btn btn-ghost btn-sm" id="copyWaMsgBtn" style="font-weight:600;">📋 نسخ النص</button>
+          <button class="btn btn-ghost btn-sm" id="copyWaMsgBtn" style="font-weight:600;">${getSvgIcon("copy", 13)} نسخ النص</button>
           <button class="btn btn-whatsapp btn-sm" id="sendWaDirectBtn" style="font-weight:700;padding:7px 16px;">
             ${WA_ICON} فتح وإرسال عبر واتساب
           </button>
@@ -1079,10 +1104,10 @@ function openWhatsappStatusNotificationModal(rawR, statusOrKey, onSent){
   function updatePhoneValidation(){
     const p = normalizePhoneForWa(phoneInput.value);
     if(!p || p.length < 10){
-      phoneStatusMsg.innerHTML = '<span style="color:#ef4444;font-weight:700;">⚠️ رقم غير صالح</span>';
+      phoneStatusMsg.innerHTML = '<span style="color:#ef4444;font-weight:700;">رقم غير صالح</span>';
       return false;
     } else {
-      phoneStatusMsg.innerHTML = '<span style="color:#10b981;font-weight:700;">✓ صحيح</span>';
+      phoneStatusMsg.innerHTML = '<span style="color:#10b981;font-weight:700;">صحيح</span>';
       return true;
     }
   }
@@ -1145,11 +1170,11 @@ function openWhatsappStatusNotificationModal(rawR, statusOrKey, onSent){
   // Copy
   overlay.querySelector('#copyWaMsgBtn').onclick = () => {
     navigator.clipboard.writeText(msgTextarea.value).then(() => {
-      showToast('تم نسخ نص الرسالة إلى الحافظة بنجاح 📋', 'success');
+      showToast('تم نسخ نص الرسالة إلى الحافظة بنجاح', 'success');
     }).catch(() => {
       msgTextarea.select();
       document.execCommand('copy');
-      showToast('تم نسخ الرسالة 📋', 'info');
+      showToast('تم نسخ الرسالة', 'info');
     });
   };
 
@@ -1172,7 +1197,7 @@ function openWhatsappStatusNotificationModal(rawR, statusOrKey, onSent){
     recordAuditLog('إرسال واتساب', 'صيانة', `تم إرسال إشعار واتساب [${currentKey}] للإيصال #${r.receiptNumber} للعميل (${r.customer.name})`, r.id);
     if(typeof onSent === 'function') onSent(finalMsg);
     overlay.remove();
-    showToast('جاري فتح واتساب لإرسال الرسالة للعميل 💬', 'success');
+    showToast('جاري فتح واتساب لإرسال الرسالة للعميل', 'success');
   };
 
   overlay.querySelector('#closeWaStatusModal').onclick = () => overlay.remove();
@@ -1194,7 +1219,7 @@ function openWhatsappChoice(rawR){
         <h3 style="margin:0;font-size:16px;display:flex;align-items:center;gap:6px;color:#047857;">
           ${WA_ICON} <span>مركز رسائل واتساب الذكية</span>
         </h3>
-        <button class="btn btn-ghost btn-xs" id="closeWaChoiceModal" style="font-size:16px;line-height:1;padding:4px 8px;">✕</button>
+        <button class="btn btn-ghost btn-xs" id="closeWaChoiceModal" style="font-size:16px;line-height:1;padding:4px 8px;">&times;</button>
       </div>
 
       <div style="background:var(--paper3);border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin-bottom:14px;font-size:12px;">
@@ -1210,7 +1235,7 @@ function openWhatsappChoice(rawR){
         <!-- Current Status Primary Button -->
         <button class="btn btn-whatsapp" id="waChoiceCurrentStatus" style="font-weight:700;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;">
           <span style="display:flex;align-items:center;gap:7px;">
-            <span>🔔</span> إشعار بالحالة الحالية (${escapeHtml(r.status)})
+            <span>${getSvgIcon("bell", 14)}</span> إشعار بالحالة الحالية (${escapeHtml(r.status)})
           </span>
           <span class="badge" style="background:rgba(255,255,255,0.25);color:#fff;font-size:11px;">معاينة وإرسال ←</span>
         </button>
@@ -1218,39 +1243,39 @@ function openWhatsappChoice(rawR){
         <!-- Cost Estimate Button -->
         <button class="btn btn-whatsapp" id="waChoiceCostEstimate" style="background:#047857;border-color:#047857;font-weight:700;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;">
           <span style="display:flex;align-items:center;gap:7px;">
-            <span>💰</span> مقايسة وعرض التكلفة (موافقة / رفض ورسوم فحص)
+            <span>${getSvgIcon("wallet", 14)}</span> مقايسة وعرض التكلفة (موافقة / رفض ورسوم فحص)
           </span>
           <span class="badge" style="background:rgba(255,255,255,0.25);color:#fff;font-size:11px;">تخصيص ←</span>
         </button>
 
         <!-- Intake Notification -->
         <button class="btn btn-ghost" id="waChoiceIntake" style="text-align:right;justify-content:flex-start;padding:9px 12px;font-size:12.5px;border:1px solid var(--line);">
-          📥 رسالة استلام الجهاز وحجز الإيصال + رابط التتبع
+          ${getSvgIcon("download", 14)} رسالة استلام الجهاز وحجز الإيصال + رابط التتبع
         </button>
 
         <!-- Under Check Notification -->
         <button class="btn btn-ghost" id="waChoiceCheck" style="text-align:right;justify-content:flex-start;padding:9px 12px;font-size:12.5px;border:1px solid var(--line);">
-          🔍 إشعار بدء الفحص والتشخيص الفني (قيد الفحص)
+          ${getSvgIcon("search", 14)} إشعار بدء الفحص والتشخيص الفني (قيد الفحص)
         </button>
 
         <!-- In Repair Notification -->
         <button class="btn btn-ghost" id="waChoiceRepair" style="text-align:right;justify-content:flex-start;padding:9px 12px;font-size:12.5px;border:1px solid var(--line);">
-          🛠️ إشعار المباشرة في أعمال الإصلاح والصيانة
+          ${getSvgIcon("tool", 14)} إشعار المباشرة في أعمال الإصلاح والصيانة
         </button>
 
         <!-- Ready For Delivery Notification -->
         <button class="btn btn-ghost" id="waChoiceDone" style="text-align:right;justify-content:flex-start;padding:9px 12px;font-size:12.5px;border:1px solid var(--line);">
-          ✅ إشعار انتهاء الصيانة وجاهزية الجهاز للاستلام
+          ${getSvgIcon("check", 14)} إشعار انتهاء الصيانة وجاهزية الجهاز للاستلام
         </button>
 
         <!-- Delivered & Warranty Notification -->
         <button class="btn btn-ghost" id="waChoiceDelivered" style="text-align:right;justify-content:flex-start;padding:9px 12px;font-size:12.5px;border:1px solid var(--line);">
-          🤝 إشعار تسليم الجهاز للعميل وتفعيل الضمان
+          ${getSvgIcon("shield", 14)} إشعار تسليم الجهاز للعميل وتفعيل الضمان
         </button>
 
         <!-- Overdue Reminder Notification -->
         <button class="btn btn-ghost" id="waChoiceOverdue" style="text-align:right;justify-content:flex-start;padding:9px 12px;font-size:12.5px;border:1px solid var(--line);">
-          ⏳ تذكير باستلام الجهاز الجاهز المتروك (+7 أيام)
+          ${getSvgIcon("clock", 14)} تذكير باستلام الجهاز الجاهز المتروك (+7 أيام)
         </button>
       </div>
 
@@ -1334,7 +1359,7 @@ function openBulkOverdueWhatsappModal(initialDays){
             </h3>
             <p style="margin:4px 0 0 0;font-size:12px;color:var(--ink-secondary);">تذكير العملاء باستلام أجهزتهم الجاهزة والمكتملة وسداد المستحقات المتبقية</p>
           </div>
-          <button class="btn btn-ghost btn-xs" id="closeBulkOverdueModal" style="font-size:16px;line-height:1;padding:4px 8px;">✕</button>
+          <button class="btn btn-ghost btn-xs" id="closeBulkOverdueModal" style="font-size:16px;line-height:1;padding:4px 8px;">&times;</button>
         </div>
 
         <!-- Filter Pills & Summary -->
@@ -1368,7 +1393,7 @@ function openBulkOverdueWhatsappModal(initialDays){
             </thead>
             <tbody>
               ${overdue.length === 0 ? `
-                <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--ink-secondary);">🎉 رائع! لا توجد أجهزة مكتملة متأخرة تتجاوز هذه المدة.</td></tr>
+                <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--ink-secondary);">لا توجد أجهزة مكتملة متأخرة تتجاوز هذه المدة.</td></tr>
               ` : overdue.map(r => {
                 const rem = Math.max(0, Number(r.cost||0)+Number(r.partsCost||0)+Number(r.otherAccountAmount||0)-Number(r.deposit||0)+Number(r.refunded||0));
                 const cName = escapeHtml((r.customer && r.customer.name) || extractCustomerName(r) || 'عميل');
@@ -1412,7 +1437,7 @@ function openBulkOverdueWhatsappModal(initialDays){
         <div id="bulkRunnerBox" style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:12px 16px;margin-bottom:14px;display:none;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
             <div style="font-weight:800;color:#14532d;display:flex;align-items:center;gap:6px;">
-              <span>🚀</span> <span>مشغل الإرسال المتتابع المباشر:</span>
+              <span>${getSvgIcon("send", 14)}</span> <span>مشغل الإرسال المتتابع المباشر:</span>
             </div>
             <span id="runnerProgressText" class="mono font-bold" style="color:#047857;">1 من 5</span>
           </div>
@@ -1430,7 +1455,7 @@ function openBulkOverdueWhatsappModal(initialDays){
         <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding-top:14px;flex-wrap:wrap;gap:10px;">
           <button class="btn btn-ghost btn-sm" id="btnCancelBulkOverdue">إلغاء</button>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="btn btn-ghost btn-sm" id="btnCopyOverduePhones">📋 نسخ أرقام الهواتف</button>
+            <button class="btn btn-ghost btn-sm" id="btnCopyOverduePhones">${getSvgIcon("copy", 14)} نسخ أرقام الهواتف</button>
             <button class="btn btn-whatsapp btn-sm" id="btnStartBulkRunner" style="font-weight:700;" ${selectedIds.size === 0 ? 'disabled' : ''}>
               ${WA_ICON} بدء الإرسال المتتابع للمحددين (${selectedIds.size})
             </button>
@@ -1486,7 +1511,7 @@ function openBulkOverdueWhatsappModal(initialDays){
           .filter(Boolean);
         if(!phones.length){ showToast('لا توجد أرقام هواتف لنسخها', 'error'); return; }
         navigator.clipboard.writeText(phones.join('\n')).then(() => {
-          showToast(`تم نسخ ${phones.length} رقم هاتف بنجاح 📋`, 'success');
+          showToast(`تم نسخ ${phones.length} رقم هاتف بنجاح`, 'success');
         });
       };
     }
@@ -1506,7 +1531,7 @@ function openBulkOverdueWhatsappModal(initialDays){
     function showRunnerStep(){
       if(runnerIndex >= runnerList.length){
         runnerBox.style.display = 'none';
-        showToast('🎉 تم الانتهاء من إرسال تذكيرات كافة العملاء المحددين بنجاح!', 'success');
+        showToast('تم الانتهاء من إرسال تذكيرات كافة العملاء المحددين بنجاح', 'success');
         return;
       }
       runnerBox.style.display = 'block';
@@ -1648,11 +1673,11 @@ function openCostEstimateModal(rawR){
       <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:14px;">
         <div>
           <h3 style="margin:0;font-size:17px;display:flex;align-items:center;gap:7px;color:var(--ink);">
-            <span style="font-size:20px;">💰</span> مقايسة وعرض تكلفة الصيانة (واتساب)
+            ${getSvgIcon("wallet", 18)} مقايسة وعرض تكلفة الصيانة (واتساب)
           </h3>
           <p style="margin:4px 0 0 0;font-size:12px;color:var(--ink-secondary);">إرسال عرض التكلفة للعميل قبل البدء مع توضيح رسوم الفحص في حالة الرفض</p>
         </div>
-        <button class="btn btn-ghost btn-xs" id="closeCostEstModal" style="font-size:16px;line-height:1;padding:4px 8px;">✕</button>
+        <button class="btn btn-ghost btn-xs" id="closeCostEstModal" style="font-size:16px;line-height:1;padding:4px 8px;">&times;</button>
       </div>
 
       <!-- Receipt & Customer Info Card -->
@@ -1674,10 +1699,10 @@ function openCostEstimateModal(rawR){
         <div class="field" style="margin-bottom:0;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:6px;">
             <label style="font-weight:700;font-size:12.5px;display:flex;align-items:center;gap:5px;margin-bottom:0;">
-              <span>🔍</span> تقرير الفحص وتشخيص العطل للعميل:
+              <span>${getSvgIcon("search", 14)}</span> تقرير الفحص وتشخيص العطل للعميل:
             </label>
             <button type="button" class="btn btn-xs" id="smartDraftFaultsBtn" style="background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;border:none;border-radius:6px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:4px;box-shadow:0 2px 4px rgba(124,58,237,0.2);" title="صياغة تقرير فحص احترافي مقنع للعميل بالذكاء الاصطناعي">
-              <span>✨</span> صياغة ذكية بالذكاء الاصطناعي
+              <span>${getSvgIcon("chart", 13)}</span> صياغة ذكية
             </button>
           </div>
           <textarea id="estFaultsReport" rows="2" style="font-size:13px;line-height:1.5;padding:8px 10px;">${escapeHtml(initialFaultsReport)}</textarea>
@@ -1686,7 +1711,7 @@ function openCostEstimateModal(rawR){
         <!-- Approval Box: Cost, Deposit, Remaining, Time, Warranty -->
         <div style="background:rgba(16,185,129,0.04);border:1px solid rgba(16,185,129,0.25);border-radius:10px;padding:12px 14px;">
           <div style="font-size:13px;font-weight:800;color:#047857;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
-            <span>✅</span> في حالة موافقة العميل على الصيانة (الإصلاح):
+            <span>${getSvgIcon("check", 14)}</span> في حالة موافقة العميل على الصيانة (الإصلاح):
           </div>
 
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
@@ -1737,7 +1762,7 @@ function openCostEstimateModal(rawR){
         <!-- Rejection Box: Inspection Fee with Quick Pills -->
         <div style="background:rgba(239,68,68,0.03);border:1px solid rgba(239,68,68,0.22);border-radius:10px;padding:12px 14px;">
           <div style="font-size:13px;font-weight:800;color:#b91c1c;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-            <span>❌</span> في حالة عدم الرغبة في الإصلاح (رفض الصيانة):
+            <span>${getSvgIcon("x", 14)}</span> في حالة عدم الرغبة في الإصلاح (رفض الصيانة):
           </div>
 
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
@@ -1754,7 +1779,7 @@ function openCostEstimateModal(rawR){
             </div>
           </div>
           <div style="font-size:11px;color:var(--ink-secondary);line-height:1.5;">
-            ℹ️ <b>توضيح للعميل:</b> تُسدد هذه الرسوم فقط كأجر فحص وتشخيص في حال قرر العميل استلام جهازه دون تنفيذ الإصلاح، و<b>تسقط تماماً ولا تُدفع</b> في حال الموافقة على الصيانة.
+            <b>توضيح للعميل:</b> تُسدد هذه الرسوم فقط كأجر فحص وتشخيص في حال قرر العميل استلام جهازه دون تنفيذ الإصلاح، و<b>تسقط تماماً ولا تُدفع</b> في حال الموافقة على الصيانة.
           </div>
         </div>
 
@@ -1762,7 +1787,7 @@ function openCostEstimateModal(rawR){
         <div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
             <label style="font-size:12px;font-weight:700;color:var(--ink);margin:0;display:flex;align-items:center;gap:5px;">
-              <span>💬</span> معاينة حية لشكل رسالة واتساب (Live Preview):
+              <span>${getSvgIcon("message", 14)}</span> معاينة حية لشكل رسالة واتساب:
             </label>
             <span style="font-size:11px;color:var(--ink-secondary);">تتحدث تلقائياً مع كل تغيير</span>
           </div>
@@ -1772,24 +1797,24 @@ function openCostEstimateModal(rawR){
         <!-- Save & Status Update Options -->
         <div style="background:var(--paper2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;">
           <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;margin:0;color:var(--ink);">
-            <input type="checkbox" id="estSaveToReceipt" checked style="width:auto;"> 💾 حفظ التكلفة وملاحظات الفحص ورسوم الرفض في الإيصال وسحابياً
+            <input type="checkbox" id="estSaveToReceipt" checked style="width:auto;"> حفظ التكلفة وملاحظات الفحص ورسوم الرفض في الإيصال وسحابياً
           </label>
           <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;margin:0;color:var(--ink);">
-            <input type="checkbox" id="estSetUnderCheck" ${r.status !== 'قيد الفحص' && r.status !== 'الصيانة' ? 'checked' : ''} style="width:auto;"> 📌 تعيين حالة الإيصال إلى "قيد الفحص" (بانتظار موافقة العميل)
+            <input type="checkbox" id="estSetUnderCheck" ${r.status !== 'قيد الفحص' && r.status !== 'الصيانة' ? 'checked' : ''} style="width:auto;"> تعيين حالة الإيصال إلى "قيد الفحص" (بانتظار موافقة العميل)
           </label>
         </div>
 
         <!-- Customer Decision Quick Actions -->
         <div style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px;">
           <div style="font-size:12px;font-weight:700;color:var(--ink);display:flex;align-items:center;gap:6px;">
-            <span>⚡</span> تسجيل قرار العميل المباشر:
+            <span>تسجيل قرار العميل:</span>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
             <button type="button" class="btn btn-sm" id="btnApproveQuote" style="background:#16a34a;color:#fff;border:none;font-weight:700;padding:8px;border-radius:6px;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;">
-              <span>✅</span> موافقة العميل (بدء الصيانة)
+              <span>${getSvgIcon("check", 13)}</span> موافقة العميل (بدء الصيانة)
             </button>
             <button type="button" class="btn btn-sm" id="btnRejectQuote" style="background:#dc2626;color:#fff;border:none;font-weight:700;padding:8px;border-radius:6px;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;">
-              <span>❌</span> رفض العميل (رسوم فحص فقط)
+              <span>${getSvgIcon("x", 13)}</span> رفض العميل (رسوم فحص فقط)
             </button>
           </div>
           <div style="font-size:11px;color:var(--ink-secondary);line-height:1.4;">
@@ -1804,7 +1829,7 @@ function openCostEstimateModal(rawR){
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;border-top:1px solid var(--line);padding-top:14px;flex-wrap:wrap;gap:10px;">
         <button class="btn btn-ghost btn-sm" id="cancelCostEstModal">إلغاء</button>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button class="btn btn-ghost btn-sm" id="copyCostEstMsgBtn" title="نسخ نص الرسالة للحافظة">📋 نسخ الرسالة</button>
+          <button class="btn btn-ghost btn-sm" id="copyCostEstMsgBtn" title="نسخ نص الرسالة للحافظة">${getSvgIcon("copy", 14)} نسخ الرسالة</button>
           <button class="btn btn-whatsapp btn-sm" id="sendCostEstWaBtn" style="font-weight:700;">${WA_ICON} إرسال عبر واتساب</button>
         </div>
       </div>
@@ -1868,12 +1893,12 @@ function openCostEstimateModal(rawR){
       const origHtml = smartDraftBtn.innerHTML;
       try {
         smartDraftBtn.disabled = true;
-        smartDraftBtn.innerHTML = '<span>⏳</span> جاري الصياغة الذكية...';
+        smartDraftBtn.innerHTML = '<span>جاري الصياغة الذكية...</span>';
         const drafted = await generateSmartCostEstimateDraft(r, faultsReportInput.value);
         if(drafted){
           faultsReportInput.value = drafted;
           updatePreview();
-          showToast('تمت صياغة تقرير الفحص بنجاح ✨', 'success');
+          showToast('تمت صياغة تقرير الفحص بنجاح', 'success');
         }
       } catch(err){
         if(err && err.code === 'NO_API_KEY'){
@@ -1954,7 +1979,7 @@ function openCostEstimateModal(rawR){
         document.execCommand('copy');
         ta.remove();
       }
-      showToast('تم نسخ نص المقايسة بنجاح 📋', 'success');
+      showToast('تم نسخ نص المقايسة بنجاح', 'success');
       await applyUpdatesToReceiptIfNeeded();
     } catch(e){
       showToast('تعذر النسخ التلقائي', 'error');
@@ -2003,7 +2028,7 @@ function openCostEstimateModal(rawR){
       }
 
       overlay.remove();
-      showToast(`تم تسجيل موافقة العميل وتحويل الجهاز إلى الصيانة بنجاح ✅`, 'success');
+      showToast(`تم تسجيل موافقة العميل وتحويل الجهاز إلى الصيانة بنجاح`, 'success');
       if(typeof renderMain === 'function') renderMain();
     };
   }
@@ -2042,7 +2067,7 @@ function openCostEstimateModal(rawR){
       }
 
       overlay.remove();
-      showToast(`تم تسجيل رفض العميل واعتماد رسوم الفحص والتشخيص (${vals.inspectionFee} ج.م) ❌`, 'info');
+      showToast(`تم تسجيل رفض العميل واعتماد رسوم الفحص والتشخيص (${vals.inspectionFee} ج.م)`, 'info');
       if(typeof renderMain === 'function') renderMain();
     };
   }
@@ -2293,19 +2318,19 @@ async function generateAiDiagnosis(rawR, additionalNotes = ''){
 ${additionalNotes ? `- ملاحظات وقياسات إضافية من الفني: ${additionalNotes}` : ''}
 
 المطلوب تقديم تحليل فني غني ومنظم يشمل الأقسام التالية بوضوح:
-### 1. 🎯 الأسباب المحتملة للعطل (Root Causes)
+### 1. الأسباب المحتملة للعطل (Root Causes)
 مرتبة من الأكثر شيوعاً في هذا الموديل إلى الأقل شيوعاً.
 
-### 2. ⚡ خطوات الفحص والقياس العملي (Bench Diagnostic Steps)
+### 2. خطوات الفحص والقياس العملي (Bench Diagnostic Steps)
 خطوات محددة للقياس بالآفوميتر وملاحظة سحب الأمبير بالباور سبلاي مع الفولتيات المتوقعة (مثل: 19V, 5V, 3.3V, 1.05V, VCORE...).
 
-### 3. 🔍 القطع والمكونات المشتبه بتلفها (Suspect Components)
+### 3. القطع والمكونات المشتبه بتلفها (Suspect Components)
 الدوائر المتهمة (آي سي شحن، آي سي باور، موسفتات الدخل، رامات، مكثفات تانتاليوم أو سيراميك، شورت صريح، أو عطل شحنة بايوْس BIOS).
 
-### 4. 💡 بدائل وحلول مقترحة ونصائح وقائية
+### 4. بدائل وحلول مقترحة ونصائح وقائية
 أرقام بدائل مشهورة، نصائح للحرارة واللحام، واختبار ما بعد الإصلاح.
 
-### 5. 📝 تقرير مقترح للعميل
+### 5. تقرير مقترح للعميل
 صياغة مبسطة ومقنعة تشرح للعميل سبب العطل وضرورة الصيانة ليتم وضعها في مقايسة التكلفة.`;
 
   return await callGeminiAI({ prompt, maxTokens: 2500, temperature: 0.6 });
@@ -2343,9 +2368,7 @@ function openAiDiagnosisModal(rawR){
       <!-- Header -->
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:14px;">
         <div style="display:flex;align-items:center;gap:10px;">
-          <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 4px 10px rgba(124,58,237,0.35);">
-            ⚡
-          </div>
+          <div style="width:36px;height:36px;border-radius:8px;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;">${getSvgIcon("tool", 18)}</div>
           <div>
             <h3 style="margin:0;font-size:16px;color:var(--ink);display:flex;align-items:center;gap:8px;">
               المساعد الذكي لتشخيص الأعطال
@@ -2358,7 +2381,7 @@ function openAiDiagnosisModal(rawR){
             </div>
           </div>
         </div>
-        <button class="btn btn-ghost btn-sm" id="closeAiDiagModal" style="border-radius:50%;width:32px;height:32px;padding:0;display:flex;align-items:center;justify-content:center;">✕</button>
+        <button class="btn btn-ghost btn-sm" id="closeAiDiagModal" style="border-radius:50%;width:32px;height:32px;padding:0;display:flex;align-items:center;justify-content:center;">&times;</button>
       </div>
 
       <!-- Device Summary Bar -->
@@ -2366,7 +2389,7 @@ function openAiDiagnosisModal(rawR){
         <div><b>الإيصال:</b> <span class="mono font-bold" style="color:var(--primary);direction:ltr;unicode-bidi:isolate;">#${escapeHtml(rNum)}</span> • <b>العميل:</b> ${escapeHtml(cName)}</div>
         <div><b>الجهاز:</b> <span style="font-weight:700;color:var(--ink);">${escapeHtml(dCat)} - ${escapeHtml(dBrand)} ${escapeHtml(dModel)}</span></div>
         <div style="width:100%;background:var(--paper);padding:6px 10px;border-radius:6px;border:1px dashed var(--line);font-size:12px;margin-top:2px;">
-          <b style="color:var(--amber-text);">⚠️ العطل المسجل:</b> ${escapeHtml(faults)}
+          <b style="color:var(--amber-text);">العطل المسجل:</b> ${escapeHtml(faults)}
         </div>
       </div>
 
@@ -2374,14 +2397,14 @@ function openAiDiagnosisModal(rawR){
       <div id="aiDiagBody" style="flex:1;overflow-y:auto;padding-left:6px;padding-right:6px;margin-bottom:14px;min-height:220px;">
         ${!cfg.apiKey ? `
           <div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.3);border-radius:12px;padding:24px;text-align:center;margin:20px 0;">
-            <div style="font-size:42px;margin-bottom:10px;">🔑</div>
+            <div style="display:flex;justify-content:center;margin-bottom:10px;">${getSvgIcon("key", 36)}</div>
             <h4 style="margin:0 0 8px 0;font-size:16px;color:var(--ink);">مفتاح Google Gemini API غير مضبوط</h4>
             <p style="font-size:13px;color:var(--ink-secondary);max-width:460px;margin:0 auto 16px auto;line-height:1.6;">
               للاستفادة من ميزات الذكاء الاصطناعي في تشخيص الأعطال وصياغة تقارير المقايسة، يرجى إدخال مفتاح API الخاص بك. يمكنك استخراجه مجاناً في دقيقة واحدة من Google AI Studio.
             </p>
             <div style="display:flex;justify-content:center;gap:10px;">
               <button class="btn btn-primary font-bold" id="goToAiSettingsBtn">
-                ⚙️ الانتقال إلى إعدادات الذكاء الاصطناعي
+                ${getSvgIcon("settings", 14)} الانتقال إلى إعدادات الذكاء الاصطناعي
               </button>
             </div>
           </div>
@@ -2398,29 +2421,29 @@ function openAiDiagnosisModal(rawR){
       <!-- Quick Action Buttons -->
       <div id="aiActionButtons" style="display:none;gap:8px;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--line);margin-bottom:10px;">
         <button type="button" class="btn btn-xs" id="insertToNotesBtn" style="background:#059669;color:#fff;font-weight:700;border:none;border-radius:6px;display:inline-flex;align-items:center;gap:4px;">
-          📋 إدراج في ملاحظات الإيصال
+          ${getSvgIcon("fileText", 13)} إدراج في ملاحظات الإيصال
         </button>
         <button type="button" class="btn btn-xs" id="openEstFromAiBtn" style="background:#0284c7;color:#fff;font-weight:700;border:none;border-radius:6px;display:inline-flex;align-items:center;gap:4px;">
-          💰 فتح مقايسة التكلفة (واتساب)
+          ${getSvgIcon("wallet", 13)} فتح مقايسة التكلفة
         </button>
         <button type="button" class="btn btn-xs btn-ghost" id="copyAiResultBtn" style="border-radius:6px;display:inline-flex;align-items:center;gap:4px;">
-          📑 نسخ التحليل
+          ${getSvgIcon("copy", 13)} نسخ التحليل
         </button>
         <button type="button" class="btn btn-xs btn-ghost" id="reDiagnoseBtn" style="border-radius:6px;margin-right:auto;display:inline-flex;align-items:center;gap:4px;">
-          🔄 إعادة التشخيص
+          ${getSvgIcon("refresh", 13)} إعادة التشخيص
         </button>
       </div>
 
       <!-- Technician Follow-Up Chat Box -->
       <div id="aiChatBoxWrap" style="display:none;background:var(--paper2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;">
         <div style="font-size:11.5px;font-weight:700;color:var(--ink-secondary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-          <span>💬</span> استشارة ومتابعة فنية للفني (Technician Live Bench Q&A):
+          <span>${getSvgIcon("message", 14)}</span> استشارة ومتابعة فنية للفني (Technician Live Bench Q&A):
         </div>
         <div id="aiChatThread" style="max-height:140px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:8px;font-size:12px;"></div>
         <div style="display:flex;gap:8px;">
           <input type="text" id="aiFollowUpInput" placeholder="اكتب استفساراً للفحص (مثلاً: قست خط 3.3V ولقيت شورت، أو ما هو بديل آي سي الشحن؟)..." style="flex:1;font-size:12.5px;padding:7px 10px;border-radius:8px;">
           <button type="button" class="btn btn-primary btn-sm" id="sendAiFollowUpBtn" style="background:#7c3aed;border-color:#7c3aed;padding:0 14px;font-weight:700;">
-            إرسال ⚡
+            إرسال
           </button>
         </div>
       </div>
@@ -2483,10 +2506,10 @@ function openAiDiagnosisModal(rawR){
       if(aiLoadingBox){
         aiLoadingBox.innerHTML = `
           <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:18px;text-align:center;">
-            <div style="font-size:32px;margin-bottom:8px;">⚠️</div>
+            <div style="display:flex;justify-content:center;margin-bottom:8px;">${getSvgIcon("alert", 32)}</div>
             <div style="font-weight:700;color:var(--red);margin-bottom:6px;">تعذر إتمام التحليل الذكي</div>
             <div style="font-size:12.5px;color:var(--ink-secondary);line-height:1.5;">${escapeHtml(err.message || 'حدث خطأ غير متوقع')}</div>
-            <button class="btn btn-ghost btn-sm" id="retryAiDiagBtn" style="margin-top:12px;color:var(--primary);">🔄 إعادة المحاولة</button>
+            <button class="btn btn-ghost btn-sm" id="retryAiDiagBtn" style="margin-top:12px;color:var(--primary);">${getSvgIcon("refresh", 13)} إعادة المحاولة</button>
           </div>
         `;
         const retryBtn = overlay.querySelector('#retryAiDiagBtn');
@@ -2507,7 +2530,7 @@ function openAiDiagnosisModal(rawR){
       try {
         await saveReceiptRemote(r);
       } catch(e){}
-      showToast('تم إدراج ملخص التشخيص في ملاحظات الإيصال بنجاح ✅', 'success');
+      showToast('تم إدراج ملخص التشخيص في ملاحظات الإيصال بنجاح', 'success');
     };
   }
 
@@ -2524,7 +2547,7 @@ function openAiDiagnosisModal(rawR){
     copyAiResultBtn.onclick = () => {
       if(!lastDiagnosisText) return;
       navigator.clipboard.writeText(lastDiagnosisText).then(() => {
-        showToast('تم نسخ التحليل بالكامل إلى الحافظة 📋', 'success');
+        showToast('تم نسخ التحليل بالكامل إلى الحافظة', 'success');
       }).catch(() => {
         showToast('تعذر النسخ تلقائياً', 'error');
       });
@@ -2551,7 +2574,7 @@ function openAiDiagnosisModal(rawR){
 
     const aiBubble = document.createElement('div');
     aiBubble.style.cssText = 'background:rgba(124,58,237,0.06);border:1px solid rgba(124,58,237,0.25);border-radius:8px;padding:6px 10px;margin-bottom:4px;border-left:3px solid #7c3aed;max-width:92%;';
-    aiBubble.innerHTML = `<b style="color:#7c3aed;font-size:11px;">المساعد الذكي:</b> <span class="mono">⏳ جاري التفكير والرد...</span>`;
+    aiBubble.innerHTML = `<b style="color:#7c3aed;font-size:11px;">المساعد الذكي:</b> <span class="mono">جاري المعالجة...</span>`;
     aiChatThread.appendChild(aiBubble);
     aiChatThread.scrollTop = aiChatThread.scrollHeight;
 
@@ -2685,13 +2708,13 @@ function renderDeviceHistoryCard(rawR){
     <div class="card" style="background:var(--paper3);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px;margin-top:10px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid var(--line);padding-bottom:6px;">
         <div style="display:flex;align-items:center;gap:6px;">
-          <span style="font-size:16px;">📋</span>
+          <span style="display:inline-flex;align-items:center;">' + getSvgIcon('fileText', 16) + '</span>
           <div>
             <h4 style="margin:0;font-size:13.5px;font-weight:900;color:var(--ink);">سجل الصيانة التراكمي للجهاز</h4>
             <div style="font-size:11px;color:var(--ink-secondary);">إجمالي مرات دخول هذا الجهاز للصيانة: <b class="mono" style="color:var(--primary);">${history.length}</b> ${history.length>1?'(زيارات سابقة وحالية)':'(الدخول الأول)'}</div>
           </div>
         </div>
-        <button type="button" class="btn btn-amber btn-xs" id="historyReIntakeBtn" title="إعادة إدخال الجهاز للصيانة بدورة جديدة">🔄 إعادة إدخال الجهاز</button>
+        <button type="button" class="btn btn-amber btn-xs" id="historyReIntakeBtn" title="إعادة إدخال الجهاز للصيانة بدورة جديدة">${getSvgIcon("refresh", 13)} إعادة إدخال الجهاز</button>
       </div>
       <div style="display:flex;flex-direction:column;gap:8px;max-height:220px;overflow-y:auto;padding-right:2px;">
   `;
@@ -2714,7 +2737,7 @@ function renderDeviceHistoryCard(rawR){
             ${isCurrent ? `<span class="badge badge-green" style="font-size:10px;">الإيصال الحالي</span>` : ''}
           </div>
           <div style="display:flex;align-items:center;gap:6px;">
-            <span class="mono" style="color:var(--ink-secondary);font-size:11px;">📅 ${cleanDate(h.date || h.createdAt)}</span>
+            <span class="mono" style="color:var(--ink-secondary);font-size:11px;">${getSvgIcon("calendar", 12)} ${cleanDate(h.date || h.createdAt)}</span>
             <span class="badge ${h.status==='تم التسليم'?'badge-green':(h.status==='مكتمل'?'badge-blue':'badge-amber')}">${escapeHtml(h.status)}</span>
             ${!isCurrent ? `<button type="button" class="btn btn-ghost btn-xs view-hist-receipt-btn" data-histid="${escapeHtml(String(h.id))}" data-histnum="${escapeHtml(String(h.receiptNumber))}" style="padding:1px 6px;font-size:10.5px;">عرض ↗</button>` : ''}
           </div>
@@ -2761,9 +2784,9 @@ function openReIntakeDeviceModal(previousReceipt){
     <div class="modal-content" style="max-width:640px;">
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
         <h3 style="margin:0;font-size:16.5px;font-weight:900;color:var(--ink);">
-          🔄 إعادة إدخال الجهاز للصيانة <span class="mono" style="color:var(--amber-text);font-size:14px;">(دورة صيانة ${cycleCount})</span>
+          ${getSvgIcon("refresh", 16)} إعادة إدخال الجهاز للصيانة <span class="mono" style="color:var(--amber-text);font-size:14px;">(دورة صيانة ${cycleCount})</span>
         </h3>
-        <button class="btn btn-ghost btn-xs" id="closeReIntakeModalBtn">✕ إغلاق</button>
+        <button class="btn btn-ghost btn-xs" id="closeReIntakeModalBtn">إغلاق</button>
       </div>
 
       <!-- Previous Receipt Summary -->
@@ -2783,7 +2806,7 @@ function openReIntakeDeviceModal(previousReceipt){
           <label style="border:2px solid var(--amber);border-radius:var(--radius-sm);padding:8px 10px;cursor:pointer;background:rgba(245,158,11,0.06);display:flex;flex-direction:column;gap:3px;" id="lblReasonWarranty">
             <div style="display:flex;align-items:center;gap:6px;">
               <input type="radio" name="reIntakeReasonRadio" value="ضمان / صيانة راجعة" checked>
-              <b style="color:var(--amber-text);font-size:12px;">🛡️ ضمان / صيانة راجعة</b>
+              <b style="color:var(--amber-text);font-size:12px;">ضمان / صيانة راجعة</b>
             </div>
             <span style="font-size:11px;color:var(--ink-secondary);">نفس العطل السابق تحت الضمان (0 ج.م)</span>
           </label>
@@ -2791,7 +2814,7 @@ function openReIntakeDeviceModal(previousReceipt){
           <label style="border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 10px;cursor:pointer;background:var(--paper2);display:flex;flex-direction:column;gap:3px;" id="lblReasonNew">
             <div style="display:flex;align-items:center;gap:6px;">
               <input type="radio" name="reIntakeReasonRadio" value="عطل جديد لنفس الجهاز">
-              <b style="color:var(--primary);font-size:12px;">⚡ عطل جديد لنفس الجهاز</b>
+              <b style="color:var(--primary);font-size:12px;">عطل جديد لنفس الجهاز</b>
             </div>
             <span style="font-size:11px;color:var(--ink-secondary);">عطل مختلف بتكلفة كشف/صيانة جديدة</span>
           </label>
@@ -2799,7 +2822,7 @@ function openReIntakeDeviceModal(previousReceipt){
           <label style="border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 10px;cursor:pointer;background:var(--paper2);display:flex;flex-direction:column;gap:3px;" id="lblReasonParts">
             <div style="display:flex;align-items:center;gap:6px;">
               <input type="radio" name="reIntakeReasonRadio" value="قطع غيار / صيانة تكميلية">
-              <b style="color:var(--green-text);font-size:12px;">🔩 قطع غيار / تكميلية</b>
+              <b style="color:var(--green-text);font-size:12px;">قطع غيار / تكميلية</b>
             </div>
             <span style="font-size:11px;color:var(--ink-secondary);">إضافة قطعة غيار أو صيانة إضافية</span>
           </label>
@@ -2841,7 +2864,7 @@ function openReIntakeDeviceModal(previousReceipt){
         <div class="field">
           <label>طريقة دفع الدفعة المقدمة</label>
           <select id="reIntakePayMethod" style="font-weight:700;">
-            ${getActivePaymentMethods().map(pm => `<option value="${escapeHtml(pm.name)}">${pm.icon||'💵'} ${escapeHtml(pm.name)}</option>`).join('')}
+            ${getActivePaymentMethods().map(pm => `<option value="${escapeHtml(pm.name)}">${escapeHtml(pm.name)}</option>`).join('')}
           </select>
         </div>
       </div>
@@ -2849,7 +2872,7 @@ function openReIntakeDeviceModal(previousReceipt){
       <div class="actions-row" style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px;">
         <button class="btn btn-ghost btn-sm" id="cancelReIntakeBtn">إلغاء</button>
         <button class="btn btn-amber btn-sm" id="confirmReIntakeBtn" style="font-weight:800;">
-          🚀 تأكيد إدخال الجهاز وإنشاء إيصال جديد
+          تأكيد إدخال الجهاز وإنشاء إيصال جديد
         </button>
       </div>
     </div>
@@ -2982,7 +3005,7 @@ function openReIntakeDeviceModal(previousReceipt){
       }
 
       overlay.remove();
-      showToast(`تم إدخال الجهاز بنجاح برقم إيصال جديد #${newRecNum} 🔄`, 'success');
+      showToast(`تم إدخال الجهاز بنجاح برقم إيصال جديد #${newRecNum}`, 'success');
       renderMain();
 
       setTimeout(()=>{
@@ -2993,7 +3016,7 @@ function openReIntakeDeviceModal(previousReceipt){
       console.error(err);
       showToast('حدث خطأ أثناء إدخال الجهاز: ' + err.message, 'error');
       btn.disabled = false;
-      btn.textContent = '🚀 تأكيد إدخال الجهاز وإنشاء إيصال جديد';
+      btn.textContent = 'تأكيد إدخال الجهاز وإنشاء إيصال جديد';
     }
   };
 }
@@ -3018,13 +3041,13 @@ function openInventoryPartPickerModal(onSelect){
     <div class="modal-card" style="max-width: 600px; width: 95%; max-height: 85vh; display:flex; flex-direction:column; background:var(--bg-card, #fff); border-radius:14px; overflow:hidden; border:1px solid var(--border-color, #cbd5e1); box-shadow:0 20px 40px rgba(0,0,0,0.25);">
       <div style="padding:12px 16px; background:linear-gradient(135deg, #1e293b, #0f172a); color:#fff; display:flex; justify-content:space-between; align-items:center;">
         <div style="display:flex; align-items:center; gap:8px;">
-          <span style="font-size:18px;">📦</span>
+          <span style="display:inline-flex;align-items:center;">' + getSvgIcon('package', 18) + '</span>
           <div>
             <h3 style="margin:0; font-size:14px; font-weight:800; color:#fff;">اختيار قطعة غيار من رصيد المخزن</h3>
             <div style="font-size:11px; color:#94a3b8;">حدد الصنف لإدراجه في إيصال الصيانة وخصمه آلياً</div>
           </div>
         </div>
-        <button type="button" id="closePartPickerBtn" style="background:rgba(255,255,255,0.1); border:none; color:#cbd5e1; width:28px; height:28px; border-radius:50%; cursor:pointer; font-size:13px;">✕</button>
+        <button type="button" id="closePartPickerBtn" style="background:rgba(255,255,255,0.1); border:none; color:#cbd5e1; width:28px; height:28px; border-radius:50%; cursor:pointer; font-size:13px;">&times;</button>
       </div>
 
       <div style="padding:12px 16px; display:flex; flex-direction:column; gap:10px; flex:1; overflow:hidden;">
@@ -3035,7 +3058,7 @@ function openInventoryPartPickerModal(onSelect){
         <div style="display:flex; gap:5px; flex-wrap:wrap;" id="partPickerCatChips">
           ${categories.map(c => `
             <button type="button" class="btn btn-xs part-cat-btn ${c==='all'?'btn-primary':'btn-ghost'}" data-cat="${c}" style="font-size:11px; padding:3px 8px; border-radius:6px;">
-              ${c==='all' ? '📦 الكل' : (c==='صيانة' ? '🛠️ قطع صيانة' : c)}
+              ${c==='all' ? 'الكل' : (c==='صيانة' ? 'قطع صيانة' : c)}
             </button>
           `).join('')}
         </div>
@@ -3078,7 +3101,7 @@ function openInventoryPartPickerModal(onSelect){
     if(!items.length){
       container.innerHTML = `
         <div style="text-align:center; padding:30px 10px; color:var(--ink-secondary); font-size:12px;">
-          🔍 لا توجد أصناف مطابقة في المخزن.
+          لا توجد أصناف مطابقة في المخزن.
         </div>`;
       return;
     }
@@ -3096,7 +3119,7 @@ function openInventoryPartPickerModal(onSelect){
               <span class="mono">باركود: ${escapeHtml(item.Barcode || '-')}</span>
               <span>•</span>
               <span class="badge" style="background:${isOut ? '#fee2e2' : '#dcfce7'}; color:${isOut ? '#991b1b' : '#166534'}; font-size:10px; font-weight:800; padding:1px 6px;">
-                ${isOut ? '⚠️ الرصيد 0' : `الرصيد المتاح: ${qty}`}
+                ${isOut ? 'الرصيد 0' : `الرصيد المتاح: ${qty}`}
               </span>
             </div>
           </div>
@@ -3168,24 +3191,24 @@ async function openReceiptDetail(rawR){
     overlay.innerHTML = `
     <div class="modal-content" style="max-width:700px;">
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
-        <h3 style="margin:0;font-size:17px;">⚙️ إيصال صيانة: <span class="mono" style="color:var(--primary);">${escapeHtml(r.receiptNumber)}</span></h3>
+        <h3 style="margin:0;font-size:17px;display:flex;align-items:center;gap:6px;">${getSvgIcon("tool", 18)} إيصال صيانة: <span class="mono" style="color:var(--primary);">${escapeHtml(r.receiptNumber)}</span></h3>
         <div style="display:flex;align-items:center;gap:6px;">
           <button type="button" class="btn btn-xs" id="detailAiDiagBtn" style="background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;border:none;border-radius:6px;font-weight:700;display:inline-flex;align-items:center;gap:4px;box-shadow:0 2px 5px rgba(124,58,237,0.25);cursor:pointer;" title="المساعد الذكي لتشخيص العطل واقتراح القياسات">
-            <span>⚡</span> تشخيص ذكي (AI)
+            <span>' + getSvgIcon('chart', 14) + '</span> تشخيص الأعطال
           </button>
-          <button class="btn btn-ghost btn-xs" id="closeDetailBtn">✕ إغلاق</button>
+          <button class="btn btn-ghost btn-xs" id="closeDetailBtn">إغلاق</button>
         </div>
       </div>
 
       <div style="background:var(--paper2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:7px 12px;margin-bottom:12px;font-size:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
-        <div><b>📅 تاريخ ووقت الاستلام:</b> <span class="mono">${cleanDate(r.date)}</span> <b class="mono" style="color:var(--primary);margin-right:4px;">⏰ ${formatReceiptTime(r) || r.time || 'غير محدد'}</b></div>
+        <div><b>تاريخ ووقت الاستلام:</b> <span class="mono">${cleanDate(r.date)}</span> <b class="mono" style="color:var(--primary);margin-right:4px;">${formatReceiptTime(r) || r.time || 'غير محدد'}</b></div>
         ${r.createdBy ? `<div style="color:var(--ink-secondary);font-size:11.5px;">الموظف المستلم: <b>${escapeHtml(r.createdBy)}</b></div>` : ''}
       </div>
 
       ${r.previousReceiptNumber ? `
         <div style="background:rgba(245,158,11,0.1);border:1px solid var(--amber);border-radius:var(--radius-sm);padding:8px 12px;margin-bottom:12px;font-size:12px;display:flex;justify-content:space-between;align-items:center;">
           <div>
-            <span style="font-size:15px;margin-left:4px;">🔄</span>
+            <span style="display:inline-flex;margin-left:4px;">${getSvgIcon("refresh", 14)}</span>
             <b>دورة صيانة ${r.serviceCycle || 2}:</b> مرتبط بالإيصال السابق <b class="mono">#${escapeHtml(r.previousReceiptNumber)}</b> <span style="color:var(--ink-secondary);font-size:11.5px;">${r.reIntakeReason ? '— ' + escapeHtml(r.reIntakeReason) : ''}</span>
           </div>
           <button type="button" class="btn btn-amber btn-xs view-hist-receipt-btn" data-histnum="${escapeHtml(r.previousReceiptNumber)}">عرض الإيصال السابق ↗</button>
@@ -3216,7 +3239,7 @@ async function openReceiptDetail(rawR){
       ${(Array.isArray(r.devices) && r.devices.length > 1) ? `
         <div style="background:var(--paper2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 10px;margin-bottom:12px;">
           <div style="font-size:11.5px;font-weight:800;color:var(--ink-secondary);margin-bottom:6px;">
-            📱 أجهزة هذا الإيصال (${r.devices.length} أجهزة) — اضغط للتبديل وتعديل بيانات كل جهاز وأعطاله:
+            أجهزة هذا الإيصال (${r.devices.length} أجهزة) — اضغط للتبديل وتعديل بيانات كل جهاز وأعطاله:
           </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;" id="detailDevTabsBar">
             ${r.devices.map((dv, idx) => {
@@ -3225,7 +3248,7 @@ async function openReceiptDetail(rawR){
               const t = `${dv.category || 'جهاز'} ${b} ${dv.model || ''}`.trim() || `جهاز #${idx+1}`;
               return `
                 <button type="button" class="btn btn-xs ${isAct ? 'btn-primary' : 'btn-ghost'} detail-dev-tab-btn" data-didx="${idx}" style="font-size:12px;">
-                  📱 ${escapeHtml(t)}
+                  ${escapeHtml(t)}
                 </button>
               `;
             }).join('')}
@@ -3259,7 +3282,7 @@ async function openReceiptDetail(rawR){
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
         <div>
           <h4 style="margin:0;font-size:13.5px;display:flex;align-items:center;gap:6px;">
-            <span>📷</span>
+            <span>${getSvgIcon("camera", 16)}</span>
             <span>توثيق صور حالة الجهاز (الاستلام والتسليم)</span>
             <span class="badge" id="detailPhotosCountBadge" style="background:var(--primary-bg);color:var(--primary);font-size:11px;font-weight:800;">
               ${(r.photos || []).length} صور
@@ -3274,21 +3297,21 @@ async function openReceiptDetail(rawR){
           <input type="file" id="detailGalleryInput" accept="image/*" multiple style="display:none;">
           
           <select id="detailPhotoStageSelect" style="padding:4px 8px;font-size:11px;font-weight:700;">
-            <option value="intake">عند الاستلام 📥</option>
-            <option value="delivery">عند التسليم بعد الإصلاح ✅</option>
+            <option value="intake">عند الاستلام</option>
+            <option value="delivery">عند التسليم بعد الإصلاح</option>
           </select>
 
           <select id="detailPhotoAngleSelect" style="padding:4px 8px;font-size:11px;">
-            <option value="📱 الشاشة والواجهة">📱 الشاشة والواجهة</option>
-            <option value="🔄 ظهر وسيريال الجهاز">🔄 ظهر وسيريال الجهاز</option>
-            <option value="⚠️ خدوش وكسور سابقة">⚠️ خدوش وكسور سابقة</option>
-            <option value="🔌 الشاحن والملحقات">🔌 الشاحن والملحقات</option>
-            <option value="✅ تم الإصلاح والشاشة تعمل">✅ تم الإصلاح والشاشة تعمل</option>
-            <option value="📷 عام">📷 عام</option>
+            <option value="الشاشة والواجهة">الشاشة والواجهة</option>
+            <option value="ظهر وسيريال الجهاز">ظهر وسيريال الجهاز</option>
+            <option value="خدوش وكسور سابقة">خدوش وكسور سابقة</option>
+            <option value="الشاحن والملحقات">الشاحن والملحقات</option>
+            <option value="تم الإصلاح والشاشة تعمل">تم الإصلاح والشاشة تعمل</option>
+            <option value="عام">عام</option>
           </select>
 
-          <button type="button" class="btn btn-primary btn-xs" id="detailAddPhotoCameraBtn">📸 تصوير</button>
-          <button type="button" class="btn btn-ghost btn-xs" id="detailAddPhotoGalleryBtn" style="border:1px solid var(--line);background:var(--surface);">📁 رفع صورة</button>
+          <button type="button" class="btn btn-primary btn-xs" id="detailAddPhotoCameraBtn">${getSvgIcon("camera", 14)} تصوير</button>
+          <button type="button" class="btn btn-ghost btn-xs" id="detailAddPhotoGalleryBtn" style="border:1px solid var(--line);background:var(--surface);">${getSvgIcon("folder", 13)} رفع صورة</button>
         </div>
       </div>
 
@@ -3310,7 +3333,7 @@ async function openReceiptDetail(rawR){
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
         <div>
           <h4 style="margin:0;font-size:13.5px;display:flex;align-items:center;gap:6px;">
-            <span>🛠️</span>
+            <span>${getSvgIcon("tool", 16)}</span>
             <span>بنود الصيانة المستحقة في الجهاز</span>
           </h4>
           <div style="font-size:11px;color:var(--ink-secondary);margin-top:2px;">حدد تفاصيل كل خدمة مع تكلفتها، وتجمع تلقائياً في تكلفة صيانة الجهاز</div>
@@ -3327,7 +3350,7 @@ async function openReceiptDetail(rawR){
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
         <div>
           <h4 style="margin:0;font-size:13.5px;display:flex;align-items:center;gap:6px;">
-            <span>⚙️</span>
+            <span>${getSvgIcon("tool", 16)}</span>
             <span>قطع الغيار ومستلزمات الصيانة المستهلكة</span>
             <span class="badge" id="detailPartsCountBadge" style="background:var(--primary-bg);color:var(--primary);font-size:11px;font-weight:800;">
               ${(r.partsList||[]).length} قطع
@@ -3338,7 +3361,7 @@ async function openReceiptDetail(rawR){
           </div>
         </div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-          <button type="button" class="btn btn-primary btn-xs" id="detailAddInventoryPartBtn">📦 إضافة من المخزن</button>
+          <button type="button" class="btn btn-primary btn-xs" id="detailAddInventoryPartBtn">${getSvgIcon("package", 14)} إضافة من المخزن</button>
           <button type="button" class="btn btn-ghost btn-xs" id="detailAddCustomPartBtn" style="border:1px solid var(--line);background:var(--paper2);">+ قطعة خارجية يدوية</button>
         </div>
       </div>
@@ -3352,7 +3375,7 @@ async function openReceiptDetail(rawR){
           <span style="font-size:10.5px;color:var(--ink-secondary);margin-right:8px;">(تكلفة المحل: <span class="mono" id="detailPartsCostTotalDisplay">${Number(r.partsBuyCost||0).toLocaleString()}</span> ج.م)</span>
         </div>
         <div id="detailPartsStockNotice" style="font-size:11px;color:var(--green);font-weight:700;">
-          ✓ يتم خصم الكميات من رصيد المخزن تلقائياً
+          يتم خصم الكميات من رصيد المخزن تلقائياً
         </div>
       </div>
     </div>
@@ -3360,7 +3383,7 @@ async function openReceiptDetail(rawR){
     <!-- حساب آخر على العميل -->
     <div class="card" style="background:var(--paper3);padding:12px;border-radius:var(--radius-sm);margin-top:10px;border:1px solid var(--line);">
       <h4 style="margin:0 0 8px 0;font-size:13.5px;display:flex;align-items:center;gap:6px;">
-        <span>💼</span>
+        <span>${getSvgIcon("wallet", 16)}</span>
         <span>حساب آخر / رصيد إضافي على نفس العميل</span>
       </h4>
       <div class="grid2">
@@ -3395,7 +3418,7 @@ async function openReceiptDetail(rawR){
         <div class="field" style="flex:1.3;min-width:150px;margin-bottom:0;">
           <label>طريقة الدفع</label>
           <select id="newPayMethod" style="font-weight:700;">
-            ${getActivePaymentMethods().map(pm => `<option value="${escapeHtml(pm.name)}">${pm.icon||'💵'} ${escapeHtml(pm.name)}</option>`).join('')}
+            ${getActivePaymentMethods().map(pm => `<option value="${escapeHtml(pm.name)}">${escapeHtml(pm.name)}</option>`).join('')}
           </select>
         </div>
         <div class="field" style="flex:2;min-width:160px;margin-bottom:0;"><label>ملاحظة</label><input id="newPayNote" placeholder="دفعة تحت الحساب..."></div>
@@ -3407,20 +3430,20 @@ async function openReceiptDetail(rawR){
 
     <div class="actions-row" style="flex-wrap:wrap;margin-top:16px;">
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
-        <button class="btn btn-whatsapp btn-xs" id="detailCostEstimateBtn" title="عرض ومقايسة التكلفة للعميل عبر واتساب (موافقة/رفض)">💰 مقايسة التكلفة (واتساب)</button>
+        <button class="btn btn-whatsapp btn-xs" id="detailCostEstimateBtn" title="عرض ومقايسة التكلفة للعميل عبر واتساب (موافقة/رفض)">مقايسة التكلفة (واتساب)</button>
         <button class="btn btn-whatsapp btn-xs" id="detailWaNotifyBtn" title="إرسال إشعار واتساب للعميل">${WA_ICON} إشعار واتساب</button>
-        <button class="btn btn-amber btn-xs" id="reIntakeDeviceDetailBtn" title="إعادة إدخال نفس الجهاز للصيانة بدورة جديدة">🔄 إعادة صيانة الجهاز</button>
-        <button class="btn btn-blue btn-xs" id="convertReceiptToInvoiceBtn" title="إصدار فاتورة ضريبية رسمية للعميل">📄 تحويل لفاتورة رسمية</button>
-        ${!r.paid ? `<button class="btn btn-green btn-xs" id="payBtn">✅ سداد المتبقي</button>` : `<button class="btn btn-blue btn-xs" id="invBtn">🖨️ طباعة إيصال نهائي</button>`}
+        <button class="btn btn-amber btn-xs" id="reIntakeDeviceDetailBtn" title="إعادة إدخال نفس الجهاز للصيانة بدورة جديدة">${getSvgIcon("refresh", 13)} إعادة صيانة الجهاز</button>
+        <button class="btn btn-blue btn-xs" id="convertReceiptToInvoiceBtn" title="إصدار فاتورة ضريبية رسمية للعميل">${getSvgIcon("invoices", 13)} تحويل لفاتورة رسمية</button>
+        ${!r.paid ? `<button class="btn btn-green btn-xs" id="payBtn">${getSvgIcon("check", 13)} سداد المتبقي</button>` : `<button class="btn btn-blue btn-xs" id="invBtn">${getSvgIcon("printer", 13)} طباعة إيصال نهائي</button>`}
         <div style="display:inline-flex;border-radius:6px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,0.05);align-items:stretch;">
-          <button class="btn btn-amber btn-xs" id="detailStickerBtn" title="طباعة ملصق الصيانة فوراً (وضع الكيوسك)">🏷️ ملصق باركود</button>
-          <button class="btn btn-amber btn-xs" id="detailStickerOptsBtn" style="padding:2px 6px;border-right:1px solid rgba(255,255,255,0.35);" title="تعديل خيارات ومعاينة الملصق">⚙️</button>
+          <button class="btn btn-amber btn-xs" id="detailStickerBtn" title="طباعة ملصق الصيانة فوراً (وضع الكيوسك)">${getSvgIcon("tag", 13)} ملصق باركود</button>
+          <button class="btn btn-amber btn-xs" id="detailStickerOptsBtn" style="padding:2px 6px;border-right:1px solid rgba(255,255,255,0.35);" title="تعديل خيارات ومعاينة الملصق">${getSvgIcon("settings", 13)}</button>
         </div>
         <button class="btn btn-ghost btn-xs" id="workOrderBtn">أمر شغل</button>
       </div>
       <div style="display:flex;gap:6px;">
         <button class="btn btn-ghost btn-sm" id="closeModalBtn">إلغاء</button>
-        <button class="btn btn-primary btn-sm" id="saveEditBtn">💾 حفظ التعديلات</button>
+        <button class="btn btn-primary btn-sm" id="saveEditBtn">${getSvgIcon("check", 14)} حفظ التعديلات</button>
       </div>
     </div>
   </div>`;
@@ -3470,7 +3493,7 @@ async function openReceiptDetail(rawR){
           <input type="number" min="0" step="any" class="detail-svc-price" data-idx="${idx}" value="${item.price != null ? item.price : ''}" placeholder="السعر" style="width:100%;padding:6px 9px;font-size:12.5px;font-weight:bold;">
           <span style="font-size:11px;color:var(--ink-secondary);">ج.م</span>
         </div>
-        <button type="button" class="btn btn-ghost btn-xs detail-svc-del-btn" data-idx="${idx}" title="حذف هذا البند" style="color:var(--red);padding:4px 8px;">✕</button>
+        <button type="button" class="btn btn-ghost btn-xs detail-svc-del-btn" data-idx="${idx}" title="حذف هذا البند" style="color:var(--red);padding:4px 8px;">&times;</button>
       </div>
     `).join('');
 
@@ -3565,7 +3588,7 @@ async function openReceiptDetail(rawR){
     if(!detailSpareParts.length){
       list.innerHTML = `
         <div style="text-align:center;padding:12px;background:var(--paper2);border-radius:var(--radius-xs);color:var(--ink-secondary);font-size:12px;">
-          لا توجد قطع غيار مسجلة لهذا الجهاز. اضغط <b>📦 إضافة من المخزن</b> لاختيار قطع من رصيد المحل، أو <b>+ قطعة خارجية يدوية</b>.
+          لا توجد قطع غيار مسجلة لهذا الجهاز. اضغط <b>${getSvgIcon("package", 14)} إضافة من المخزن</b> لاختيار قطع من رصيد المحل، أو <b>+ قطعة خارجية يدوية</b>.
         </div>`;
       if(summaryBox) summaryBox.style.display = 'none';
       recalcDetailFinances();
@@ -3604,7 +3627,7 @@ async function openReceiptDetail(rawR){
             <select class="detail-part-warranty" data-idx="${idx}" style="width:100%;padding:4px 3px;font-size:11px;font-weight:700;">
               <option value="0" ${Number(part.warrantyDays) === 0 ? 'selected' : ''}>بدون ضمان</option>
               <option value="14" ${Number(part.warrantyDays) === 14 ? 'selected' : ''}>14 يوم تجربة</option>
-              <option value="30" ${Number(part.warrantyDays) === 30 || !part.warrantyDays ? 'selected' : ''}>شهر (30 يوم) ⭐</option>
+              <option value="30" ${Number(part.warrantyDays) === 30 || !part.warrantyDays ? 'selected' : ''}>شهر (30 يوم) - الافتراضي</option>
               <option value="90" ${Number(part.warrantyDays) === 90 ? 'selected' : ''}>3 أشهر</option>
               <option value="180" ${Number(part.warrantyDays) === 180 ? 'selected' : ''}>6 أشهر</option>
               <option value="365" ${Number(part.warrantyDays) === 365 ? 'selected' : ''}>سنة كاملة</option>
@@ -3613,7 +3636,7 @@ async function openReceiptDetail(rawR){
           <div style="font-size:11.5px;font-weight:800;color:var(--green);min-width:65px;text-align:left;">
             ${partTotal.toLocaleString()} ج.م
           </div>
-          <button type="button" class="btn btn-ghost btn-xs detail-part-del-btn" data-idx="${idx}" title="حذف هذه القطعة" style="color:var(--red);padding:4px 6px;">✕</button>
+          <button type="button" class="btn btn-ghost btn-xs detail-part-del-btn" data-idx="${idx}" title="حذف هذه القطعة" style="color:var(--red);padding:4px 6px;">&times;</button>
         </div>
       `;
     }).join('');
@@ -3660,7 +3683,7 @@ async function openReceiptDetail(rawR){
         if(removed && removed.isStockDeducted && removed.itemId){
           try {
             adjustInventoryQtyRemote(removed.itemId, Number(removed.qty || 1));
-            showToast(`تمت إعادة ${removed.qty} من (${removed.name}) إلى رصيد المخزن 📦`, 'info');
+            showToast(`تمت إعادة ${removed.qty} من (${removed.name}) إلى رصيد المخزن`, 'info');
           } catch(err){}
         }
         renderDetailSpareParts();
@@ -3688,7 +3711,7 @@ async function openReceiptDetail(rawR){
         const existing = detailSpareParts.find(p => p.itemId === item.ID);
         if(existing){
           existing.qty = Number(existing.qty || 1) + 1;
-          showToast(`تم زيادة كمية (${item.Name}) إلى ${existing.qty} 📦`, 'info');
+          showToast(`تم زيادة كمية (${item.Name}) إلى ${existing.qty} `, 'info');
         } else {
           detailSpareParts.push({
             id: 'part_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
@@ -3701,7 +3724,7 @@ async function openReceiptDetail(rawR){
             warrantyDays: 30,
             isStockDeducted: false
           });
-          showToast(`تمت إضافة (${item.Name}) بنجاح 📦`, 'success');
+          showToast(`تمت إضافة (${item.Name}) بنجاح`, 'success');
         }
         renderDetailSpareParts();
       });
@@ -3792,7 +3815,7 @@ async function openReceiptDetail(rawR){
   async function handleDetailFilesSelected(files){
     if(!files || !files.length) return;
     const stage = overlay.querySelector('#detailPhotoStageSelect')?.value || 'intake';
-    const angle = overlay.querySelector('#detailPhotoAngleSelect')?.value || '📷 عام';
+    const angle = overlay.querySelector('#detailPhotoAngleSelect')?.value || 'عام';
     const badge = overlay.querySelector('#detailPhotosCountBadge');
     if(badge) badge.innerText = 'جارٍ الضغط...';
     try {
@@ -3809,7 +3832,7 @@ async function openReceiptDetail(rawR){
           timestamp: new Date().toISOString()
         });
       }
-      showToast('تمت إضافة الصور الموثقة للجهاز بنجاح 📷', 'success');
+      showToast('تمت إضافة الصور الموثقة للجهاز بنجاح', 'success');
       renderDetailPhotosGallery();
     } catch(err){
       showToast('خطأ أثناء معالجة الصور: ' + err.message, 'error');
@@ -4016,11 +4039,36 @@ async function openReceiptDetail(rawR){
             r.paid = true;
             await refreshPayments();
           }catch(e){}
+        } else {
+          // التسليم بالآجل: تسجيل المتبقي كمديونية على العميل وترحيل قيد للعملاء (أرصدة مدينة)
+          try {
+            const custName = r.customer ? r.customer.name : '';
+            const custPhone = r.customer ? r.customer.phone : '';
+            const cust = (state.customers || []).find(c => (custName && (c.name||'').trim().toLowerCase() === custName.trim().toLowerCase()) || (custPhone && c.phone === custPhone));
+            if(cust){
+              cust.Debt = Number(cust.Debt || cust.debt || 0) + remainingNow;
+              await saveCustomerRemote(cust);
+            }
+            if(typeof autoPostJournalEntry === 'function'){
+              await autoPostJournalEntry({
+                date: new Date().toISOString().slice(0, 10),
+                description: `مستحقات آجل تسليم جهاز إيصال #${r.receiptNumber || r.id} - عميل: ${custName || 'عميل'}`,
+                referenceType: 'DeliveryCredit',
+                referenceId: r.receiptNumber || r.id,
+                entries: [
+                  { accountId: '1103', accountName: 'العملاء (أرصدة مدينة)', debit: remainingNow, credit: 0 },
+                  { accountId: '4101', accountName: 'إيرادات خدمات الصيانة', debit: 0, credit: remainingNow }
+                ]
+              });
+            }
+          } catch(errDebt) {
+            console.warn('Auto debt recording error:', errDebt);
+          }
         }
         try{
           await saveReceiptRemote(r);
           overlay.remove();
-          showToast(shouldPay ? `تم سداد ${remainingNow.toLocaleString()} ج.م وتسليم الجهاز بنجاح 🤝✅` : 'تم تسليم الجهاز بنجاح (المتبقي آجل) 🤝', 'success');
+          showToast(shouldPay ? `تم سداد ${remainingNow.toLocaleString()} ج.م وتسليم الجهاز بنجاح` : 'تم تسليم الجهاز بنجاح (المتبقي آجل)', 'success');
           renderMain();
           if(initialStatus !== 'تم التسليم'){
             setTimeout(()=>{
@@ -4029,7 +4077,7 @@ async function openReceiptDetail(rawR){
           }
         }catch(err){
           showToast('تم الحفظ محلياً: '+err.message, 'info');
-          if(btn){ btn.disabled = false; btn.textContent = '💾 حفظ التعديلات'; }
+          if(btn){ btn.disabled = false; btn.textContent = 'حفظ التعديلات'; }
         }
       });
       return;
@@ -4050,7 +4098,7 @@ async function openReceiptDetail(rawR){
     }catch(err){
       showToast('تم الحفظ محلياً: '+err.message, 'info');
       btn.disabled = false;
-      btn.textContent = '💾 حفظ التعديلات';
+      btn.textContent = 'حفظ التعديلات';
     }
   };
 
@@ -4098,7 +4146,7 @@ async function openReceiptDetail(rawR){
           await saveReceiptRemote(r);
           await refreshPayments();
           overlay.remove();
-          showToast(shouldDeliver ? 'تم سداد كامل المبلغ وتحديث الحالة إلى تم التسليم 🤝✅' : 'تم سداد كامل المبلغ وتحديث الحسابات بنجاح ✅', 'success');
+          showToast(shouldDeliver ? 'تم سداد كامل المبلغ وتحديث الحالة إلى تم التسليم' : 'تم سداد كامل المبلغ وتحديث الحسابات بنجاح', 'success');
           renderMain();
         }catch(e){ 
           showToast('تم الحفظ محلياً: '+e.message, 'info'); 
@@ -4164,12 +4212,12 @@ async function openReceiptDetail(rawR){
         await saveReceiptRemote(r);
         await refreshPayments();
         overlay.remove();
-        showToast(shouldDeliver ? 'تم سداد المتبقي بالكامل وتحديث الحالة إلى "تم التسليم" 🤝✅' : 'تم سداد المتبقي بنجاح وتحديث الحسابات ✅', 'success');
+        showToast(shouldDeliver ? 'تم سداد المتبقي بالكامل وتحديث الحالة إلى "تم التسليم"' : 'تم سداد المتبقي بنجاح وتحديث الحسابات', 'success');
         renderMain();
       }catch(e){
         showToast('تم السداد محلياً: '+e.message, 'info');
         payBtn.disabled = false;
-        payBtn.textContent = '✅ سداد المتبقي';
+        payBtn.textContent = 'سداد المتبقي';
         isPayBtnSubmitting = false;
       }
     });
@@ -4336,8 +4384,8 @@ function openReceiptPrint(rawR, kind){
   function buildHalfCopy(copyRole, barcodeId){
     const isCust = copyRole === 'customer';
     const roleBadge = isCust
-      ? '<span style="background:#0f172a;color:#fff;font-size:8px;font-weight:900;padding:1px 6px;border-radius:3px;">👤 نسخة العميل</span>'
-      : '<span style="background:#047857;color:#fff;font-size:8px;font-weight:900;padding:1px 6px;border-radius:3px;">🏢 نسخة المركز</span>';
+      ? '<span style="background:#0f172a;color:#fff;font-size:8px;font-weight:900;padding:1px 6px;border-radius:3px;">نسخة العميل</span>'
+      : '<span style="background:#047857;color:#fff;font-size:8px;font-weight:900;padding:1px 6px;border-radius:3px;">نسخة المركز</span>';
 
     const otherAmt = Number(r.otherAccountAmount || 0);
     const remaining = Number(r.cost||0)+Number(r.partsCost||0)+otherAmt-Number(r.deposit||0)+Number(r.refunded||0);
@@ -4374,7 +4422,7 @@ function openReceiptPrint(rawR, kind){
           <div>
             <div style="display:flex;align-items:center;gap:3px;">
               <b class="mono" style="font-size:10.5px;font-weight:900;color:#0f172a;">#${r.receiptNumber}</b>
-              <span style="font-size:7px;color:#475569;">${cleanDate(r.date)} ${rTime ? '⏰ '+rTime : ''}</span>
+              <span style="font-size:7px;color:#475569;">${cleanDate(r.date)} ${rTime ? rTime : ''}</span>
             </div>
             <svg id="${barcodeId}" style="margin-top:1px;"></svg>
           </div>
@@ -4409,7 +4457,7 @@ function openReceiptPrint(rawR, kind){
                 const c = escapeHtml(dv.category || 'جهاز');
                 const b = escapeHtml(dv.brand === 'أخرى' ? dv.brandOther : (dv.brand || ''));
                 const m = escapeHtml(dv.model || '');
-                const p = dv.password ? ` [🔑 ${escapeHtml(dv.password)}]` : '';
+                const p = dv.password ? ` [كلمة السر: ${escapeHtml(dv.password)}]` : '';
                 const f = (Array.isArray(dv.faults) ? dv.faults.join('، ') : String(dv.faults || '')) || '';
                 const n = dv.faultNotes ? ` (${escapeHtml(dv.faultNotes)})` : '';
                 const fStr = escapeHtml(f) + n;
@@ -4443,7 +4491,7 @@ function openReceiptPrint(rawR, kind){
               <td style="padding:1px 2px;background:#f1f5f9;font-weight:bold;border:1px solid #cbd5e1;">الملحقات</td>
               <td style="padding:1px 2px;border:1px solid #cbd5e1;">${dAccessories}</td>
               <td style="padding:1px 2px;background:#f1f5f9;font-weight:bold;border:1px solid #cbd5e1;">الباسورد</td>
-              <td class="mono" style="padding:1px 2px;border:1px solid #cbd5e1;font-weight:bold;color:#b45309;">${dPass ? '🔑 '+dPass : 'بدون'}</td>
+              <td class="mono" style="padding:1px 2px;border:1px solid #cbd5e1;font-weight:bold;color:#b45309;">${dPass ? dPass : 'بدون'}</td>
             </tr>
             <tr>
               <td style="padding:1px 2px;background:#f1f5f9;font-weight:bold;border:1px solid #cbd5e1;">العطل</td>
@@ -4461,7 +4509,7 @@ function openReceiptPrint(rawR, kind){
         <!-- Spare Parts Info if any -->
         ${(Array.isArray(r.partsList) && r.partsList.length > 0) ? `
           <div style="font-size:6.5px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:2px;padding:1.5px 3px;margin-bottom:1.5px;color:#5b21b6;">
-            <b>⚙️ قطع الغيار المستبدلة:</b> ${r.partsList.map(p => `${escapeHtml(p.name||'قطعة')} (${p.qty||1}) [${p.warrantyDays ? p.warrantyDays+'يوم' : 'بدون ضمان'}]`).join(' • ')}
+            <b>قطع الغيار المستبدلة:</b> ${r.partsList.map(p => `${escapeHtml(p.name||'قطعة')} (${p.qty||1}) [${p.warrantyDays ? p.warrantyDays+'يوم' : 'بدون ضمان'}]`).join(' • ')}
           </div>
         ` : ''}
 
@@ -4492,7 +4540,7 @@ function openReceiptPrint(rawR, kind){
       <div>
         ${(Array.isArray(r.photos) && r.photos.length > 0) ? `
           <div style="font-size:6.5px;color:#0369a1;background:#f0f9ff;border:1px solid #bae6fd;border-radius:2px;padding:1px 3px;margin-bottom:1.5px;display:flex;align-items:center;gap:3px;">
-            <span>📷</span>
+            <span>${getSvgIcon("camera", 16)}</span>
             <span><b>توثيق مصور:</b> تم حفظ (${r.photos.length}) صور لحالة وفحص الجهاز عند الاستلام في النظام.</span>
           </div>
         ` : ''}
@@ -4522,7 +4570,7 @@ function openReceiptPrint(rawR, kind){
     <!-- Center: Dashed Cutting Divider Line -->
     <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;height:140mm;width:6mm;">
       <div style="width:0;height:100%;border-left:1.5px dashed #94a3b8;"></div>
-      <div style="position:absolute;top:50%;transform:translateY(-50%);background:#fff;padding:2px 0;font-size:10px;color:#64748b;">✂️</div>
+      
     </div>
 
     <!-- Left: Center / Shop Copy (نسخة المركز) -->
@@ -4555,8 +4603,8 @@ function openReceiptPrint(rawR, kind){
 
 function getThermalStickerDimensions(sizeKey, customW, customH){
   const map = {
-    '40x20': { w: 40, h: 20, name: '40×20 مم (عرض 4 سم × ارتفاع 2 سم ⭐ عريض)' },
-    '40x10': { w: 40, h: 10, name: '40×10 مم (عرض 4 سم × ارتفاع 1 سم ⚡ رفيع للبضائع)' },
+    '40x20': { w: 40, h: 20, name: '40×20 مم (عرض 4 سم × ارتفاع 2 سم - عريض)' },
+    '40x10': { w: 40, h: 10, name: '40×10 مم (عرض 4 سم × ارتفاع 1 سم - رفيع)' },
     '40x25': { w: 40, h: 25, name: '40×25 مم (4×2.5 سم)' },
     '40x30': { w: 40, h: 30, name: '40×30 مم (4×3 سم)' },
     '40x15': { w: 40, h: 15, name: '40×15 مم (4×1.5 سم)' },
@@ -4694,7 +4742,7 @@ function generateProductStickerHTML(item, dim, svgId){
       </div>
     </div>`;
   } else if(dim.h <= 24){
-    // 40x20 mm & 40x25 mm layout (⭐ Primary User Roll: 4x2 cm)
+    // 40x20 mm & 40x25 mm layout (Primary User Roll: 4x2 cm)
     return `
     <div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:1.5mm 2mm;box-sizing:border-box;font-family:Arial,Tahoma,sans-serif;font-weight:900;color:#000;background:#fff;overflow:hidden;direction:rtl;">
       ${(showShopName || cat) ? `
@@ -4828,7 +4876,7 @@ function generateReceiptStickerHTML(r, dim, svgId, customOpts){
     </div>`;
   }
 
-  // ── Layout 2: 40x20 mm roll (Standard 4x2 cm roll - ⭐ المقاس الأساسي الأكثر استخداماً) ──
+  // ── Layout 2: 40x20 mm roll (Standard 4x2 cm roll - المقاس الأساسي الأكثر استخداماً) ──
   if(dim.h <= 23){
     if(opts.barcodeMode === 'qr'){
       const qrSvg = QRCodeGenerator.toSvg(trackUrl, 48);
@@ -4869,7 +4917,7 @@ function generateReceiptStickerHTML(r, dim, svgId, customOpts){
           <div style="width:13mm;height:13mm;display:flex;align-items:center;justify-content:center;">
             ${qrSvg}
           </div>
-          <div style="font-size:6.5px;font-weight:900;line-height:1;margin-top:0.3mm;color:#000;white-space:nowrap;">تتبع الصيانة 📱</div>
+          <div style="font-size:6.5px;font-weight:900;line-height:1;margin-top:0.3mm;color:#000;white-space:nowrap;">تتبع الصيانة</div>
         </div>
       </div>`;
     }
@@ -4960,7 +5008,7 @@ function generateReceiptStickerHTML(r, dim, svgId, customOpts){
           <div style="width:16mm;height:16mm;display:flex;align-items:center;justify-content:center;">
             ${qrSvg}
           </div>
-          <div style="font-size:7px;font-weight:900;margin-top:0.3mm;">تتبع الصيانة 📱</div>
+          <div style="font-size:7px;font-weight:900;margin-top:0.3mm;">تتبع الصيانة</div>
         </div>
       </div>
       <!-- Footer -->
@@ -5276,13 +5324,13 @@ function openStickerPrintModal(opts){
       <!-- Header -->
       <div style="padding: 14px 18px; background: linear-gradient(135deg, #1e293b, #0f172a); color: #fff; display: flex; align-items: center; justify-content: space-between;">
         <div style="display:flex; align-items:center; gap: 10px;">
-          <div style="width: 34px; height: 34px; border-radius: 8px; background: rgba(59, 130, 246, 0.2); display:flex; align-items:center; justify-content:center; font-size: 18px; border: 1px solid rgba(59, 130, 246, 0.3);">🏷️</div>
+          <div style="width: 34px; height: 34px; border-radius: 8px; background: rgba(59, 130, 246, 0.2); display:flex; align-items:center; justify-content:center; border: 1px solid rgba(59, 130, 246, 0.3);">${getSvgIcon("tag", 18)}</div>
           <div>
             <h3 style="margin: 0; font-size: 14px; font-weight: 800; color: #fff;">طباعة ملصق الباركود الحراري</h3>
             <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">${titleText}</div>
           </div>
         </div>
-        <button id="spmCloseBtn" style="background: rgba(255,255,255,0.1); border: none; color: #cbd5e1; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;">✕</button>
+        <button id="spmCloseBtn" style="background: rgba(255,255,255,0.1); border: none; color: #cbd5e1; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;">&times;</button>
       </div>
 
       <!-- Body -->
@@ -5290,7 +5338,7 @@ function openStickerPrintModal(opts){
         <!-- Kiosk Mode Quick Switch Banner -->
         <label style="display:flex; align-items:center; justify-content:space-between; background:#f0fdf4; border:1.5px solid #86efac; border-radius:10px; padding:8px 12px; cursor:pointer;">
           <div style="display:flex; align-items:center; gap:8px;">
-            <span style="font-size:18px;">⚡</span>
+            <span style="color:var(--green);">${getSvgIcon("pos", 18)}</span>
             <div>
               <b style="font-size:12px; color:#166534;">وضع الكيوسك (Kiosk Mode):</b>
               <div style="font-size:10.5px; color:#15803d;">طباعة فورية بنقرة واحدة من الجدول دون إظهار نافذة المعاينة</div>
@@ -5302,14 +5350,14 @@ function openStickerPrintModal(opts){
         <!-- Size Selector -->
         <div>
           <label style="display:block; font-size: 11.5px; font-weight: 700; color: var(--text-muted, #64748b); margin-bottom: 6px;">
-            📏 مقاس رول الملصقات الحراري:
+            ${getSvgIcon("tag", 14)} مقاس رول الملصقات الحراري:
           </label>
           <div id="spmSizeChips" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;">
             <button type="button" class="spm-chip-btn" data-size="40x20" style="padding: 6px 2px; font-size: 10px; font-weight: 700; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #f8fafc; cursor: pointer; text-align: center; transition: all 0.15s;">
-              40×20 مم ⭐<br><span style="font-size: 8.5px; opacity: 0.8; font-weight: normal;">(4×2 سم عريض)</span>
+              40×20 مم<br><span style="font-size: 8.5px; opacity: 0.8; font-weight: normal;">(4×2 سم عريض)</span>
             </button>
             <button type="button" class="spm-chip-btn" data-size="40x10" style="padding: 6px 2px; font-size: 10px; font-weight: 700; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #f8fafc; cursor: pointer; text-align: center; transition: all 0.15s;">
-              40×10 مم ⚡<br><span style="font-size: 8.5px; opacity: 0.8; font-weight: normal;">(4×1 سم رفيع)</span>
+              40×10 مم<br><span style="font-size: 8.5px; opacity: 0.8; font-weight: normal;">(4×1 سم رفيع)</span>
             </button>
             <button type="button" class="spm-chip-btn" data-size="40x25" style="padding: 6px 2px; font-size: 10px; font-weight: 700; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #f8fafc; cursor: pointer; text-align: center; transition: all 0.15s;">
               40×25 مم<br><span style="font-size: 8.5px; opacity: 0.8; font-weight: normal;">(4×2.5 سم)</span>
@@ -5318,7 +5366,7 @@ function openStickerPrintModal(opts){
               40×30 مم<br><span style="font-size: 8.5px; opacity: 0.8; font-weight: normal;">(4×3 سم)</span>
             </button>
             <button type="button" class="spm-chip-btn" data-size="20x40" style="padding: 6px 2px; font-size: 10px; font-weight: 700; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #f8fafc; cursor: pointer; text-align: center; transition: all 0.15s;">
-              20×40 مم 📄<br><span style="font-size: 8.5px; opacity: 0.8; font-weight: normal;">(2×4 طولي)</span>
+              20×40 مم<br><span style="font-size: 8.5px; opacity: 0.8; font-weight: normal;">(2×4 طولي)</span>
             </button>
             <button type="button" class="spm-chip-btn" data-size="50x25" style="padding: 6px 2px; font-size: 10px; font-weight: 700; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #f8fafc; cursor: pointer; text-align: center; transition: all 0.15s;">
               50×25 مم<br><span style="font-size: 8.5px; opacity: 0.8; font-weight: normal;">(5×2.5 سم)</span>
@@ -5327,7 +5375,7 @@ function openStickerPrintModal(opts){
               50×30 مم<br><span style="font-size: 8.5px; opacity: 0.8; font-weight: normal;">(5×3 سم)</span>
             </button>
             <button type="button" class="spm-chip-btn" data-size="custom" style="padding: 6px 2px; font-size: 10px; font-weight: 700; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #f8fafc; cursor: pointer; text-align: center; transition: all 0.15s;">
-              تخصيص ⚙️
+              تخصيص
             </button>
           </div>
           <!-- Custom Size Inputs -->
@@ -5350,9 +5398,9 @@ function openStickerPrintModal(opts){
         <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;overflow:hidden;">
           <div id="spmCustomSectionHeader" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#f1f5f9;cursor:pointer;user-select:none;">
             <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;color:#1e293b;">
-              <span>🎨 استوديو تخصيص وحقول استيكر الصيانة:</span>
+              <span style="display:flex;align-items:center;gap:6px;">${getSvgIcon("settings", 14)} استوديو تخصيص وحقول استيكر الصيانة:</span>
               <span id="spmModeBadge" style="font-size:10px;background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:999px;font-weight:800;">
-                ${currentBarcodeMode==='qr'?'📱 رمز QR للتتبع':(currentBarcodeMode==='barcode'?'🏷️ باركود Code128':'✍️ نصي فقط')}
+                ${currentBarcodeMode==='qr'?'رمز QR للتتبع':(currentBarcodeMode==='barcode'?'باركود Code128':'نصي فقط')}
               </span>
             </div>
             <span id="spmCustomToggleIcon" style="font-size:11px;color:#64748b;font-weight:bold;">▼</span>
@@ -5366,13 +5414,13 @@ function openStickerPrintModal(opts){
               </label>
               <div id="spmModePills" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
                 <button type="button" class="spm-mode-pill" data-mode="qr" style="padding:6px 4px;font-size:10.5px;font-weight:800;border-radius:8px;border:1.5px solid ${currentBarcodeMode==='qr'?'#2563eb':'#cbd5e1'};background:${currentBarcodeMode==='qr'?'#eff6ff':'#fff'};color:${currentBarcodeMode==='qr'?'#1d4ed8':'#334155'};cursor:pointer;text-align:center;">
-                  📱 كود QR للتتبع ✨
+                  كود QR للتتبع
                 </button>
                 <button type="button" class="spm-mode-pill" data-mode="barcode" style="padding:6px 4px;font-size:10.5px;font-weight:800;border-radius:8px;border:1.5px solid ${currentBarcodeMode==='barcode'?'#2563eb':'#cbd5e1'};background:${currentBarcodeMode==='barcode'?'#eff6ff':'#fff'};color:${currentBarcodeMode==='barcode'?'#1d4ed8':'#334155'};cursor:pointer;text-align:center;">
-                  🏷️ باركود 128 ليزر
+                  باركود 128 ليزر
                 </button>
                 <button type="button" class="spm-mode-pill" data-mode="none" style="padding:6px 4px;font-size:10.5px;font-weight:800;border-radius:8px;border:1.5px solid ${currentBarcodeMode==='none'?'#2563eb':'#cbd5e1'};background:${currentBarcodeMode==='none'?'#eff6ff':'#fff'};color:${currentBarcodeMode==='none'?'#1d4ed8':'#334155'};cursor:pointer;text-align:center;">
-                  ✍️ نصي بولد بدون كود
+                  نصي بولد بدون كود
                 </button>
               </div>
             </div>
@@ -5383,10 +5431,10 @@ function openStickerPrintModal(opts){
                 نماذج واستيلات سريعة بنقرة واحدة:
               </label>
               <div style="display:flex;gap:5px;flex-wrap:wrap;">
-                <button type="button" class="btn btn-ghost btn-xs spm-preset-btn" data-preset="smart_qr" style="font-size:10px;padding:3px 7px;">⭐ 40×20 كود QR الذكي</button>
-                <button type="button" class="btn btn-ghost btn-xs spm-preset-btn" data-preset="bold_text" style="font-size:10px;padding:3px 7px;">✍️ 40×20 نصي بولد واضح</button>
-                <button type="button" class="btn btn-ghost btn-xs spm-preset-btn" data-preset="barcode128" style="font-size:10px;padding:3px 7px;">🏷️ 40×20 باركود 128</button>
-                <button type="button" class="btn btn-ghost btn-xs spm-preset-btn" data-preset="slim" style="font-size:10px;padding:3px 7px;">⚡ 40×10 شريط رفيع</button>
+                <button type="button" class="btn btn-ghost btn-xs spm-preset-btn" data-preset="smart_qr" style="font-size:10px;padding:3px 7px;">40×20 كود QR الذكي</button>
+                <button type="button" class="btn btn-ghost btn-xs spm-preset-btn" data-preset="bold_text" style="font-size:10px;padding:3px 7px;">40×20 نصي بولد واضح</button>
+                <button type="button" class="btn btn-ghost btn-xs spm-preset-btn" data-preset="barcode128" style="font-size:10px;padding:3px 7px;">40×20 باركود 128</button>
+                <button type="button" class="btn btn-ghost btn-xs spm-preset-btn" data-preset="slim" style="font-size:10px;padding:3px 7px;">40×10 شريط رفيع</button>
               </div>
             </div>
 
@@ -5398,39 +5446,39 @@ function openStickerPrintModal(opts){
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
                 <label class="checkbox-row" style="font-size:11px;">
                   <input type="checkbox" id="spmCheckShopName" ${showShopName?'checked':''}>
-                  <span>🏪 اسم المحل / المركز</span>
+                  <span>اسم المحل / المركز</span>
                 </label>
                 <label class="checkbox-row" style="font-size:11px;">
                   <input type="checkbox" id="spmCheckCustomerName" ${showCustomerName?'checked':''}>
-                  <span>👤 اسم العميل</span>
+                  <span>اسم العميل</span>
                 </label>
                 <label class="checkbox-row" style="font-size:11px;">
                   <input type="checkbox" id="spmCheckPhone" ${showPhone?'checked':''}>
-                  <span>📞 رقم الهاتف</span>
+                  <span>رقم الهاتف</span>
                 </label>
                 <label class="checkbox-row" style="font-size:11px;">
                   <input type="checkbox" id="spmCheckDevice" ${showDevice?'checked':''}>
-                  <span>💻 الجهاز والموديل</span>
+                  <span>الجهاز والموديل</span>
                 </label>
                 <label class="checkbox-row" style="font-size:11px;">
                   <input type="checkbox" id="spmCheckPassword" ${showPassword?'checked':''}>
-                  <span>🔑 كلمة السر / النمط</span>
+                  <span>كلمة السر / النمط</span>
                 </label>
                 <label class="checkbox-row" style="font-size:11px;">
                   <input type="checkbox" id="spmCheckFaults" ${showFaults?'checked':''}>
-                  <span>⚠️ شكوى وعطل الجهاز</span>
+                  <span>شكوى وعطل الجهاز</span>
                 </label>
                 <label class="checkbox-row" style="font-size:11px;">
                   <input type="checkbox" id="spmCheckPrice" ${showPrice?'checked':''}>
-                  <span>💵 المتبقي / التكلفة</span>
+                  <span>المتبقي / التكلفة</span>
                 </label>
                 <label class="checkbox-row" style="font-size:11px;">
                   <input type="checkbox" id="spmCheckDate" ${showDate?'checked':''}>
-                  <span>📅 تاريخ ووقت الاستلام</span>
+                  <span>تاريخ ووقت الاستلام</span>
                 </label>
                 <label class="checkbox-row" style="font-size:11px;">
                   <input type="checkbox" id="spmCheckBorder" ${showBorder?'checked':''}>
-                  <span>🔲 إطار خارجي محدد</span>
+                  <span>إطار خارجي محدد</span>
                 </label>
               </div>
             </div>
@@ -5440,7 +5488,7 @@ function openStickerPrintModal(opts){
         <!-- Rotation Selector -->
         <div style="display:flex;align-items:center;justify-content:space-between;padding: 6px 10px; background: #f1f5f9; border-radius: 8px;">
           <div style="font-size: 11.5px; font-weight: 700; color: #334155; display:flex; align-items:center; gap: 4px;">
-            <span>🔄 تدوير اتجاه الطباعة:</span>
+            <span style="display:flex;align-items:center;gap:4px;">${getSvgIcon("refresh", 13)} تدوير اتجاه الطباعة:</span>
           </div>
           <div id="spmRotBtns" style="display:flex; gap: 4px;">
             <button type="button" class="spm-rot-btn" data-rot="0" style="padding: 4px 8px; font-size: 10.5px; font-weight: 700; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; cursor: pointer;">0° طبيعي</button>
@@ -5454,7 +5502,7 @@ function openStickerPrintModal(opts){
         <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 8px 12px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
             <label style="font-size: 11.5px; font-weight: 700; color: #1e293b; display:flex; align-items:center; gap:4px;">
-              <span>🎯 سنترة ومعايرة مكان الطباعة (Offsets):</span>
+              <span>سنترة ومعايرة مكان الطباعة (Offsets):</span>
             </label>
             <button type="button" id="spmResetOffsets" style="font-size:10px; color:#2563eb; background:none; border:none; cursor:pointer; font-weight:700;">إعادة ضبط للوسط (0,0)</button>
           </div>
@@ -5475,10 +5523,10 @@ function openStickerPrintModal(opts){
             </div>
           </div>
           <div style="display:flex; gap:4px; margin-top:6px; justify-content:center; flex-wrap:wrap;">
-            <button type="button" class="btn btn-ghost btn-xs spm-quick-off" data-ox="-2" data-oy="0" style="font-size:9.5px; padding:2px 6px;">⬅️ يسار 2مم</button>
-            <button type="button" class="btn btn-ghost btn-xs spm-quick-off" data-ox="2" data-oy="0" style="font-size:9.5px; padding:2px 6px;">➡️ يمين 2مم</button>
-            <button type="button" class="btn btn-ghost btn-xs spm-quick-off" data-ox="4" data-oy="0" style="font-size:9.5px; padding:2px 6px;">➡️ يمين 4مم</button>
-            <button type="button" class="btn btn-ghost btn-xs spm-quick-off" data-ox="0" data-oy="2" style="font-size:9.5px; padding:2px 6px;">⬇️ أسفل 2مم</button>
+            <button type="button" class="btn btn-ghost btn-xs spm-quick-off" data-ox="-2" data-oy="0" style="font-size:9.5px; padding:2px 6px;">يسار 2مم</button>
+            <button type="button" class="btn btn-ghost btn-xs spm-quick-off" data-ox="2" data-oy="0" style="font-size:9.5px; padding:2px 6px;">يمين 2مم</button>
+            <button type="button" class="btn btn-ghost btn-xs spm-quick-off" data-ox="4" data-oy="0" style="font-size:9.5px; padding:2px 6px;">يمين 4مم</button>
+            <button type="button" class="btn btn-ghost btn-xs spm-quick-off" data-ox="0" data-oy="2" style="font-size:9.5px; padding:2px 6px;">أسفل 2مم</button>
           </div>
         </div>
 
@@ -5486,14 +5534,14 @@ function openStickerPrintModal(opts){
         <div>
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 5px;">
             <label style="font-size: 11.5px; font-weight: 700; color: var(--text-muted, #64748b);">
-              👁️ معاينة شكل الملصق وسنترته (حقيقي 100%):
+              معاينة شكل الملصق وسنترته (حقيقي 100%):
             </label>
             <div style="display:flex; align-items:center; gap:6px;">
               <span id="spmDimBadge" style="font-size: 10px; font-weight: 700; color: #2563eb; background: #eff6ff; padding: 2px 8px; border-radius: 999px; border: 1px solid #bfdbfe;">40×20 مم</span>
               <div style="display:flex; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden; background:#fff;">
-                <button type="button" id="spmZoomIn" style="border:none; background:#f8fafc; padding:2px 7px; font-size:11px; cursor:pointer; font-weight:bold;" title="تكبير المعاينة">🔍+</button>
+                <button type="button" id="spmZoomIn" style="border:none; background:#f8fafc; padding:2px 7px; font-size:11px; cursor:pointer; font-weight:bold;" title="تكبير المعاينة">+</button>
                 <button type="button" id="spmZoomReset" style="border:none; border-left:1px solid #cbd5e1; border-right:1px solid #cbd5e1; background:#fff; padding:2px 6px; font-size:9.5px; cursor:pointer;" title="إعادة الحجم">100%</button>
-                <button type="button" id="spmZoomOut" style="border:none; background:#f8fafc; padding:2px 7px; font-size:11px; cursor:pointer; font-weight:bold;" title="تصغير المعاينة">🔍-</button>
+                <button type="button" id="spmZoomOut" style="border:none; background:#f8fafc; padding:2px 7px; font-size:11px; cursor:pointer; font-weight:bold;" title="تصغير المعاينة">-</button>
               </div>
             </div>
           </div>
@@ -5516,13 +5564,13 @@ function openStickerPrintModal(opts){
             </div>
           </div>
           <div style="font-size: 10.5px; color: #059669; font-weight: 800; display:flex; align-items:center; gap: 4px;">
-            <span>✓ خط حراري عالي التباين وواضح</span>
+            <span style="display:inline-flex;align-items:center;gap:4px;">${getSvgIcon("check", 13)} خط حراري عالي التباين وواضح</span>
           </div>
         </div>
 
         <!-- Hint -->
         <div style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 7px 10px; font-size: 10px; color: #b45309; line-height: 1.4;">
-          💡 <b>نصيحة الكيوسك:</b> تأكد في نافذة الطباعة من اختيار <b>الهوامش: بلا (None)</b>. يمكنك تعديل الإعدادات الافتراضية وحفظها لتطبيقها مباشرة في الكيوسك.
+          <b>نصيحة الكيوسك:</b> تأكد في نافذة الطباعة من اختيار <b>الهوامش: بلا (None)</b>. يمكنك تعديل الإعدادات الافتراضية وحفظها لتطبيقها مباشرة في الكيوسك.
         </div>
       </div>
 
@@ -5530,7 +5578,7 @@ function openStickerPrintModal(opts){
       <div style="padding: 10px 18px; background: #f8fafc; border-top: 1px solid var(--border-color, #e2e8f0); display: flex; align-items: center; justify-content: flex-end; gap: 8px;">
         <button id="spmCancelBtn" type="button" class="btn btn-secondary" style="padding: 7px 14px; font-size: 11.5px; font-weight: 700; border-radius: 8px;">إلغاء</button>
         <button id="spmPrintBtn" type="button" class="btn btn-primary" style="padding: 7px 20px; font-size: 11.5px; font-weight: 800; border-radius: 8px; background: linear-gradient(135deg, #2563eb, #1d4ed8); display:flex; align-items:center; gap: 6px; box-shadow: 0 4px 10px rgba(37, 99, 235, 0.3);">
-          <span>طباعة الملصق الآن</span> 🖨️
+          <span>${getSvgIcon("printer", 14)} طباعة الملصق الآن</span>
         </button>
       </div>
     </div>
@@ -5578,7 +5626,7 @@ function openStickerPrintModal(opts){
 
     const modeBadge = overlay.querySelector('#spmModeBadge');
     if(modeBadge){
-      modeBadge.textContent = currentBarcodeMode === 'qr' ? '📱 رمز QR للتتبع' : (currentBarcodeMode === 'barcode' ? '🏷️ باركود Code128' : '✍️ نصي فقط');
+      modeBadge.textContent = currentBarcodeMode === 'qr' ? 'رمز QR للتتبع' : (currentBarcodeMode === 'barcode' ? 'باركود Code128' : 'نصي فقط');
     }
 
     // Screen pixel conversion: 3.78px per mm
@@ -5832,7 +5880,7 @@ function openStickerPrint(rawR, forceModal = false){
       showDate: prnSettings.showDate !== false,
       showBorder: prnSettings.showBorder === true
     };
-    showToast('🏷️ جاري طباعة ملصق الصيانة فوراً (وضع الكيوسك ⚡)', 'info');
+    showToast('جاري طباعة ملصق الصيانة فوراً (وضع الطباعة السريعة)', 'info');
     executeDirectStickerPrint({ type: 'receipt', data: r }, dim, 1, rot, offX, offY, customOpts);
     return;
   }
@@ -5988,7 +6036,7 @@ function convertReceiptToInvoice(receiptId){
 
   const prefilledInvoice = {
     ID: 'inv_' + Date.now(),
-    InvoiceNumber: 'INV-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-4),
+    InvoiceNumber: (typeof nextInvoiceNumber === 'function') ? nextInvoiceNumber() : ('INV-' + new Date().getFullYear() + '-0001'),
     Date: cleanDate(r.date) || new Date().toISOString().slice(0,10),
     DueDate: cleanDate(r.deliveryDate) || new Date().toISOString().slice(0,10),
     CustomerTitle: r.customer.title || '',
@@ -6114,7 +6162,7 @@ window.convertMultipleReceiptsToInvoice = function(receiptIds){
 
   const prefilledInvoice = {
     ID: 'inv_' + Date.now(),
-    InvoiceNumber: 'INV-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-4),
+    InvoiceNumber: (typeof nextInvoiceNumber === 'function') ? nextInvoiceNumber() : ('INV-' + new Date().getFullYear() + '-0001'),
     Date: new Date().toISOString().slice(0, 10),
     DueDate: new Date().toISOString().slice(0, 10),
     CustomerTitle: firstCustTitle,
@@ -6169,12 +6217,12 @@ window.openCustomerConsolidatedInvoiceModal = function(custName){
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:14px;">
         <div>
           <div style="display:flex;align-items:center;gap:6px;">
-            <span style="font-size:18px;">🧾</span>
+            <span style="display:inline-flex;align-items:center;color:var(--primary);">${getSvgIcon("invoices", 20)}</span>
             <h3 style="margin:0;font-size:16.5px;color:var(--ink);">فاتورة مجمعة للعميل: <b>${escapeHtml(custName)}</b></h3>
           </div>
           <div style="font-size:12px;color:var(--ink-secondary);margin-top:2px;">حدد إيصالات الصيانة المطلوب تضمينها في الفاتورة المجمعة (${clientReceipts.length} إيصالات متوفرة):</div>
         </div>
-        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('custConsolidatedInvoicePickerModal').remove()">✕</button>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('custConsolidatedInvoicePickerModal').remove()">&times;</button>
       </div>
 
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:12px;">
@@ -6220,7 +6268,7 @@ window.openCustomerConsolidatedInvoiceModal = function(custName){
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <button class="btn btn-ghost" onclick="document.getElementById('custConsolidatedInvoicePickerModal').remove()">إلغاء</button>
         <button class="btn btn-primary" id="confirmCustConsolidatedInvoiceBtn" style="font-weight:800;">
-          🧾 إصدار الفاتورة المجمعة ➔
+          ${getSvgIcon("invoices", 14)} إصدار الفاتورة المجمعة
         </button>
       </div>
     </div>
@@ -6265,7 +6313,7 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
     Items: Array.isArray(existingInv.Items) ? [...existingInv.Items] : (JSON.parse(existingInv.ItemsJSON||'[]'))
   } : {
     ID: 'inv_' + Date.now(),
-    InvoiceNumber: 'INV-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-4),
+    InvoiceNumber: (typeof nextInvoiceNumber === 'function') ? nextInvoiceNumber() : ('INV-' + new Date().getFullYear() + '-0001'),
     Date: new Date().toISOString().slice(0,10),
     DueDate: new Date().toISOString().slice(0,10),
     CustomerTitle: '',
@@ -6313,29 +6361,29 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
         <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:16px;">
           <div>
             <h3 style="margin:0;font-size:18px;font-weight:900;color:var(--primary);">
-              ${isFromReceipt ? `📄 إصدار فاتورة رسمية من إيصال صيانة (#${inv.ReferenceID})` : (isEdit ? `✏️ تعديل فاتورة: ${inv.InvoiceNumber}` : `➕ إصدار فاتورة ضريبية / رسمية جديدة`)}
+              ${isFromReceipt ? `إصدار فاتورة رسمية من إيصال صيانة (#${inv.ReferenceID})` : (isEdit ? `تعديل فاتورة: ${inv.InvoiceNumber}` : `إصدار فاتورة ضريبية / رسمية جديدة`)}
             </h3>
             <div style="font-size:12px;color:var(--ink-secondary);margin-top:2px;">
               رقم المستند: <span class="mono font-bold">${inv.InvoiceNumber}</span>
               ${inv.ReferenceType ? ` | مرجع: <span class="status-badge st-check" style="font-size:10px;">${inv.ReferenceType==='Receipt'?'إيصال صيانة':inv.ReferenceType} #${inv.ReferenceID}</span>` : ''}
             </div>
           </div>
-          <button class="btn btn-ghost btn-xs" id="closeInvModal">✕ إغلاق</button>
+          <button class="btn btn-ghost btn-xs" id="closeInvModal">إغلاق</button>
         </div>
 
         <div class="card" style="padding:14px 16px;background:var(--paper3);margin-bottom:14px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
-            <h3 style="font-size:13.5px;margin:0;display:flex;align-items:center;gap:6px;"><span>👤 بيانات العميل</span></h3>
+            <h3 style="font-size:13.5px;margin:0;display:flex;align-items:center;gap:6px;"><span style="display:flex;align-items:center;gap:6px;">${getSvgIcon("user", 15)} بيانات العميل</span></h3>
             <div style="display:flex;gap:6px;align-items:center;">
-              <button class="btn btn-xs btn-ghost" id="quickWalkInCustBtn" type="button">🚶‍♂️ عميل زائر</button>
-              <button class="btn btn-xs btn-blue" id="quickNewCustBtn" type="button">➕ عميل جديد</button>
+              <button class="btn btn-xs btn-ghost" id="quickWalkInCustBtn" type="button">عميل زائر</button>
+              <button class="btn btn-xs btn-blue" id="quickNewCustBtn" type="button">${getSvgIcon("plus", 12)} عميل جديد</button>
             </div>
           </div>
           <div class="field" style="margin-bottom:12px;">
             <select id="invCustomerSelect" style="width:100%;font-weight:600;">
               <option value="">-- اضغط لاختيار عميل مسجل (${state.customers.length} عميل) --</option>
-              <option value="__WALKIN__" ${inv.CustomerName==='عميل زائر'?'selected':''}>🚶‍♂️ عميل زائر (نقدي / Walk-in)</option>
-              <option value="__NEW__">➕ عميل جديد</option>
+              <option value="__WALKIN__" ${inv.CustomerName==='عميل زائر'?'selected':''}>عميل زائر (نقدي / Walk-in)</option>
+              <option value="__NEW__">${getSvgIcon("plus", 12)} عميل جديد</option>
               ${state.customers.length ? `
                 <optgroup label="قائمة العملاء">
                   ${state.customers.map(c=>`<option value="${c.name}" ${inv.CustomerName===c.name?'selected':''}>${c.title ? c.title+' / ' : ''}${c.name} - ${c.phone||'بدون هاتف'}</option>`).join('')}
@@ -6363,10 +6411,10 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
 
         <div class="card" style="padding:14px 16px;margin-bottom:14px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <h3 style="font-size:13.5px;margin:0;">📦 بنود الفاتورة / بيان السعر</h3>
+            <h3 style="font-size:13.5px;margin:0;display:flex;align-items:center;gap:6px;">${getSvgIcon("package", 15)} بنود الفاتورة / بيان السعر</h3>
             <div style="display:flex;gap:6px;">
-              <button class="btn btn-ghost btn-xs" id="addFromInventoryBtn" type="button">➕ من المخزن</button>
-              <button class="btn btn-primary btn-xs" id="addInvLineBtn" type="button">➕ سطر جديد</button>
+              <button class="btn btn-ghost btn-xs" id="addFromInventoryBtn" type="button">${getSvgIcon("inventory", 12)} من المخزن</button>
+              <button class="btn btn-primary btn-xs" id="addInvLineBtn" type="button">${getSvgIcon("plus", 12)} سطر جديد</button>
             </div>
           </div>
           <div class="table-wrap">
@@ -6379,7 +6427,7 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
                     <td><input type="number" class="mono" min="1" value="${it.Qty||1}" data-linefield="Qty" data-idx="${idx}" style="width:100%;text-align:center;"></td>
                     <td><input type="number" class="mono" step="any" value="${it.Price||0}" data-linefield="Price" data-idx="${idx}" style="width:100%;text-align:center;"></td>
                     <td class="mono font-bold" style="color:var(--primary);">${(Number(it.Qty||1) * Number(it.Price||0)).toLocaleString()} ج.م</td>
-                    <td style="text-align:center;"><button class="btn btn-xs btn-red" data-delline="${idx}">✕</button></td>
+                    <td style="text-align:center;"><button class="btn btn-xs btn-red" data-delline="${idx}">&times;</button></td>
                   </tr>
                 `).join('')}
               </tbody>
@@ -6389,7 +6437,7 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
 
         <div class="grid2">
           <div class="card" style="padding:14px 16px;background:var(--paper3);">
-            <h3 style="font-size:13.5px;margin-bottom:10px;">💳 السداد والحالة</h3>
+            <h3 style="font-size:13.5px;margin-bottom:10px;display:flex;align-items:center;gap:6px;">${getSvgIcon("creditCard", 15)} السداد والحالة</h3>
             <div class="grid2">
               <div class="field"><label>طريقة السداد</label><select id="invPaymentMethod">${['نقدي','فيزا / كارت','تحويل بنكي','فودافون كاش','آجل'].map(m=>`<option ${m===inv.PaymentMethod?'selected':''}>${m}</option>`).join('')}</select></div>
               <div class="field"><label>المبلغ المدفوع (ج.م)</label><input id="invPaidInput" type="number" class="mono" value="${inv.AmountPaid||0}"></div>
@@ -6397,7 +6445,7 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
             <div class="field"><label>ملاحظات وشروط</label><textarea id="invNotesText">${inv.Notes||''}</textarea></div>
           </div>
           <div class="card" style="padding:14px 16px;">
-            <h3 style="font-size:13.5px;margin-bottom:10px;">💰 الملخص المالي</h3>
+            <h3 style="font-size:13.5px;margin-bottom:10px;display:flex;align-items:center;gap:6px;">${getSvgIcon("finance", 15)} الملخص المالي</h3>
             <div style="display:flex;flex-direction:column;gap:8px;">
               <div style="display:flex;justify-content:space-between;"><span>المجموع الفرعي:</span><span class="mono font-bold">${inv.Subtotal.toLocaleString()} ج.م</span></div>
               <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -6415,9 +6463,9 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
         <div class="actions-row" style="margin-top:16px;">
           <button class="btn btn-ghost" id="cancelInvModalBtn" type="button">إلغاء</button>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="btn btn-ghost" id="saveAndPrintQuoteBtn" type="button">📑 حفظ وطباعة بيان سعر</button>
-            <button class="btn btn-blue" id="saveAndPrintInvBtn" type="button">🖨️ حفظ وطباعة فاتورة رسمية</button>
-            <button class="btn btn-primary" id="saveInvOnlyBtn" type="button">💾 حفظ فقط</button>
+            <button class="btn btn-ghost" id="saveAndPrintQuoteBtn" type="button">${getSvgIcon("fileText", 13)} حفظ وطباعة بيان سعر</button>
+            <button class="btn btn-blue" id="saveAndPrintInvBtn" type="button">${getSvgIcon("printer", 13)} حفظ وطباعة فاتورة رسمية</button>
+            <button class="btn btn-primary" id="saveInvOnlyBtn" type="button">${getSvgIcon("check", 13)} حفظ فقط</button>
           </div>
         </div>
       </div>
@@ -6543,11 +6591,11 @@ function openInventoryPickerModal(onSelect){
   overlay.innerHTML = `
     <div class="modal-content" style="max-width:550px;">
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
-        <h3 style="margin:0;font-size:16px;">📦 اختر صنف من المخزن</h3>
-        <button class="btn btn-ghost btn-xs" id="closeInvPicker">✕</button>
+        <h3 style="margin:0;font-size:16px;display:flex;align-items:center;gap:6px;">${getSvgIcon("inventory", 16)} اختر صنف من المخزن</h3>
+        <button class="btn btn-ghost btn-xs" id="closeInvPicker">&times;</button>
       </div>
       <div class="field" style="margin-bottom:10px;">
-        <input id="pickerSearch" placeholder="🔍 بحث باسم الصنف أو الباركود..." autofocus>
+        <input id="pickerSearch" placeholder="بحث باسم الصنف أو الباركود..." autofocus>
       </div>
       <div id="pickerListMount" style="max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;"></div>
     </div>
@@ -6626,7 +6674,7 @@ function openInvoicePrint(inv, docType='invoice'){
       <div>
         <div style="color:#64748b;font-size:11px;margin-bottom:2px;">بيانات العميل / المشتري:</div>
         <div style="font-size:14px;font-weight:900;color:#0f172a;">${inv.CustomerName}</div>
-        <div class="mono" style="color:#334155;margin-top:2px;">📞 ${inv.CustomerPhone || 'غير محدد'}</div>
+        <div class="mono" style="color:#334155;margin-top:2px;">هاتف: ${inv.CustomerPhone || 'غير محدد'}</div>
         ${inv.CustomerTaxNumber ? `<div style="font-size:11px;color:#475569;margin-top:2px;">الرقم الضريبي: <b>${inv.CustomerTaxNumber}</b></div>` : ''}
         ${inv.CustomerAddress ? `<div style="font-size:11px;color:#475569;">العنوان: ${inv.CustomerAddress}</div>` : ''}
       </div>

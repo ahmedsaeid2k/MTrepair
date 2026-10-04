@@ -1,0 +1,160 @@
+:root {
+  --primary: #059669;
+  --primary-hover: #047857;
+  --primary-light: #ecfdf5;
+  --primary-focus: rgba(5, 150, 105, 0.18);
+  
+  --slate-900: #0f172a;
+  --slate-800: #1e293b;
+  --slate-700: #334155;
+  --slate-600: #475569;
+  --slate-500: #64748b;
+  --slate-400: #94a3b8;
+  --slate-300: #cbd5e1;
+  --slate-200: #e2e8f0;
+  --slate-100: #f1f5f9;
+  --slate-50: #f8fafc;
+  
+  --ink: #0f172a;
+  --ink-secondary: #64748b;
+  --paper: #f0f2f5;
+  --paper2: #ffffff;
+  --paper3: #f8fafc;
+  --line: rgba(226, 232, 240, 0.8);
+  --line-strong: #cbd5e1;
+  --glass-bg: rgba(255, 255, 255, 0.9);
+  --glass-border: rgba(226, 232, 240, 0.8);
+  --card-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.03);
+  --card-hover-shadow: 0 10px 30px -4px rgba(0, 0, 0, 0.06);
+  
+  --blue: #2563eb;
+  --blue-bg: #dbeafe;
+  --blue-text: #1e40af;
+  
+  --amber: #d97706;
+  --amber-bg: #fef3c7;
+  --amber-text: #92400e;
+  
+  --red: #e11d48;
+  --red-bg: #ffe4e6;
+  --red-text: #9f1239;
+  
+  --green: #059669;
+  --green-bg: #ecfdf5;
+  --green-text: #047857;
+  
+  --purple: #8b5cf6;
+  --purple-bg: #ede9fe;
+  --purple-text: #5b21b6;
+
+  --cyan: #06b6d4;
+  --cyan-bg: #cffafe;
+  --cyan-text: #155e75;
+  
+  --radius-xs: 6px;
+  --radius-sm: 12px;
+  --radius: 24px;
+  --radius-lg: 26px;
+  --radius-full: 9999px;
+  
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+  --shadow: 0 4px 14px -1px rgba(0, 0, 0, 0.06), 0 2px 6px -2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 10px 25px -3px rgba(0, 0, 0, 0.08), 0 4px 10px -4px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 20px 35px -5px rgba(0, 0, 0, 0.12), 0 10px 15px -6px rgba(0, 0, 0, 0.06);
+  
+  --font-main: 'Tajawal', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace, Consolas, Courier;
+}
+
+[data-theme="dark"] {
+  --primary: #10b981;
+  --primary-hover: #34d399;
+  --primary-light: rgba(16, 185, 129, 0.18);
+  --primary-focus: rgba(16, 185, 129, 0.28);
+  
+  --slate-900: #030712;
+  --slate-800: #090d16;
+  --slate-700: #131b2e;
+  --slate-600: #1e293b;
+  --slate-500: #64748b;
+  --slate-400: #94a3b8;
+  --slate-300: #cbd5e1;
+  --slate-200: #1e293b;
+  --slate-100: #0f172a;
+  --slate-50: #090d16;
+  
+  --ink: #f8fafc;
+  --ink-secondary: #94a3b8;
+  --paper: #090d16;
+  --paper2: #111827;
+  --paper3: #1f2937;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.14);
+  --glass-bg: rgba(17, 24, 39, 0.88);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --card-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  --card-hover-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  
+  --blue-bg: rgba(37, 99, 235, 0.22);
+  --blue-text: #93c5fd;
+  --amber-bg: rgba(217, 119, 6, 0.22);
+  --amber-text: #fcd34d;
+  --red-bg: rgba(225, 29, 72, 0.22);
+  --red-text: #fda4af;
+  --green-bg: rgba(16, 185, 129, 0.22);
+  --green-text: #6ee7b7;
+  --purple-bg: rgba(139, 92, 246, 0.22);
+  --purple-text: #c4b5fd;
+  --cyan-bg: rgba(6, 182, 212, 0.22);
+  --cyan-text: #67e8f9;
+}
+
+/* Custom Theme Presets */
+html[data-app-theme="odoo"]:not([data-theme="dark"]) {
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+  --paper: #0f172a;
+  --paper2: #1e293b;
+  --paper3: #334155;
+  --line: rgba(255, 255, 255, 0.1);
+  --line-strong: rgba(255, 255, 255, 0.18);
+  --ink: #f8fafc;
+  --ink-secondary: #94a3b8;
+}
+
+html[data-app-theme="apple"]:not([data-theme="dark"]) {
+  --primary: #007aff;
+  --primary-hover: #0062cc;
+  --paper: #f5f5f7;
+  --paper2: #ffffff;
+  --paper3: #e8e8ed;
+  --line: rgba(0, 0, 0, 0.08);
+  --line-strong: rgba(0, 0, 0, 0.16);
+  --ink: #1d1d1f;
+  --ink-secondary: #6e6e73;
+}
+
+html[data-app-theme="glass"]:not([data-theme="dark"]) {
+  --primary: #0284c7;
+  --primary-hover: #0369a1;
+  --paper: #f0f9ff;
+  --paper2: rgba(255, 255, 255, 0.88);
+  --paper3: rgba(224, 242, 254, 0.6);
+  --line: rgba(2, 132, 199, 0.18);
+  --line-strong: rgba(2, 132, 199, 0.3);
+  --glass-bg: rgba(255, 255, 255, 0.8);
+  --ink: #0c4a6e;
+  --ink-secondary: #0369a1;
+}
+
+html[data-app-theme="win11"]:not([data-theme="dark"]) {
+  --primary: #0078d7;
+  --primary-hover: #005a9e;
+  --paper: #f3f3f3;
+  --paper2: #ffffff;
+  --paper3: #e5e5e5;
+  --line: #d1d1d1;
+  --line-strong: #b0b0b0;
+  --ink: #1a1a1a;
+  --ink-secondary: #5c5c5c;
+}

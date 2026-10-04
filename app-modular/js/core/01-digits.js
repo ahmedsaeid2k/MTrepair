@@ -2,28 +2,31 @@
 function toEngDigits(str){
   if(str == null) return '';
   return String(str)
-    .replace(/[٠۰]/g, '0')
-    .replace(/[١۱]/g, '1')
-    .replace(/[٢۲]/g, '2')
-    .replace(/[٣۳]/g, '3')
-    .replace(/[٤۴]/g, '4')
-    .replace(/[٥۵]/g, '5')
-    .replace(/[٦۶]/g, '6')
-    .replace(/[٧۷]/g, '7')
-    .replace(/[٨۸]/g, '8')
-    .replace(/[٩۹]/g, '9')
-    .replace(/٫/g, '.');
+    .replace(/[\u0660\u06F0]/g, '0')
+    .replace(/[\u0661\u06F1]/g, '1')
+    .replace(/[\u0662\u06F2]/g, '2')
+    .replace(/[\u0663\u06F3]/g, '3')
+    .replace(/[\u0664\u06F4]/g, '4')
+    .replace(/[\u0665\u06F5]/g, '5')
+    .replace(/[\u0666\u06F6]/g, '6')
+    .replace(/[\u0667\u06F7]/g, '7')
+    .replace(/[\u0668\u06F8]/g, '8')
+    .replace(/[\u0669\u06F9]/g, '9')
+    .replace(/[\u066B]/g, '.');
 }
 window.toEnglishDigits = toEngDigits;
 
 // Global Real-time Auto-converter for All Inputs & Textareas across all screens
 (function initGlobalDigitEnforcer(){
+  // Pure Unicode Escape regex: immune to encoding/mojikake corruption
+  const ARABIC_DIGITS_REGEX = /[\u0660-\u0669\u06F0-\u06F9\u066B]/;
+
   function enforceDigits(target){
     if (!target || (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA')) return;
     if (target.type === 'password' || target.type === 'file' || target.type === 'checkbox' || target.type === 'radio') return;
 
     const val = target.value;
-    if (!val || !/[٠-٩۰-۹٫]/.test(val)) return;
+    if (!val || !ARABIC_DIGITS_REGEX.test(val)) return;
 
     const isPhone = target.type === 'tel' || 
                     (target.id && /phone|tel|mobile|هاتف|جوال/i.test(target.id)) ||
@@ -53,7 +56,7 @@ window.toEnglishDigits = toEngDigits;
     const target = e.target;
     if (!target || (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA')) return;
     if (target.type === 'password' || target.type === 'file') return;
-    if (e.data && /[٠-٩۰-۹٫]/.test(e.data)) {
+    if (e.data && ARABIC_DIGITS_REGEX.test(e.data)) {
       e.preventDefault();
       const cleanData = toEngDigits(e.data);
       if (typeof document.execCommand === 'function') {

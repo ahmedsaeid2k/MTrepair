@@ -36,43 +36,43 @@ function renderInvoicesPage(main){
   main.innerHTML = `
     <div class="top-header">
       <div>
-        <h2 class="page-title">📄 الفواتير الضريبية والرسمية</h2>
+        <h2 class="page-title">${getSvgIcon('invoices', 20)} الفواتير الضريبية والرسمية</h2>
         <div class="subtitle mono" style="font-size:12px;color:var(--ink-secondary);">${list.length} فاتورة معروضة</div>
       </div>
       <div style="display:flex;gap:8px;">
-        <button class="btn btn-ghost btn-sm" id="exportInvoicesExcelBtn">📥 تصدير الفواتير Excel</button>
-        <button class="btn btn-primary btn-sm" id="addNewInvoiceBtn">➕ إصدار فاتورة جديدة</button>
+        <button class="btn btn-ghost btn-sm" id="exportInvoicesExcelBtn">${getSvgIcon('download', 14)} تصدير الفواتير Excel</button>
+        <button class="btn btn-primary btn-sm" id="addNewInvoiceBtn">${getSvgIcon('plus', 14)} إصدار فاتورة جديدة</button>
       </div>
     </div>
 
     <!-- KPIs -->
     <div class="stat-grid">
       <div class="stat-card blue">
-        <div class="top-row"><span class="lbl">إجمالي الفواتير الصادرة</span><div class="icon-box">📄</div></div>
+        <div class="top-row"><span class="lbl">إجمالي الفواتير الصادرة</span><div class="icon-box">${getSvgIcon('fileText', 20)}</div></div>
         <div class="num mono">${totalInvoicesCount}</div>
       </div>
       <div class="stat-card purple">
-        <div class="top-row"><span class="lbl">إجمالي قيمة الفواتير</span><div class="icon-box">💵</div></div>
+        <div class="top-row"><span class="lbl">إجمالي قيمة الفواتير</span><div class="icon-box">${getSvgIcon('dollar', 20)}</div></div>
         <div class="num mono">${totalInvoicedSum.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
       </div>
       <div class="stat-card green">
-        <div class="top-row"><span class="lbl">إجمالي المحصل الفعلي</span><div class="icon-box">✅</div></div>
+        <div class="top-row"><span class="lbl">إجمالي المحصل الفعلي</span><div class="icon-box">${getSvgIcon('check', 20)}</div></div>
         <div class="num mono">${totalPaidSum.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
       </div>
       <div class="stat-card red">
-        <div class="top-row"><span class="lbl">المستحقات المتبقية (آجل)</span><div class="icon-box">⏳</div></div>
+        <div class="top-row"><span class="lbl">المستحقات المتبقية (آجل)</span><div class="icon-box">${getSvgIcon('clock', 20)}</div></div>
         <div class="num mono">${totalRemainingSum.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
       </div>
     </div>
 
     <!-- Filters Bar -->
     <div class="filters-bar" style="margin-bottom:14px;">
-      <input id="invSearchInp" placeholder="🔍 بحث برقم الفاتورة، اسم العميل، الهاتف، أو رقم إيصال الصيانة..." value="${state.invoiceSearchQ}" style="flex:1;min-width:240px;">
+      <input id="invSearchInp" placeholder="بحث برقم الفاتورة، اسم العميل، الهاتف، أو رقم إيصال الصيانة..." value="${state.invoiceSearchQ}" style="flex:1;min-width:240px;">
       <select id="invStatusFilterSelect" style="min-width:150px;">
         <option value="all" ${state.invoiceStatusFilter==='all'?'selected':''}>كل الحالات</option>
-        <option value="paid" ${state.invoiceStatusFilter==='paid'?'selected':''}>✅ مدفوعة بالكامل</option>
-        <option value="partial" ${state.invoiceStatusFilter==='partial'?'selected':''}>⚡ مدفوعة جزئياً</option>
-        <option value="unpaid" ${state.invoiceStatusFilter==='unpaid'?'selected':''}>⏳ متبقي مستحق (آجل)</option>
+        <option value="paid" ${state.invoiceStatusFilter==='paid'?'selected':''}>مدفوعة بالكامل</option>
+        <option value="partial" ${state.invoiceStatusFilter==='partial'?'selected':''}>مدفوعة جزئياً</option>
+        <option value="unpaid" ${state.invoiceStatusFilter==='unpaid'?'selected':''}>متبقي مستحق (آجل)</option>
       </select>
       ${(state.invoiceSearchQ || state.invoiceStatusFilter!=='all') ? `<button class="btn btn-ghost btn-sm" id="clearInvFilters">مسح الفلاتر</button>` : ''}
     </div>
@@ -131,14 +131,14 @@ function renderInvoicesPage(main){
                     </div>
                   </td>
                   <td>
-                    ${inv.ReferenceType ? `<span class="status-badge st-check" style="font-size:10.5px;">${inv.ReferenceType==='Receipt'?'🛠️ إيصال #':inv.ReferenceType} ${escapeHtml(inv.ReferenceID)}</span>` : '<span style="color:var(--slate-400);font-size:11px;">مباشر</span>'}
+                    ${inv.ReferenceType ? `<span class="status-badge st-check" style="font-size:10.5px;">${inv.ReferenceType==='Receipt'?'إيصال #':inv.ReferenceType} ${escapeHtml(inv.ReferenceID)}</span>` : '<span style="color:var(--slate-400);font-size:11px;">مباشر</span>'}
                   </td>
                   <td class="mono font-bold" style="font-size:13px;text-align:center;">${Number(inv.Total||0).toLocaleString()} ج.م</td>
                   <td class="mono font-bold" style="color:var(--green);font-size:13px;text-align:center;">${Number(inv.AmountPaid||0).toLocaleString()} ج.م</td>
                   <td class="mono font-bold" style="color:${Number(inv.Remaining||0)>0?'var(--red)':'var(--ink)'};font-size:13px;text-align:center;">${Number(inv.Remaining||0).toLocaleString()} ج.م</td>
                   <td style="text-align:center;">
                     <span class="status-badge ${isPaid?'st-done':(isPartial?'st-repair':'st-failed')}">
-                      ${isPaid?'✅ مدفوعة':(isPartial?'⚡ جزئي':'⏳ آجل')}
+                      ${isPaid?'مدفوعة':(isPartial?'جزئي':'آجل')}
                     </span>
                   </td>
                 </tr>
@@ -170,7 +170,7 @@ function renderInvoicesPage(main){
 
 function renderInvoicesSectionApp(app){
   if(!canUserAccessSection('invoices')){
-    showToast('⛔ ليس لديك صلاحية للوصول إلى قسم الفواتير', 'error');
+    showToast('ليس لديك صلاحية للوصول إلى قسم الفواتير', 'error');
     state.currentSection = null;
     return render();
   }
@@ -184,27 +184,27 @@ function renderInvoicesSectionApp(app){
       <div class="sidebar-nav-wrap">
         <div class="nav-section">إدارة الفواتير والتحصيل</div>
         <div class="nav-item active">
-          <span class="nav-item-icon">📄</span><span>سجل الفواتير وبيانات الأسعار</span>
+          <span class="nav-item-icon">${getSvgIcon('invoices', 16)}</span><span>سجل الفواتير وبيانات الأسعار</span>
         </div>
 
         ${hasFinanceNav ? `
           <div class="nav-section">القطاع المالي المرتبط</div>
           ${canUserAccessSection('cashdrawer') ? `
             <div class="nav-item" id="invToDrawerNav">
-              <span class="nav-item-icon">💵</span><span>حركة الخزينة والدرج</span>
+              <span class="nav-item-icon">${getSvgIcon('cashdrawer', 16)}</span><span>حركة الخزينة والدرج</span>
             </div>
           ` : ''}
           ${canUserAccessSection('daily') ? `
             <div class="nav-item" id="invToDailyNav">
-              <span class="nav-item-icon">📔</span><span>دفتر اليومية العامة</span>
+              <span class="nav-item-icon">${getSvgIcon('daily', 16)}</span><span>دفتر اليومية العامة</span>
             </div>
           ` : ''}
           ${canUserAccessSection('finance') ? `
             <div class="nav-item" id="invToFinanceNav">
-              <span class="nav-item-icon">💰</span><span>شجرة الحسابات والقيود</span>
+              <span class="nav-item-icon">${getSvgIcon('finance', 16)}</span><span>شجرة الحسابات والقيود</span>
             </div>
             <div class="nav-item" id="invToIncomeNav">
-              <span class="nav-item-icon">📈</span><span>تقرير الأرباح والدخل</span>
+              <span class="nav-item-icon">${getSvgIcon('chart', 16)}</span><span>تقرير الأرباح والدخل</span>
             </div>
           ` : ''}
         ` : ''}
@@ -213,17 +213,17 @@ function renderInvoicesSectionApp(app){
           <div class="nav-section">التنقل السريع</div>
           ${canUserAccessSection('maintenance') ? `
             <div class="nav-item" id="invToMaintNav">
-              <span class="nav-item-icon">🛠️</span><span>قسم الصيانة</span>
+              <span class="nav-item-icon">${getSvgIcon('maintenance', 16)}</span><span>قسم الصيانة</span>
             </div>
           ` : ''}
           ${canUserAccessSection('pos') ? `
             <div class="nav-item" id="invToPosNav">
-              <span class="nav-item-icon">🧾</span><span>نقطة البيع (POS)</span>
+              <span class="nav-item-icon">${getSvgIcon('pos', 16)}</span><span>نقطة البيع (POS)</span>
             </div>
           ` : ''}
           ${canUserAccessSection('settings') ? `
             <div class="nav-item" id="invToSettingsNav">
-              <span class="nav-item-icon">⚙️</span><span>الإعدادات</span>
+              <span class="nav-item-icon">${getSvgIcon('settings', 16)}</span><span>الإعدادات</span>
             </div>
           ` : ''}
         ` : ''}
@@ -273,7 +273,7 @@ function getUnifiedDailyTransactions(){
       rawTime: p.Time || '',
       type: 'in',
       sourceType: 'maintenance',
-      sourceIcon: '🛠️',
+      sourceIcon: getSvgIcon('maintenance', 13),
       accountCode: '4101',
       accountName: 'إيرادات خدمات صيانة وتصليح',
       accountTag: '4101 • صيانة',
@@ -298,7 +298,7 @@ function getUnifiedDailyTransactions(){
       rawTime: '',
       type: 'in',
       sourceType: 'pos',
-      sourceIcon: '🧾',
+      sourceIcon: getSvgIcon('pos', 13),
       accountCode: '4102',
       accountName: 'إيرادات مبيعات بضائع وقطع غيار',
       accountTag: '4102 • مبيعات POS',
@@ -326,7 +326,7 @@ function getUnifiedDailyTransactions(){
           rawTime: '',
           type: 'in',
           sourceType: 'invoice',
-          sourceIcon: '📄',
+          sourceIcon: getSvgIcon('fileText', 13),
           accountCode: '4102',
           accountName: 'إيرادات مبيعات وفواتير مباشرة',
           accountTag: '4102 • فواتير',
@@ -354,7 +354,7 @@ function getUnifiedDailyTransactions(){
         rawTime: '',
         type: 'out',
         sourceType: 'purchase',
-        sourceIcon: '📥',
+        sourceIcon: getSvgIcon('truck', 13),
         accountCode: '2101',
         accountName: 'الموردون والدائنون / تكلفة بضاعة',
         accountTag: '2101 • موردين',
@@ -380,7 +380,7 @@ function getUnifiedDailyTransactions(){
         rawTime: '',
         type: 'out',
         sourceType: 'refund',
-        sourceIcon: '↩️',
+        sourceIcon: getSvgIcon('arrowLeft', 13),
         accountCode: '4101',
         accountName: 'مردودات خدمات صيانة وتصليح',
         accountTag: '4101 • استرداد صيانة',
@@ -406,7 +406,7 @@ function getUnifiedDailyTransactions(){
     const isPosReturn = ex.Category === 'مرتجع مبيعات POS' || ex.AccountCode === '4102-RET';
 
     let tType = 'out';
-    let sIcon = '💸';
+    let sIcon = getSvgIcon('dollar', 13);
     let sCat = ex.Category || 'مصروفات تشغيلية';
     let sRef = 'مصروف';
     let accCode = EXPENSE_ACCOUNT_MAP[ex.Category] || '5200';
@@ -415,7 +415,7 @@ function getUnifiedDailyTransactions(){
 
     if(isIncome){
       tType = 'in';
-      sIcon = '🟢';
+      sIcon = getSvgIcon('trendUp', 13);
       sCat = ex.Category || 'وارد / إيداع';
       sRef = 'وارد يدوي';
       accCode = '1101';
@@ -423,7 +423,7 @@ function getUnifiedDailyTransactions(){
       accTag = '1101 • وارد يدوي';
     } else if(isPosReturn){
       tType = 'out';
-      sIcon = '↩️';
+      sIcon = getSvgIcon('arrowLeft', 13);
       sCat = 'مرتجع مبيعات POS';
       sRef = ex.Reference || 'إذن ارتجاع POS';
       accCode = '4102-RET';
@@ -431,7 +431,7 @@ function getUnifiedDailyTransactions(){
       accTag = '4102 • مرتجع مبيعات';
     } else if(isSupplierPay){
       tType = 'out';
-      sIcon = '💸';
+      sIcon = getSvgIcon('truck', 13);
       sCat = 'سداد موردين';
       sRef = ex.Reference ? `سند #${ex.Reference}` : 'سند صرف مورد';
       accCode = '2101';
@@ -439,7 +439,7 @@ function getUnifiedDailyTransactions(){
       accTag = '2101 • موردين';
     } else if(isPetty){
       tType = 'petty';
-      sIcon = '☕';
+      sIcon = getSvgIcon('wallet', 13);
       sCat = 'نثريات وبوفيه';
       sRef = 'نثريات';
       accCode = '5204';
@@ -447,7 +447,7 @@ function getUnifiedDailyTransactions(){
       accTag = '5204 • نثريات';
     } else if(isDraw){
       tType = 'out';
-      sIcon = '📤';
+      sIcon = getSvgIcon('trendDown', 13);
       sCat = 'مسحوبات شركاء';
       sRef = 'مسحوبات';
       accCode = '3103';
@@ -501,10 +501,10 @@ function openRecordTransactionModal(defaultType='expense'){
   let curType = defaultType; // 'in' | 'out' | 'expense' | 'petty'
 
   const typeConfig = {
-    in: { label: '🟢 تسجيل وارد / إيداع نقدي بالخزينة', btnCls: 'btn-green', submitTxt: 'حفظ الوارد' },
-    out: { label: '📤 تسجيل منصرف / مسحوبات نقدية', btnCls: 'btn-amber', submitTxt: 'حفظ المنصرف' },
-    expense: { label: '💸 تسجيل مصروف عام / تشغيلي', btnCls: 'btn-red', submitTxt: 'حفظ المصروف' },
-    petty: { label: '☕ تسجيل نثريات وبوفيه ومشتريات يومية', btnCls: 'btn-primary', submitTxt: 'حفظ النثريات' }
+    in: { label: `${getSvgIcon('trendUp', 18)} تسجيل وارد / إيداع نقدي بالخزينة`, btnCls: 'btn-green', submitTxt: 'حفظ الوارد' },
+    out: { label: `${getSvgIcon('trendDown', 18)} تسجيل منصرف / مسحوبات نقدية`, btnCls: 'btn-amber', submitTxt: 'حفظ المنصرف' },
+    expense: { label: `${getSvgIcon('dollar', 18)} تسجيل مصروف عام / تشغيلي`, btnCls: 'btn-red', submitTxt: 'حفظ المصروف' },
+    petty: { label: `${getSvgIcon('wallet', 18)} تسجيل نثريات وبوفيه ومشتريات يومية`, btnCls: 'btn-primary', submitTxt: 'حفظ النثريات' }
   };
 
   function renderModal(){
@@ -512,16 +512,16 @@ function openRecordTransactionModal(defaultType='expense'){
     overlay.innerHTML = `
       <div class="modal-content" style="max-width:620px;">
         <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
-          <h3 style="margin:0;font-size:16.5px;font-weight:900;">${cfg.label}</h3>
-          <button class="btn btn-ghost btn-xs" id="closeTxModal">✕</button>
+          <h3 style="margin:0;font-size:16.5px;font-weight:900;display:flex;align-items:center;gap:8px;">${cfg.label}</h3>
+          <button class="btn btn-ghost btn-xs" id="closeTxModal" style="font-size:18px;line-height:1;">&times;</button>
         </div>
 
         <!-- Type Switcher Tabs -->
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:14px;">
-          <button type="button" class="btn btn-xs ${curType==='in'?'btn-green':'btn-ghost'}" data-txtype="in">📥 وارد (إيداع)</button>
-          <button type="button" class="btn btn-xs ${curType==='out'?'btn-amber':'btn-ghost'}" data-txtype="out">📤 منصرف (مسحوبات)</button>
-          <button type="button" class="btn btn-xs ${curType==='expense'?'btn-red':'btn-ghost'}" data-txtype="expense">💸 مصاريف تشغيل</button>
-          <button type="button" class="btn btn-xs ${curType==='petty'?'btn-primary':'btn-ghost'}" data-txtype="petty">☕ نثريات وبوفيه</button>
+          <button type="button" class="btn btn-xs ${curType==='in'?'btn-green':'btn-ghost'}" data-txtype="in" style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">${getSvgIcon('download', 13)} وارد (إيداع)</button>
+          <button type="button" class="btn btn-xs ${curType==='out'?'btn-amber':'btn-ghost'}" data-txtype="out" style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">${getSvgIcon('upload', 13)} منصرف (مسحوبات)</button>
+          <button type="button" class="btn btn-xs ${curType==='expense'?'btn-red':'btn-ghost'}" data-txtype="expense" style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">${getSvgIcon('dollar', 13)} مصاريف تشغيل</button>
+          <button type="button" class="btn btn-xs ${curType==='petty'?'btn-primary':'btn-ghost'}" data-txtype="petty" style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">${getSvgIcon('wallet', 13)} نثريات وبوفيه</button>
         </div>
 
         <div class="field">
@@ -567,7 +567,7 @@ function openRecordTransactionModal(defaultType='expense'){
           <div class="field">
             <label>طريقة الدفع / الصندوق</label>
             <select id="txPaymentMethod">
-              ${getActivePaymentMethods().map(pm => `<option value="${escapeHtml(pm.name)}">${pm.icon||'💵'} ${escapeHtml(pm.name)}</option>`).join('')}
+              ${getActivePaymentMethods().map(pm => `<option value="${escapeHtml(pm.name)}">${escapeHtml(pm.name)}</option>`).join('')}
             </select>
           </div>
         </div>
@@ -579,7 +579,7 @@ function openRecordTransactionModal(defaultType='expense'){
 
         <div class="actions-row" style="margin-top:16px;">
           <button class="btn btn-ghost" id="cancelTxModal">إلغاء</button>
-          <button class="btn ${cfg.btnCls}" id="saveTxModalBtn">💾 ${cfg.submitTxt}</button>
+          <button class="btn ${cfg.btnCls}" id="saveTxModalBtn">${cfg.submitTxt}</button>
         </div>
       </div>
     `;
@@ -618,7 +618,7 @@ function openRecordTransactionModal(defaultType='expense'){
           PaymentMethod: method,
           Notes: notes
         });
-        showToast('تم تسجيل الحركة بنجاح في دفتر اليومية ✅', 'success');
+        showToast('تم تسجيل الحركة بنجاح في دفتر اليومية', 'success');
         overlay.remove();
         const main = document.getElementById('main');
         if(state.currentSection === 'daily' && main){
@@ -681,7 +681,7 @@ function startNewShift(openingFloat = 0, notes = ''){
   state.activeShift = shift;
   setCache('activeShift', state.activeShift);
   recordAuditLog('فتح وردية جديدة', 'الخزينة والورديات', `فتح الوردية #${shiftNumber} برصيد افتتاحي: ${openingFloat} ج.م للكاشير: ${shift.cashierName}`, shift.id);
-  showToast(`تم فتح وردية جديدة رقم #${shiftNumber} بنجاح ✅`, 'success');
+  showToast(`تم فتح وردية جديدة رقم #${shiftNumber} بنجاح`, 'success');
   return shift;
 }
 
@@ -877,7 +877,7 @@ function closeActiveShift(actualCountedCash, closingNotes = '', printFormat = 't
     shift.id
   );
 
-  showToast(`تم إغلاق الوردية #${shift.shiftNumber} بنجاح ✅`, 'success');
+  showToast(`تم إغلاق الوردية #${shift.shiftNumber} بنجاح`, 'success');
 
   // Trigger print
   if(printFormat){
@@ -913,11 +913,11 @@ function openStartShiftModal(onStarted){
   overlay.innerHTML = `
     <div class="modal-content" style="max-width:440px;">
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
-        <h3 style="margin:0;font-size:16px;color:var(--ink);display:flex;align-items:center;gap:6px;">
-          <span>🟢</span>
+        <h3 style="margin:0;font-size:16px;color:var(--ink);display:flex;align-items:center;gap:8px;">
+          <span>${getSvgIcon('pos', 18)}</span>
           <span>بدء وفتح وردية كاشير جديدة</span>
         </h3>
-        <button class="btn btn-ghost btn-xs" id="closeStartShiftModal">✕</button>
+        <button class="btn btn-ghost btn-xs" id="closeStartShiftModal" style="font-size:18px;line-height:1;">&times;</button>
       </div>
 
       <div class="field">
@@ -944,8 +944,8 @@ function openStartShiftModal(onStarted){
 
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;border-top:1px solid var(--line);padding-top:12px;">
         <button class="btn btn-ghost" id="cancelStartShiftModal">إلغاء</button>
-        <button class="btn btn-primary" id="confirmStartShiftModal" style="font-weight:900;">
-          🟢 تأكيد فتح الوردية
+        <button class="btn btn-primary" id="confirmStartShiftModal" style="font-weight:900;display:inline-flex;align-items:center;gap:6px;">
+          ${getSvgIcon('check', 14)} تأكيد فتح الوردية
         </button>
       </div>
     </div>
@@ -1007,15 +1007,15 @@ function openCloseShiftModal(){
     <div class="modal-content" style="max-width:580px;">
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
         <div>
-          <h3 style="margin:0;font-size:17px;color:var(--ink);display:flex;align-items:center;gap:6px;">
-            <span>🔒</span>
+          <h3 style="margin:0;font-size:17px;color:var(--ink);display:flex;align-items:center;gap:8px;">
+            <span>${getSvgIcon('lock', 18)}</span>
             <span>تقفيل ومطابقة الوردية رقم #${shift.shiftNumber} (Z-Report)</span>
           </h3>
           <div style="font-size:12px;color:var(--ink-secondary);margin-top:2px;">
             الكاشير: <b>${escapeHtml(shift.cashierName)}</b> • المدة: <b>${durationStr}</b>
           </div>
         </div>
-        <button class="btn btn-ghost btn-xs" id="closeCloseShiftModal">✕</button>
+        <button class="btn btn-ghost btn-xs" id="closeCloseShiftModal" style="font-size:18px;line-height:1;">&times;</button>
       </div>
 
       <!-- Financial Snapshot Cards -->
@@ -1037,7 +1037,9 @@ function openCloseShiftModal(){
       <!-- Expected Cash in Drawer Callout -->
       <div style="background:linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);border:1.5px solid #93c5fd;border-radius:8px;padding:12px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
         <div>
-          <div style="font-size:11.5px;font-weight:800;color:#1e40af;">💵 النقدية المتوقعة بالدرج (حساب النظام):</div>
+          <div style="font-size:11.5px;font-weight:800;color:#1e40af;display:flex;align-items:center;gap:6px;">
+            ${getSvgIcon('cashdrawer', 16)} النقدية المتوقعة بالدرج (حساب النظام):
+          </div>
           <div style="font-size:11px;color:#3b82f6;">الافتتاحي + المبيعات النقدية + الصيانة - المنصرفات</div>
         </div>
         <div class="num mono font-bold" style="font-size:20px;color:#1e3a8a;">
@@ -1048,11 +1050,11 @@ function openCloseShiftModal(){
       <!-- Actual Cash Input & Live Discrepancy Indicator -->
       <div class="card" style="padding:14px;margin-bottom:14px;border:2px solid var(--primary);">
         <label style="font-size:13px;font-weight:900;color:var(--ink);display:block;margin-bottom:6px;">
-          💰 النقدية الفعلية المحصية بالدرج الآن (ج.م) *
+          النقدية الفعلية المحصية بالدرج الآن (ج.م) *
         </label>
         <div style="display:flex;gap:8px;align-items:center;">
           <input id="actualCountedCashInp" type="number" step="any" placeholder="اكتب المبلغ الفعلي بالدرج..." class="mono font-bold" style="font-size:18px;direction:ltr;text-align:right;flex:1;" autofocus>
-          <button type="button" class="btn btn-ghost btn-sm" id="matchExpectedBtn" style="white-space:nowrap;font-weight:700;">✓ مطابق للمتوقع</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="matchExpectedBtn" style="white-space:nowrap;font-weight:700;display:inline-flex;align-items:center;gap:4px;">${getSvgIcon('check', 13)} مطابق للمتوقع</button>
         </div>
 
         <div id="liveDiscrepancyBadge" style="margin-top:10px;padding:8px 12px;border-radius:6px;font-size:12px;font-weight:800;display:none;"></div>
@@ -1067,9 +1069,9 @@ function openCloseShiftModal(){
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;border-top:1px solid var(--line);padding-top:12px;flex-wrap:wrap;gap:8px;">
         <button class="btn btn-ghost btn-sm" id="cancelCloseShiftModal">إلغاء</button>
         <div style="display:flex;gap:8px;">
-          <button class="btn btn-ghost btn-sm" id="closeShiftA4Btn" style="border:1px solid var(--line);">📄 إغلاق مع تقرير A4</button>
-          <button class="btn btn-primary btn-sm" id="closeShiftThermalBtn" style="font-weight:900;background:#059669;border-color:#059669;">
-            🖨️ إغلاق وطباعة تقرير Z حراري (80mm)
+          <button class="btn btn-ghost btn-sm" id="closeShiftA4Btn" style="border:1px solid var(--line);display:inline-flex;align-items:center;gap:6px;">${getSvgIcon('fileText', 14)} إغلاق مع تقرير A4</button>
+          <button class="btn btn-primary btn-sm" id="closeShiftThermalBtn" style="font-weight:900;background:#059669;border-color:#059669;display:inline-flex;align-items:center;gap:6px;">
+            ${getSvgIcon('printer', 14)} إغلاق وطباعة تقرير Z حراري (80mm)
           </button>
         </div>
       </div>
@@ -1095,17 +1097,17 @@ function openCloseShiftModal(){
       badge.style.background = '#dcfce7';
       badge.style.color = '#15803d';
       badge.style.border = '1px solid #86efac';
-      badge.innerHTML = `✓ الرصيد الفعلي مطابق للنظام تماماً (0.00 ج.م)`;
+      badge.innerHTML = `الرصيد الفعلي مطابق للنظام تماماً (0.00 ج.م)`;
     } else if(diff < 0){
       badge.style.background = '#fee2e2';
       badge.style.color = '#b91c1c';
       badge.style.border = '1px solid #fca5a5';
-      badge.innerHTML = `⚠️ يوجد عجز نقدي بالدرج بقيمة: <b>${Math.abs(diff).toLocaleString()} ج.م</b>`;
+      badge.innerHTML = `يوجد عجز نقدي بالدرج بقيمة: <b>${Math.abs(diff).toLocaleString()} ج.م</b>`;
     } else {
       badge.style.background = '#e0f2fe';
       badge.style.color = '#0369a1';
       badge.style.border = '1px solid #7dd3fc';
-      badge.innerHTML = `🟢 توجد زيادة نقدية بالدرج بقيمة: <b>+${diff.toLocaleString()} ج.م</b>`;
+      badge.innerHTML = `توجد زيادة نقدية بالدرج بقيمة: <b>+${diff.toLocaleString()} ج.م</b>`;
     }
   };
 
@@ -1257,7 +1259,7 @@ function openShiftPrint(shift, mode = 'Z', format = 'thermal'){
             <span>الدرج الفعلي (محصي):</span><b class="mono">${stats.actualCash.toLocaleString()} ج.م</b>
           </div>
           <div style="display:flex;justify-content:space-between;font-weight:900;font-size:11.5px;margin-top:2px;">
-            <span>الفارق (عجز/زيادة):</span><b class="mono" style="${stats.discrepancy < 0 ? 'text-decoration:underline;' : ''}">${stats.discrepancy === 0 ? '0.00 (مطابق ✓)' : (stats.discrepancy > 0 ? `+${stats.discrepancy.toLocaleString()} (زيادة)` : `${stats.discrepancy.toLocaleString()} (عجز ⚠️)`)}</b>
+            <span>الفارق (عجز/زيادة):</span><b class="mono" style="${stats.discrepancy < 0 ? 'text-decoration:underline;' : ''}">${stats.discrepancy === 0 ? '0.00 (مطابق)' : (stats.discrepancy > 0 ? `+${stats.discrepancy.toLocaleString()} (زيادة)` : `${stats.discrepancy.toLocaleString()} (عجز)`)}</b>
           </div>
         ` : ''}
 
@@ -1345,7 +1347,7 @@ function openShiftPrint(shift, mode = 'Z', format = 'thermal'){
           </div>
           <div style="background:${stats.discrepancy < 0 ? '#fef2f2' : '#f0fdf4'};border:1px solid ${stats.discrepancy < 0 ? '#fecaca' : '#bbf7d0'};border-radius:6px;padding:8px 10px;text-align:center;">
             <div style="font-size:11px;color:${stats.discrepancy < 0 ? '#dc2626' : '#16a34a'};">الفارق / المطابقة</div>
-            <div class="num mono font-bold" style="font-size:16px;color:${stats.discrepancy < 0 ? '#dc2626' : '#16a34a'};">${stats.discrepancy === 0 ? 'مطابق ✓' : (stats.discrepancy > 0 ? `+${stats.discrepancy.toLocaleString()} ج.م` : `${stats.discrepancy.toLocaleString()} ج.م`)}</div>
+            <div class="num mono font-bold" style="font-size:16px;color:${stats.discrepancy < 0 ? '#dc2626' : '#16a34a'};">${stats.discrepancy === 0 ? 'مطابق' : (stats.discrepancy > 0 ? `+${stats.discrepancy.toLocaleString()} ج.م` : `${stats.discrepancy.toLocaleString()} ج.م`)}</div>
           </div>
         </div>
 
@@ -1425,11 +1427,11 @@ function openShiftsHistoryModal(){
   overlay.innerHTML = `
     <div class="modal-content" style="max-width:850px;">
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
-        <h3 style="margin:0;font-size:17px;color:var(--ink);display:flex;align-items:center;gap:6px;">
-          <span>📜</span>
+        <h3 style="margin:0;font-size:17px;color:var(--ink);display:flex;align-items:center;gap:8px;">
+          <span>${getSvgIcon('archive', 18)}</span>
           <span>سجل تقارير الورديات السابقة (Z-Reports Archive)</span>
         </h3>
-        <button class="btn btn-ghost btn-xs" id="closeShiftsHistoryModal">✕</button>
+        <button class="btn btn-ghost btn-xs" id="closeShiftsHistoryModal" style="font-size:18px;line-height:1;">&times;</button>
       </div>
 
       ${shiftsList.length === 0 ? `
@@ -1457,7 +1459,7 @@ function openShiftsHistoryModal(){
                 const stats = s.stats || calculateShiftStats(s) || {};
                 const disc = s.discrepancy != null ? s.discrepancy : (stats.discrepancy || 0);
                 const discColor = disc === 0 ? 'var(--green-text)' : (disc < 0 ? 'var(--red-text)' : 'var(--blue-text)');
-                const discText = disc === 0 ? 'مطابق ✓' : (disc > 0 ? `+${disc.toLocaleString()}` : `${disc.toLocaleString()}`);
+                const discText = disc === 0 ? 'مطابق' : (disc > 0 ? `+${disc.toLocaleString()}` : `${disc.toLocaleString()}`);
 
                 return `
                   <tr>
@@ -1474,8 +1476,8 @@ function openShiftsHistoryModal(){
                     <td class="mono font-bold" style="color:${discColor};">${discText}</td>
                     <td style="text-align:center;">
                       <div style="display:flex;gap:4px;justify-content:center;">
-                        <button class="btn btn-xs btn-ghost" data-printzthermal="${s.id}" title="طباعة إيصال Z حراري 80mm">🖨️ Z حراري</button>
-                        <button class="btn btn-xs btn-ghost" data-printza4="${s.id}" title="طباعة تقرير Z إداري A4">📄 A4</button>
+                        <button class="btn btn-xs btn-ghost" data-printzthermal="${s.id}" title="طباعة إيصال Z حراري 80mm" style="display:inline-flex;align-items:center;gap:3px;">${getSvgIcon('printer', 12)} Z حراري</button>
+                        <button class="btn btn-xs btn-ghost" data-printza4="${s.id}" title="طباعة تقرير Z إداري A4" style="display:inline-flex;align-items:center;gap:3px;">${getSvgIcon('fileText', 12)} A4</button>
                       </div>
                     </td>
                   </tr>
@@ -1536,23 +1538,23 @@ function openDailyClosePrint(date, stats, list){
     <!-- Summary Box (Separated Maintenance vs Sales) -->
     <div style="display:grid;grid-template-columns:repeat(5, 1fr);gap:8px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:6px;padding:10px 12px;margin-bottom:14px;text-align:center;">
       <div style="background:#e0f2fe;border-radius:4px;padding:4px 6px;">
-        <div style="font-size:10px;color:#0369a1;font-weight:800;">🛠️ إيرادات الصيانة (4101)</div>
+        <div style="font-size:10px;color:#0369a1;font-weight:800;display:flex;align-items:center;justify-content:center;gap:4px;">${getSvgIcon('maintenance', 11)} إيرادات الصيانة (4101)</div>
         <div style="font-size:13.5px;font-weight:900;color:#0284c7;" class="mono">${maintIn.toLocaleString()} ج.م</div>
       </div>
       <div style="background:#dcfce7;border-radius:4px;padding:4px 6px;">
-        <div style="font-size:10px;color:#15803d;font-weight:800;">🧾 مبيعات POS (4102)</div>
+        <div style="font-size:10px;color:#15803d;font-weight:800;display:flex;align-items:center;justify-content:center;gap:4px;">${getSvgIcon('pos', 11)} مبيعات POS (4102)</div>
         <div style="font-size:13.5px;font-weight:900;color:#16a34a;" class="mono">${posIn.toLocaleString()} ج.م</div>
       </div>
       <div>
-        <div style="font-size:10px;color:#64748b;">إجمالي المقبوضات 🟢</div>
+        <div style="font-size:10px;color:#64748b;display:flex;align-items:center;justify-content:center;gap:4px;">${getSvgIcon('trendUp', 11)} إجمالي المقبوضات</div>
         <div style="font-size:13.5px;font-weight:900;color:#16a34a;" class="mono">${stats.totalIn.toLocaleString()} ج.م</div>
       </div>
       <div>
-        <div style="font-size:10px;color:#64748b;">إجمالي المنصرف 🔴</div>
+        <div style="font-size:10px;color:#64748b;display:flex;align-items:center;justify-content:center;gap:4px;">${getSvgIcon('trendDown', 11)} إجمالي المنصرف</div>
         <div style="font-size:13.5px;font-weight:900;color:#dc2626;" class="mono">${stats.totalOut.toLocaleString()} ج.م</div>
       </div>
       <div style="background:#0f172a;color:#fff;border-radius:4px;padding:4px 6px;">
-        <div style="font-size:10px;color:#cbd5e1;">الصافي الفعلي بالدرج 💰</div>
+        <div style="font-size:10px;color:#cbd5e1;display:flex;align-items:center;justify-content:center;gap:4px;">${getSvgIcon('cashdrawer', 11)} الصافي الفعلي بالدرج</div>
         <div style="font-size:14px;font-weight:900;color:#38bdf8;" class="mono">${stats.netCash.toLocaleString()} ج.م</div>
       </div>
     </div>
@@ -1605,22 +1607,22 @@ function openDailyClosePrint(date, stats, list){
 /* ---------------- Helper: Accounting Badge for Daily Journal ---------------- */
 function getAccountBadgeHtml(t){
   if(t.sourceType === 'maintenance'){
-    return '<span class="badge" style="background:#e0f2fe;color:#0369a1;font-weight:800;border:1px solid #bae6fd;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;">🛠️ 4101 صيانة</span>';
+    return `<span class="badge" style="background:#e0f2fe;color:#0369a1;font-weight:800;border:1px solid #bae6fd;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;">${getSvgIcon('maintenance', 12)} 4101 صيانة</span>`;
   }
   if(t.sourceType === 'pos'){
-    return '<span class="badge" style="background:#dcfce7;color:#15803d;font-weight:800;border:1px solid #bbf7d0;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;">🧾 4102 مبيعات POS</span>';
+    return `<span class="badge" style="background:#dcfce7;color:#15803d;font-weight:800;border:1px solid #bbf7d0;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;">${getSvgIcon('pos', 12)} 4102 مبيعات POS</span>`;
   }
   if(t.sourceType === 'pos_return' || t.accountCode === '4102-RET'){
-    return '<span class="badge" style="background:#fee2e2;color:#b91c1c;font-weight:800;border:1px solid #fca5a5;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;">↩️ 4102 مرتجع مبيعات</span>';
+    return `<span class="badge" style="background:#fee2e2;color:#b91c1c;font-weight:800;border:1px solid #fca5a5;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;">${getSvgIcon('arrowLeft', 12)} 4102 مرتجع مبيعات</span>`;
   }
   if(t.sourceType === 'invoice'){
-    return '<span class="badge" style="background:#f1f5f9;color:#334155;font-weight:800;border:1px solid #cbd5e1;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;">📄 4102 فواتير</span>';
+    return `<span class="badge" style="background:#f1f5f9;color:#334155;font-weight:800;border:1px solid #cbd5e1;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;">${getSvgIcon('fileText', 12)} 4102 فواتير</span>`;
   }
   if(t.type === 'petty'){
-    return '<span class="badge" style="background:#fef3c7;color:#b45309;font-weight:800;border:1px solid #fde68a;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;">☕ 5204 نثريات</span>';
+    return `<span class="badge" style="background:#fef3c7;color:#b45309;font-weight:800;border:1px solid #fde68a;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;">${getSvgIcon('wallet', 12)} 5204 نثريات</span>`;
   }
   if(t.sourceType === 'purchase'){
-    return '<span class="badge" style="background:#ffedd5;color:#c2410c;font-weight:800;border:1px solid #fed7aa;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;">📥 2101 موردين</span>';
+    return `<span class="badge" style="background:#ffedd5;color:#c2410c;font-weight:800;border:1px solid #fed7aa;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;">${getSvgIcon('truck', 12)} 2101 موردين</span>`;
   }
-  return '<span class="badge" style="background:#fee2e2;color:#b91c1c;font-weight:800;border:1px solid #fecaca;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;">💸 ' + (t.accountTag || '5200 مصروف') + '</span>';
+  return `<span class="badge" style="background:#fee2e2;color:#b91c1c;font-weight:800;border:1px solid #fecaca;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;">${getSvgIcon('dollar', 12)} ${(t.accountTag || '5200 مصروف')}</span>`;
 }

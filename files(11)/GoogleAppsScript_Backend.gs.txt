@@ -78,17 +78,17 @@ function checkRateLimit(clientId) {
     }
     cache.put(key, String(count), 60); // 1 minute window
 
-    // Global quota exhaustion guard (max 350 total requests/min across the entire web app)
+    // Global quota exhaustion guard (max 800 total requests/min across the entire web app)
     const globalKey = 'rl_global_traffic';
     const globalCount = Number(cache.get(globalKey) || 0) + 1;
-    if (globalCount > 350) {
+    if (globalCount > 800) {
       return false; // Global script traffic limit exceeded
     }
     cache.put(globalKey, String(globalCount), 60);
 
     return true;
   } catch (e) {
-    return true; // Graceful fallback
+    return false; // Fail-closed: deny requests if rate limiter errors
   }
 }
 
@@ -175,37 +175,32 @@ function destroySession(token) {
  * Uses session data directly when available, preventing client-side role forgery.
  */
 function verifyAdminRole(body, session) {
-  if (session) {
-    return (String(session.role || '').toLowerCase() === 'admin' || !!session.superuser);
+  if (!session) return false;
+  return (String(session.role || '').toLowerCase() === 'admin' || !!session.superuser);
+}
+
+function renderAppHtml() {
+  const candidateNames = ['Index', 'index', 'Index.html', 'index.html', 'ميكروERP', 'app'];
+  for (let i = 0; i < candidateNames.length; i++) {
+    try {
+      return HtmlService.createHtmlOutputFromFile(candidateNames[i])
+        .setTitle('ميكروERP')
+        .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    } catch (err) {}
   }
-  if (!body) return false;
-  const reqRole = String(body.role || '').trim().toLowerCase();
-  if (reqRole !== 'admin') return false;
-
-  const reqUser = String(body.user || '').trim().toLowerCase();
-  if (!reqUser) return false;
-
-  try {
-    const users = getAllRows(SHEET_USERS);
-    const matched = users.find(u => u.Name && u.Name.trim().toLowerCase() === reqUser);
-    if (matched) {
-      return (String(matched.Role).toLowerCase() === 'admin' || !!matched.Superuser);
-    }
-  } catch(e) {}
-
-  return false;
+  return HtmlService.createHtmlOutput('<div dir="rtl" style="font-family:sans-serif;padding:30px;text-align:center;"><h2>⚠️ تنبيه من النظام</h2><p style="font-size:16px;">لم يتم العثور على ملف الواجهة HTML في مشروع Apps Script.</p><p style="color:#666;">تأكد من وجود ملف HTML في القائمة الجانبية باسم <b>Index</b> (أو <b>index</b>) ولصق كود الواجهة بداخله ثم عمل <b>Deploy > New deployment</b>.</p></div>')
+    .setTitle('ميكروERP');
 }
 
 function doGet(e) {
   const action = e.parameter.action;
   if (!action) {
-    return HtmlService.createHtmlOutputFromFile('Index')
-      .setTitle('ميكروERP')
-      .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+    return renderAppHtml();
   }
 
   // Anti-DoS Rate Limit Check
-  const clientKey = e.parameter.sessionToken || e.parameter.user || 'anon_get';
+  const clientKey = e.parameter.sessionToken || 'anon_get';
   if (!checkRateLimit(clientKey)) {
     return jsonOut({ error: 'تم تجاوز الحد الأقصى لمعدل الطلبات في الدقيقة (Rate Limit Exceeded). يرجى الانتظار قليلاً.' }, 429);
   }
@@ -215,9 +210,16 @@ function doGet(e) {
     if (action === 'trackReceipt') {
       const qNum = String(e.parameter.receiptNumber || e.parameter.r || '').trim();
       if (!qNum) return jsonOut({ error: 'رقم الإيصال مطلوب' }, 400);
-      const rows = getAllRows(SHEET_RECEIPTS);
-      const r = rows.find(x => String(x.ReceiptNumber || '').trim().toLowerCase() === qNum.toLowerCase() || String(x.ID || '').trim() === qNum);
-      if (!r) return jsonOut({ found: false }, 404);
+      // Optimized: Use TextFinder for O(1) lookup instead of loading entire sheet
+      const sh = getSheet(SHEET_RECEIPTS);
+      const finder = sh.createTextFinder(qNum).matchEntireCell(true);
+      const cell = finder.findNext();
+      if (!cell) return jsonOut({ found: false }, 404);
+      const rowNum = cell.getRow();
+      const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+      const rowData = sh.getRange(rowNum, 1, 1, headers.length).getValues()[0];
+      const r = {};
+      headers.forEach((h, i) => r[h] = rowData[i]);
       return jsonOut({
         found: true,
         receipt: {
@@ -229,7 +231,6 @@ function doGet(e) {
           faults: (r.Faults ? String(r.Faults).split('،') : []),
           status: r.Status || 'قيد الفحص',
           cost: Number(r.Cost || 0),
-          partsCost: Number(r.PartsCost || 0),
           deposit: Number(r.Deposit || 0),
           refunded: Number(r.Refunded || 0),
           deliveryDate: r.DeliveryDate || ''
@@ -269,6 +270,10 @@ function doGet(e) {
         Superuser: !!u.Superuser
       }));
 
+      const returns = getAllRows(SHEET_RETURNS);
+      const serials = getAllRows(SHEET_SERIALS);
+      const supplierPayments = getAllRows(SHEET_SUPPLIER_PAYMENTS);
+
       return jsonOut({
         ok: true,
         timestamp: new Date().toISOString(),
@@ -287,10 +292,23 @@ function doGet(e) {
         expenses,
         accounts,
         journalEntries,
-        invoices
+        invoices,
+        returns,
+        serials,
+        supplierPayments
       });
     }
 
+    if (action === 'getUsers') {
+      const users = getAllRows(SHEET_USERS).map(u => ({
+        ID: u.ID,
+        Name: u.Name,
+        Role: u.Role,
+        Sections: u.Sections || '',
+        Superuser: !!u.Superuser
+      }));
+      return jsonOut(users);
+    }
     if (action === 'getReceipts') return jsonOut(getAllRows(SHEET_RECEIPTS));
     if (action === 'getCustomers') return jsonOut(getAllRows(SHEET_CUSTOMERS));
     if (action === 'getTechnicians') return jsonOut(getAllRows(SHEET_TECHNICIANS));
@@ -340,7 +358,7 @@ function doPost(e) {
   }
 
   // Anti-DoS Rate Limit Check on Writes
-  const clientKey = body.user || 'anon_post';
+  const clientKey = body.sessionToken || 'anon_post';
   if (!checkRateLimit(clientKey)) {
     return jsonOut({ error: 'تم تجاوز الحد الأقصى لعمليات الحفظ المتزامنة (Rate Limit Exceeded). يرجى الانتظار لحظات.' }, 429);
   }
@@ -424,6 +442,7 @@ function doPost(e) {
       logAudit(body.data.ID, body.user, 'حفظ/تعديل إيصال');
 
       // Deduct spare parts atomically if specified
+      if (Array.isArray(body.partsToDeduct)) validateArraySize(body.partsToDeduct, 50, 'قطع الغيار');
       if (Array.isArray(body.partsToDeduct) && body.partsToDeduct.length > 0) {
         const shInv = getSheet(SHEET_INVENTORY);
         const headers = shInv.getRange(1, 1, 1, shInv.getLastColumn()).getValues()[0];
@@ -437,7 +456,7 @@ function doPost(e) {
             if (String(values[i][idCol]) === String(item.itemId)) {
               const currentQty = Number(values[i][qtyCol] || 0);
               const deductQty = Number(item.qty || 0);
-              const newQty = currentQty - deductQty;
+              const newQty = Math.max(0, currentQty - deductQty);
               values[i][qtyCol] = newQty;
               shInv.getRange(i + 1, qtyCol + 1).setValue(newQty);
               break;
@@ -539,6 +558,7 @@ function doPost(e) {
       return jsonOut({ ok: true });
     }
     if (action === 'saveSetting') {
+      if (!verifyAdminRole(body, session)) return jsonOut({ error: 'تعديل الإعدادات متاح للمدير فقط' }, 403);
       upsertRow(SHEET_SETTINGS, { Key: body.key, Value: body.value }, 'Key');
       return jsonOut({ ok: true });
     }
@@ -577,6 +597,9 @@ function doPost(e) {
         PaymentMethod: body.paymentMethod || 'نقدي (كاش)'
       };
       appendRow(SHEET_PAYMENTS, payment);
+      if (body.journalEntry) {
+        appendRow(SHEET_JOURNAL, body.journalEntry);
+      }
       logAudit(body.receiptId, body.user, 'تسجيل دفعة: ' + body.amount + ' ج.م (' + (body.paymentMethod || 'نقدي') + ')');
       return jsonOut({ ok: true, payment });
     }
@@ -642,7 +665,7 @@ function doPost(e) {
       const values = sh.getDataRange().getValues();
       for (let i = 1; i < values.length; i++) {
         if (String(values[i][idCol]) === String(body.id)) {
-          const newQty = Number(values[i][qtyCol] || 0) + Number(body.delta);
+          const newQty = safeNumber(values[i][qtyCol], 0) + safeNumber(body.delta, 0);
           sh.getRange(i + 1, qtyCol + 1).setValue(newQty);
           return jsonOut({ ok: true, newQty });
         }
@@ -665,6 +688,7 @@ function doPost(e) {
       appendRow(SHEET_SALES, sale);
 
       // Atomic inventory deduction for items in cart
+      if (Array.isArray(body.items)) validateArraySize(body.items, 50, 'أصناف البيع');
       if (Array.isArray(body.items) && body.items.length > 0) {
         const shInv = getSheet(SHEET_INVENTORY);
         const headers = shInv.getRange(1, 1, 1, shInv.getLastColumn()).getValues()[0];
@@ -678,7 +702,7 @@ function doPost(e) {
             if (String(values[i][idCol]) === String(item.itemId)) {
               const currentQty = Number(values[i][qtyCol] || 0);
               const deductQty = Number(item.qty || 0);
-              const newQty = currentQty - deductQty;
+              const newQty = Math.max(0, currentQty - deductQty);
               values[i][qtyCol] = newQty;
               shInv.getRange(i + 1, qtyCol + 1).setValue(newQty);
               break;
@@ -702,7 +726,7 @@ function doPost(e) {
       const values = sh.getDataRange().getValues();
       for (let i = 1; i < values.length; i++) {
         if (String(values[i][idCol]) === String(body.saleId)) {
-          const newPaid = Number(values[i][paidCol] || 0) + Number(body.amount);
+          const newPaid = safeNumber(values[i][paidCol], 0) + safeNumber(body.amount, 0);
           sh.getRange(i + 1, paidCol + 1).setValue(newPaid);
           return jsonOut({ ok: true, newPaid });
         }
@@ -778,6 +802,7 @@ function doPost(e) {
       appendRow(SHEET_PURCHASES, p);
 
       // Atomic inventory increment for items purchased
+      if (Array.isArray(body.items)) validateArraySize(body.items, 50, 'أصناف المشتريات');
       if (Array.isArray(body.items) && body.items.length > 0) {
         const shInv = getSheet(SHEET_INVENTORY);
         const headers = shInv.getRange(1, 1, 1, shInv.getLastColumn()).getValues()[0];
@@ -796,7 +821,12 @@ function doPost(e) {
               values[i][qtyCol] = newQty;
               shInv.getRange(i + 1, qtyCol + 1).setValue(newQty);
               if (item.purchasePrice != null && buyPriceCol >= 0) {
-                shInv.getRange(i + 1, buyPriceCol + 1).setValue(Number(item.purchasePrice));
+                const currentBuyPrice = Number(values[i][buyPriceCol] || 0);
+                const itemBuyPrice = Number(item.purchasePrice || 0);
+                const totalCost = (currentQty > 0 ? (currentQty * currentBuyPrice) : 0) + (addQty * itemBuyPrice);
+                const wacPrice = newQty > 0 ? Math.round((totalCost / newQty) * 100) / 100 : itemBuyPrice;
+                values[i][buyPriceCol] = wacPrice;
+                shInv.getRange(i + 1, buyPriceCol + 1).setValue(wacPrice);
               }
               break;
             }
@@ -819,7 +849,7 @@ function doPost(e) {
       const values = sh.getDataRange().getValues();
       for (let i = 1; i < values.length; i++) {
         if (String(values[i][idCol]) === String(body.purchaseId)) {
-          const newPaid = Number(values[i][paidCol] || 0) + Number(body.amount);
+          const newPaid = safeNumber(values[i][paidCol], 0) + safeNumber(body.amount, 0);
           sh.getRange(i + 1, paidCol + 1).setValue(newPaid);
           const sp = {
             ID: 'sp_' + new Date().getTime(), SupplierID: body.supplierId || '', PurchaseID: body.purchaseId,
@@ -883,6 +913,9 @@ function doPost(e) {
         By: body.user
       };
       upsertRow(SHEET_EXPENSES, exp, 'ID');
+      if (body.journalEntry) {
+        appendRow(SHEET_JOURNAL, body.journalEntry);
+      }
       return jsonOut({ ok: true, expense: exp });
     }
     if (action === 'deleteExpense') {
@@ -892,6 +925,7 @@ function doPost(e) {
       return jsonOut({ ok: true });
     }
     if (action === 'saveAccount') {
+      if (!verifyAdminRole(body, session)) return jsonOut({ error: 'تعديل الحسابات متاح للمدير فقط' }, 403);
       const acc = {
         Code: String(body.data.Code),
         Name: body.data.Name,
@@ -911,6 +945,9 @@ function doPost(e) {
       return jsonOut({ ok: true });
     }
     if (action === 'saveJournalEntry') {
+      const isAdmin = verifyAdminRole(body, session);
+      const isAuto = body.data && body.data.ReferenceType && body.data.ReferenceType !== 'Manual';
+      if (!isAdmin && !isAuto) return jsonOut({ error: 'القيود المحاسبية اليدوية متاحة للمدير فقط' }, 403);
       const entry = {
         ID: body.data.ID || ('je_' + new Date().getTime()),
         EntryNumber: body.data.EntryNumber || ('JE-' + new Date().getFullYear() + '-' + String(new Date().getTime()).slice(-4)),
@@ -988,6 +1025,12 @@ function doPost(e) {
       logAudit(body.id || body.name, body.user, 'حذف مستخدم: ' + (body.id || body.name));
       return jsonOut({ ok: true });
     }
+    if (action === 'saveAuditLog') {
+      // Security audit trail — logs security events from the frontend
+      const logData = body.data || {};
+      logAudit(logData.RefID || '', body.user, logData.Action || logData.action || 'حدث أمني');
+      return jsonOut({ ok: true });
+    }
     return jsonOut({ error: 'إجراء غير معروف' }, 400);
   } catch (err) {
     return jsonOut({ error: err.message }, 500);
@@ -1030,9 +1073,34 @@ function getAllRows(sheetName) {
 }
 
 function ensureHeaders(sh, obj) {
+  // Whitelist of allowed column names per sheet to prevent schema pollution attacks
+  const ALLOWED_HEADERS = {
+    'Receipts': ['ID','ReceiptNumber','Date','CustomerTitle','CustomerName','CustomerPhone','CustomerEmail','Category','Brand','Model','Accessories','Faults','FaultNotes','Technician','Cost','Deposit','Refunded','PartsCost','PartsUsed','DeliveryDate','Status','Paid','Bonus','CreatedBy','UpdatedBy','UpdatedAt'],
+    'Customers': ['Name','Phone','Email','Address','TaxNumber','Debt','Notes'],
+    'Technicians': ['Name'],
+    'Settings': ['Key','Value'],
+    'Payments': ['ID','ReceiptID','Date','Amount','Note','By','PaymentMethod'],
+    'Inventory': ['ID','Name','Category','SubCategory','SKU','Barcode','ShelfLocation','Quantity','MinStock','Unit','PurchasePrice','SellPrice','WholesalePrice','WarrantyMonths','CompatibleModels','ImageURL'],
+    'Sales': ['ID','Date','ItemsSummary','ItemsJSON','Total','PaymentMethod','AmountPaid','CustomerName','CustomerPhone','By','IsReturned','ReturnDetails'],
+    'Returns': ['ID','SaleID','Date','ItemsSummary','RefundAmount','RefundMethod','By'],
+    'Quotations': ['ID','Date','ClientName','ClientPhone','ItemsSummary','LaborCost','Total','Status','By'],
+    'Services': ['Name','DefaultPrice','Notes'],
+    'Purchases': ['ID','Date','Supplier','SupplierID','ItemsSummary','Total','AmountPaid','PaymentMethod','WarrantyMonths','By'],
+    'Suppliers': ['ID','Name','Phone','Notes','Debt'],
+    'Serials': ['ID','ItemID','ItemName','Serial','PurchaseID','SupplierID','WarrantyMonths','Status','SoldRef','SoldDate'],
+    'SupplierPayments': ['ID','SupplierID','PurchaseID','Date','Amount','Note','By'],
+    'Expenses': ['ID','Date','Category','Title','Amount','Type','PaymentMethod','Supplier','Reference','AccountCode','Notes','By'],
+    'Accounts': ['Code','Name','Type','ParentCode','Nature','Description','Balance'],
+    'JournalEntries': ['ID','EntryNumber','Date','Description','ReferenceType','ReferenceID','LinesJSON','TotalDebit','TotalCredit','By'],
+    'Invoices': ['ID','InvoiceNumber','Date','DueDate','CustomerName','CustomerPhone','CustomerTaxNumber','CustomerAddress','ItemsSummary','ItemsJSON','Subtotal','TaxPercent','TaxAmount','Discount','Total','AmountPaid','Remaining','Status','PaymentMethod','ReferenceType','ReferenceID','Notes','By'],
+    'Users': ['ID','Name','Password','Role','Sections','Superuser','Notes']
+  };
   const lastCol = Math.max(1, sh.getLastColumn());
   let headers = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || '').trim());
-  const missingKeys = Object.keys(obj).filter(k => k && !headers.includes(k));
+  const sheetName = sh.getName();
+  const whitelist = ALLOWED_HEADERS[sheetName];
+  const allowedKeys = whitelist ? Object.keys(obj).filter(k => k && whitelist.includes(k)) : Object.keys(obj).filter(Boolean);
+  const missingKeys = allowedKeys.filter(k => !headers.includes(k));
   if (missingKeys.length > 0) {
     const startCol = headers.length + 1;
     sh.getRange(1, startCol, 1, missingKeys.length).setValues([missingKeys]);
@@ -1050,6 +1118,19 @@ function sanitizeCellForSheet(val) {
     }
   }
   return val;
+}
+
+/** Input Validation Helpers — Anti-DoS array size limits and NaN prevention */
+function validateArraySize(arr, maxSize, label) {
+  if (!Array.isArray(arr)) return [];
+  if (arr.length > maxSize) {
+    throw new Error('تجاوز الحد الأقصى المسموح لعناصر ' + label + ' (' + maxSize + ' عنصر)');
+  }
+  return arr;
+}
+function safeNumber(val, defaultVal) {
+  const n = Number(val);
+  return Number.isFinite(n) ? n : (defaultVal || 0);
 }
 
 function appendRow(sheetName, obj) {
@@ -1101,7 +1182,9 @@ function jsonOut(obj, statusCode) {
 }
 
 /* ============================================================
-   ملاحظة أمان: كلمات المرور هنا نص عادي للتبسيط.
-   يُفضّل لاحقاً استخدام تشفير (مثلاً Utilities.computeDigest)
-   قبل التخزين والمقارنة، بدل حفظها كنص صريح في الشيت.
+   ✅ أمان: كلمات المرور مشفرة بـ SHA-256 (hashPassword).
+   ✅ الجلسات مؤمنة بـ Server-Issued Session Tokens (48 حرف).
+   ✅ Rate Limiting مفعّل ضد هجمات DOS.
+   ✅ Whitelist على أعمدة الشيت ضد تلويث الهيكل.
+   ✅ RBAC على العمليات المالية الحساسة.
    ============================================================ */

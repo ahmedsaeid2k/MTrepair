@@ -10,37 +10,37 @@ function renderPosApp(app){
       <div class="sidebar-nav-wrap">
         <div class="nav-section">العمليات والمبيعات</div>
         <div class="nav-item ${state.posTab==='sell'?'active':''}" data-postab="sell">
-          <span class="nav-item-icon">🧾</span><span>بيع جديد (كاشير)</span>
+          <span class="nav-item-icon">${getSvgIcon('pos', 16)}</span><span>بيع جديد (كاشير)</span>
         </div>
         <div class="nav-item ${state.posTab==='sales'?'active':''}" data-postab="sales">
-          <span class="nav-item-icon">📊</span><span>سجل عمليات المبيعات</span>
+          <span class="nav-item-icon">${getSvgIcon('chart', 16)}</span><span>سجل عمليات المبيعات</span>
         </div>
 
         ${hasHelpTools ? `
           <div class="nav-section">أدوات مساعدة</div>
           ${canUserAccessSection('barcode') ? `
             <div class="nav-item" id="posToBarcodeNav">
-              <span class="nav-item-icon">🏷️</span><span>استوديو طباعة الباركود</span>
+              <span class="nav-item-icon">${getSvgIcon('barcode', 16)}</span><span>استوديو طباعة الباركود</span>
             </div>
           ` : ''}
           ${canUserAccessSection('inventory') ? `
             <div class="nav-item" id="posToInvNav">
-              <span class="nav-item-icon">📦</span><span>المخزن والأصناف</span>
+              <span class="nav-item-icon">${getSvgIcon('package', 16)}</span><span>المخزن والأصناف</span>
             </div>
           ` : ''}
           ${canUserAccessSection('cashdrawer') ? `
             <div class="nav-item" id="posToDrawerNav">
-              <span class="nav-item-icon">💵</span><span>حركة الخزينة والدرج</span>
+              <span class="nav-item-icon">${getSvgIcon('cashdrawer', 16)}</span><span>حركة الخزينة والدرج</span>
             </div>
           ` : ''}
           ${canUserAccessSection('daily') ? `
             <div class="nav-item" id="posToDailyNav">
-              <span class="nav-item-icon">📔</span><span>دفتر اليومية العامة</span>
+              <span class="nav-item-icon">${getSvgIcon('daily', 16)}</span><span>دفتر اليومية العامة</span>
             </div>
           ` : ''}
           ${canUserAccessSection('settings') ? `
             <div class="nav-item" id="posToSettingsNav">
-              <span class="nav-item-icon">⚙️</span><span>الإعدادات</span>
+              <span class="nav-item-icon">${getSvgIcon('settings', 16)}</span><span>الإعدادات</span>
             </div>
           ` : ''}
         ` : ''}
@@ -161,7 +161,7 @@ function holdCurrentCart(){
     state.posState.notes = '';
   }
 
-  showToast(`تم تعليق الفاتورة بنجاح ⏸️ (#${heldObj.holdNum} - ${custName})`, 'success');
+  showToast(`تم تعليق الفاتورة بنجاح (#${heldObj.holdNum} - ${custName})`, 'success');
   const main = document.getElementById('main') || document.querySelector('main');
   if(main) renderPosSell(main);
 }
@@ -196,7 +196,7 @@ function resumeHeldCart(holdId){
   const existingOverlay = document.getElementById('posHeldCartsModal');
   if(existingOverlay) existingOverlay.remove();
 
-  showToast(`تم استرجاع الفاتورة المعلقة #${target.holdNum} بنجاح ▶️`, 'success');
+  showToast(`تم استرجاع الفاتورة المعلقة #${target.holdNum} بنجاح`, 'success');
   const main = document.getElementById('main') || document.querySelector('main');
   if(main) renderPosSell(main);
 }
@@ -217,22 +217,22 @@ function openHeldCartsModal(){
       <!-- Header -->
       <div style="padding:14px 18px; background:linear-gradient(135deg, #1e293b, #0f172a); color:#fff; display:flex; justify-content:space-between; align-items:center;">
         <div style="display:flex; align-items:center; gap:10px;">
-          <div style="width:36px; height:36px; border-radius:8px; background:rgba(245,158,11,0.2); display:flex; align-items:center; justify-content:center; font-size:18px; border:1px solid rgba(245,158,11,0.3);">⏸️</div>
+          <div style="width:36px; height:36px; border-radius:8px; background:rgba(245,158,11,0.2); display:flex; align-items:center; justify-content:center; color:#f59e0b; border:1px solid rgba(245,158,11,0.3);">${getSvgIcon('pause', 18)}</div>
           <div>
             <h3 style="margin:0; font-size:15px; font-weight:800; color:#fff;">سجل الفواتير المعلقة في نقطة البيع</h3>
             <div style="font-size:11.5px; color:#94a3b8;">إدارة واسترجاع السلات المحفوظة (${heldList.length} فواتير معلقة)</div>
           </div>
         </div>
-        <button type="button" id="closeHeldCartsModalBtn" style="background:rgba(255,255,255,0.1); border:none; color:#cbd5e1; width:28px; height:28px; border-radius:50%; cursor:pointer; font-size:14px;">✕</button>
+        <button type="button" id="closeHeldCartsModalBtn" style="background:rgba(255,255,255,0.1); border:none; color:#cbd5e1; width:28px; height:28px; border-radius:50%; cursor:pointer; font-size:16px; line-height:1;">&times;</button>
       </div>
 
       <!-- Body -->
       <div style="padding:14px 18px; flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:10px; max-height:55vh;">
         ${heldList.length === 0 ? `
           <div style="text-align:center; padding:40px 20px; color:var(--ink-secondary);">
-            <div style="font-size:36px; margin-bottom:8px;">⏸️</div>
+            <div style="display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:50%;background:rgba(245,158,11,0.15);color:var(--amber-text);margin-bottom:8px;">${getSvgIcon('pause', 24)}</div>
             <div style="font-size:14px; font-weight:800; color:var(--ink); margin-bottom:4px;">لا توجد فواتير معلقة حالياً</div>
-            <div style="font-size:12px; color:var(--ink-secondary);">يمكنك تعليق أي سلة نشطة في نقطة البيع عبر زر <b>⏸️ تعليق الفاتورة (F6)</b> لخدمة عميل آخر فوراً دون فقدان الأصناف.</div>
+            <div style="font-size:12px; color:var(--ink-secondary);">يمكنك تعليق أي سلة نشطة في نقطة البيع عبر زر <b>تعليق الفاتورة (F6)</b> لخدمة عميل آخر فوراً دون فقدان الأصناف.</div>
           </div>
         ` : heldList.map(h => {
           const timeAgo = formatTimeAgo(h.timestamp);
@@ -245,10 +245,10 @@ function openHeldCartsModal(){
                     #${h.holdNum || 1}
                   </span>
                   <b style="font-size:13px; color:var(--ink);">${escapeHtml(h.customerName || 'عميل زائر')}</b>
-                  ${h.customerPhone ? `<span class="mono" style="font-size:11px; color:var(--ink-secondary); direction:ltr;">📞 ${escapeHtml(h.customerPhone)}</span>` : ''}
+                  ${h.customerPhone ? `<span class="mono" style="font-size:11px; color:var(--ink-secondary); direction:ltr;">${escapeHtml(h.customerPhone)}</span>` : ''}
                 </div>
                 <div style="display:flex; align-items:center; gap:8px;">
-                  <span class="mono" style="font-size:11px; color:var(--ink-secondary);">⏰ ${timeAgo}</span>
+                  <span class="mono" style="font-size:11px; color:var(--ink-secondary);">${timeAgo}</span>
                   <b class="mono" style="font-size:15px; color:var(--primary); font-weight:900;">${Number(h.grandTotal || h.subtotal || 0).toLocaleString()} ج.م</b>
                 </div>
               </div>
@@ -262,10 +262,10 @@ function openHeldCartsModal(){
               <!-- Actions -->
               <div style="display:flex; justify-content:space-between; align-items:center; margin-top:2px;">
                 <button type="button" class="btn btn-ghost btn-xs delete-held-cart-btn" data-id="${h.id}" style="color:var(--red); font-size:11px;">
-                  🗑️ إلغاء وحذف
+                  ${getSvgIcon('trash', 12)} إلغاء وحذف
                 </button>
                 <button type="button" class="btn btn-primary btn-sm resume-held-cart-btn" data-id="${h.id}" style="font-weight:800; font-size:12px; padding:5px 14px; display:flex; align-items:center; gap:4px;">
-                  <span>▶️ استرجاع ومتابعة البيع</span>
+                  <span>${getSvgIcon('arrowRight', 12)} استرجاع ومتابعة البيع</span>
                 </button>
               </div>
             </div>
@@ -278,7 +278,7 @@ function openHeldCartsModal(){
         <div>
           ${heldList.length > 0 ? `
             <button type="button" class="btn btn-ghost btn-xs" id="clearAllHeldCartsBtn" style="color:var(--red); font-weight:700;">
-              🗑️ تفريغ كافة المعلقات
+              ${getSvgIcon('trash', 12)} تفريغ كافة المعلقات
             </button>
           ` : ''}
         </div>
@@ -384,13 +384,13 @@ function renderPosSell(main){
 
   // Active categories list
   const categoriesList = [
-    { id: 'all', name: '📦 كل الأصناف', icon: '📦' },
-    { id: 'favorites', name: '⭐ الأصناف السريعة والمختصرة', icon: '⭐' },
-    { id: 'صيانة', name: '🛠️ قطع صيانة', icon: '🛠️' },
-    { id: 'كمبيوتر', name: '💻 كمبيوتر ولابتوب', icon: '💻' },
-    { id: 'إكسسوار', name: '🎧 إكسسوارات', icon: '🎧' },
-    { id: 'كاميرات', name: '📷 كاميرات مراقبة', icon: '📷' },
-    { id: 'services', name: '⚡ خدمات سريعة', icon: '⚡' }
+    { id: 'all', name: 'كل الأصناف', iconName: 'package' },
+    { id: 'favorites', name: 'الأصناف الأكثر طلباً', iconName: 'dashboard' },
+    { id: 'صيانة', name: 'قطع صيانة', iconName: 'maintenance' },
+    { id: 'كمبيوتر', name: 'كمبيوتر ولابتوب', iconName: 'laptop' },
+    { id: 'إكسسوار', name: 'إكسسوارات', iconName: 'headphones' },
+    { id: 'كاميرات', name: 'كاميرات مراقبة', iconName: 'cameras' },
+    { id: 'services', name: 'خدمات سريعة', iconName: 'pos' }
   ];
 
   // Enabled payment methods
@@ -400,59 +400,59 @@ function renderPosSell(main){
   main.innerHTML = `
     <div class="top-header" style="margin-bottom:8px;">
       <div>
-        <h2 class="page-title">🧾 نقطة البيع السريعة (POS Terminal)</h2>
+        <h2 class="page-title">نقطة البيع السريعة (POS Terminal)</h2>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-        <button class="btn btn-amber btn-sm" id="posOpenReturnBtn">↩️ استرجاع فاتورة (14 يوم)</button>
+        <button class="btn btn-amber btn-sm" id="posOpenReturnBtn">${getSvgIcon('refresh', 14)} استرجاع فاتورة (14 يوم)</button>
         <button type="button" class="btn btn-blue btn-sm" id="posHoldCartBtn" title="تعليق السلة الحالية لخدمة عميل آخر (F6)">
-          ⏸️ تعليق الفاتورة (Hold)
+          تعليق الفاتورة (Hold)
         </button>
         <button type="button" class="btn btn-ghost btn-sm" id="posHeldCartsBtn" style="position:relative;border:1.5px solid ${heldCartsCount > 0 ? 'var(--amber)' : 'var(--line)'};background:${heldCartsCount > 0 ? 'rgba(245,158,11,0.08)' : 'transparent'};font-weight:700;" title="عرض واسترجاع الفواتير المعلقة (F7)">
-          <span>📂 الفواتير المعلقة</span>
+          <span>الفواتير المعلقة</span>
           ${heldCartsCount > 0 ? `
             <span class="badge" style="background:var(--amber);color:#fff;border-radius:999px;padding:1px 7px;font-size:11px;font-weight:900;margin-right:4px;box-shadow:0 1px 3px rgba(0,0,0,0.2);">
               ${heldCartsCount}
             </span>
           ` : ''}
         </button>
-        <button class="btn btn-ghost btn-sm" id="posGoToSettingsBtn">⚙️ إعدادات الـ POS</button>
-        <button class="btn btn-ghost btn-sm" id="posClearCartTopBtn" style="color:var(--red);">🗑️ تفريغ السلة</button>
+        <button class="btn btn-ghost btn-sm" id="posGoToSettingsBtn">${getSvgIcon('settings', 14)} إعدادات POS</button>
+        <button class="btn btn-ghost btn-sm" id="posClearCartTopBtn" style="color:var(--red);">${getSvgIcon('trash', 14)} تفريغ السلة</button>
       </div>
     </div>
 
     <!-- Shift Status Ribbon -->
     ${state.activeShift ? `
-      <div class="card" style="padding:10px 14px;margin-bottom:10px;background:linear-gradient(135deg, rgba(16,185,129,0.06), rgba(59,130,246,0.06));border:1px solid rgba(16,185,129,0.3);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+      <div class="card" style="padding:10px 14px;margin-bottom:10px;background:var(--paper);border:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-          <span class="status-badge st-delivered" style="font-size:12px;padding:4px 10px;background:rgba(16,185,129,0.15);color:var(--green);font-weight:800;">
-            🟢 الوردية مفتوحة #${state.activeShift.shiftNumber || 1}
+          <span class="status-badge st-done" style="font-size:11.5px;padding:3px 8px;">
+            الوردية مفتوحة #${state.activeShift.shiftNumber || 1}
           </span>
           <span style="font-size:12px;color:var(--ink);">
-            👤 <b>${escapeHtml(state.activeShift.cashierName || (state.user ? state.user.name : 'الكاشير'))}</b>
+            الكاشير: <b>${escapeHtml(state.activeShift.cashierName || (state.user ? state.user.name : 'الكاشير'))}</b>
           </span>
           <span class="mono" style="font-size:11.5px;color:var(--ink-secondary);">
-            ⏰ بدأت: ${state.activeShift.startTime ? new Date(state.activeShift.startTime).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'}) : 'الآن'}
+            بدأت: ${state.activeShift.startTime ? new Date(state.activeShift.startTime).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'}) : 'الآن'}
           </span>
           <span class="mono" style="font-size:11.5px;color:var(--ink-secondary);">
-            💵 عهدة البداية: <b>${Number(state.activeShift.openingFloat || 0).toLocaleString()} ج.م</b>
+            عهدة البداية: <b>${Number(state.activeShift.openingFloat || 0).toLocaleString()} ج.م</b>
           </span>
         </div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
           <button type="button" class="btn btn-ghost btn-sm" id="posPrintXReportBtn" style="background:var(--surface);border:1px solid var(--border);color:var(--ink);font-weight:700;">
-            📊 قراءة لحظية (X-Report)
+            ${getSvgIcon('chart', 12)} تقرير لحظي (X-Report)
           </button>
           <button type="button" class="btn btn-red btn-sm" id="posCloseShiftBtn" style="font-weight:800;">
-            🔒 تقفيل الوردية (Z-Report)
+            ${getSvgIcon('lock', 12)} تقفيل الوردية (Z-Report)
           </button>
           <button type="button" class="btn btn-ghost btn-sm" id="posShiftsHistoryBtn" style="background:var(--surface);border:1px solid var(--border);" title="أرشيف الورديات السابقة">
-            📜 الأرشيف
+            أرشيف الورديات
           </button>
         </div>
       </div>
     ` : `
-      <div class="card" style="padding:10px 14px;margin-bottom:10px;background:linear-gradient(135deg, rgba(245,158,11,0.08), rgba(239,68,68,0.04));border:1px dashed rgba(245,158,11,0.5);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+      <div class="card" style="padding:10px 14px;margin-bottom:10px;background:var(--paper);border:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
         <div style="display:flex;align-items:center;gap:10px;">
-          <span style="font-size:18px;">⚠️</span>
+          <span style="display:inline-flex;color:var(--amber);">${getSvgIcon('alert', 18)}</span>
           <div>
             <div style="font-weight:800;font-size:12.5px;color:var(--ink);">لا توجد وردية كاشير مفتوحة حالياً</div>
             <div style="font-size:11px;color:var(--ink-secondary);">يُنصح بفتح وردية لتسجيل عهدة البداية واحتساب مبيعات وعجز/زيادة الصندوق بدقة.</div>
@@ -460,10 +460,10 @@ function renderPosSell(main){
         </div>
         <div style="display:flex;gap:6px;align-items:center;">
           <button type="button" class="btn btn-primary btn-sm" id="posOpenShiftBtn" style="font-weight:800;">
-            ▶️ فتح وردية جديدة
+            ${getSvgIcon('plus', 14)} فتح وردية جديدة
           </button>
           <button type="button" class="btn btn-ghost btn-sm" id="posShiftsHistoryBtn" style="background:var(--surface);border:1px solid var(--border);" title="أرشيف الورديات السابقة">
-            📜 الأرشيف
+            أرشيف الورديات
           </button>
         </div>
       </div>
@@ -477,7 +477,7 @@ function renderPosSell(main){
         <!-- Cart Header -->
         <div class="pos-cart-header">
           <div style="font-weight:900;font-size:13.5px;display:flex;align-items:center;gap:6px;">
-            <span>🛒 سلة المبيعات</span>
+            <span>سلة المبيعات</span>
             <span class="status-badge st-check" style="font-size:11px;">${cart.length} أصناف</span>
           </div>
           <div class="mono" style="font-size:11.5px;color:var(--ink-secondary);">
@@ -493,10 +493,10 @@ function renderPosSell(main){
             </select>
           </div>
           <div class="field" style="margin:0;">
-            <input id="posCustName" placeholder="👤 اسم العميل" value="${escapeHtml(ps.customerName||'عميل زائر')}" style="padding:4px 8px;font-size:11.5px;">
+            <input id="posCustName" placeholder="اسم العميل" value="${escapeHtml(ps.customerName||'عميل زائر')}" style="padding:4px 8px;font-size:11.5px;">
           </div>
           <div class="field" style="margin:0;">
-            <input id="posCustPhone" placeholder="📞 رقم الهاتف" value="${escapeHtml(ps.customerPhone||'')}" style="padding:4px 8px;font-size:11.5px;" class="mono">
+            <input id="posCustPhone" placeholder="رقم الهاتف" value="${escapeHtml(ps.customerPhone||'')}" style="padding:4px 8px;font-size:11.5px;" class="mono">
           </div>
         </div>
 
@@ -504,7 +504,7 @@ function renderPosSell(main){
         <div class="pos-cart-stream">
           ${cart.length === 0 ? `
             <div style="text-align:center;padding:24px 14px;color:var(--ink-secondary);font-size:12px;">
-              <div style="font-size:22px;margin-bottom:4px;">🛒</div>
+              <div style="margin-bottom:4px;color:var(--ink-secondary);opacity:0.4;">${getSvgIcon('pos', 24)}</div>
               السلة فارغة حالياً.<br>اضغط على أي صنف لإضافته فوراً.
             </div>
           ` : `
@@ -525,7 +525,7 @@ function renderPosSell(main){
                   ${(Number(c.qty)*Number(c.price)).toLocaleString()}
                 </div>
 
-                <button class="btn btn-ghost btn-xs" data-cartdel="${i}" style="color:var(--red);padding:2px 5px;" title="حذف">✕</button>
+                <button class="btn btn-ghost btn-xs" data-cartdel="${i}" style="color:var(--red);padding:2px 5px;" title="حذف">${getSvgIcon('trash', 13)}</button>
               </div>
             `).join('')}
           `}
@@ -578,7 +578,7 @@ function renderPosSell(main){
           <div class="pos-pay-grid">
             ${enabledPayMethods.map(pm => `
               <div class="pos-pay-btn ${ps.paymentMethod===pm.id?'selected':''}" data-pospaymethod="${pm.id}">
-                <span>${pm.icon||'💵'}</span>
+                <span>${getSvgIcon(pm.iconName || (pm.id==='card'?'creditCard':(pm.id==='instapay'?'refresh':(pm.id==='vodafone'?'phone':(pm.id==='credit'?'fileText':'dollar')))), 15)}</span>
                 <span>${pm.name}</span>
               </div>
             `).join('')}
@@ -610,13 +610,13 @@ function renderPosSell(main){
         <!-- Final Checkout Buttons -->
         <div class="pos-checkout-actions">
           <button class="btn btn-green" id="completeSaleBtn" style="padding:9px;font-weight:900;font-size:13px;display:flex;align-items:center;justify-content:center;gap:6px;box-shadow:0 4px 12px rgba(16,185,129,0.3);" ${cart.length===0?'disabled':''}>
-            <span>✅ إتمام البيع وطباعة البون السريع</span>
+            <span>${getSvgIcon('check', 14)} إتمام البيع وطباعة البون السريع</span>
           </button>
           <button class="btn btn-blue" id="completeSaleWithTaxInvBtn" style="padding:7px;font-weight:800;font-size:11.5px;display:flex;align-items:center;justify-content:center;gap:6px;" ${cart.length===0?'disabled':''}>
-            <span>📄 إتمام البيع وإصدار فاتورة ضريبية</span>
+            <span>${getSvgIcon('invoices', 14)} إتمام البيع وإصدار فاتورة ضريبية</span>
           </button>
           <button type="button" class="btn btn-ghost" id="posHoldCurrentCartQuickBtn" style="padding:6px;font-weight:800;font-size:11px;border:1px dashed var(--blue);color:var(--blue);display:flex;align-items:center;justify-content:center;gap:6px;" ${cart.length===0?'disabled':''}>
-            <span>⏸️ تعليق هذه الفاتورة لخدمة عميل آخر (Hold)</span>
+            <span>تعليق هذه الفاتورة لخدمة عميل آخر (Hold)</span>
           </button>
         </div>
 
@@ -628,10 +628,10 @@ function renderPosSell(main){
         <div class="card" style="padding:8px 12px;margin-bottom:8px;flex-shrink:0;">
           <div style="display:flex;gap:8px;align-items:center;">
             <div style="flex:1;position:relative;">
-              <input id="posBarcodeInput" placeholder="🔍 امسح الباركود أو ابحث بالاسم ثم اضغط Enter..." value="${escapeHtml(ps.searchQuery||'')}" autofocus style="padding-right:32px;font-weight:700;font-size:12.5px;padding-top:6px;padding-bottom:6px;">
-              <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:15px;color:var(--ink-secondary);">⚡</span>
+              <input id="posBarcodeInput" placeholder="امسح الباركود أو ابحث بالاسم ثم اضغط Enter..." value="${escapeHtml(ps.searchQuery||'')}" autofocus style="padding-right:32px;font-weight:700;font-size:12.5px;padding-top:6px;padding-bottom:6px;">
+              <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);display:inline-flex;color:var(--ink-secondary);">${getSvgIcon('barcode', 16)}</span>
             </div>
-            ${ps.searchQuery ? `<button class="btn btn-ghost btn-sm" id="posClearSearchBtn" style="padding:4px 8px;font-size:11px;">✕ مسح</button>` : ''}
+            ${ps.searchQuery ? `<button class="btn btn-ghost btn-sm" id="posClearSearchBtn" style="padding:4px 8px;font-size:11px;display:inline-flex;align-items:center;gap:4px;">${getSvgIcon('x', 12)} مسح</button>` : ''}
           </div>
         </div>
 
@@ -647,12 +647,12 @@ function renderPosSell(main){
         <!-- Touch Grid Container -->
         <div class="pos-tiles-container">
           ${ps.activeCategory === 'services' ? `
-            <div style="margin-bottom:6px;font-size:12px;font-weight:800;color:var(--ink);">⚡ خدمات الصيانة والبرمجيات الفورية (دون رصيد مخزن):</div>
+            <div style="margin-bottom:6px;font-size:12px;font-weight:800;color:var(--ink);">خدمات الصيانة والبرمجيات الفورية (دون رصيد مخزن):</div>
             <div class="pos-tiles-grid">
               ${(posSettings.quickServices||[]).map((srv, sIdx) => `
                 <div class="pos-touch-tile" data-quickserviceidx="${sIdx}" style="border-color:var(--purple);background:rgba(139,92,246,0.04);">
                   <div class="pos-tile-head">
-                    <span class="pos-tile-icon">${srv.icon||'⚡'}</span>
+                    <span class="pos-tile-icon">${getSvgIcon('pos', 14)}</span>
                     <span class="pos-tile-stock" style="background:var(--purple-bg);color:var(--purple-text);">خدمة فورية</span>
                   </div>
                   <div class="pos-tile-title">${escapeHtml(srv.name)}</div>
@@ -663,7 +663,7 @@ function renderPosSell(main){
           ` : `
             ${filteredItems.length === 0 ? `
               <div class="empty" style="padding:30px 16px;">
-                <div style="font-size:28px;margin-bottom:6px;">📦</div>
+                <div style="margin-bottom:6px;color:var(--ink-secondary);opacity:0.4;">${getSvgIcon('package', 28)}</div>
                 <div>لا توجد أصناف مطابقة للتصنيف أو البحث الحالي.</div>
                 <div style="font-size:11px;color:var(--ink-secondary);margin-top:4px;">يمكنك إضافة أصناف جديدة من قسم المخزن والمشتريات أو تعيين أصناف سريعة.</div>
               </div>
@@ -680,9 +680,9 @@ function renderPosSell(main){
                     <div class="pos-touch-tile ${isOut?'out-of-stock':''}" data-positemid="${itemId}">
                       <div class="pos-tile-head">
                         <div style="display:flex;align-items:center;gap:4px;">
-                          <span class="pos-tile-icon">${item.Category==='كمبيوتر'?'💻':(item.Category==='كاميرات'?'📷':(item.Category==='إكسسوار'?'🎧':'🛠️'))}</span>
+                          <span class="pos-tile-icon">${getSvgIcon(item.Category==='كمبيوتر'?'laptop':(item.Category==='كاميرات'?'cameras':(item.Category==='إكسسوار'?'headphones':'tool')), 16)}</span>
                           <button type="button" class="pos-pin-star-btn ${isPinned?'pinned':''}" data-pinitemid="${itemId}" title="${isPinned?'إلغاء التثبيت من الأصناف السريعة':'تثبيت كصنف سريع ومختصر في POS'}">
-                            ${isPinned ? '★' : '☆'}
+                            ${getSvgIcon('star', 13)}
                           </button>
                         </div>
                         <span class="pos-tile-stock" style="background:${isOut?'var(--red-bg)':(isLow?'var(--amber-bg)':'var(--green-bg)')};color:${isOut?'var(--red-text)':(isLow?'var(--amber-text)':'var(--green-text)')};">
@@ -723,7 +723,7 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
       const idx = posSettings.shortcutItemIds.indexOf(pinId);
       if(idx === -1){
         posSettings.shortcutItemIds.push(pinId);
-        showToast('تمت إضافة الصنف إلى الأصناف السريعة ⭐', 'success');
+        showToast('تمت إضافة الصنف إلى الأصناف السريعة', 'success');
       } else {
         posSettings.shortcutItemIds.splice(idx, 1);
         showToast('تمت إزالة الصنف من الأصناف السريعة', 'info');
@@ -830,8 +830,17 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
   main.querySelectorAll('[data-cartinc]').forEach(btn => {
     btn.onclick = ()=>{
       const idx = Number(btn.dataset.cartinc);
-      if(cart[idx]){
-        cart[idx].qty = (Number(cart[idx].qty)||1) + 1;
+      const cItem = cart[idx];
+      if(cItem){
+        if(cItem.itemId && !String(cItem.itemId).startsWith('srv_')){
+          const it = (state.inventory||[]).find(x => String(x.ID||x.id) === String(cItem.itemId));
+          const stock = it ? Number(it.Quantity || 0) : 0;
+          if((Number(cItem.qty)||1) + 1 > stock){
+            showToast(`الكمية المتاحة في المخزن فقط ${stock}`, 'error');
+            return;
+          }
+        }
+        cItem.qty = (Number(cItem.qty)||1) + 1;
         renderPosSell(main);
       }
     };
@@ -864,7 +873,19 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
       const idx = Number(inp.dataset.cartqtyidx);
       const newQty = Number(inp.value);
       if(!newQty || newQty <= 0) cart.splice(idx, 1);
-      else cart[idx].qty = newQty;
+      else {
+        const cItem = cart[idx];
+        if(cItem && cItem.itemId && !String(cItem.itemId).startsWith('srv_')){
+          const it = (state.inventory||[]).find(x => String(x.ID||x.id) === String(cItem.itemId));
+          const stock = it ? Number(it.Quantity || 0) : 0;
+          if(newQty > stock){
+            showToast(`الكمية المطلوبة تتجاوز المخزون المتوفر (${stock})`, 'error');
+            inp.value = cItem.qty;
+            return;
+          }
+        }
+        if(cItem) cItem.qty = newQty;
+      }
       renderPosSell(main);
     };
   });
@@ -1002,6 +1023,18 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
   async function processSale(isTaxInvoice){
     if(!cart.length){ showToast('السلة فارغة', 'error'); return; }
 
+    // Pre-flight inventory stock check
+    for(const c of cart){
+      if(c.itemId && !String(c.itemId).startsWith('srv_')){
+        const it = (state.inventory||[]).find(x => String(x.ID||x.id) === String(c.itemId));
+        const stock = it ? Number(it.Quantity || 0) : 0;
+        if(Number(c.qty || 1) > stock){
+          showToast(`عفواً، الكمية المطلوبة من (${c.name}) غير متوفرة. الرصيد الحالي: ${stock}`, 'error');
+          return;
+        }
+      }
+    }
+
     const customerTitle = (ps.customerTitle || '').trim();
     const customerName = (ps.customerName || 'عميل زائر').trim();
     const customerPhone = (ps.customerPhone || '').trim();
@@ -1029,7 +1062,7 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
       const fullCustName = customerTitle ? `${customerTitle} / ${customerName}` : customerName;
       const saleRes = await saveSaleRemote(itemsSummary, itemsJson, grandTotal, fullCustName, customerPhone, payMethodName, paidAmount, cartSnapshot);
       
-      showToast('تمت عملية البيع بنجاح ✅', 'success');
+      showToast('تمت عملية البيع بنجاح', 'success');
 
       const saleData = saleRes.sale || {
         ID: 's_' + Date.now(),
@@ -1073,7 +1106,19 @@ async function addItemToCart(itemId, qty, main){
   const item = (state.inventory||[]).find(x => String(x.ID||x.id) === String(itemId));
   if(!item) return;
 
+  const currentStock = Number(item.Quantity || 0);
+  if(currentStock <= 0){
+    showToast(`عفواً، صنف (${item.Name || item.name}) غير متوفر بالمخزن`, 'error');
+    return;
+  }
+
   const existing = state.cart.find(c => String(c.itemId) === String(itemId));
+  const currentCartQty = existing ? Number(existing.qty || 0) : 0;
+  if(currentCartQty + qty > currentStock){
+    showToast(`الكمية المطلوبة تتجاوز الرصيد المتوفر (${currentStock})`, 'error');
+    return;
+  }
+
   if(existing){
     existing.qty += qty;
   } else {
@@ -1266,7 +1311,7 @@ function openSalePrint(sale, cartItems, meta={}){
       ${state.settings && state.settings.shopTaxNumber ? `<div style="font-size:${szSub};font-weight:900;">س.ت / ضريبي: <span class="mono">${escapeHtml(state.settings.shopTaxNumber)}</span></div>` : ''}
       
       <div style="font-size:${szBadge};font-weight:900;border:1.5px solid #000;border-radius:3px;padding:1px 0;margin:${isCompact ? '2px 0' : '4px 0'};text-align:center;background:#f5f5f5;">
-        🧾 إيصال مبيعات نقدية (POS)
+        إيصال مبيعات نقدية (POS)
       </div>
 
       <!-- Receipt Meta Info -->
@@ -1438,7 +1483,7 @@ function convertSaleToInvoice(saleId){
 
   const prefilled = {
     ID: 'inv_' + Date.now(),
-    InvoiceNumber: 'INV-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-4),
+    InvoiceNumber: (typeof nextInvoiceNumber === 'function') ? nextInvoiceNumber() : ('INV-' + new Date().getFullYear() + '-0001'),
     Date: cleanDate(s.Date) || new Date().toISOString().slice(0,10),
     DueDate: cleanDate(s.Date) || new Date().toISOString().slice(0,10),
     CustomerName: s.CustomerName || 'عميل زائر',
@@ -1497,34 +1542,34 @@ function renderPosSalesLog(main){
   main.innerHTML = `
     <div class="top-header">
       <div>
-        <h2 class="page-title">📊 سجل مبيعات نقطة البيع (POS Log)</h2>
+        <h2 class="page-title">سجل مبيعات نقطة البيع (POS Log)</h2>
         <div class="subtitle mono" style="font-size:12px;color:var(--ink-secondary);">${list.length} عملية مسجلة</div>
       </div>
       <div style="display:flex;gap:8px;">
-        <button class="btn btn-ghost btn-sm" id="exportSalesExcelBtn">📥 تصدير المبيعات Excel</button>
-        <button class="btn btn-primary btn-sm" id="goToNewSaleBtn">➕ بيع جديد</button>
+        <button class="btn btn-ghost btn-sm" id="exportSalesExcelBtn">${getSvgIcon('download', 14)} تصدير المبيعات Excel</button>
+        <button class="btn btn-primary btn-sm" id="goToNewSaleBtn">${getSvgIcon('plus', 14)} بيع جديد</button>
       </div>
     </div>
 
     <!-- KPIs -->
     <div class="stat-grid">
       <div class="stat-card blue">
-        <div class="top-row"><span class="lbl">إجمالي عمليات البيع</span><div class="icon-box">🧾</div></div>
+        <div class="top-row"><span class="lbl">إجمالي عمليات البيع</span><div class="icon-box">${getSvgIcon('pos', 16)}</div></div>
         <div class="num mono">${totalSalesCount}</div>
       </div>
       <div class="stat-card green">
-        <div class="top-row"><span class="lbl">إجمالي إيراد المبيعات</span><div class="icon-box">💰</div></div>
+        <div class="top-row"><span class="lbl">إجمالي إيراد المبيعات</span><div class="icon-box">${getSvgIcon('dollar', 16)}</div></div>
         <div class="num mono">${totalSalesRevenue.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
       </div>
       <div class="stat-card purple">
-        <div class="top-row"><span class="lbl">مبيعات اليوم (${todayStr})</span><div class="icon-box">⚡</div></div>
+        <div class="top-row"><span class="lbl">مبيعات اليوم (${todayStr})</span><div class="icon-box">${getSvgIcon('trendUp', 16)}</div></div>
         <div class="num mono">${todaySalesRevenue.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
       </div>
     </div>
 
     <!-- Search Bar -->
     <div class="filters-bar" style="margin-bottom:14px;">
-      <input id="posSalesSearchInp" placeholder="🔍 بحث برقم العملية، اسم العميل، الهاتف، أو اسم الصنف المباع..." value="${state.posSalesSearchQ}" style="flex:1;">
+      <input id="posSalesSearchInp" placeholder="بحث برقم العملية، اسم العميل، الهاتف، أو اسم الصنف المباع..." value="${state.posSalesSearchQ}" style="flex:1;">
       ${state.posSalesSearchQ ? `<button class="btn btn-ghost btn-sm" id="clearPosSalesSearch">مسح البحث</button>` : ''}
     </div>
 
@@ -1589,9 +1634,9 @@ function renderPosSalesLog(main){
                   </td>
                   <td style="text-align:center;">
                     ${s.IsReturned ? `
-                      <span class="badge" style="background:#fee2e2;color:#b91c1c;font-weight:800;border:1px solid #fca5a5;padding:2px 6px;border-radius:4px;font-size:10.5px;white-space:nowrap;">↩️ مرتجع</span>
+                      <span class="badge" style="background:#fee2e2;color:#b91c1c;font-weight:800;border:1px solid #fca5a5;padding:2px 6px;border-radius:4px;font-size:10.5px;white-space:nowrap;">مرتجع</span>
                     ` : `
-                      <span class="badge" style="background:#dcfce7;color:#15803d;font-weight:700;border:1px solid #bbf7d0;padding:2px 6px;border-radius:4px;font-size:10.5px;white-space:nowrap;">✓ مباع</span>
+                      <span class="badge" style="background:#dcfce7;color:#15803d;font-weight:700;border:1px solid #bbf7d0;padding:2px 6px;border-radius:4px;font-size:10.5px;white-space:nowrap;">مباع</span>
                     `}
                   </td>
                 </tr>
@@ -1653,19 +1698,19 @@ function openPosReturnModal(sale){
       <!-- Modal Header -->
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid var(--line);padding-bottom:10px;margin-bottom:12px;">
         <div>
-          <h3 style="margin:0;font-size:16.5px;font-weight:900;color:var(--red);">↩️ استرجاع مبيعات POS (إشعار دائن وتسوية)</h3>
+          <h3 style="margin:0;font-size:16.5px;font-weight:900;color:var(--red);display:flex;align-items:center;gap:6px;">${getSvgIcon('refresh', 16)} استرجاع مبيعات POS (إشعار دائن وتسوية)</h3>
           <div style="font-size:12px;color:var(--ink-secondary);margin-top:2px;">
             فاتورة رقم: <b class="mono" style="color:var(--primary);">#${sale.ID.slice(-8)}</b> • العميل: <b>${sale.CustomerName || 'عميل زائر'}</b> (${sale.CustomerPhone || '-'})
           </div>
         </div>
-        <button class="btn btn-ghost btn-xs" id="closePosReturnModalBtn" style="font-size:15px;">✕</button>
+        <button class="btn btn-ghost btn-xs" id="closePosReturnModalBtn" style="font-size:18px;line-height:1;">&times;</button>
       </div>
 
       <!-- 1. 14-Day Limit Verification Box -->
       <div style="margin-bottom:12px;">
         ${isWithin14 ? `
           <div style="background:#ecfdf5;border:1.5px solid #a7f3d0;border-radius:6px;padding:10px 14px;color:#065f46;font-size:12px;display:flex;align-items:center;gap:8px;">
-            <span style="font-size:16px;">✅</span>
+            <span>${getSvgIcon('check', 16)}</span>
             <div>
               <b style="font-size:13px;">العملية مؤهلة للاسترجاع قانونياً</b>
               <div style="font-size:11px;color:#047857;margin-top:2px;">تاريخ الشراء: <span class="mono">${saleDateStr}</span> (مرّ ${diffDays} يوم من أصل مهلة الـ 14 يوماً المحددة).</div>
@@ -1674,7 +1719,7 @@ function openPosReturnModal(sale){
         ` : `
           <div style="background:#fef2f2;border:1.5px solid #fca5a5;border-radius:6px;padding:10px 14px;color:#991b1b;font-size:12px;">
             <div style="display:flex;align-items:center;gap:8px;font-weight:900;font-size:13px;">
-              <span style="font-size:16px;">⚠️</span>
+              <span>${getSvgIcon('alert', 16)}</span>
               <span>تنبيه: انقضت مهلة الـ 14 يوماً القانونية للاسترجاع!</span>
             </div>
             <div style="font-size:11px;margin-top:3px;color:#7f1d1d;">
@@ -1693,11 +1738,11 @@ function openPosReturnModal(sale){
         <div style="font-weight:800;font-size:12px;margin-bottom:6px;color:var(--ink);">ضوابط وشروط الاسترجاع الإلزامية:</div>
         <label class="checkbox-row" style="font-size:12px;margin-bottom:6px;">
           <input type="checkbox" id="posRetHasReceipt">
-          <span>🧾 <b>التحقق من الفاتورة:</b> العميل يحمل أصل الفاتورة الضريبية أو بون الكاشير المطبوع.</span>
+          <span><b>التحقق من الفاتورة:</b> العميل يحمل أصل الفاتورة الضريبية أو بون الكاشير المطبوع.</span>
         </label>
         <label class="checkbox-row" style="font-size:12px;">
           <input type="checkbox" id="posRetGoodCondition">
-          <span>✨ <b>حالة المنتج:</b> تم فحص السلعة والتأكد أنها بحالتها الأصلية غير مستخدمة وبالعبوة والملصقات السليمة.</span>
+          <span><b>حالة المنتج:</b> تم فحص السلعة والتأكد أنها بحالتها الأصلية غير مستخدمة وبالعبوة والملصقات السليمة.</span>
         </label>
       </div>
 
@@ -1705,9 +1750,9 @@ function openPosReturnModal(sale){
       <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:6px;padding:10px 14px;margin-bottom:12px;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <div>
-            <div style="font-size:11px;font-weight:800;color:#1e40af;">💳 قناة الاسترداد الإلزامية (نفس وسيلة الدفع الأصلية):</div>
+            <div style="font-size:11px;font-weight:800;color:#1e40af;">قناة الاسترداد الإلزامية (نفس وسيلة الدفع الأصلية):</div>
             <div style="font-size:13.5px;font-weight:900;color:#1e3a8a;margin-top:2px;">
-              🔒 رد المبلغ عبر: <b>${refundMethod}</b>
+              رد المبلغ عبر: <b>${refundMethod}</b>
             </div>
           </div>
           <span class="badge" style="background:#dbeafe;color:#1e40af;font-size:11px;font-weight:800;padding:4px 8px;border-radius:4px;">مطابقة وسيلة الدفع الأصلية</span>
@@ -1725,14 +1770,14 @@ function openPosReturnModal(sale){
       <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:6px;padding:10px 14px;margin-bottom:12px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
           <div style="font-size:12px;font-weight:800;color:#92400e;">
-            👤 مسؤول البيع الأصلي: <b>${sale.By || 'الكاشير'}</b>
+            مسؤول البيع الأصلي: <b>${sale.By || 'الكاشير'}</b>
           </div>
           <span style="font-size:11px;color:#b45309;">تصفية ومردودات العمولات</span>
         </div>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
           <div style="flex:1;min-width:200px;">
             <label style="font-size:11.5px;font-weight:700;color:#78350f;display:block;margin-bottom:3px;">
-              ✂️ عمولة / مكافأة البيع المراد خصمها من البائع (ج.م):
+              عمولة / مكافأة البيع المراد خصمها من البائع (ج.م):
             </label>
             <input type="number" id="posRetCommission" min="0" step="0.5" value="0" style="background:#fff;border-color:#d97706;font-size:14px;font-weight:800;width:120px;" placeholder="0.00">
           </div>
@@ -1745,7 +1790,7 @@ function openPosReturnModal(sale){
       <!-- 5. Items to Return Table -->
       <div style="border:1px solid var(--line);border-radius:6px;overflow:hidden;margin-bottom:12px;">
         <div style="background:var(--paper2);padding:8px 12px;font-weight:800;font-size:12px;color:var(--ink);border-bottom:1px solid var(--line);">
-          📦 حدد الأصناف والكميات المراد استرجاعها:
+          حدد الأصناف والكميات المراد استرجاعها:
         </div>
         <table style="width:100%;border-collapse:collapse;font-size:11.5px;">
           <thead>
@@ -2030,7 +2075,7 @@ function openPosReturnModal(sale){
         );
 
         overlay.remove();
-        showToast('تم إتمام عملية الاسترجاع بنجاح وتحديث الخزينة والمخزن ✅', 'success');
+        showToast('تم إتمام عملية الاسترجاع بنجاح وتحديث الخزينة والمخزن', 'success');
 
         // Re-render
         if(state.currentSection === 'pos'){
@@ -2104,9 +2149,9 @@ function openPosReturnVoucherPrint(sale, returnDetails){
 
       <!-- Verification Badges -->
       <div style="display:flex;gap:12px;flex-wrap:wrap;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:8px 12px;margin-bottom:14px;font-size:11px;color:#15803d;font-weight:700;">
-        <div>✓ تم التحقق من وجود الفاتورة الأصلية</div>
-        <div>✓ تم فحص الأصناف والتأكد من حالتها الأصلية</div>
-        <div>✓ ضمن مهلة الاسترجاع القانونية (14 يوماً)</div>
+        <div>• تم التحقق من وجود الفاتورة الأصلية</div>
+        <div>• تم فحص الأصناف والتأكد من حالتها الأصلية</div>
+        <div>• ضمن مهلة الاسترجاع القانونية (14 يوماً)</div>
       </div>
 
       <!-- Items Table -->
@@ -2128,7 +2173,7 @@ function openPosReturnVoucherPrint(sale, returnDetails){
               <td style="padding:6px 10px;font-weight:700;">${it.name}</td>
               <td style="padding:6px 10px;text-align:center;font-weight:800;" class="mono">${it.qty}</td>
               <td style="padding:6px 10px;text-align:center;" class="mono">${Number(it.price).toLocaleString()} ج.م</td>
-              <td style="padding:6px 10px;text-align:center;color:#16a34a;font-weight:700;">${it.restocked ? 'نعم ✓' : 'لا'}</td>
+              <td style="padding:6px 10px;text-align:center;color:#16a34a;font-weight:700;">${it.restocked ? 'نعم' : 'لا'}</td>
               <td style="padding:6px 10px;text-align:center;font-weight:900;color:#dc2626;" class="mono">${Number(it.lineTotal || (it.qty * it.price)).toLocaleString()} ج.م</td>
             </tr>
           `).join('')}
@@ -2141,11 +2186,11 @@ function openPosReturnVoucherPrint(sale, returnDetails){
           <div>
             <div style="font-size:11px;color:#991b1b;font-weight:800;">طريقة الاسترداد المنفذة:</div>
             <div style="font-size:13.5px;font-weight:900;color:#b91c1c;margin-top:2px;">
-              🔒 تم رد المبلغ عبر: <b>${returnDetails.refundMethod || sale.PaymentMethod || 'نقدي (كاش)'}</b> (نفس وسيلة الدفع الأصلية)
+              رد المبلغ عبر: <b>${returnDetails.refundMethod || sale.PaymentMethod || 'نقدي (كاش)'}</b> (نفس وسيلة الدفع الأصلية)
             </div>
             ${Number(returnDetails.sellerCommissionDeducted) > 0 ? `
               <div style="font-size:11px;color:#78350f;margin-top:4px;font-weight:700;">
-                ✂️ تم خصم عمولة مبيعات بقيمة <b>${returnDetails.sellerCommissionDeducted} ج.م</b> من البائع (${returnDetails.sellerName || sale.By}).
+                تم خصم عمولة مبيعات بقيمة <b>${returnDetails.sellerCommissionDeducted} ج.م</b> من البائع (${returnDetails.sellerName || sale.By}).
               </div>
             ` : ''}
           </div>
@@ -2187,13 +2232,13 @@ function openPosReturnLookupModal(){
     <div class="modal-content" style="max-width:680px;max-height:85vh;overflow:hidden;display:flex;flex-direction:column;">
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:12px;">
         <div>
-          <h3 style="margin:0;font-size:16.5px;font-weight:900;">↩️ استرجاع فاتورة مبيعات (POS Return)</h3>
+          <h3 style="margin:0;font-size:16.5px;font-weight:900;">استرجاع فاتورة مبيعات (POS Return)</h3>
           <div style="font-size:11.5px;color:var(--ink-secondary);margin-top:2px;">امسح باركود البون أو ابحث برقم الفاتورة أو اسم وهاتف العميل</div>
         </div>
-        <button class="btn btn-ghost btn-xs" id="closePosRetLookupModal">✕</button>
+        <button class="btn btn-ghost btn-xs" id="closePosRetLookupModal" style="font-size:18px;line-height:1;">&times;</button>
       </div>
       <div style="margin-bottom:12px;">
-        <input id="posRetLookupInp" placeholder="🔍 امسح الباركود أو اكتب رقم الفاتورة / اسم العميل / الهاتف..." style="width:100%;font-size:14px;padding:9px 12px;" autofocus>
+        <input id="posRetLookupInp" placeholder="امسح الباركود أو اكتب رقم الفاتورة / اسم العميل / الهاتف..." style="width:100%;font-size:14px;padding:9px 12px;" autofocus>
       </div>
       <div id="posRetLookupResults" style="flex:1;overflow-y:auto;border:1px solid var(--line);border-radius:6px;padding:4px;"></div>
     </div>
@@ -2235,7 +2280,7 @@ function openPosReturnLookupModal(){
               <span class="mono font-bold" style="color:var(--primary);font-size:13px;">#${s.ID.slice(-8)}</span>
               <span style="font-size:11px;color:var(--ink-secondary);">${sDate}</span>
               ${isOk14 ? `<span class="badge" style="background:#ecfdf5;color:#047857;font-size:10px;">${daysDiff} يوم (ضمن 14 يوم)</span>` : `<span class="badge" style="background:#fef2f2;color:#b91c1c;font-size:10px;">${daysDiff} يوم (تجاوز 14 يوم)</span>`}
-              ${s.IsReturned ? `<span class="badge" style="background:#fee2e2;color:#b91c1c;font-size:10px;font-weight:800;">↩️ مرتجع</span>` : ''}
+              ${s.IsReturned ? `<span class="badge" style="background:#fee2e2;color:#b91c1c;font-size:10px;font-weight:800;">مرتجع</span>` : ''}
             </div>
             <div style="font-size:12.5px;font-weight:700;margin-top:2px;">
               ${s.CustomerName || 'عميل زائر'} ${s.CustomerPhone ? `(${s.CustomerPhone})` : ''}
@@ -2250,9 +2295,9 @@ function openPosReturnLookupModal(){
               <div style="font-size:10px;color:var(--ink-secondary);">${s.PaymentMethod||'نقدي'}</div>
             </div>
             ${s.IsReturned ? `
-              <button class="btn btn-xs btn-purple" data-retlookupact="voucher" data-sid="${s.ID}">🧾 إشعار</button>
+              <button class="btn btn-xs btn-purple" data-retlookupact="voucher" data-sid="${s.ID}">${getSvgIcon('fileText', 12)} إشعار</button>
             ` : `
-              <button class="btn btn-xs btn-amber" data-retlookupact="return" data-sid="${s.ID}">استرجاع ↩️</button>
+              <button class="btn btn-xs btn-amber" data-retlookupact="return" data-sid="${s.ID}">استرجاع</button>
             `}
           </div>
         </div>

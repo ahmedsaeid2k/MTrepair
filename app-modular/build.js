@@ -17,6 +17,14 @@ if (!fs.existsSync(distDir)) {
 
 console.log('🚀 Starting microERP Modular Build...');
 
+// 0. Offline Barcode Library support
+const jsBarcodeFile = path.join(rootDir, '../assets/JsBarcode.all.min.js');
+let jsBarcodeTag = '<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.12.3/JsBarcode.all.min.js"></script>';
+if (fs.existsSync(jsBarcodeFile)) {
+  const barcodeJs = fs.readFileSync(jsBarcodeFile, 'utf8');
+  jsBarcodeTag = `<script>\n/* Embedded JsBarcode for 100% Offline Support */\n${barcodeJs}\n</script>`;
+}
+
 // 1. CSS Files to bundle in exact order
 const cssFiles = [
   'css/01-variables.css',
@@ -36,6 +44,7 @@ cssFiles.forEach(relPath => {
 
 // 2. JavaScript Files to bundle in exact order
 const jsFiles = [
+  'js/core/00-security-hardening.js',
   'js/core/01-digits.js',
   'js/core/02-api-sync.js',
   'js/core/03-utils-and-mappings.js',
@@ -79,7 +88,7 @@ const distHtml = `<!doctype html>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.12.3/JsBarcode.all.min.js"></script>
+${jsBarcodeTag}
 <style>
 ${combinedCss}
 </style>

@@ -9,91 +9,94 @@ function loginScreen(){
     <div class="login-topbar">
       <div id="loginNetStatus">
         ${isOnline ? `
-          <span class="badge" style="background:rgba(16,185,129,0.12);color:#059669;border:1px solid rgba(16,185,129,0.25);padding:6px 14px;border-radius:20px;font-size:12px;font-weight:800;display:inline-flex;align-items:center;gap:7px;">
-            <span style="width:8px;height:8px;border-radius:50%;background:#10b981;box-shadow:0 0 8px #10b981;display:inline-block;"></span>
+          <span class="badge" style="background:var(--green-bg);color:var(--green-text);border:1px solid rgba(5,150,105,0.2);padding:5px 12px;border-radius:var(--radius-sm);font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:7px;">
+            <span style="width:7px;height:7px;border-radius:50%;background:var(--primary);display:inline-block;"></span>
             متصل بالنظام
           </span>
         ` : `
-          <span class="badge" style="background:rgba(245,158,11,0.12);color:#d97706;border:1px solid rgba(245,158,11,0.25);padding:6px 14px;border-radius:20px;font-size:12px;font-weight:800;display:inline-flex;align-items:center;gap:7px;">
-            <span style="width:8px;height:8px;border-radius:50%;background:#f59e0b;box-shadow:0 0 8px #f59e0b;display:inline-block;"></span>
-            وضع العمل دون اتصال (أوفلاين)
+          <span class="badge" style="background:var(--amber-bg);color:var(--amber-text);border:1px solid rgba(245,158,11,0.25);padding:5px 12px;border-radius:var(--radius-sm);font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:7px;">
+            <span style="width:7px;height:7px;border-radius:50%;background:#f59e0b;display:inline-block;"></span>
+            وضع العمل دون اتصال
           </span>
         `}
       </div>
-      <button type="button" class="btn btn-ghost" id="loginThemeToggle" style="border-radius:20px;padding:6px 14px;font-size:12.5px;font-weight:800;display:inline-flex;align-items:center;gap:6px;background:var(--paper2);border:1px solid var(--line);cursor:pointer;">
-        ${isDark ? '☀️ الوضع الفاتح' : '🌙 الوضع الليلي'}
+      <button type="button" class="btn btn-ghost" id="loginThemeToggle" style="border-radius:var(--radius-sm);padding:5px 12px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px;background:var(--paper2);border:1px solid var(--line);cursor:pointer;">
+        ${isDark ? `${getSvgIcon('sun', 14)} الوضع الفاتح` : `${getSvgIcon('moon', 14)} الوضع الليلي`}
       </button>
     </div>
 
     <div class="login-card">
-      <div class="login-brand-logo">⚡</div>
+      <div class="login-brand-logo">${getSvgIcon('logo', 24)}</div>
       
       <div style="text-align:center;margin-bottom:24px;">
-        <h2 style="margin:0 0 6px;font-size:22px;font-weight:900;letter-spacing:-0.5px;color:var(--ink);">${escapeHtml(shopName)}</h2>
-        <div style="font-size:12.5px;color:var(--ink-secondary);font-weight:600;display:flex;align-items:center;justify-content:center;gap:6px;">
-          <span>تسجيل الدخول الآمن للنظام</span>
-          <span style="font-size:10px;padding:2px 7px;background:rgba(5,150,105,0.1);color:#059669;border-radius:6px;font-weight:800;">Enterprise 2026</span>
+        <h2 style="margin:0 0 6px;font-size:20px;font-weight:800;letter-spacing:-0.3px;color:var(--ink);">${escapeHtml(shopName)}</h2>
+        <div style="font-size:12px;color:var(--ink-secondary);font-weight:600;">
+          نظام الإدارة وتخطيط الموارد الموحد
         </div>
       </div>
 
       <!-- Rate Limiting / Lockout Banner -->
       <div class="login-lockout-banner" id="loginLockoutBanner">
-        ⛔ تم تعليق تسجيل الدخول مؤقتاً لأسباب أمنية.<br>
+        <div style="display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:4px;">
+          ${getSvgIcon('alert', 15)}
+          <span>تم تعليق تسجيل الدخول مؤقتاً لأسباب أمنية</span>
+        </div>
         يرجى الانتظار <span id="lockoutTimerVal">30</span> ثانية قبل إعادة المحاولة.
       </div>
 
       ${!isOnline ? `
-        <div style="background:rgba(245,158,11,0.09);border:1px solid rgba(245,158,11,0.25);color:var(--amber-text);font-size:11.5px;font-weight:700;padding:8px 12px;border-radius:12px;margin-bottom:16px;text-align:center;line-height:1.4;">
-          💡 النظام في وضع الأوفلاين. يتم التحقق وتأمين الدخول باستخدام الحسابات المخزنة محلياً.
+        <div style="background:var(--amber-bg);border:1px solid rgba(245,158,11,0.25);color:var(--amber-text);font-size:11.5px;font-weight:600;padding:8px 12px;border-radius:var(--radius-sm);margin-bottom:16px;text-align:center;line-height:1.4;display:flex;align-items:center;gap:6px;justify-content:center;">
+          ${getSvgIcon('alert', 14)}
+          <span>النظام في وضع عدم الاتصال. يتم التحقق باستخدام البيانات المحفوظة محلياً.</span>
         </div>
       ` : ''}
 
       <div style="display:flex;flex-direction:column;gap:14px;">
         <div class="field" style="margin:0;">
-          <label style="font-size:12.5px;font-weight:800;margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-            <span>👤</span>
+          <label style="font-size:12px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:6px;color:var(--ink);">
+            <span>${getSvgIcon('user', 14)}</span>
             <span>اسم المستخدم</span>
           </label>
-          <input id="loginName" placeholder="ادخل اسم المستخدم (مثال: admin)" autofocus autocomplete="username" style="padding:11px 14px;font-size:13.5px;border-radius:12px;">
+          <input id="loginName" placeholder="ادخل اسم المستخدم (مثال: admin)" autofocus autocomplete="username" style="padding:10px 12px;font-size:13.5px;border-radius:var(--radius-sm);">
         </div>
 
         <div class="field" style="margin:0;">
-          <label style="font-size:12.5px;font-weight:800;margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-            <span>🔑</span>
+          <label style="font-size:12px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:6px;color:var(--ink);">
+            <span>${getSvgIcon('key', 14)}</span>
             <span>كلمة المرور</span>
           </label>
           <div class="login-input-wrap">
-            <input id="loginPass" type="password" placeholder="••••••••" autocomplete="current-password" style="padding:11px 14px;padding-left:42px;font-size:14px;border-radius:12px;">
-            <button type="button" class="login-toggle-pass-btn" id="loginTogglePass" title="إظهار / إخفاء كلمة المرور" tabindex="-1">👁️</button>
+            <input id="loginPass" type="password" placeholder="••••••••" autocomplete="current-password" style="padding:10px 12px;padding-left:38px;font-size:14px;border-radius:var(--radius-sm);">
+            <button type="button" class="login-toggle-pass-btn" id="loginTogglePass" title="إظهار / إخفاء كلمة المرور" tabindex="-1">${getSvgIcon('eye', 15)}</button>
           </div>
           <!-- Caps Lock Alert -->
           <div class="login-caps-alert" id="loginCapsAlert">
-            <span>⚠️</span>
+            ${getSvgIcon('alert', 13)}
             <span>زر Caps Lock مفعّل - انتبه لحالة الأحرف الكبيرة</span>
           </div>
         </div>
 
         <div style="display:flex;align-items:center;justify-content:space-between;margin-top:2px;">
           <label style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--ink-secondary);cursor:pointer;user-select:none;">
-            <input type="checkbox" id="loginRemember" checked style="width:16px;height:16px;accent-color:#059669;cursor:pointer;">
+            <input type="checkbox" id="loginRemember" checked style="width:15px;height:15px;accent-color:var(--primary);cursor:pointer;">
             <span>تذكرني على هذا الجهاز</span>
           </label>
           <span style="font-size:11px;color:var(--ink-secondary);opacity:0.8;">تشفير محلي آمن</span>
         </div>
 
         <button class="login-btn-submit" id="loginBtn" type="button">
-          <span id="loginBtnIcon" style="font-size:16px;">🔐</span>
+          <span id="loginBtnIcon" style="display:inline-flex;align-items:center;">${getSvgIcon('lock', 15)}</span>
           <span id="loginBtnText">تسجيل الدخول للنظام</span>
-          <span style="margin-right:auto;font-size:16px;">➔</span>
+          <span style="margin-right:auto;display:inline-flex;align-items:center;">${getSvgIcon('arrowLeft', 13)}</span>
         </button>
       </div>
 
       <!-- Animated Error Banner -->
       <div class="login-err-banner" id="loginErr"></div>
 
-      <div style="margin-top:22px;padding-top:16px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:var(--ink-secondary);">
+      <div style="margin-top:20px;padding-top:14px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:var(--ink-secondary);">
         <span>حماية مشددة ضد التخمين</span>
-        <span style="font-weight:700;color:var(--primary);">نظام متصل ومشفر 🔒</span>
+        <span style="font-weight:700;color:var(--primary);display:inline-flex;align-items:center;gap:4px;">${getSvgIcon('lock', 12)} جلسة آمنة ومعتمدة</span>
       </div>
     </div>
   </div>`;
@@ -164,10 +167,10 @@ function attachLogin(){
       e.preventDefault();
       if(passInput.type === 'password'){
         passInput.type = 'text';
-        togglePassBtn.textContent = '🙈';
+        togglePassBtn.innerHTML = getSvgIcon('eyeOff', 15);
       } else {
         passInput.type = 'password';
-        togglePassBtn.textContent = '👁️';
+        togglePassBtn.innerHTML = getSvgIcon('eye', 15);
       }
       passInput.focus();
     };
@@ -211,16 +214,16 @@ function attachLogin(){
     if(!statusContainer) return;
     if(navigator.onLine){
       statusContainer.innerHTML = `
-        <span class="badge" style="background:rgba(16,185,129,0.12);color:#059669;border:1px solid rgba(16,185,129,0.25);padding:6px 14px;border-radius:20px;font-size:12px;font-weight:800;display:inline-flex;align-items:center;gap:7px;">
-          <span style="width:8px;height:8px;border-radius:50%;background:#10b981;box-shadow:0 0 8px #10b981;display:inline-block;"></span>
+        <span class="badge" style="background:var(--green-bg);color:var(--green-text);border:1px solid rgba(5,150,105,0.2);padding:5px 12px;border-radius:var(--radius-sm);font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:7px;">
+          <span style="width:7px;height:7px;border-radius:50%;background:var(--primary);display:inline-block;"></span>
           متصل بالنظام
         </span>
       `;
     } else {
       statusContainer.innerHTML = `
-        <span class="badge" style="background:rgba(245,158,11,0.12);color:#d97706;border:1px solid rgba(245,158,11,0.25);padding:6px 14px;border-radius:20px;font-size:12px;font-weight:800;display:inline-flex;align-items:center;gap:7px;">
-          <span style="width:8px;height:8px;border-radius:50%;background:#f59e0b;box-shadow:0 0 8px #f59e0b;display:inline-block;"></span>
-          وضع العمل دون اتصال (أوفلاين)
+        <span class="badge" style="background:var(--amber-bg);color:var(--amber-text);border:1px solid rgba(245,158,11,0.25);padding:5px 12px;border-radius:var(--radius-sm);font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:7px;">
+          <span style="width:7px;height:7px;border-radius:50%;background:#f59e0b;display:inline-block;"></span>
+          وضع العمل دون اتصال
         </span>
       `;
     }
@@ -259,7 +262,7 @@ function attachLogin(){
     if(btn){
       btn.disabled = true;
       if(btnText) btnText.textContent = 'جارٍ التحقق وتأمين الجلسة...';
-      if(btnIcon) btnIcon.innerHTML = '⏳';
+      if(btnIcon) btnIcon.innerHTML = getSvgIcon('lock', 15);
     }
 
     try {
@@ -350,7 +353,7 @@ function attachLogin(){
       if(btn){
         btn.disabled = false;
         if(btnText) btnText.textContent = 'تسجيل الدخول للنظام';
-        if(btnIcon) btnIcon.innerHTML = '🔐';
+        if(btnIcon) btnIcon.innerHTML = getSvgIcon('lock', 15);
       }
 
       checkLockout();

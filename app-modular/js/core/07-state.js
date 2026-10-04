@@ -26,7 +26,7 @@ let state = {
   invoices: getCache('invoices', []),
   formStep: 0,
   draft: null,
-  maintenanceViewMode: localStorage.getItem('microerp_maint_view_mode') || 'table',
+  maintenanceViewMode: (function(){ try{ return localStorage.getItem('microerp_maint_view_mode') || 'table'; }catch(e){ return 'table'; } })(),
   archiveFilter: {q:'', status:'', tech:'', group:'all'},
   selectedReceiptId: null,
   selectedReceiptNum: null,
@@ -97,7 +97,7 @@ let state = {
   warehouses: getCache('warehouses', ['المخزن الرئيسي', 'مخزن المعرض / المحل', 'مخزن قطع الغيار']),
   warehouseTransfers: getCache('warehouse_transfers', []),
   selectedWarehouseFilter: 'all',
-  theme: localStorage.getItem('microerp_theme') || 'light'
+  theme: (function(){ try{ return localStorage.getItem('microerp_theme') || 'light'; }catch(e){ return 'light'; } })()
 };
 window.state = state;
 window.render = render;
@@ -105,7 +105,7 @@ window.render = render;
 function applyThemeAndAppearance(){
   const t = state.theme || 'light';
   document.documentElement.setAttribute('data-theme', t);
-  localStorage.setItem('microerp_theme', t);
+  try { localStorage.setItem('microerp_theme', t); } catch(e){}
 
   // Apply custom app theme (odoo, apple, glass, win11) via data-app-theme attribute
   const appTheme = (state.settings && state.settings.appTheme) || 'light';
@@ -226,6 +226,34 @@ function newDraft(){
 async function nextReceiptNumber(){
   const list = state.receipts || [];
   const y = new Date().getFullYear();
-  const countThisYear = list.filter(r => r.receiptNumber && r.receiptNumber.startsWith('MT-'+y)).length;
-  return 'MT-'+y+'-'+String(countThisYear+1).padStart(4,'0');
+  const prefix = 'MT-' + y + '-';
+  let maxSeq = 0;
+  for(const r of list){
+    const rn = String(r.receiptNumber || r.ReceiptNumber || '');
+    if(rn.startsWith(prefix)){
+      const numPart = parseInt(rn.slice(prefix.length), 10);
+      if(!isNaN(numPart) && numPart > maxSeq){
+        maxSeq = numPart;
+      }
+    }
+  }
+  return prefix + String(maxSeq + 1).padStart(4, '0');
 }
+
+function nextInvoiceNumber(){
+  const list = state.invoices || [];
+  const y = new Date().getFullYear();
+  const prefix = 'INV-' + y + '-';
+  let maxSeq = 0;
+  for(const inv of list){
+    const num = String(inv.InvoiceNumber || inv.invoiceNumber || inv.Number || inv.number || '');
+    if(num.startsWith(prefix)){
+      const part = parseInt(num.slice(prefix.length), 10);
+      if(!isNaN(part) && part > maxSeq){
+        maxSeq = part;
+      }
+    }
+  }
+  return prefix + String(maxSeq + 1).padStart(4, '0');
+}
+

@@ -51,16 +51,18 @@
   --cyan-bg: #cffafe;
   --cyan-text: #155e75;
   
-  --radius-xs: 6px;
-  --radius-sm: 12px;
-  --radius: 24px;
-  --radius-lg: 26px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
   --radius-full: 9999px;
   
-  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
-  --shadow: 0 4px 14px -1px rgba(0, 0, 0, 0.06), 0 2px 6px -2px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 10px 25px -3px rgba(0, 0, 0, 0.08), 0 4px 10px -4px rgba(0, 0, 0, 0.04);
-  --shadow-lg: 0 20px 35px -5px rgba(0, 0, 0, 0.12), 0 10px 15px -6px rgba(0, 0, 0, 0.06);
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
+  --shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.06), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
   
   --font-main: 'Tajawal', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-mono: 'IBM Plex Mono', monospace, Consolas, Courier;
@@ -107,54 +109,4 @@
   --purple-text: #c4b5fd;
   --cyan-bg: rgba(6, 182, 212, 0.22);
   --cyan-text: #67e8f9;
-}
-
-/* Custom Theme Presets */
-html[data-app-theme="odoo"]:not([data-theme="dark"]) {
-  --primary: #4f46e5;
-  --primary-hover: #4338ca;
-  --paper: #0f172a;
-  --paper2: #1e293b;
-  --paper3: #334155;
-  --line: rgba(255, 255, 255, 0.1);
-  --line-strong: rgba(255, 255, 255, 0.18);
-  --ink: #f8fafc;
-  --ink-secondary: #94a3b8;
-}
-
-html[data-app-theme="apple"]:not([data-theme="dark"]) {
-  --primary: #007aff;
-  --primary-hover: #0062cc;
-  --paper: #f5f5f7;
-  --paper2: #ffffff;
-  --paper3: #e8e8ed;
-  --line: rgba(0, 0, 0, 0.08);
-  --line-strong: rgba(0, 0, 0, 0.16);
-  --ink: #1d1d1f;
-  --ink-secondary: #6e6e73;
-}
-
-html[data-app-theme="glass"]:not([data-theme="dark"]) {
-  --primary: #0284c7;
-  --primary-hover: #0369a1;
-  --paper: #f0f9ff;
-  --paper2: rgba(255, 255, 255, 0.88);
-  --paper3: rgba(224, 242, 254, 0.6);
-  --line: rgba(2, 132, 199, 0.18);
-  --line-strong: rgba(2, 132, 199, 0.3);
-  --glass-bg: rgba(255, 255, 255, 0.8);
-  --ink: #0c4a6e;
-  --ink-secondary: #0369a1;
-}
-
-html[data-app-theme="win11"]:not([data-theme="dark"]) {
-  --primary: #0078d7;
-  --primary-hover: #005a9e;
-  --paper: #f3f3f3;
-  --paper2: #ffffff;
-  --paper3: #e5e5e5;
-  --line: #d1d1d1;
-  --line-strong: #b0b0b0;
-  --ink: #1a1a1a;
-  --ink-secondary: #5c5c5c;
 }

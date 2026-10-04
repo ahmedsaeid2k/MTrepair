@@ -3,15 +3,15 @@ function renderSuppliers(main){
   main.innerHTML = `
     <div class="top-header">
       <div>
-        <h2 class="page-title">👥 إدارة الموردين</h2>
+        <h2 class="page-title">${getSvgIcon('users', 20)} إدارة الموردين</h2>
         <div class="subtitle">${state.suppliers.length} مورد مسجل</div>
       </div>
       <div style="display:flex;gap:8px;">
-        <button class="btn btn-green btn-sm" id="openPaySupBtn">💸 سداد / دفع لمورد (سند صرف)</button>
+        <button class="btn btn-green btn-sm" id="openPaySupBtn">${getSvgIcon('dollar', 14)} سداد / دفع لمورد (سند صرف)</button>
       </div>
     </div>
     <div class="card">
-      <h3>➕ إضافة مورد جديد</h3>
+      <h3>${getSvgIcon('plus', 16)} إضافة مورد جديد</h3>
       <div style="display:grid;grid-template-columns:140px 1.5fr 1fr 1fr;gap:10px;">
         <div class="field">
           <label>اللقب (اختياري)</label>
@@ -23,7 +23,7 @@ function renderSuppliers(main){
         <div class="field"><label>رقم الهاتف</label><input id="newSupPhone" class="mono" placeholder="01xxxxxxxxx"></div>
         <div class="field"><label>ملاحظات</label><input id="newSupNotes" placeholder="مجال التوريد أو العنوان"></div>
       </div>
-      <button class="btn btn-primary btn-sm" id="addSupBtn" style="margin-top:8px;">➕ إضافة مورد</button>
+      <button class="btn btn-primary btn-sm" id="addSupBtn" style="margin-top:8px;">${getSvgIcon('plus', 14)} إضافة مورد</button>
     </div>
     <div id="unifiedSelectionTopSlot"></div>
 
@@ -49,14 +49,14 @@ function renderSuppliers(main){
                 ${(s.Phone||s.phone) ? `
                   <div style="display:inline-flex;align-items:center;gap:6px;">
                     <span class="mono font-bold" style="font-size:12.5px;">${escapeHtml(s.Phone||s.phone)}</span>
-                    <a href="tel:${escapeHtml(s.Phone||s.phone)}" class="btn btn-ghost btn-xs" style="padding:2px 6px;" title="اتصال هاتفي" onclick="event.stopPropagation();">📞</a>
-                    <a href="https://wa.me/${normalizePhoneForWa(s.Phone||s.phone)}" target="_blank" class="btn btn-ghost btn-xs" style="padding:2px 6px;color:#22c55e;" title="محادثة واتساب" onclick="event.stopPropagation();">💬</a>
+                    <a href="tel:${escapeHtml(s.Phone||s.phone)}" class="btn btn-ghost btn-xs" style="padding:2px 6px;" title="اتصال هاتفي" onclick="event.stopPropagation();">${getSvgIcon('phone', 13)}</a>
+                    <a href="https://wa.me/${normalizePhoneForWa(s.Phone||s.phone)}" target="_blank" class="btn btn-ghost btn-xs" style="padding:2px 6px;color:#22c55e;" title="محادثة واتساب" onclick="event.stopPropagation();">${getSvgIcon('message', 13)}</a>
                   </div>
                 ` : '<span style="color:var(--ink-secondary);font-size:11px;">-</span>'}
               </td>
               <td style="font-size:12px;color:var(--ink-secondary);">${escapeHtml(s.Notes||s.notes||'-')}</td>
               <td style="text-align:center;">
-                ${pCount ? `<span class="badge" style="background:var(--paper2);color:var(--ink);font-weight:700;border:1px solid var(--line);font-size:11px;">📋 ${pCount} سند صرف</span>` : `<span style="color:var(--ink-secondary);font-size:11px;">-</span>`}
+                ${pCount ? `<span class="badge" style="background:var(--paper2);color:var(--ink);font-weight:700;border:1px solid var(--line);font-size:11px;">${getSvgIcon('fileText', 12)} ${pCount} سند صرف</span>` : `<span style="color:var(--ink-secondary);font-size:11px;">-</span>`}
               </td>
             </tr>
           `;
@@ -73,7 +73,7 @@ function renderSuppliers(main){
     if(!name){ showToast('اكتب اسم المورد', 'error'); return; }
     try{
       const res = await saveSupplierRemote({ID:'', Title:title, Name:name, Phone:phone, Notes:notes});
-      showToast('تمت إضافة المورد بنجاح ✅', 'success');
+      showToast('تمت إضافة المورد بنجاح', 'success');
       renderSuppliers(main);
     }catch(e){ showToast('تمت الإضافة محلياً', 'info'); }
   };
@@ -98,10 +98,10 @@ function openPaySupplierModal(preselectedName){
     <div class="modal-content" style="max-width:480px;">
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
         <h3 style="margin:0;font-size:16px;color:var(--ink);display:flex;align-items:center;gap:6px;">
-          <span>💸</span>
+          <span>${getSvgIcon('dollar', 18)}</span>
           <span>تسجيل سند صرف / سداد دفعة لمورد</span>
         </h3>
-        <button class="btn btn-ghost btn-xs" id="closePaySupModal">✕</button>
+        <button class="btn btn-ghost btn-xs" id="closePaySupModal" style="font-size:18px;line-height:1;">&times;</button>
       </div>
 
       <div class="field">
@@ -126,12 +126,12 @@ function openPaySupplierModal(preselectedName){
       <!-- طرق الدفع المتاحة مطابقة لنقطة البيع POS -->
       <div class="pos-pay-section" style="margin-bottom:14px;">
         <label style="font-size:11.5px;font-weight:800;color:var(--ink);display:block;margin-bottom:6px;">
-          💳 طريقة الدفع للمورد:
+          ${getSvgIcon('creditCard', 14)} طريقة الدفع للمورد:
         </label>
         <div class="pos-pay-grid" id="supPayGrid">
           ${getActivePaymentMethods().map(pm => `
             <div class="pos-pay-btn ${pm.id==='cash'?'selected':''}" data-suppaymethod="${pm.id}">
-              <span>${pm.icon || '💵'}</span>
+              <span>${getSvgIcon(pm.id==='card'?'creditCard':(pm.id==='instapay'?'refresh':(pm.id==='vodafone'?'phone':'dollar')), 14)}</span>
               <span>${pm.name}</span>
             </div>
           `).join('')}
@@ -151,7 +151,7 @@ function openPaySupplierModal(preselectedName){
 
       <div class="actions-row" style="margin-top:16px;border-top:1px solid var(--line);padding-top:12px;">
         <button class="btn btn-ghost" id="cancelPaySupModal">إلغاء</button>
-        <button class="btn btn-green" id="savePaySupBtn" style="font-weight:800;">💾 تسجيل سند الصرف بالخزينة</button>
+        <button class="btn btn-green" id="savePaySupBtn" style="font-weight:800;">${getSvgIcon('check', 14)} تسجيل سند الصرف بالخزينة</button>
       </div>
     </div>
   `;
@@ -229,21 +229,21 @@ function openPaySupplierModal(preselectedName){
 
       recordAuditLog('سند صرف مورد', 'الموردين', `تم تسجيل سند صرف لمورد: ${supName} بقيمة ${amount} ج.م بطريقة [${payMethodName}]`, expObj.ID);
 
-      showToast(`تم تسجيل سداد ${amount.toLocaleString()} ج.م للمورد (${supName}) بنجاح ✅`, 'success');
+      showToast(`تم تسجيل سداد ${amount.toLocaleString()} ج.م للمورد (${supName}) بنجاح`, 'success');
       overlay.remove();
       const main = document.getElementById('main');
       if(state.invHubTab === 'suppliers') renderSuppliers(main);
       else refreshInventorySectionOrTab();
 
       setTimeout(()=>{
-        if(confirm(`تم تسجيل سداد ${amount.toLocaleString()} ج.م للمورد (${supName}) بنجاح ✅\n\nهل ترغب في طباعة سند الصرف الآن؟`)){
+        if(confirm(`تم تسجيل سداد ${amount.toLocaleString()} ج.م للمورد (${supName}) بنجاح\n\nهل ترغب في طباعة سند الصرف الآن؟`)){
           openExpenseVoucherPrint(expObj);
         }
       }, 100);
     } catch(err) {
       showToast('حدث خطأ أثناء حفظ السند: ' + (err.message || err), 'error');
       saveBtn.disabled = false;
-      saveBtn.textContent = '💾 تسجيل سند الصرف بالخزينة';
+      saveBtn.textContent = 'تسجيل سند الصرف بالخزينة';
     }
   };
 }
@@ -308,7 +308,7 @@ function openExpenseVoucherPrint(exp){
         </div>
         <div style="text-align:center;">
           <div style="background:#0f172a;color:#fff;font-size:13.5px;font-weight:900;padding:4px 14px;border-radius:6px;display:inline-block;">
-            💸 سند صرف نقدية / سداد مورد
+            سند صرف نقدية / سداد مورد
           </div>
           <div style="font-size:11px;color:#64748b;margin-top:4px;" class="mono">رقم السند: <b>${exp.ID}</b></div>
           <div style="font-size:10.5px;color:#64748b;">التاريخ: <b>${cleanDate(exp.Date)}</b></div>
@@ -381,10 +381,10 @@ function openSupplierPaymentsHistoryModal(supName){
     <div class="modal-content" style="max-width:680px;">
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
         <h3 style="margin:0;font-size:16.5px;color:var(--ink);display:flex;align-items:center;gap:6px;">
-          <span>📋</span>
+          <span>${getSvgIcon('fileText', 18)}</span>
           <span>سجل سدادات وسندات صرف المورد: <b>${escapeHtml(supName)}</b></span>
         </h3>
-        <button class="btn btn-ghost btn-xs" id="closeSupHistModal">✕</button>
+        <button class="btn btn-ghost btn-xs" id="closeSupHistModal" style="font-size:18px;line-height:1;">&times;</button>
       </div>
 
       <div style="background:var(--paper2);border:1px solid var(--line);border-radius:6px;padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
@@ -392,7 +392,7 @@ function openSupplierPaymentsHistoryModal(supName){
           <span style="font-size:12px;color:var(--ink-secondary);">إجمالي ما تم سداده للمورد:</span>
           <div class="mono" style="font-size:18px;font-weight:900;color:var(--green);">${total.toLocaleString()} ج.م</div>
         </div>
-        <button class="btn btn-sm btn-green" id="newPaySupFromHistBtn">➕ تسجيل دفعة جديدة</button>
+        <button class="btn btn-sm btn-green" id="newPaySupFromHistBtn">${getSvgIcon('plus', 14)} تسجيل دفعة جديدة</button>
       </div>
 
       ${payments.length === 0 ? '<div class="empty">لا توجد سندات صرف مسجلة لهذا المورد بعد.</div>' : `
@@ -417,7 +417,7 @@ function openSupplierPaymentsHistoryModal(supName){
                 <td style="font-size:11.5px;">${escapeHtml(p.Reference || '-')}</td>
                 <td style="font-size:11.5px;color:var(--ink-secondary);">${escapeHtml(p.Notes || p.Title || '-')}</td>
                 <td style="text-align:center;">
-                  <button class="btn btn-xs btn-ghost" data-printvouch="${p.ID}" title="طباعة سند الصرف">🖨️</button>
+                  <button class="btn btn-xs btn-ghost" data-printvouch="${p.ID}" title="طباعة سند الصرف">${getSvgIcon('printer', 14)}</button>
                 </td>
               </tr>
             `).join('')}
@@ -456,19 +456,19 @@ function renderPurchases(main){
   main.innerHTML = `
     <div class="top-header">
       <div>
-        <h2 class="page-title">📥 فواتير الشراء من الموردين</h2>
+        <h2 class="page-title">${getSvgIcon('truck', 20)} فواتير الشراء من الموردين</h2>
         <div class="subtitle">${state.purchases.length} فاتورة مسجلة</div>
       </div>
       <div style="display:flex;gap:8px;">
-        <button class="btn btn-purple btn-sm" id="btnPurchasesBatchBarcode">🏷️ طباعة باركود من فاتورة</button>
-        <button class="btn btn-primary btn-sm" id="btnNewPurchaseInvoice">➕ فاتورة شراء وتوريد جديدة</button>
+        <button class="btn btn-purple btn-sm" id="btnPurchasesBatchBarcode">${getSvgIcon('barcode', 14)} طباعة باركود من فاتورة</button>
+        <button class="btn btn-primary btn-sm" id="btnNewPurchaseInvoice">${getSvgIcon('plus', 14)} فاتورة شراء وتوريد جديدة</button>
       </div>
     </div>
     <div id="unifiedSelectionTopSlot"></div>
 
     <div class="card">
       <h3>آخر فواتير الشراء</h3>
-      ${state.purchases.length===0 ? '<div class="empty">لا توجد فواتير شراء بعد. اضغط على "➕ فاتورة شراء وتوريد جديدة" لتسجيل بضاعة جديدة وتوريد المخزن.</div>' : `
+      ${state.purchases.length===0 ? '<div class="empty">لا توجد فواتير شراء بعد. اضغط على "فاتورة شراء وتوريد جديدة" لتسجيل بضاعة جديدة وتوريد المخزن.</div>' : `
       <div class="table-wrap">
         <table>
           <thead>
@@ -553,7 +553,7 @@ function openNewPurchaseModal(){
           ${(Number(it.qty||0) * Number(it.purchasePrice||0)).toLocaleString()} ج.م
         </td>
         <td style="padding:6px;width:40px;text-align:center;">
-          ${items.length > 1 ? `<button type="button" class="btn btn-xs btn-red pur-row-del" data-idx="${idx}" title="حذف السطر">✕</button>` : ''}
+          ${items.length > 1 ? `<button type="button" class="btn btn-xs btn-red pur-row-del" data-idx="${idx}" title="حذف السطر" style="font-size:16px;line-height:1;">&times;</button>` : ''}
         </td>
       </tr>
     `).join('');
@@ -636,10 +636,10 @@ function openNewPurchaseModal(){
     <div style="background:#fff;border-radius:12px;box-shadow:0 20px 40px rgba(0,0,0,0.2);width:100%;max-width:760px;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;border:1px solid #cbd5e1;">
       <div style="background:linear-gradient(135deg,#1e293b,#0f172a);color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;">
         <div>
-          <h3 style="margin:0;font-size:16px;font-weight:900;">📥 تسجيل فاتورة شراء وتوريد مخزون جديدة</h3>
+          <h3 style="margin:0;font-size:16px;font-weight:900;display:flex;align-items:center;gap:8px;">${getSvgIcon('truck', 18)} تسجيل فاتورة شراء وتوريد مخزون جديدة</h3>
           <div style="font-size:11px;color:#94a3b8;margin-top:2px;">إضافة أصناف للمخزن + توليد القيود المحاسبية التلقائية (مخزون 1104 / موردين 2101 / خزينة)</div>
         </div>
-        <button type="button" class="btn btn-ghost btn-sm" id="closePurModalBtn" style="color:#fff;font-size:18px;line-height:1;">✕</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="closePurModalBtn" style="color:#fff;font-size:18px;line-height:1;" style="font-size:16px;line-height:1;">&times;</button>
       </div>
 
       <div style="padding:16px 20px;overflow-y:auto;flex:1;">
@@ -680,8 +680,8 @@ function openNewPurchaseModal(){
             <tbody id="purItemsTableBody"></tbody>
           </table>
           <div style="padding:8px 12px;background:#f8fafc;border-top:1px solid #e2e8f0;">
-            <button type="button" class="btn btn-ghost btn-sm" id="purAddItemRowBtn" style="color:var(--primary);font-weight:800;">
-              ➕ إضافة صنف آخر للفاتورة
+            <button type="button" class="btn btn-ghost btn-sm" id="purAddItemRowBtn" style="color:var(--primary);font-weight:800;display:inline-flex;align-items:center;gap:6px;">
+              ${getSvgIcon('plus', 14)} إضافة صنف آخر للفاتورة
             </button>
           </div>
         </div>
@@ -718,7 +718,7 @@ function openNewPurchaseModal(){
       <div style="background:#f1f5f9;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid #cbd5e1;">
         <button type="button" class="btn btn-ghost btn-sm" id="cancelPurBtn">إلغاء</button>
         <button type="button" class="btn btn-primary btn-sm" id="savePurBtn" style="padding:8px 24px;font-weight:900;">
-          💾 حفظ الفاتورة وتوريد المخزن
+          حفظ الفاتورة وتوريد المخزن
         </button>
       </div>
     </div>
@@ -767,7 +767,8 @@ function openNewPurchaseModal(){
       return;
     }
 
-    // Auto-create new inventory items if custom item was typed
+    // Auto-create new inventory items if custom item was typed (batched to reduce API calls)
+    const newItemsToSave = [];
     for(const it of validItems){
       if(!it.itemId && it.name){
         const existingInv = (state.inventory||[]).find(x => x.Name.trim().toLowerCase() === it.name.trim().toLowerCase());
@@ -783,11 +784,15 @@ function openNewPurchaseModal(){
             SellPrice: Math.round(Number(it.purchasePrice||0) * 1.25)
           };
           state.inventory.push(newInvItem);
-          setCache('inventory', state.inventory);
-          try { apiPost('saveInventoryItem', { data: newInvItem }); } catch(e){}
+          newItemsToSave.push(newInvItem);
           it.itemId = newInvItem.ID;
         }
       }
+    }
+    // Batch save all new items concurrently (instead of N sequential calls)
+    if(newItemsToSave.length > 0){
+      setCache('inventory', state.inventory);
+      Promise.all(newItemsToSave.map(item => apiPost('saveInventoryItem', { data: item }).catch(()=>{}))).catch(()=>{});
     }
 
     const grandTotal = validItems.reduce((s, it) => s + (Number(it.qty) * Number(it.purchasePrice)), 0);
@@ -815,20 +820,20 @@ function openNewPurchaseModal(){
 
     try {
       await savePurchaseRemote(purObj, validItems);
-      showToast('تم حفظ فاتورة الشراء وتوريد المخزن بنجاح ✅', 'success');
+      showToast('تم حفظ فاتورة الشراء وتوريد المخزن بنجاح', 'success');
       overlay.remove();
       const main = document.getElementById('main');
       if(main) renderPurchases(main);
 
       setTimeout(() => {
-        if(confirm(`تم توريد أصناف الفاتورة بنجاح ✅\n\nهل ترغب في فتح نافذة طباعة ملصقات الباركود لهذه الأصناف المشتراة؟`)){
+        if(confirm(`تم توريد أصناف الفاتورة بنجاح\n\nهل ترغب في فتح نافذة طباعة ملصقات الباركود لهذه الأصناف المشتراة؟`)){
           openInvoiceBarcodePrintModal('purchase', purObj.ID);
         }
       }, 200);
     } catch(err) {
       showToast('حدث خطأ أثناء حفظ الفاتورة: ' + (err.message || err), 'error');
       saveBtn.disabled = false;
-      saveBtn.textContent = '💾 حفظ الفاتورة وتوريد المخزن';
+      saveBtn.textContent = 'حفظ الفاتورة وتوريد المخزن';
     }
   };
 }

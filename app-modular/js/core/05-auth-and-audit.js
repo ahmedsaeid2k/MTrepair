@@ -1,5 +1,5 @@
 /* ---------------- User Management & Auth Engine ---------------- */
-// 🔒 Security: DEFAULT_USERS is a UI fallback schema only — passwords are intentionally blank.
+// Security: DEFAULT_USERS is a UI fallback schema only — passwords are intentionally blank.
 // Real credentials are loaded from the backend (Google Sheet → localStorage cache).
 // If localStorage is empty and offline, the user must connect to authenticate.
 const DEFAULT_USERS = [
@@ -9,7 +9,7 @@ const DEFAULT_USERS = [
   { ID: 'usr_accountant', Name: 'محاسب', Password: '', Role: 'accountant', Superuser: false, Sections: 'daily,cashdrawer,invoices,finance,inventory', Notes: 'إدارة الحسابات واليومية والمخزون' }
 ];
 
-// 🔒 Security: strip passwords before persisting user list to localStorage
+// Security: strip passwords before persisting user list to localStorage
 function sanitizeUsersForStorage(users) {
   return (users || []).map(u => {
     const safe = { ...u };
@@ -36,7 +36,7 @@ async function loadUsers(){
     }
   }
 
-  state.users = localUsers;
+  state.users = sanitizeUsersForStorage(localUsers);
   setCache('users', state.users);
 
   if(navigator.onLine){
@@ -46,22 +46,23 @@ async function loadUsers(){
         rows.forEach(r => {
           if(!r || !r.Name) return;
           const idx = state.users.findIndex(u => (u.ID && u.ID === r.ID) || (u.Name && u.Name.toLowerCase() === r.Name.toLowerCase()));
+          const sanitizedR = {
+            ID: r.ID,
+            Name: r.Name,
+            Role: r.Role,
+            Sections: r.Sections,
+            Superuser: !!r.Superuser,
+            Notes: r.Notes || ''
+          };
           if(idx > -1){
-            // Local users configuration set by admin takes precedence over missing or stale cloud properties
-            state.users[idx] = { 
-              ...r, 
-              ...state.users[idx],
-              Sections: (state.users[idx].Sections && (Array.isArray(state.users[idx].Sections) ? state.users[idx].Sections.length : String(state.users[idx].Sections).trim())) ? state.users[idx].Sections : r.Sections,
-              Role: state.users[idx].Role || r.Role,
-              Password: state.users[idx].Password || r.Password,
-              Superuser: (state.users[idx].Superuser !== undefined) ? state.users[idx].Superuser : r.Superuser
-            };
+            state.users[idx] = { ...state.users[idx], ...sanitizedR };
           } else {
-            state.users.push(r);
+            state.users.push(sanitizedR);
           }
         });
+        state.users = sanitizeUsersForStorage(state.users);
         setCache('users', state.users);
-        try { localStorage.setItem('microerp_users_permanent', JSON.stringify(sanitizeUsersForStorage(state.users))); } catch(e){}
+        try { localStorage.setItem('microerp_users_permanent', JSON.stringify(state.users)); } catch(e){}
       }
     } catch(e){
       console.warn('getUsers cloud fetch error, keeping local users:', e);
@@ -182,7 +183,7 @@ function notifySupervisorNewAuthRequest(req){
   banner.className = 'ios-floating-alert';
   banner.innerHTML = `
     <div style="display:flex;align-items:center;gap:12px;flex:1;">
-      <div class="ios-alert-bell-pulse">🔔</div>
+      <div class="ios-alert-bell-pulse">${getSvgIcon('bell', 18)}</div>
       <div style="text-align:right;">
         <div style="font-weight:900;font-size:13.5px;color:var(--ink);display:flex;align-items:center;gap:6px;">
           <span>تنبيه إداري: طلب تصريح حذف جديد!</span>
@@ -198,9 +199,9 @@ function notifySupervisorNewAuthRequest(req){
     </div>
     <div style="display:flex;gap:8px;align-items:center;">
       <button class="btn btn-sm btn-primary" id="openPendingAuthReqBtn" style="font-weight:900;padding:6px 14px;border-radius:10px;">
-        ⚡ مراجعة واعتماد الآن
+        مراجعة واعتماد الآن
       </button>
-      <button class="btn btn-sm btn-ghost" id="dismissAuthBannerBtn" style="border-radius:10px;">✕</button>
+      <button class="btn btn-sm btn-ghost" id="dismissAuthBannerBtn" style="border-radius:10px;font-size:16px;line-height:1;">&times;</button>
     </div>
   `;
 
@@ -233,18 +234,18 @@ function openNotificationCenterModal(){
     <div class="modal-content" style="max-width:560px;max-height:85vh;overflow-y:auto;border-radius:22px;padding:24px;">
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:16px;">
         <div style="display:flex;align-items:center;gap:10px;">
-          <div class="ios-alert-bell-pulse" style="animation:none;width:36px;height:36px;font-size:18px;">🔔</div>
+          <div class="ios-alert-bell-pulse" style="animation:none;width:36px;height:36px;">${getSvgIcon('bell', 18)}</div>
           <div>
             <h3 style="margin:0;font-size:16px;font-weight:900;">مركز الإشعارات وتصاريح الحذف</h3>
             <div style="font-size:11.5px;color:var(--ink-secondary);">${pending.length} طلبات معلقة بانتظار قرار الإدارة</div>
           </div>
         </div>
-        <button class="btn btn-ghost btn-xs" id="closeNotifModalBtn">✕</button>
+        <button class="btn btn-ghost btn-xs" id="closeNotifModalBtn" style="font-size:18px;line-height:1;">&times;</button>
       </div>
 
       ${pending.length === 0 ? `
         <div style="text-align:center;padding:32px 16px;color:var(--ink-secondary);">
-          <div style="font-size:36px;margin-bottom:8px;">✨</div>
+          <div style="display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:50%;background:var(--paper3);color:var(--ink-secondary);margin-bottom:8px;">${getSvgIcon('check', 24)}</div>
           <div style="font-weight:800;font-size:14px;color:var(--ink);">لا توجد أي طلبات تصريح معلقة حالياً</div>
           <div style="font-size:12px;margin-top:2px;">كافة العمليات مؤمنة ومحدثة بالكامل</div>
         </div>
@@ -263,8 +264,8 @@ function openNotificationCenterModal(){
                   </div>
                 </div>
                 <div style="display:flex;gap:6px;align-items:center;">
-                  <button class="btn btn-xs btn-green" data-notifapprove="${req.id}" style="font-weight:800;">✅ اعتماد</button>
-                  <button class="btn btn-xs btn-red" data-notifreject="${req.id}" style="font-weight:800;">❌ رفض</button>
+                  <button class="btn btn-xs btn-green" data-notifapprove="${req.id}" style="font-weight:800;display:inline-flex;align-items:center;gap:4px;">${getSvgIcon('check', 12)} اعتماد</button>
+                  <button class="btn btn-xs btn-red" data-notifreject="${req.id}" style="font-weight:800;display:inline-flex;align-items:center;gap:4px;">${getSvgIcon('x', 12)} رفض</button>
                 </div>
               </div>
             </div>
@@ -273,7 +274,7 @@ function openNotificationCenterModal(){
       `}
 
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px;border-top:1px solid var(--line);padding-top:12px;">
-        <button class="btn btn-sm btn-ghost" id="viewAllAuditCenterBtn">🛡️ فتح قسم الرقابة بالكامل</button>
+        <button class="btn btn-sm btn-ghost" id="viewAllAuditCenterBtn" style="display:inline-flex;align-items:center;gap:6px;">${getSvgIcon('shield', 14)} فتح قسم الرقابة بالكامل</button>
         <button class="btn btn-sm btn-primary" id="closeNotifModalBtn2">إغلاق</button>
       </div>
     </div>
@@ -317,7 +318,7 @@ function openNotificationCenterModal(){
           await deleteJournalEntryRemote(r.entityId);
         }
 
-        showToast(`تمت الموافقة وحذف (${r.entityTitle}) بنجاح ✅`, 'success');
+        showToast(`تمت الموافقة وحذف (${r.entityTitle}) بنجاح`, 'success');
         close();
         render();
       } catch(err){
@@ -338,7 +339,7 @@ function openNotificationCenterModal(){
       setCache('auth_requests', state.authRequests);
       try { localStorage.setItem('microerp_auth_requests', JSON.stringify(state.authRequests)); } catch(e){}
       recordAuditLog('رفض طلب حذف', r.entityType, `تم رفض طلب حذف (${r.entityTitle}) المقدم من (${r.reqUser})`, r.entityId, 'مرفوض');
-      showToast('تم رفض طلب الحذف بنجاح ❌', 'info');
+      showToast('تم رفض طلب الحذف بنجاح', 'info');
       close();
       render();
     };
@@ -365,7 +366,7 @@ function requestAdminAuthorization({ action, entityType, entityId, entityTitle, 
   // 1. إذا كان المستخدم الحالي مدير عام (Admin) أو لديه صلاحية Superuser (الحذف المباشر بدون إذن)
   const isSuperuser = currentUser.role === 'admin' || !!currentUser.superuser || !!currentUser.Superuser;
   if(isSuperuser){
-    if(confirm(`⚠️ تأكيد إداري: هل أنت متأكد من رغبتك في ${action} (${entityTitle})؟\nسيتم توثيق هذه العملية في سجل الرقابة والتدقيق.`)){
+    if(confirm(`تأكيد إداري: هل أنت متأكد من رغبتك في ${action} (${entityTitle})؟\nسيتم توثيق هذه العملية في سجل الرقابة والتدقيق.`)){
       recordAuditLog(action, entityType, `تم الحذف مباشرة بواسطة المستخدم المصرح له (${currentUser.name}) [Superuser]`, entityId, 'معتمد');
       onApproved();
     }
@@ -381,17 +382,17 @@ function requestAdminAuthorization({ action, entityType, entityId, entityTitle, 
     <div class="modal-content" style="max-width:490px;border-top:4px solid #ef4444;padding:22px;">
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
         <div style="display:flex;align-items:center;gap:8px;">
-          <span style="font-size:24px;">🔒</span>
+          <div style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;background:rgba(239,68,68,0.1);color:var(--red);flex-shrink:0;">${getSvgIcon('lock', 20)}</div>
           <div>
             <h3 style="margin:0;font-size:16px;color:#b91c1c;">تصريح حذف مطلوب من الإدارة</h3>
             <div style="font-size:11px;color:#dc2626;font-weight:700;">بدون صلاحية Superuser (موافقة المدير مطلوبة)</div>
           </div>
         </div>
-        <button class="btn btn-ghost btn-xs" id="closeAuthModal">✕</button>
+        <button class="btn btn-ghost btn-xs" id="closeAuthModal" style="font-size:18px;line-height:1;">&times;</button>
       </div>
 
       <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:12px;margin-bottom:14px;font-size:12.5px;color:#991b1b;line-height:1.5;">
-        <b>⚠️ تنبيه الأمان والرقابة:</b> هذا الحساب لا يمتلك <b>صلاحية Superuser (الحذف والتعديل المباشر)</b>. لحماية البيانات والمحاسبة، يلزم إدخال رمز المشرف أو إرسال طلب اعتماد فوري لمدير النظام.
+        <b>تنبيه الأمان والرقابة:</b> هذا الحساب لا يمتلك <b>صلاحية Superuser (الحذف والتعديل المباشر)</b>. لحماية البيانات والمحاسبة، يلزم إدخال رمز المشرف أو إرسال طلب اعتماد فوري لمدير النظام.
         <div style="margin-top:6px;color:var(--ink);">
           العنصر المطلوب حذفه: <b style="color:#b91c1c;">${escapeHtml(entityType)} — ${escapeHtml(entityTitle)}</b>
         </div>
@@ -400,8 +401,8 @@ function requestAdminAuthorization({ action, entityType, entityId, entityTitle, 
 
       <!-- Tab Switcher -->
       <div class="chip-group" style="margin-bottom:14px;">
-        <div class="chip sel" id="authTabPinBtn" style="flex:1;justify-content:center;font-weight:700;">🔑 تصريح فوري بالمحل</div>
-        <div class="chip" id="authTabReqBtn" style="flex:1;justify-content:center;font-weight:700;">📨 إرسال طلب للإدارة</div>
+        <div class="chip sel" id="authTabPinBtn" style="flex:1;justify-content:center;font-weight:700;display:inline-flex;align-items:center;gap:6px;">${getSvgIcon('key', 14)} تصريح فوري بالمحل</div>
+        <div class="chip" id="authTabReqBtn" style="flex:1;justify-content:center;font-weight:700;display:inline-flex;align-items:center;gap:6px;">${getSvgIcon('send', 14)} إرسال طلب للإدارة</div>
       </div>
 
       <!-- Mode 1: Instant Supervisor PIN / Password -->
@@ -413,7 +414,7 @@ function requestAdminAuthorization({ action, entityType, entityId, entityTitle, 
         </div>
         <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
           <button class="btn btn-ghost btn-sm" id="cancelAuthPinBtn">إلغاء</button>
-          <button class="btn btn-red btn-sm" id="confirmSupervisorPinBtn" style="font-weight:800;">🔓 اعتماد وتنفيذ الحذف</button>
+          <button class="btn btn-red btn-sm" id="confirmSupervisorPinBtn" style="font-weight:800;display:inline-flex;align-items:center;gap:6px;">${getSvgIcon('lock', 14)} اعتماد وتنفيذ الحذف</button>
         </div>
       </div>
 
@@ -425,7 +426,7 @@ function requestAdminAuthorization({ action, entityType, entityId, entityTitle, 
         </div>
         <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
           <button class="btn btn-ghost btn-sm" id="cancelAuthReqBtn">إلغاء</button>
-          <button class="btn btn-primary btn-sm" id="sendAuthRequestBtn" style="font-weight:800;">📨 إرسال الطلب للإدارة</button>
+          <button class="btn btn-primary btn-sm" id="sendAuthRequestBtn" style="font-weight:800;display:inline-flex;align-items:center;gap:6px;">${getSvgIcon('send', 14)} إرسال الطلب للإدارة</button>
         </div>
       </div>
     </div>
@@ -461,7 +462,7 @@ function requestAdminAuthorization({ action, entityType, entityId, entityTitle, 
     const pass = overlay.querySelector('#supervisorPasswordInp').value;
     const adminName = verifySupervisorPin(pass);
     if(!adminName){
-      showToast('كلمة مرور المدير غير صحيحة! تم رفض التصريح ❌', 'error');
+      showToast('كلمة مرور المدير غير صحيحة! تم رفض التصريح', 'error');
       recordAuditLog('محاولة حذف فاشلة', entityType, `محاولة حذف غير مصرح بها لـ (${entityTitle}) من الموظف (${currentUser.name}) - كلمة سر خاطئة`, entityId, 'مرفوض');
       overlay.querySelector('#supervisorPasswordInp').focus();
       return;
@@ -469,7 +470,7 @@ function requestAdminAuthorization({ action, entityType, entityId, entityTitle, 
 
     recordAuditLog(action, entityType, `تم التصريح الفوري بالحذف من المدير (${adminName}) للموظف (${currentUser.name})`, entityId, 'بتصريح فوري');
     close();
-    showToast(`تم التصريح بنجاح بواسطة المدير (${adminName}) وجارٍ الحذف ✅`, 'success');
+    showToast(`تم التصريح بنجاح بواسطة المدير (${adminName}) وجارٍ الحذف`, 'success');
     onApproved();
   };
 
@@ -504,7 +505,7 @@ function requestAdminAuthorization({ action, entityType, entityId, entityTitle, 
     try { apiPost('saveAuthRequest', { data: reqObj }).catch(()=>{}); } catch(e){}
 
     close();
-    showToast('تم إرسال طلب تصريح الحذف للإدارة بنجاح، وستتم مراجعته من قسم الرقابة 🛡️', 'info');
+    showToast('تم إرسال طلب تصريح الحذف للإدارة بنجاح، وستتم مراجعته من قسم الرقابة', 'info');
     notifySupervisorNewAuthRequest(reqObj);
   };
 }
@@ -513,17 +514,9 @@ async function loginRemote(name, password){
   const cleanName = String(name||'').trim();
   const cleanPass = String(password||'').trim();
 
-  let localUsers = state.users;
-  if(!localUsers || !localUsers.length){
-    try {
-      const perm = localStorage.getItem('microerp_users_permanent');
-      if(perm) localUsers = JSON.parse(perm);
-    }catch(e){}
+  if(!cleanName || !cleanPass){
+    throw new Error('يرجى إدخال اسم المستخدم وكلمة المرور');
   }
-  if(!localUsers || !localUsers.length){
-    localUsers = getCache('users', DEFAULT_USERS);
-  }
-  const found = (localUsers || []).find(u => u.Name && u.Name.trim().toLowerCase() === cleanName.toLowerCase() && String(u.Password).trim() === cleanPass);
 
   const getEffectiveSections = (userRec, fallback) => {
     if(!userRec) return fallback || ['pos'];
@@ -537,61 +530,52 @@ async function loginRemote(name, password){
   };
 
   if(!navigator.onLine){
-    if(found){
-      const effectiveRole = found.Role || 'cashier';
-      const isSuper = effectiveRole === 'admin' || !!found.Superuser || !!found.superuser;
-      const effectiveSecs = getEffectiveSections(found);
-      return { name: found.Name, role: effectiveRole, sections: effectiveSecs, superuser: isSuper, Superuser: isSuper };
+    // In offline mode, check cached active session
+    const savedSession = state.user || JSON.parse(localStorage.getItem('microerp_session') || 'null');
+    if(savedSession && savedSession.name && savedSession.name.toLowerCase() === cleanName.toLowerCase()){
+      return savedSession;
     }
-    throw new Error('بيانات الدخول غير صحيحة (وضع غير متصل)');
+    throw new Error('لا يمكن تسجيل الدخول لأول مرة في الوضع غير المتصل، يرجى الاتصال بالإنترنت للمصادقة');
   }
 
-  try {
-    const res = await apiPost('login', {name: cleanName, password: cleanPass});
-    if(res && !res.error && res.name && res.name.toLowerCase() === cleanName.toLowerCase()){
-      // LOCAL USER CONFIGURATION SET BY ADMIN IS THE SOURCE OF TRUTH
-      const effectiveRole = (found && found.Role) ? found.Role : res.role;
-      const isSuper = effectiveRole === 'admin' || (found && (!!found.Superuser || !!found.superuser)) || !!res.superuser || !!res.Superuser;
-      const effectiveSecs = (found && found.Sections && (Array.isArray(found.Sections) ? found.Sections.length : String(found.Sections).trim())) 
-        ? getEffectiveSections(found) 
-        : getEffectiveSections(res, res.sections);
-
-      if (res.sessionToken) {
-        state.sessionToken = res.sessionToken;
-        try {
-          localStorage.setItem('microerp_session_token', res.sessionToken);
-          sessionStorage.setItem('microerp_session_token', res.sessionToken);
-        } catch(e) {}
-      }
-
-      const userObj = {
-        ID: (found && found.ID) || ('usr_' + Date.now()),
-        Name: res.name,
-        // Password intentionally NOT stored in localStorage (security: credential never persisted in browser storage)
-        Role: effectiveRole,
-        Superuser: isSuper,
-        Sections: effectiveSecs
-      };
-
-      if(!state.users) state.users = [...localUsers];
-      const idx = state.users.findIndex(u=>u.Name && u.Name.toLowerCase() === cleanName.toLowerCase());
-      if(idx > -1) state.users[idx] = { ...state.users[idx], ...userObj }; else state.users.push(userObj);
-      setCache('users', state.users);
-      try { localStorage.setItem('microerp_users_permanent', JSON.stringify(sanitizeUsersForStorage(state.users))); } catch(e){}
-
-      res.role = effectiveRole;
-      res.superuser = isSuper;
-      res.Superuser = isSuper;
-      res.sections = effectiveSecs;
-      return res;
+  const res = await apiPost('login', {name: cleanName, password: cleanPass});
+  if(res && !res.error && res.name && res.name.toLowerCase() === cleanName.toLowerCase()){
+    if (res.sessionToken) {
+      state.sessionToken = res.sessionToken;
+      try {
+        localStorage.setItem('microerp_session_token', res.sessionToken);
+        sessionStorage.setItem('microerp_session_token', res.sessionToken);
+      } catch(e) {}
     }
-  } catch(e){}
 
-  if(found){
-    const effectiveRole = found.Role || 'cashier';
-    const isSuper = effectiveRole === 'admin' || !!found.Superuser || !!found.superuser;
-    const effectiveSecs = getEffectiveSections(found);
-    return { name: found.Name, role: effectiveRole, sections: effectiveSecs, superuser: isSuper, Superuser: isSuper };
+    const effectiveRole = res.role || 'cashier';
+    const isSuper = effectiveRole === 'admin' || !!res.superuser || !!res.Superuser;
+    const effectiveSecs = getEffectiveSections(res, res.sections);
+
+    const userObj = {
+      ID: res.ID || ('usr_' + Date.now()),
+      Name: res.name,
+      Role: effectiveRole,
+      Superuser: isSuper,
+      Sections: effectiveSecs
+    };
+
+    if(!state.users) state.users = [];
+    const idx = state.users.findIndex(u=>u.Name && u.Name.toLowerCase() === cleanName.toLowerCase());
+    if(idx > -1) state.users[idx] = { ...state.users[idx], ...userObj }; else state.users.push(userObj);
+    
+    setCache('users', sanitizeUsersForStorage(state.users));
+    try { localStorage.setItem('microerp_users_permanent', JSON.stringify(sanitizeUsersForStorage(state.users))); } catch(e){}
+
+    const finalUser = {
+      name: res.name,
+      role: effectiveRole,
+      superuser: isSuper,
+      Superuser: isSuper,
+      sections: effectiveSecs,
+      sessionToken: res.sessionToken
+    };
+    return finalUser;
   }
-  throw new Error('اسم المستخدم أو كلمة المرور غير صحيحة');
+  throw new Error((res && res.error) || 'اسم المستخدم أو كلمة المرور غير صحيحة');
 }

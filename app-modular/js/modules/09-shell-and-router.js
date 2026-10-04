@@ -29,11 +29,39 @@ async function init(){
   // If online and authenticated with server session, fetch fresh updates in background via unified bootstrap
   if(navigator.onLine && state.user && getSessionToken()){
     try {
-      const bOk = await fetchBootstrapData();
+      let bOk = await fetchBootstrapData();
       if(!bOk){
-        [state.users, state.receipts, state.customers, state.technicians, state.settings, state.payments, state.inventory, state.sales, state.quotations, state.services, state.purchases, state.suppliers, state.expenses, state.accounts, state.journalEntries, state.invoices] = await Promise.all([
-          loadUsers(), loadReceipts(), loadCustomers(), loadTechnicians(), loadSettings(), loadPayments(), loadInventory(), loadSales(), loadQuotations(), loadServices(), loadPurchases(), loadSuppliers(), loadExpenses(), loadAccounts(), loadJournalEntries(), loadInvoices()
+        // Retry once before falling back to individual requests
+        console.warn('[init] Bootstrap failed, retrying once...');
+        await new Promise(r => setTimeout(r, 1500));
+        bOk = await fetchBootstrapData();
+      }
+      if(!bOk){
+        // Final fallback: individual requests (but limited to essential data only)
+        console.warn('[init] Bootstrap retry failed, loading essential data individually');
+        [state.receipts, state.customers, state.payments, state.inventory] = await Promise.all([
+          loadReceipts(), loadCustomers(), loadPayments(), loadInventory()
         ]);
+        // Load remaining data non-blocking
+        Promise.all([
+          loadUsers(), loadTechnicians(), loadSettings(), loadSales(), 
+          loadQuotations(), loadServices(), loadPurchases(), loadSuppliers(), 
+          loadExpenses(), loadAccounts(), loadJournalEntries(), loadInvoices()
+        ]).then(([users,techs,settings,sales,quots,services,purch,suppl,exp,acc,je,inv]) => {
+          if(users) state.users = users;
+          if(techs) state.technicians = techs;
+          if(settings) state.settings = settings;
+          if(sales) state.sales = sales;
+          if(quots) state.quotations = quots;
+          if(services) state.services = services;
+          if(purch) state.purchases = purch;
+          if(suppl) state.suppliers = suppl;
+          if(exp) state.expenses = exp;
+          if(acc) state.accounts = acc;
+          if(je) state.journalEntries = je;
+          if(inv) state.invoices = inv;
+          render();
+        }).catch(()=>{});
       }
       recoverAndSyncAllCustomerPhones(false);
       if(state.user) normalizeUserSections(state.user);
@@ -44,20 +72,22 @@ async function init(){
     }
   }
 
-  // Smart multi-device cloud synchronization (Every 90s, throttled and paused when tab is hidden)
+  // Smart multi-device cloud synchronization (Every 3 min, throttled and paused when tab is hidden)
   setInterval(async ()=>{
     if(document.hidden) return; // Do not waste bandwidth/quota if tab is in background
     if(navigator.onLine){
       if(getSyncQueue().length > 0){
         await syncOfflineQueue();
       }
-      // If user is inside Maintenance and not currently filling a draft form, pull fresh data from cloud
-      if(state.currentSection === 'maintenance' && !state.draft && (state.tab === 'archive' || state.tab === 'dashboard' || state.tab === 'customers')){
+      // Pull fresh data from cloud (bypass SWR cache with _force)
+      if(!state.draft){
         const isTyping = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT');
         const modalOpen = !!document.querySelector('.modal-overlay, .modal-backdrop, .modal, [id*="Modal"]');
         if(!isTyping && !modalOpen){
           try {
-            const [freshReceipts, freshCustomers] = await Promise.all([loadReceipts(), loadCustomers()]);
+            const [freshReceipts, freshCustomers] = await Promise.all([
+              loadReceipts({ _force: true }), loadCustomers({ _force: true })
+            ]);
             if(freshReceipts && freshReceipts.length){
               state.receipts = freshReceipts;
             }
@@ -71,7 +101,7 @@ async function init(){
         }
       }
     }
-  }, 90000);
+  }, 180000);
 
   // Smart focus sync with 3-minute cooldown to prevent network flooding when switching tabs
   let lastFocusSyncTime = Date.now();
@@ -84,7 +114,9 @@ async function init(){
       if(isTyping || modalOpen) return;
       lastFocusSyncTime = now;
       try {
-        const [freshReceipts, freshCustomers] = await Promise.all([loadReceipts(), loadCustomers()]);
+        const [freshReceipts, freshCustomers] = await Promise.all([
+          loadReceipts({ _force: true }), loadCustomers({ _force: true })
+        ]);
         if(freshReceipts && freshReceipts.length) state.receipts = freshReceipts;
         if(freshCustomers && freshCustomers.length) state.customers = freshCustomers;
         if(state.currentSection === 'maintenance' && (state.tab === 'archive' || state.tab === 'dashboard' || state.tab === 'customers')){
@@ -164,7 +196,7 @@ function render(){
     try {
       recordAuditLog('محاولة وصول محظورة', state.currentSection, `المستخدم (${state.user.name}) حاول الدخول إلى قسم (${secName}) دون تصريح مسبق`, '', 'محظور');
     } catch(e){}
-    showToast(`⛔ تم حظر الوصول: ليس لديك صلاحية لدخول قسم (${secName})`, 'error');
+    showToast(`تم حظر الوصول: ليس لديك صلاحية لدخول قسم (${secName})`, 'error');
     state.currentSection = null;
     return renderSectionPicker(app);
   }
@@ -186,26 +218,26 @@ function render(){
 
 const SECTION_INFO = {
   // 1. العمليات التشغيلية (Core Operations)
-  maintenance: {label:'الصيانة والتصليح', icon:'🛠️', gradient:'linear-gradient(135deg, #007AFF, #0051a8)', desc:'استلام وتسليم الأجهزة، أوامر الشغل، وتتبع الحالات', group:'ops', groupTitle:'📱 العمليات التشغيلية (Operations)'},
-  pos: {label:'نقطة البيع (POS)', icon:'🧾', gradient:'linear-gradient(135deg, #34C759, #248a3d)', desc:'كاشير سريع، مبيعات بالباركود، الفاتورة الفورية وضمان المنتجات', group:'ops', groupTitle:'📱 العمليات التشغيلية (Operations)'},
-  invoices: {label:'الفواتير وعروض الأسعار', icon:'📄', gradient:'linear-gradient(135deg, #FF9500, #c97500)', desc:'إصدار الفواتير، عروض الأسعار، المطالبات، ومتابعة التحصيل', group:'ops', groupTitle:'📱 العمليات التشغيلية (Operations)'},
-  cameras: {label:'كاميرات المراقبة', icon:'📷', gradient:'linear-gradient(135deg, #30B0C7, #1f7b8c)', desc:'كتالوج الكاميرات وعروض أسعار التركيب والمشاريع الأمنية', group:'ops', groupTitle:'📱 العمليات التشغيلية (Operations)'},
+  maintenance: {label:'الصيانة والتصليح', iconName:'maintenance', icon: getSvgIcon('maintenance', 16), gradient:'var(--primary)', desc:'استلام وتسليم الأجهزة، أوامر الشغل، وتتبع الحالات', group:'ops', groupTitle:'العمليات التشغيلية (Operations)'},
+  pos: {label:'نقطة البيع (POS)', iconName:'pos', icon: getSvgIcon('pos', 16), gradient:'#10b981', desc:'كاشير سريع، مبيعات بالباركود، الفاتورة الفورية وضمان المنتجات', group:'ops', groupTitle:'العمليات التشغيلية (Operations)'},
+  invoices: {label:'الفواتير وعروض الأسعار', iconName:'invoices', icon: getSvgIcon('invoices', 16), gradient:'#d97706', desc:'إصدار الفواتير، عروض الأسعار، المطالبات، ومتابعة التحصيل', group:'ops', groupTitle:'العمليات التشغيلية (Operations)'},
+  cameras: {label:'كاميرات المراقبة', iconName:'cameras', icon: getSvgIcon('cameras', 16), gradient:'#0284c7', desc:'كتالوج الكاميرات وعروض أسعار التركيب والمشاريع الأمنية', group:'ops', groupTitle:'العمليات التشغيلية (Operations)'},
 
   // 2. القسم المالي والخزينة (Finance & Treasury)
-  cashdrawer: {label:'حركة الخزينة والدرج', icon:'💵', gradient:'linear-gradient(135deg, #10b981, #047857)', desc:'إدارة درج الكاشير، مقبوضات ومدفوعات النقدية، العهد، وتقفيل الوردية', group:'finance', groupTitle:'💰 القسم المالي والخزينة (Finance)'},
-  daily: {label:'دفتر اليومية العامة', icon:'📔', gradient:'linear-gradient(135deg, #5856D6, #3b3996)', desc:'سجل القيود وحركات العمليات اليومية الشاملة والمصروفات الإدارية', group:'finance', groupTitle:'💰 القسم المالي والخزينة (Finance)'},
-  finance: {label:'الحسابات والميزانية', icon:'💰', gradient:'linear-gradient(135deg, #AF52DE, #7b399c)', desc:'شجرة الحسابات، قيود اليومية، ميزان المراجعة، ومكافآت الفنيين', group:'finance', groupTitle:'💰 القسم المالي والخزينة (Finance)'},
+  cashdrawer: {label:'حركة الخزينة والدرج', iconName:'cashdrawer', icon: getSvgIcon('cashdrawer', 16), gradient:'#059669', desc:'إدارة درج الكاشير، مقبوضات ومدفوعات النقدية، العهد، وتقفيل الوردية', group:'finance', groupTitle:'القسم المالي والخزينة (Finance)'},
+  daily: {label:'دفتر اليومية العامة', iconName:'daily', icon: getSvgIcon('daily', 16), gradient:'#4f46e5', desc:'سجل القيود وحركات العمليات اليومية الشاملة والمصروفات الإدارية', group:'finance', groupTitle:'القسم المالي والخزينة (Finance)'},
+  finance: {label:'الحسابات والميزانية', iconName:'finance', icon: getSvgIcon('finance', 16), gradient:'#7c3aed', desc:'شجرة الحسابات، قيود اليومية، ميزان المراجعة، ومكافآت الفنيين', group:'finance', groupTitle:'القسم المالي والخزينة (Finance)'},
 
   // 3. المخازن والمشتريات (Inventory & Warehouses)
-  inventory: {label:'المخزن العام والمخازن المتعددة', icon:'📦', gradient:'linear-gradient(135deg, #FF9500, #e05300)', desc:'الأصناف، فروع المخازن، والتحويلات المخزنية والمشتريات', group:'inventory', groupTitle:'📦 المخازن والمشتريات (Inventory & Warehouses)'},
-  barcode: {label:'استوديو طباعة الباركود', icon:'🏷️', gradient:'linear-gradient(135deg, #32ADE6, #0077a8)', desc:'طباعة ملصقات الباركود للأصناف والأجهزة بكافة المقاسات', group:'inventory', groupTitle:'📦 المخازن والمشتريات (Inventory & Warehouses)'},
+  inventory: {label:'المخزن العام والمخازن المتعددة', iconName:'inventory', icon: getSvgIcon('inventory', 16), gradient:'#ea580c', desc:'الأصناف، فروع المخازن، والتحويلات المخزنية والمشتريات', group:'inventory', groupTitle:'المخازن والمشتريات (Inventory)'},
+  barcode: {label:'استوديو طباعة الباركود', iconName:'barcode', icon: getSvgIcon('barcode', 16), gradient:'#0891b2', desc:'طباعة ملصقات الباركود للأصناف والأجهزة بكافة المقاسات', group:'inventory', groupTitle:'المخازن والمشتريات (Inventory)'},
 
   // 4. الإدارة والرقابة (Management & Control)
-  audit: {label:'الرقابة وتصاريح العمليات', icon:'🛡️', gradient:'linear-gradient(135deg, #FF3B30, #b81c13)', desc:'سجل الرقابة الشامل وصندوق تصاريح واعتماد الحذف', group:'admin', groupTitle:'🛡️ الإدارة والرقابة (Management & Control)'},
-  users: {label:'المستخدمين والصلاحيات', icon:'👥', gradient:'linear-gradient(135deg, #64748b, #334155)', desc:'تخصيص الشاشات والأقسام لكل مستخدم وصلاحية Superuser', group:'admin', groupTitle:'🛡️ الإدارة والرقابة (Management & Control)'},
+  audit: {label:'الرقابة وتصاريح العمليات', iconName:'audit', icon: getSvgIcon('audit', 16), gradient:'#dc2626', desc:'سجل الرقابة الشامل وصندوق تصاريح واعتماد الحذف', group:'admin', groupTitle:'الإدارة والرقابة (Management & Control)'},
+  users: {label:'المستخدمين والصلاحيات', iconName:'users', icon: getSvgIcon('users', 16), gradient:'#475569', desc:'تخصيص الشاشات والأقسام لكل مستخدم وصلاحية Superuser', group:'admin', groupTitle:'الإدارة والرقابة (Management & Control)'},
 
   // 5. النظام والإعدادات (Settings & System)
-  settings: {label:'الإعدادات وتخصيص النظام', icon:'⚙️', gradient:'linear-gradient(135deg, #8E8E93, #48484A)', desc:'بيانات المحل، المظهر، الثيمات، رسائل واتساب، وبنود الضمان (متاح حصراً للمدير العام)', group:'settings', groupTitle:'⚙️ النظام والإعدادات (Settings & System)'}
+  settings: {label:'الإعدادات وتخصيص النظام', iconName:'settings', icon: getSvgIcon('settings', 16), gradient:'#64748b', desc:'بيانات المحل، المظهر، رسائل واتساب، وبنود الضمان (متاح حصراً للمدير العام)', group:'settings', groupTitle:'النظام والإعدادات (Settings)'}
 };
 const INVENTORY_CATEGORIES = ['صيانة','كاميرات','كمبيوتر','إكسسوار'];
 
@@ -215,74 +247,74 @@ const MASTER_MODULES = [
     id: 'maintenance',
     title: 'مركز الصيانة',
     enTitle: 'Maintenance Center',
-    icon: '🛠️',
-    gradient: 'linear-gradient(135deg, #059669, #10b981)',
+    iconName: 'maintenance',
+    gradient: 'var(--primary)',
     desc: 'إدارة أجهزة الصيانة، فحص وتتبع دورة الإصلاح، كروت الشغل، وضمانات الأجهزة المسلمة.',
     sec: 'maintenance',
     chips: [
-      { label: 'استلام جهاز جديد ➕', action: 'new_receipt' },
+      { label: 'استلام جهاز جديد', action: 'new_receipt' },
       { label: 'أجهزة قيد العمل', action: 'filter_active' },
       { label: 'جاهز للتسليم', action: 'filter_ready' },
-      { label: 'استوديو الباركود 🏷️', sec: 'barcode' }
+      { label: 'استوديو الباركود', sec: 'barcode' }
     ]
   },
   {
     id: 'sales',
     title: 'المبيعات ونقطة البيع (POS)',
     enTitle: 'Sales, POS & Invoicing',
-    icon: '🧾',
-    gradient: 'linear-gradient(135deg, #10b981, #047857)',
+    iconName: 'pos',
+    gradient: '#10b981',
     desc: 'كاشير باركود سريع، الفواتير الفورية وعروض الأسعار، وتجهيز كاميرات المراقبة والمشاريع.',
     sec: 'pos',
     chips: [
-      { label: 'الكاشير و POS ⚡', sec: 'pos' },
-      { label: 'الفواتير وعروض الأسعار 📄', sec: 'invoices' },
-      { label: 'فاتورة جديدة ➕', action: 'new_invoice', sec: 'invoices' },
-      { label: 'كاميرات المراقبة 📷', sec: 'cameras' }
+      { label: 'الكاشير و POS', sec: 'pos' },
+      { label: 'الفواتير وعروض الأسعار', sec: 'invoices' },
+      { label: 'فاتورة جديدة', action: 'new_invoice', sec: 'invoices' },
+      { label: 'كاميرات المراقبة', sec: 'cameras' }
     ]
   },
   {
     id: 'inventory',
     title: 'المخازن والمشتريات والباركود',
     enTitle: 'Stock & Barcode Studio',
-    icon: '📦',
-    gradient: 'linear-gradient(135deg, #0284c7, #0369a1)',
+    iconName: 'inventory',
+    gradient: '#0284c7',
     desc: 'شجرة الأصناف والكميات، إدارة الفروع والمخازن المتعددة، التحويلات، واستوديو طباعة الباركود.',
     sec: 'inventory',
     chips: [
-      { label: 'المخزن العام 📦', sec: 'inventory' },
-      { label: 'استوديو الباركود 🏷️', sec: 'barcode' },
-      { label: 'تحويل مخزني 🔄', action: 'transfer_modal' },
-      { label: 'الفروع والمخازن 🏢', action: 'warehouses_modal' }
+      { label: 'المخزن العام', sec: 'inventory' },
+      { label: 'استوديو الباركود', sec: 'barcode' },
+      { label: 'تحويل مخزني', action: 'transfer_modal' },
+      { label: 'الفروع والمخازن', action: 'warehouses_modal' }
     ]
   },
   {
     id: 'finance',
     title: 'المالية والخزينة والحسابات',
     enTitle: 'Finance & Treasury',
-    icon: '💰',
-    gradient: 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
+    iconName: 'cashdrawer',
+    gradient: '#7c3aed',
     desc: 'دفتر اليومية وحركة السيولة النقدية، مقبوضات ومصروفات، شجرة الحسابات، ومكافآت الفنيين.',
     sec: 'cashdrawer',
     chips: [
-      { label: 'حركة الخزينة والدرج 💵', sec: 'cashdrawer' },
-      { label: 'دفتر اليومية العامة 📔', sec: 'daily' },
-      { label: 'شجرة الحسابات 📊', sec: 'finance' },
-      { label: 'مكافآت الفنيين 👨‍🔧', sec: 'finance' }
+      { label: 'حركة الخزينة والدرج', sec: 'cashdrawer' },
+      { label: 'دفتر اليومية العامة', sec: 'daily' },
+      { label: 'شجرة الحسابات', sec: 'finance' },
+      { label: 'مكافآت الفنيين', sec: 'finance' }
     ]
   },
   {
     id: 'admin',
     title: 'الإدارة والرقابة والنظام',
     enTitle: 'Admin & System Control',
-    icon: '🛡️',
-    gradient: 'linear-gradient(135deg, #475569, #334155)',
+    iconName: 'audit',
+    gradient: '#475569',
     desc: 'سجل الرقابة الشامل وتصاريح الحذف، إدارة المستخدمين وصلاحيات الشاشات، وإعدادات المظهر والواتساب.',
     sec: 'audit',
     chips: [
-      { label: 'الرقابة والتصاريح 🛡️', sec: 'audit' },
-      { label: 'المستخدمين والصلاحيات 👥', sec: 'users' },
-      { label: 'إعدادات النظام ⚙️', sec: 'settings' }
+      { label: 'الرقابة والتصاريح', sec: 'audit' },
+      { label: 'المستخدمين والصلاحيات', sec: 'users' },
+      { label: 'إعدادات النظام', sec: 'settings' }
     ]
   }
 ];
@@ -299,13 +331,13 @@ function openCommandPalette(initialQuery=''){
   overlay.innerHTML = `
     <div class="cmd-palette-box">
       <div class="cmd-palette-header">
-        <span style="font-size:18px;color:var(--primary);">🔍</span>
+        <span style="font-size:18px;color:var(--primary);display:inline-flex;align-items:center;">${getSvgIcon('search', 18)}</span>
         <input type="text" class="cmd-palette-input" id="cmdSearchInput" placeholder="ابحث في الإيصالات، العملاء، الفواتير، الأصناف، أو الشاشات..." value="${initialQuery}" autofocus>
         <span class="kbd-shortcut">ESC للخروج</span>
       </div>
       <div class="cmd-palette-results" id="cmdResultsBox">
         <div style="text-align:center;padding:24px;color:var(--ink-secondary);font-size:12.5px;">
-          اكتب كلمة البحث للوصول الفوري لأي إيصال، عميل، صنف، فاتورة أو شاشة في النظام ⚡
+          اكتب كلمة البحث للوصول الفوري لأي إيصال، عميل، صنف، فاتورة أو شاشة في النظام
         </div>
       </div>
     </div>
@@ -327,33 +359,33 @@ function openCommandPalette(initialQuery=''){
     const clean = String(q||'').trim().toLowerCase();
     if(!clean){
       resultsBox.innerHTML = `
-        <div class="cmd-group-title">⚡ إجراءات سريعة واختصارات التنقل</div>
+        <div class="cmd-group-title">إجراءات سريعة واختصارات التنقل</div>
         <div class="cmd-item" data-cmd="act_new_receipt">
-          <div class="cmd-item-left"><div class="cmd-item-icon">➕</div><div><div class="cmd-item-title">استلام جهاز صيانة جديد</div><div class="cmd-item-sub">فتح إيصال استلام وفحص جديد</div></div></div>
+          <div class="cmd-item-left"><div class="cmd-item-icon">${getSvgIcon('plus', 16)}</div><div><div class="cmd-item-title">استلام جهاز صيانة جديد</div><div class="cmd-item-sub">فتح إيصال استلام وفحص جديد</div></div></div>
           <span class="cmd-item-badge">صيانة</span>
         </div>
         <div class="cmd-item" data-cmd="act_pos">
-          <div class="cmd-item-left"><div class="cmd-item-icon">🧾</div><div><div class="cmd-item-title">نقطة البيع السريعة (POS)</div><div class="cmd-item-sub">شاشة الكاشير والباركود</div></div></div>
+          <div class="cmd-item-left"><div class="cmd-item-icon">${getSvgIcon('pos', 16)}</div><div><div class="cmd-item-title">نقطة البيع السريعة (POS)</div><div class="cmd-item-sub">شاشة الكاشير والباركود</div></div></div>
           <span class="cmd-item-badge">مبيعات</span>
         </div>
         <div class="cmd-item" data-cmd="act_barcode">
-          <div class="cmd-item-left"><div class="cmd-item-icon">🏷️</div><div><div class="cmd-item-title">استوديو طباعة الباركود والملصقات</div><div class="cmd-item-sub">طباعة استيكر للأصناف وأجهزة الصيانة</div></div></div>
+          <div class="cmd-item-left"><div class="cmd-item-icon">${getSvgIcon('barcode', 16)}</div><div><div class="cmd-item-title">استوديو طباعة الباركود والملصقات</div><div class="cmd-item-sub">طباعة استيكر للأصناف وأجهزة الصيانة</div></div></div>
           <span class="cmd-item-badge">باركود</span>
         </div>
         <div class="cmd-item" data-cmd="act_new_daily">
-          <div class="cmd-item-left"><div class="cmd-item-icon">💸</div><div><div class="cmd-item-title">تسجيل حركة نقدية باليومية</div><div class="cmd-item-sub">تسجيل وارد، منصرف، أو نثريات بالخزينة</div></div></div>
+          <div class="cmd-item-left"><div class="cmd-item-icon">${getSvgIcon('daily', 16)}</div><div><div class="cmd-item-title">تسجيل حركة نقدية باليومية</div><div class="cmd-item-sub">تسجيل وارد، منصرف، أو نثريات بالخزينة</div></div></div>
           <span class="cmd-item-badge">يومية</span>
         </div>
         <div class="cmd-item" data-cmd="act_new_invoice">
-          <div class="cmd-item-left"><div class="cmd-item-icon">📄</div><div><div class="cmd-item-title">إصدار فاتورة ضريبية أو بيان سعر</div><div class="cmd-item-sub">إنشاء فاتورة رسمية أو عرض أسعار للعميل</div></div></div>
+          <div class="cmd-item-left"><div class="cmd-item-icon">${getSvgIcon('invoices', 16)}</div><div><div class="cmd-item-title">إصدار فاتورة ضريبية أو بيان سعر</div><div class="cmd-item-sub">إنشاء فاتورة رسمية أو عرض أسعار للعميل</div></div></div>
           <span class="cmd-item-badge">فواتير</span>
         </div>
         <div class="cmd-item" data-cmd="act_new_item">
-          <div class="cmd-item-left"><div class="cmd-item-icon">📦</div><div><div class="cmd-item-title">إضافة صنف جديد بالمخزن</div><div class="cmd-item-sub">تسجيل منتج أو قطعة غيار بالباركود</div></div></div>
+          <div class="cmd-item-left"><div class="cmd-item-icon">${getSvgIcon('package', 16)}</div><div><div class="cmd-item-title">إضافة صنف جديد بالمخزن</div><div class="cmd-item-sub">تسجيل منتج أو قطعة غيار بالباركود</div></div></div>
           <span class="cmd-item-badge">مخزن</span>
         </div>
         <div class="cmd-item" data-cmd="act_settings">
-          <div class="cmd-item-left"><div class="cmd-item-icon">⚙️</div><div><div class="cmd-item-title">الإعدادات وتخصيص النظام</div><div class="cmd-item-sub">المظهر، الثيمات، تصنيفات الأجهزة، رسائل واتساب، وبنود الضمان</div></div></div>
+          <div class="cmd-item-left"><div class="cmd-item-icon">${getSvgIcon('settings', 16)}</div><div><div class="cmd-item-title">الإعدادات وتخصيص النظام</div><div class="cmd-item-sub">المظهر، الثيمات، تصنيفات الأجهزة، رسائل واتساب، وبنود الضمان</div></div></div>
           <span class="cmd-item-badge">إعدادات</span>
         </div>
       `;
@@ -394,47 +426,47 @@ function openCommandPalette(initialQuery=''){
     let html = '';
 
     if(receipts.length > 0){
-      html += `<div class="cmd-group-title">🛠️ إيصالات الصيانة والأجهزة (${receipts.length})</div>`;
+      html += `<div class="cmd-group-title">إيصالات الصيانة والأجهزة (${receipts.length})</div>`;
       html += receipts.map(r => {
         const st = STATUSES.find(s=>s.v===r.status) || STATUSES[0];
         const rem = Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0);
         return `
           <div class="cmd-item" data-cmd="open_receipt" data-id="${r.id}">
             <div class="cmd-item-left">
-              <div class="cmd-item-icon">${st.icon}</div>
+              <div class="cmd-item-icon">${getSvgIcon('maintenance', 16)}</div>
               <div>
                 <div class="cmd-item-title">${r.receiptNumber} — ${r.customer.name} <span style="font-weight:normal;color:var(--ink-secondary);">(${r.device.category} ${r.device.brand})</span></div>
                 <div class="cmd-item-sub">العطل: ${(r.faults||[]).join('، ')||'-'} • المتبقي: ${rem} ج.م</div>
               </div>
             </div>
-            <span class="status-badge ${st.cls}">${st.icon} ${r.status}</span>
+            <span class="status-badge ${st.cls}">${r.status}</span>
           </div>
         `;
       }).join('');
     }
 
     if(invoices.length > 0){
-      html += `<div class="cmd-group-title">📄 الفواتير وعروض الأسعار (${invoices.length})</div>`;
+      html += `<div class="cmd-group-title">الفواتير وعروض الأسعار (${invoices.length})</div>`;
       html += invoices.map(i => `
         <div class="cmd-item" data-cmd="open_invoice" data-id="${i.id}">
           <div class="cmd-item-left">
-            <div class="cmd-item-icon">📄</div>
+            <div class="cmd-item-icon">${getSvgIcon('invoices', 16)}</div>
             <div>
               <div class="cmd-item-title">${i.invoiceNumber} — ${i.customerName}</div>
               <div class="cmd-item-sub">الإجمالي: ${i.netTotal||i.total} ج.م • ${cleanDate(i.date)}</div>
             </div>
           </div>
-          <span class="cmd-item-badge">${i.isPaid ? '✅ مسددة' : '⏳ معلقة'}</span>
+          <span class="cmd-item-badge">${i.isPaid ? 'مسددة' : 'معلقة'}</span>
         </div>
       `).join('');
     }
 
     if(items.length > 0){
-      html += `<div class="cmd-group-title">📦 المخزن والأصناف (${items.length})</div>`;
+      html += `<div class="cmd-group-title">المخزن والأصناف (${items.length})</div>`;
       html += items.map(item => `
         <div class="cmd-item" data-cmd="open_item" data-name="${item.Name}">
           <div class="cmd-item-left">
-            <div class="cmd-item-icon">📦</div>
+            <div class="cmd-item-icon">${getSvgIcon('package', 16)}</div>
             <div>
               <div class="cmd-item-title">${item.Name}</div>
               <div class="cmd-item-sub">الكمية: ${item.Quantity||0} • السعر: ${item.SellPrice||item.Price||0} ج.م ${item.Barcode?'• باركود: '+item.Barcode:''}</div>
@@ -446,7 +478,7 @@ function openCommandPalette(initialQuery=''){
     }
 
     if(matchedSections.length > 0){
-      html += `<div class="cmd-group-title">🧭 شاشات وأقسام النظام (${matchedSections.length})</div>`;
+      html += `<div class="cmd-group-title">شاشات وأقسام النظام (${matchedSections.length})</div>`;
       html += matchedSections.map(([k, info]) => `
         <div class="cmd-item" data-cmd="goto_sec" data-sec="${k}">
           <div class="cmd-item-left">
@@ -456,7 +488,7 @@ function openCommandPalette(initialQuery=''){
               <div class="cmd-item-sub">${info.desc}</div>
             </div>
           </div>
-          <span class="cmd-item-badge">انتقال ➔</span>
+          <span class="cmd-item-badge">انتقال</span>
         </div>
       `).join('');
     }
@@ -592,7 +624,7 @@ function renderExecutiveCommandCenter(app){
     (state.receipts || []).slice(-12).forEach(r => {
       opsList.push({
         type: 'receipt',
-        icon: '🛠️',
+        icon: getSvgIcon('maintenance', 18),
         title: `إيصال صيانة #${r.receiptNum || r.id}`,
         sub: `${r.customerName || 'عميل'} — ${r.deviceType || 'جهاز'}`,
         section: 'صيانة',
@@ -609,7 +641,7 @@ function renderExecutiveCommandCenter(app){
     (state.sales || []).slice(-12).forEach(s => {
       opsList.push({
         type: 'sale',
-        icon: '🧾',
+        icon: getSvgIcon('pos', 18),
         title: `مبيعات كاشير #${s.InvoiceNum || s.id || ''}`,
         sub: `${s.Customer || 'عميل نقدي'} (${(s.Items||[]).length} أصناف)`,
         section: 'مبيعات',
@@ -626,7 +658,7 @@ function renderExecutiveCommandCenter(app){
     (state.payments || []).slice(-8).forEach(p => {
       opsList.push({
         type: 'payment',
-        icon: '💵',
+        icon: getSvgIcon('finance', 18),
         title: `توريد / سند قبض نقدية`,
         sub: `${p.Customer || p.Description || 'سند نقدية بالخزينة'}`,
         section: 'خزينة',
@@ -641,7 +673,7 @@ function renderExecutiveCommandCenter(app){
     (state.expenses || []).slice(-8).forEach(e => {
       opsList.push({
         type: 'expense',
-        icon: '💸',
+        icon: getSvgIcon('trendDown', 18),
         title: `سند صرف / نثريات`,
         sub: `${e.Description || e.Category || 'مصروف عام'}`,
         section: 'خزينة',
@@ -665,37 +697,37 @@ function renderExecutiveCommandCenter(app){
       <header class="hub-topbar">
         <div class="hub-brand" id="hubrandHome">
           <div class="hub-brand-logo">
-            ${logoUrl ? `<img src="${logoUrl}" style="width:100%;height:100%;object-fit:contain;border-radius:10px;">` : '⚡'}
+            ${logoUrl ? `<img src="${logoUrl}" style="width:100%;height:100%;object-fit:contain;border-radius:var(--radius-sm);">` : getSvgIcon('logo', 20)}
           </div>
           <div>
-            <div style="line-height:1.2;">${state.settings.shopName || 'MicroTech ERP'}</div>
-            <div style="font-size:10.5px;font-weight:700;color:#059669;letter-spacing:0.5px;">ENTERPRISE PRO</div>
+            <div style="line-height:1.2;font-weight:800;">${state.settings.shopName || 'MicroTech ERP'}</div>
+            <div style="font-size:10.5px;font-weight:600;color:var(--ink-secondary);letter-spacing:0.5px;">نظام إدارة المؤسسة الموحد</div>
           </div>
         </div>
 
         <!-- Center Nav Pills -->
         <nav class="hub-nav-pills">
-          <div class="hub-pill active" id="hubavDashboard">لوحة القيادة 📊</div>
-          ${canUserAccessSection('maintenance') ? `<div class="hub-pill" id="hubavMaint">الصيانة 🛠️</div>` : ''}
-          ${(canUserAccessSection('pos') || canUserAccessSection('invoices')) ? `<div class="hub-pill" id="hubavPos">المبيعات و POS 🧾</div>` : ''}
-          ${(canUserAccessSection('inventory') || canUserAccessSection('barcode')) ? `<div class="hub-pill" id="hubavInv">المخزن والمشتريات 📦</div>` : ''}
-          ${(canUserAccessSection('cashdrawer') || canUserAccessSection('daily') || canUserAccessSection('finance')) ? `<div class="hub-pill" id="hubavFin">المالية والخزينة 💰</div>` : ''}
-          ${(canUserAccessSection('audit') || canUserAccessSection('users') || canUserAccessSection('settings')) ? `<div class="hub-pill" id="hubavAdmin">الإدارة والرقابة 🛡️</div>` : ''}
+          <div class="hub-pill active" id="hubavDashboard">${getSvgIcon('dashboard', 14)} لوحة القيادة</div>
+          ${canUserAccessSection('maintenance') ? `<div class="hub-pill" id="hubavMaint">${getSvgIcon('maintenance', 14)} الصيانة</div>` : ''}
+          ${(canUserAccessSection('pos') || canUserAccessSection('invoices')) ? `<div class="hub-pill" id="hubavPos">${getSvgIcon('pos', 14)} المبيعات</div>` : ''}
+          ${(canUserAccessSection('inventory') || canUserAccessSection('barcode')) ? `<div class="hub-pill" id="hubavInv">${getSvgIcon('inventory', 14)} المخزن والمشتريات</div>` : ''}
+          ${(canUserAccessSection('cashdrawer') || canUserAccessSection('daily') || canUserAccessSection('finance')) ? `<div class="hub-pill" id="hubavFin">${getSvgIcon('cashdrawer', 14)} المالية والخزينة</div>` : ''}
+          ${(canUserAccessSection('audit') || canUserAccessSection('users') || canUserAccessSection('settings')) ? `<div class="hub-pill" id="hubavAdmin">${getSvgIcon('audit', 14)} الإدارة والرقابة</div>` : ''}
         </nav>
 
         <!-- Top Actions -->
         <div class="hub-top-actions">
           <div class="hub-icon-circle" id="hubearchBtn" title="البحث السريع (⌘K)">
-            🔍
+            ${getSvgIcon('search', 16)}
           </div>
           ${canUserAccessSection('audit') ? `
             <div class="hub-icon-circle" id="hubotifBtn" title="مركز التنبيهات وتصاريح الحذف">
-              🔔
-              ${pendingAuthsCount > 0 ? `<span style="position:absolute;top:4px;right:4px;background:#ef4444;color:#fff;font-size:9px;font-weight:900;width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;">${pendingAuthsCount}</span>` : ''}
+              ${getSvgIcon('bell', 16)}
+              ${pendingAuthsCount > 0 ? `<span style="position:absolute;top:4px;right:4px;background:#ef4444;color:#fff;font-size:9px;font-weight:800;width:15px;height:15px;border-radius:50%;display:flex;align-items:center;justify-content:center;">${pendingAuthsCount}</span>` : ''}
             </div>
           ` : ''}
           <div class="hub-icon-circle" id="hubhemeBtn" title="تبديل المظهر">
-            ${state.theme === 'dark' ? '☀️' : '🌙'}
+            ${state.theme === 'dark' ? getSvgIcon('sun', 16) : getSvgIcon('moon', 16)}
           </div>
           <div class="hub-user-avatar" id="hubserBtn" title="${state.user.name} (${state.user.role === 'admin' ? 'مدير' : 'موظف'})">
             ${(state.user.name || 'U').slice(0, 2).toUpperCase()}
@@ -706,21 +738,21 @@ function renderExecutiveCommandCenter(app){
       <!-- Main Shell (Dock + Workspace) -->
       <div class="hub-shell">
         
-        <!-- Side Floating Dock Rail -->
+        <!-- Side Dock Rail -->
         <aside class="hub-dock">
-          <button class="hub-dock-btn active" id="dockHome" title="لوحة القيادة الرئيسية">📊</button>
-          ${canUserAccessSection('maintenance') ? `<button class="hub-dock-btn" id="dockMaint" title="مركز الصيانة">🛠️</button>` : ''}
-          ${canUserAccessSection('pos') ? `<button class="hub-dock-btn" id="dockPos" title="نقطة البيع (POS)">🧾</button>` : ''}
-          ${canUserAccessSection('inventory') ? `<button class="hub-dock-btn" id="dockInv" title="المخزن العام">📦</button>` : ''}
-          ${canUserAccessSection('barcode') ? `<button class="hub-dock-btn" id="dockBarcode" title="استوديو الباركود">🏷️</button>` : ''}
-          ${canUserAccessSection('cashdrawer') ? `<button class="hub-dock-btn" id="dockCashdrawer" title="حركة الخزينة والدرج">💵</button>` : ''}
-          ${canUserAccessSection('daily') ? `<button class="hub-dock-btn" id="dockDaily" title="دفتر اليومية العامة">📔</button>` : ''}
-          ${canUserAccessSection('invoices') ? `<button class="hub-dock-btn" id="dockInvoice" title="الفواتير وعروض الأسعار">📄</button>` : ''}
-          ${canUserAccessSection('cameras') ? `<button class="hub-dock-btn" id="dockCameras" title="كاميرات المراقبة">📷</button>` : ''}
-          ${canUserAccessSection('audit') ? `<button class="hub-dock-btn" id="dockAudit" title="الرقابة والتصاريح">🛡️</button>` : ''}
-          ${canUserAccessSection('settings') ? `<button class="hub-dock-btn" id="dockSettings" title="الإعدادات">⚙️</button>` : ''}
+          <button class="hub-dock-btn active" id="dockHome" title="لوحة القيادة الرئيسية">${getSvgIcon('dashboard', 18)}</button>
+          ${canUserAccessSection('maintenance') ? `<button class="hub-dock-btn" id="dockMaint" title="مركز الصيانة">${getSvgIcon('maintenance', 18)}</button>` : ''}
+          ${canUserAccessSection('pos') ? `<button class="hub-dock-btn" id="dockPos" title="نقطة البيع (POS)">${getSvgIcon('pos', 18)}</button>` : ''}
+          ${canUserAccessSection('inventory') ? `<button class="hub-dock-btn" id="dockInv" title="المخزن العام">${getSvgIcon('inventory', 18)}</button>` : ''}
+          ${canUserAccessSection('barcode') ? `<button class="hub-dock-btn" id="dockBarcode" title="استوديو الباركود">${getSvgIcon('barcode', 18)}</button>` : ''}
+          ${canUserAccessSection('cashdrawer') ? `<button class="hub-dock-btn" id="dockCashdrawer" title="حركة الخزينة والدرج">${getSvgIcon('cashdrawer', 18)}</button>` : ''}
+          ${canUserAccessSection('daily') ? `<button class="hub-dock-btn" id="dockDaily" title="دفتر اليومية العامة">${getSvgIcon('daily', 18)}</button>` : ''}
+          ${canUserAccessSection('invoices') ? `<button class="hub-dock-btn" id="dockInvoice" title="الفواتير وعروض الأسعار">${getSvgIcon('invoices', 18)}</button>` : ''}
+          ${canUserAccessSection('cameras') ? `<button class="hub-dock-btn" id="dockCameras" title="كاميرات المراقبة">${getSvgIcon('cameras', 18)}</button>` : ''}
+          ${canUserAccessSection('audit') ? `<button class="hub-dock-btn" id="dockAudit" title="الرقابة والتصاريح">${getSvgIcon('audit', 18)}</button>` : ''}
+          ${canUserAccessSection('settings') ? `<button class="hub-dock-btn" id="dockSettings" title="الإعدادات">${getSvgIcon('settings', 18)}</button>` : ''}
           <div style="flex:1;"></div>
-          <button class="hub-dock-btn" id="dockLogout" style="color:#ef4444;" title="تسجيل الخروج">🚪</button>
+          <button class="hub-dock-btn" id="dockLogout" style="color:#ef4444;" title="تسجيل الخروج">${getSvgIcon('logout', 18)}</button>
         </aside>
 
         <!-- Workspace Area -->
@@ -729,15 +761,15 @@ function renderExecutiveCommandCenter(app){
           <!-- Greeting Hero Row -->
           <div class="hub-hero">
             <div>
-              <h1 class="hub-hero-title">مرحباً بعودتك، ${state.user.name} 👋</h1>
+              <h1 class="hub-hero-title">مرحباً بعودتك، ${state.user.name}</h1>
             </div>
             <div class="hub-hero-controls">
               <div class="hub-date-badge">
-                <span>📅</span>
+                <span>${getSvgIcon('calendar', 14)}</span>
                 <span>${new Date().toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
               </div>
               <button class="hub-btn-primary" id="hubuickAddBtn">
-                <span>➕ إضافة سريعة</span>
+                <span>${getSvgIcon('plus', 14)} إضافة سريعة</span>
                 <span style="font-size:11px;">▾</span>
               </button>
             </div>
@@ -767,10 +799,10 @@ function renderExecutiveCommandCenter(app){
                   <div class="hub-mod-card" data-mastersec="${m.sec}">
                     <div>
                       <div class="hub-mod-icon" style="background:${m.gradient};">
-                        ${m.icon}
+                        ${getSvgIcon(m.iconName || 'dashboard', 20)}
                       </div>
                       <h3 class="hub-mod-title">${m.title}</h3>
-                      <div style="font-size:11px;font-weight:700;color:#059669;margin-bottom:6px;">${m.enTitle}</div>
+                      <div style="font-size:11px;font-weight:600;color:var(--ink-secondary);margin-bottom:6px;">${m.enTitle}</div>
                       <p class="hub-mod-desc">${m.desc}</p>
                       
                       <!-- Interactive Quick Sub-Links -->
@@ -784,8 +816,8 @@ function renderExecutiveCommandCenter(app){
                     </div>
 
                     <div class="hub-mod-foot">
-                      <span style="font-size:11px;font-weight:800;color:#64748b;">${badgeTxt}</span>
-                      <span style="font-size:12px;font-weight:900;color:#059669;">دخول ➔</span>
+                      <span style="font-size:11px;font-weight:700;color:var(--ink-secondary);">${badgeTxt}</span>
+                      <span style="font-size:12px;font-weight:700;color:var(--primary);display:inline-flex;align-items:center;gap:4px;">دخول ${getSvgIcon('arrowLeft', 12)}</span>
                     </div>
                   </div>
                 `;
@@ -796,52 +828,49 @@ function renderExecutiveCommandCenter(app){
           <!-- 3-Column Top Grid -->
           <div class="hub-top-grid">
             
-            <!-- Card 1: Virtual Emerald VISA Card & Liquidity -->
+            <!-- Card 1: Financial Liquidity & Cash Position -->
             ${(canUserAccessSection('daily') || canUserAccessSection('finance')) ? `
             <div class="hub-card">
               <div class="hub-card-head">
                 <div>
                   <h3 class="hub-card-title">السيولة والخزينة النقدية</h3>
                 </div>
-                <div class="hub-popout-btn" id="hubard1Popout" title="الانتقال لليومية">↗</div>
+                <div class="hub-popout-btn" id="hubard1Popout" title="الانتقال لليومية">${getSvgIcon('arrowLeft', 14)}</div>
               </div>
 
-              <!-- Emerald Virtual VISA Card -->
-              <div class="hub-virtual-card">
-                <div class="hub-vc-chip">
-                  <div style="font-size:22px;display:flex;align-items:center;gap:6px;">
-                    <span>💳</span>
-                    <span style="font-size:11px;opacity:0.85;letter-spacing:1px;font-weight:700;">MICROPAY CASH</span>
+              <!-- Liquidity Stat Panel -->
+              <div class="hub-liquidity-panel">
+                <div class="hub-liquidity-title">الرصيد المتاح بالخزينة (ح/ 1101)</div>
+                <div class="hub-liquidity-amount">${(currentDrawerCash || netCashToday || 0).toLocaleString()} <span style="font-size:13px;font-weight:600;color:var(--ink-secondary);">ج.م</span></div>
+                <div class="hub-liquidity-flow">
+                  <div class="hub-flow-stat">
+                    <span class="hub-flow-lbl">مقبوضات اليوم</span>
+                    <span class="hub-flow-val" style="color:var(--green-text);">${todayIncome.toLocaleString()} ج.م</span>
                   </div>
-                  <div class="hub-vc-brand">VISA</div>
-                </div>
-                <div>
-                  <div style="font-size:10.5px;opacity:0.85;margin-bottom:2px;">الرصيد اللحظي بالخزينة</div>
-                  <div class="hub-vc-bal">${(currentDrawerCash || netCashToday || 0).toLocaleString()} <span style="font-size:14px;font-weight:600;">ج.م</span></div>
-                </div>
-                <div class="hub-vc-foot">
-                  <span>**** **** **** 1101</span>
-                  <span>${state.user.name} • ${today.slice(5,7)}/${today.slice(2,4)}</span>
+                  <div class="hub-flow-stat">
+                    <span class="hub-flow-lbl">مصروفات اليوم</span>
+                    <span class="hub-flow-val" style="color:var(--red-text);">${todayExpenses.toLocaleString()} ج.م</span>
+                  </div>
                 </div>
               </div>
 
-              <!-- Revenue Summary Row -->
+              <!-- Net Cash Flow Summary -->
               <div class="hub-sub-metric">
                 <div>
-                  <div style="font-size:11px;color:#64748b;font-weight:700;">إيرادات ومقبوضات اليوم</div>
-                  <div style="font-size:18px;font-weight:900;color:#0f172a;margin-top:2px;">
-                    ${todayIncome.toLocaleString()} <span style="font-size:11px;font-weight:700;color:#64748b;">ج.م</span>
+                  <div style="font-size:11px;color:var(--ink-secondary);font-weight:700;">صافي التدفق اليومي</div>
+                  <div style="font-size:17px;font-weight:800;color:${netCashToday >= 0 ? 'var(--green-text)' : 'var(--red-text)'};margin-top:2px;font-family:var(--font-mono);">
+                    ${netCashToday >= 0 ? '+' : ''}${netCashToday.toLocaleString()} <span style="font-size:11px;font-weight:600;">ج.م</span>
                   </div>
                 </div>
                 <span class="hub-badge-green">
-                  <span>+12.8%</span>
-                  <span>↑</span>
+                  <span>${netCashToday >= 0 ? 'فائض نقدي' : 'عجز مؤقت'}</span>
+                  ${netCashToday >= 0 ? getSvgIcon('trendUp', 12) : getSvgIcon('trendDown', 12)}
                 </span>
               </div>
             </div>
             ` : ''}
 
-            <!-- Card 2: Operations Activity (Engagement Rate Striped Bars) -->
+            <!-- Card 2: Operations Activity -->
             ${(canUserAccessSection('maintenance') || canUserAccessSection('pos')) ? `
             <div class="hub-card">
               <div class="hub-card-head">
@@ -849,98 +878,98 @@ function renderExecutiveCommandCenter(app){
                   <h3 class="hub-card-title">حركة العمليات والتشغيل</h3>
                 </div>
                 <div style="display:flex;align-items:center;gap:6px;">
-                  <div class="hub-nav-pills" style="padding:2px 4px;font-size:11px;">
-                    <span class="hub-pill active" style="padding:4px 10px;font-size:11px;">أسبوع</span>
-                    <span class="hub-pill" style="padding:4px 10px;font-size:11px;" id="hubogglePeriodDay">اليوم</span>
-                  </div>
-                  <div class="hub-popout-btn" id="hubard2Popout" title="الانتقال للصيانة">↗</div>
+                  <div class="hub-popout-btn" id="hubard2Popout" title="الانتقال للصيانة">${getSvgIcon('arrowLeft', 14)}</div>
                 </div>
               </div>
 
-              <!-- Striped Bar Chart with Peak Tooltip -->
-              <div class="hub-chart-bars-wrap">
-                ${weekData.map((w) => {
-                  const isPeak = (w.iso === peakItem.iso && peakItem.count > 0);
-                  const barHeight = Math.max(26, Math.round((w.count / maxWeekCount) * 115));
-                  const peakPercent = Math.min(99, Math.round((w.count / Math.max(1, weekData.reduce((s,x)=>s+x.count,0))) * 100));
-                  return `
-                    <div class="hub-bar-col" title="${w.name} (${w.iso}): ${w.count} عملية (${w.rCount} صيانة + ${w.sCount} مبيعات)">
-                      ${isPeak ? `<span class="hub-bar-tag">+${peakPercent}% 🚀</span>` : ''}
-                      <div class="hub-bar ${isPeak ? 'hub-bar-peak' : 'hub-bar-striped'}" style="height:${barHeight}px;"></div>
-                      <span class="hub-bar-lbl" style="${isPeak ? 'color:#059669;font-weight:900;' : ''}">${w.name.slice(0, 4)}</span>
-                    </div>
-                  `;
-                }).join('')}
+              <!-- 4-Stage Maintenance Funnel -->
+              <div class="hub-ops-funnel">
+                <div class="hub-ops-cell">
+                  <span class="hub-ops-cell-lbl">قيد الفحص</span>
+                  <span class="hub-ops-cell-val">${(state.receipts || []).filter(r => r.status === 'قيد الفحص').length}</span>
+                </div>
+                <div class="hub-ops-cell">
+                  <span class="hub-ops-cell-lbl">قيد العمل</span>
+                  <span class="hub-ops-cell-val" style="color:var(--primary);">${inProgressRepairs}</span>
+                </div>
+                <div class="hub-ops-cell">
+                  <span class="hub-ops-cell-lbl">جاهز للتسليم</span>
+                  <span class="hub-ops-cell-val" style="color:var(--green-text);">${readyRepairs}</span>
+                </div>
+                <div class="hub-ops-cell">
+                  <span class="hub-ops-cell-lbl">تم تسليمه اليوم</span>
+                  <span class="hub-ops-cell-val">${deliveredToday}</span>
+                </div>
               </div>
 
-              <!-- Chart Footer -->
-              <div class="hub-sub-metric" style="margin-top:10px;">
+              <!-- Activity Completion Metric -->
+              <div class="hub-sub-metric" style="margin-top:auto;">
                 <div style="display:flex;align-items:center;gap:8px;">
-                  <span style="width:8px;height:8px;border-radius:50%;background:#059669;display:inline-block;"></span>
-                  <span style="font-size:11.5px;color:#64748b;font-weight:700;">معدل إنجاز الصيانة والتسليم: <b>88.4%</b></span>
+                  <span style="width:8px;height:8px;border-radius:50%;background:var(--primary);display:inline-block;"></span>
+                  <span style="font-size:11.5px;color:var(--ink-secondary);font-weight:700;">أجهزة بالمركز حالياً: <b style="color:var(--ink);">${inProgressRepairs + readyRepairs}</b></span>
                 </div>
-                <span class="hub-badge-green">${inProgressRepairs} بالمركز • ${readyRepairs} جاهز</span>
+                <span class="hub-badge-green">${readyRepairs} جاهز للعميل</span>
               </div>
             </div>
             ` : ''}
 
-            <!-- Card 3: Sales Balance Sparkline & Action Pills + Credit Box -->
+            <!-- Card 3: Sales Balance & Point of Sale -->
             ${(canUserAccessSection('pos') || canUserAccessSection('invoices')) ? `
             <div class="hub-card">
               <div class="hub-card-head">
                 <div>
                   <h3 class="hub-card-title">المبيعات ونقطة البيع</h3>
                 </div>
-                <div class="hub-popout-btn" id="hubard3Popout" title="الانتقال لنقطة البيع">↗</div>
+                <div class="hub-popout-btn" id="hubard3Popout" title="الانتقال لنقطة البيع">${getSvgIcon('arrowLeft', 14)}</div>
               </div>
 
               <div>
-                <div style="font-size:11px;color:#64748b;font-weight:700;">مبيعات اليوم النقدية</div>
-                <div style="font-size:26px;font-weight:900;color:#0f172a;margin:2px 0 6px;">
-                  ${todaySalesTotal.toLocaleString()} <span style="font-size:14px;font-weight:600;color:#64748b;">ج.م</span>
+                <div style="font-size:11px;color:var(--ink-secondary);font-weight:700;">مبيعات اليوم النقدية</div>
+                <div style="font-size:24px;font-weight:800;color:var(--ink);margin:2px 0 6px;font-family:var(--font-mono);">
+                  ${todaySalesTotal.toLocaleString()} <span style="font-size:13px;font-weight:600;color:var(--ink-secondary);">ج.م</span>
                 </div>
               </div>
 
               <!-- Area Sparkline Curve -->
-              <div style="width:100%;height:65px;margin:2px 0 8px;overflow:hidden;">
+              <div style="width:100%;height:58px;margin:2px 0 8px;overflow:hidden;">
                 <svg viewBox="0 0 280 65" style="width:100%;height:100%;overflow:visible;">
                   <defs>
                     <linearGradient id="hubparkGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stop-color="#059669" stop-opacity="0.35"/>
+                      <stop offset="0%" stop-color="#059669" stop-opacity="0.3"/>
                       <stop offset="100%" stop-color="#059669" stop-opacity="0.0"/>
                     </linearGradient>
                   </defs>
                   <path d="M 0 52 Q 40 38, 80 44 T 160 22 T 220 30 T 280 8 L 280 65 L 0 65 Z" fill="url(#hubparkGrad)"/>
-                  <path d="M 0 52 Q 40 38, 80 44 T 160 22 T 220 30 T 280 8" fill="none" stroke="#059669" stroke-width="2.8" stroke-linecap="round"/>
-                  <circle cx="280" cy="8" r="4.5" fill="#059669" stroke="#ffffff" stroke-width="2"/>
+                  <path d="M 0 52 Q 40 38, 80 44 T 160 22 T 220 30 T 280 8" fill="none" stroke="#059669" stroke-width="2.5" stroke-linecap="round"/>
+                  <circle cx="280" cy="8" r="4" fill="#059669" stroke="#ffffff" stroke-width="2"/>
                 </svg>
               </div>
 
-              <!-- Pill Buttons: Deposit & Cash Out -->
+              <!-- Pill Actions: Deposit & Cash Out -->
               <div class="hub-pill-actions">
                 <button class="hub-btn-action-green" id="hubtnDeposit">
                   <span>قبض وإيداع</span>
-                  <span>↑</span>
+                  ${getSvgIcon('arrowUp', 12)}
                 </button>
                 <button class="hub-btn-action-light" id="hubtnWithdraw">
                   <span>صرف نقدي</span>
-                  <span>↓</span>
+                  ${getSvgIcon('arrowDown', 12)}
                 </button>
               </div>
 
-              <!-- Accounts Receivable Box with Technicians Avatar Group -->
+              <!-- Accounts Receivable Box -->
               <div class="hub-sub-metric" style="margin-top:14px;">
                 <div>
-                  <div style="font-size:11px;color:#64748b;font-weight:700;">مستحقات وفواتير آجلة</div>
-                  <div style="font-size:15px;font-weight:900;color:#0f172a;margin-top:1px;">
-                    ${receivablesTotal.toLocaleString()} <span style="font-size:10px;font-weight:700;color:#64748b;">ج.م</span>
+                  <div style="font-size:11px;color:var(--ink-secondary);font-weight:700;">مستحقات وفواتير آجلة</div>
+                  <div style="font-size:15px;font-weight:800;color:var(--ink);margin-top:1px;font-family:var(--font-mono);">
+                    ${receivablesTotal.toLocaleString()} <span style="font-size:10px;font-weight:700;color:var(--ink-secondary);">ج.م</span>
                   </div>
                 </div>
-                <div class="hub-avatar-group" title="فريق العمل والمحصلين">
-                  <div class="hub-mini-avatar" style="background:#059669;">أح</div>
+                <div class="hub-avatar-group" title="فريق العمل">
+                  <div class="hub-mini-avatar" style="background:var(--primary);">${(state.user.name||'U').slice(0,2).toUpperCase()}</div>
                   <div class="hub-mini-avatar" style="background:#0284c7;">مح</div>
                   <div class="hub-mini-avatar" style="background:#8b5cf6;">سع</div>
-                  <div class="hub-mini-avatar" style="background:#e11d48;font-size:10px;">+${(state.users||[]).length}</div>
+                  <div class="hub-mini-avatar" style="background:#64748b;font-size:10px;">+${(state.users||[]).length}</div>
                 </div>
               </div>
             </div>
@@ -948,16 +977,15 @@ function renderExecutiveCommandCenter(app){
 
           </div>
 
-          </div>
-
           <!-- History Table Card -->
-          <div class="hub-card" style="padding:22px 24px;">
+          <div class="hub-card" style="padding:20px 22px;">
             <div class="hub-card-head" style="margin-bottom:14px;">
               <div>
-                <h3 class="hub-card-title" style="font-size:16px;">سجل العمليات والتحركات الأخيرة</h3>
-                              </div>
-              <button class="btn btn-ghost btn-sm" id="hubiewAllHistory" style="border-radius:9999px;font-size:12px;font-weight:700;">
-                عرض السجل الكامل باليومية ➔
+                <h3 class="hub-card-title" style="font-size:15px;">سجل العمليات والتحركات الأخيرة</h3>
+              </div>
+              <button class="btn btn-ghost btn-sm" id="hubiewAllHistory" style="border-radius:var(--radius-sm);font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:4px;">
+                <span>عرض السجل الكامل باليومية</span>
+                ${getSvgIcon('arrowLeft', 12)}
               </button>
             </div>
 
@@ -975,26 +1003,26 @@ function renderExecutiveCommandCenter(app){
                 </thead>
                 <tbody>
                   ${recentOps.length === 0 ? `
-                    <tr><td colspan="6" style="text-align:center;padding:30px;color:#64748b;">لا توجد عمليات مسجلة حديثاً. ابدأ بإضافة إيصال أو عملية بيع جديدة.</td></tr>
+                    <tr><td colspan="6" style="text-align:center;padding:30px;color:var(--ink-secondary);">لا توجد عمليات مسجلة حديثاً.</td></tr>
                   ` : recentOps.map((op, idx) => `
                     <tr>
                       <td>
                         <div style="display:flex;align-items:center;gap:12px;">
-                          <div style="width:38px;height:38px;border-radius:12px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">
+                          <div style="width:34px;height:34px;border-radius:var(--radius-sm);background:var(--paper3);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--ink);">
                             ${op.icon}
                           </div>
                           <div>
-                            <div style="font-weight:800;color:#0f172a;font-size:13.5px;">${op.title}</div>
-                            <div style="font-size:11.5px;color:#64748b;margin-top:2px;">${op.sub}</div>
+                            <div style="font-weight:700;color:var(--ink);font-size:13px;">${op.title}</div>
+                            <div style="font-size:11px;color:var(--ink-secondary);margin-top:1px;">${op.sub}</div>
                           </div>
                         </div>
                       </td>
                       <td>
-                        <span style="display:inline-block;padding:3px 9px;border-radius:8px;font-size:11px;font-weight:800;background:rgba(5,150,105,0.08);color:${op.sectionColor};">
+                        <span style="display:inline-block;padding:3px 8px;border-radius:var(--radius-xs);font-size:11px;font-weight:700;background:rgba(5,150,105,0.08);color:${op.sectionColor};">
                           ${op.section}
                         </span>
                       </td>
-                      <td style="color:#64748b;font-size:12px;font-weight:600;">
+                      <td style="color:var(--ink-secondary);font-size:12px;font-weight:600;">
                         ${op.date}
                       </td>
                       <td>
@@ -1002,12 +1030,13 @@ function renderExecutiveCommandCenter(app){
                           ${op.status}
                         </span>
                       </td>
-                      <td style="text-align:left;font-family:var(--font-mono);font-weight:800;font-size:13.5px;color:${op.amount < 0 ? '#ef4444' : '#059669'};">
+                      <td style="text-align:left;font-family:var(--font-mono);font-weight:800;font-size:13px;color:${op.amount < 0 ? 'var(--red-text)' : 'var(--green-text)'};">
                         ${op.amount > 0 ? '+' : ''}${op.amount.toLocaleString()} ج.م
                       </td>
                       <td style="text-align:center;">
-                        <button class="btn btn-ghost btn-sm hub-op-view-btn" data-optype="${op.type}" data-opidx="${idx}" style="padding:4px 12px;border-radius:9999px;font-size:11.5px;font-weight:700;">
-                          عرض 👁️
+                        <button class="btn btn-ghost btn-sm hub-op-view-btn" data-optype="${op.type}" data-opidx="${idx}" style="padding:4px 10px;border-radius:var(--radius-sm);font-size:11.5px;font-weight:700;display:inline-flex;align-items:center;gap:4px;">
+                          <span>عرض</span>
+                          ${getSvgIcon('eye', 12)}
                         </button>
                       </td>
                     </tr>
@@ -1249,15 +1278,15 @@ function renderSectionPicker(app){
 function brandHtml(subtitle){
   const logoUrl = state.settings.logoUrl;
   return `<div class="brand">
-    <div class="brand-logo-wrap" style="border-radius:12px;background:var(--primary-light);color:var(--primary);display:flex;align-items:center;justify-content:center;width:40px;height:40px;font-size:20px;">
-      ${logoUrl ? `<img src="${logoUrl}" style="width:100%;height:100%;object-fit:contain;border-radius:10px;">` : `⚡`}
+    <div class="brand-logo-wrap">
+      ${logoUrl ? `<img src="${logoUrl}" style="width:100%;height:100%;object-fit:contain;border-radius:var(--radius-sm);">` : getSvgIcon('logo', 20)}
     </div>
     <div class="brand-text" style="flex:1;min-width:0;">
-      <h1 style="font-size:1.12rem;font-weight:800;color:var(--ink);margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${state.settings.shopName || 'ميكروERP'}</h1>
-      <span style="font-size:0.75rem;font-weight:700;color:var(--primary);">${subtitle || 'مركز الصيانة المعتمد'}</span>
+      <h1 style="font-size:1.05rem;font-weight:800;color:var(--ink);margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${state.settings.shopName || 'ميكروERP'}</h1>
+      <span style="font-size:0.75rem;font-weight:600;color:var(--ink-secondary);">${subtitle || 'مركز الصيانة المعتمد'}</span>
     </div>
     <button type="button" class="sidebar-collapse-btn" id="sidebarCollapseBtn" title="طي القائمة الجانبية (Ctrl+B)">
-      <span>◀</span>
+      ${getSvgIcon('arrowRight', 14)}
     </button>
   </div>`;
 }
@@ -1265,8 +1294,8 @@ function brandHtml(subtitle){
 function sectionSwitcherHtml(){
   const sections = state.user.sections || [];
   if(sections.length<=1) return '';
-  return `<div class="nav-item" id="switchSectionBtn" style="color:var(--primary);border:1px solid rgba(5,150,105,0.22);margin:8px 12px 6px;background:var(--primary-light);border-radius:9999px;font-weight:800;justify-content:center;box-shadow:0 2px 6px rgba(5,150,105,0.06);transition:all 0.15s ease;">
-    <span class="nav-item-icon" style="margin-left:4px;">↩</span><span>الرجوع للمركز الرئيسي</span>
+  return `<div class="nav-item" id="switchSectionBtn" style="color:var(--primary);border:1px solid rgba(5,150,105,0.22);margin:8px 12px 6px;background:var(--primary-light);border-radius:var(--radius-sm);font-weight:700;justify-content:center;box-shadow:var(--shadow-xs);transition:all 0.15s ease;">
+    <span class="nav-item-icon" style="margin-left:4px;">${getSvgIcon('arrowRight', 14)}</span><span>الرجوع للمركز الرئيسي</span>
   </div>`;
 }
 
@@ -1276,12 +1305,12 @@ function sidebarFootHtml(){
       <div class="user-avatar">${(state.user.name||'U')[0]}</div>
       <div class="user-info">
         <div class="user-name">${state.user.name}</div>
-        <div class="role-badge">${state.user.role === 'admin' ? '👑 مدير عام' : '👤 مستخدم'}</div>
+        <div class="role-badge">${state.user.role === 'admin' ? 'مدير عام' : 'مستخدم'}</div>
       </div>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
-      <button class="theme-toggle-btn" id="sidebarThemeToggle" style="font-size:11px;padding:5px 12px;background:var(--paper);color:var(--ink);border:1px solid var(--border);border-radius:9999px;cursor:pointer;font-weight:700;">${state.theme==='dark'?'☀️ فاتح':'🌙 ليلي'}</button>
-      <span id="logoutBtn" style="cursor:pointer;color:#ef4444;font-size:11.5px;font-weight:700;">🚪 خروج</span>
+      <button class="theme-toggle-btn" id="sidebarThemeToggle" style="font-size:11px;padding:4px 10px;background:var(--paper);color:var(--ink);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-weight:700;display:inline-flex;align-items:center;gap:5px;">${state.theme==='dark'?`${getSvgIcon('sun', 12)} فاتح`:`${getSvgIcon('moon', 12)} ليلي`}</button>
+      <span id="logoutBtn" style="cursor:pointer;color:var(--red-text);font-size:11.5px;font-weight:700;display:inline-flex;align-items:center;gap:4px;">${getSvgIcon('logout', 13)} خروج</span>
     </div>
   </div>`;
 }
@@ -1293,7 +1322,7 @@ function initSidebarToggle(){
     expandBtn.id = 'sidebarExpandBtn';
     expandBtn.className = 'sidebar-expand-btn';
     expandBtn.setAttribute('title', 'إظهار القائمة الجانبية (Ctrl+B)');
-    expandBtn.innerHTML = `<span style="font-size:16px;">☰</span><span>القائمة</span>`;
+    expandBtn.innerHTML = `${getSvgIcon('dashboard', 14)}<span>القائمة</span>`;
     document.body.appendChild(expandBtn);
   }
 
@@ -1386,40 +1415,40 @@ function renderMaintenanceApp(app){
       ${sectionSwitcherHtml()}
       <div class="sidebar-nav-wrap">
         <div class="nav-section">العمليات الأساسية</div>
-        ${navItem('dashboard','📊','لوحة التحكم')}
-        ${navItem('new','➕','إيصال استلام جديد')}
-        ${navItem('archive','📁','أرشيف الصيانة')}
-        ${navItem('customers','👥','دليل وسجل العملاء')}
+        ${navItem('dashboard','dashboard','لوحة التحكم')}
+        ${navItem('new','plus','إيصال استلام جديد')}
+        ${navItem('archive','maintenance','أرشيف الصيانة')}
+        ${navItem('customers','users','دليل وسجل العملاء')}
 
         ${hasFinanceNav ? `
           <div class="nav-section">الماليات والربط</div>
           ${canUserAccessSection('cashdrawer') ? `
             <div class="nav-item" id="maintToDrawerNav">
-              <span class="nav-item-icon">💵</span><span>حركة الخزينة والدرج</span>
+              <span class="nav-item-icon">${getSvgIcon('cashdrawer', 16)}</span><span>حركة الخزينة والدرج</span>
             </div>
           ` : ''}
           ${canUserAccessSection('daily') ? `
             <div class="nav-item" id="maintToDailyNav">
-              <span class="nav-item-icon">📔</span><span>دفتر اليومية العامة</span>
+              <span class="nav-item-icon">${getSvgIcon('daily', 16)}</span><span>دفتر اليومية العامة</span>
             </div>
           ` : ''}
-          ${canUserAccessSection('invoices') ? navItem('invoices','📄','الفواتير وعروض الأسعار') : ''}
+          ${canUserAccessSection('invoices') ? navItem('invoices','invoices','الفواتير وعروض الأسعار') : ''}
         ` : ''}
 
         <div class="nav-section">الأدوات والمخزن</div>
-        ${canUserAccessSection('inventory') ? navItem('inventory','📦','قطع غيار الصيانة') : ''}
+        ${canUserAccessSection('inventory') ? navItem('inventory','inventory','قطع غيار الصيانة') : ''}
         ${canUserAccessSection('barcode') ? `
           <div class="nav-item" id="maintToBarcodeNav">
-            <span class="nav-item-icon">🏷️</span><span>استوديو طباعة الباركود</span>
+            <span class="nav-item-icon">${getSvgIcon('barcode', 16)}</span><span>استوديو طباعة الباركود</span>
           </div>
         ` : ''}
-        ${navItem('analytics','📈','التقارير والإحصائيات')}
+        ${navItem('analytics','trendUp','التقارير والإحصائيات')}
 
         ${hasAdminNav ? `
           <div class="nav-section">الإدارة والتهيئة والرقابة</div>
-          ${canUserAccessSection('audit') ? navItem('audit','🛡️',`الرقابة وسجل العمليات ${getPendingAuthCountBadge()}`) : ''}
-          ${canUserAccessSection('users') ? navItem('users','👥','المستخدمين والصلاحيات') : ''}
-          ${canUserAccessSection('settings') ? navItem('settings','⚙️','مركز الإعدادات') : ''}
+          ${canUserAccessSection('audit') ? navItem('audit','audit',`الرقابة وسجل العمليات ${getPendingAuthCountBadge()}`) : ''}
+          ${canUserAccessSection('users') ? navItem('users','users','المستخدمين والصلاحيات') : ''}
+          ${canUserAccessSection('settings') ? navItem('settings','settings','مركز الإعدادات') : ''}
         ` : ''}
       </div>
       ${sidebarFootHtml()}
@@ -1450,8 +1479,31 @@ function renderMaintenanceApp(app){
 }
 
 function navItem(tab, icon, label){
+  let iconHtml = icon;
+  if(SVG_ICONS[icon]){
+    iconHtml = getSvgIcon(icon, 16);
+  } else if(!icon || !icon.includes('<svg')) {
+    const fallbackMap = {
+      dashboard: 'dashboard',
+      new: 'plus',
+      archive: 'maintenance',
+      customers: 'users',
+      invoices: 'invoices',
+      inventory: 'inventory',
+      analytics: 'trendUp',
+      audit: 'audit',
+      users: 'users',
+      settings: 'settings',
+      pos: 'pos',
+      finance: 'finance',
+      cashdrawer: 'cashdrawer',
+      daily: 'daily',
+      barcode: 'barcode'
+    };
+    iconHtml = getSvgIcon(fallbackMap[tab] || 'dashboard', 16);
+  }
   return `<div class="nav-item ${state.tab===tab?'active':''}" data-tab="${tab}">
-    <span class="nav-item-icon">${icon}</span><span>${label}</span>
+    <span class="nav-item-icon">${iconHtml}</span><span>${label}</span>
   </div>`;
 }
 
@@ -1517,12 +1569,12 @@ function renderDashboard(main){
   main.innerHTML = `
     <div class="top-header">
       <div>
-        <h2 class="page-title">📊 لوحة التحكم — قسم الصيانة</h2>
-              </div>
+        <h2 class="page-title">لوحة التحكم — قسم الصيانة</h2>
+      </div>
       <div style="display:flex;gap:8px;align-items:center;">
-        <div id="networkSyncPill" class="sync-pill online" onclick="syncOfflineQueue(true)">🟢 متصل</div>
-        <button class="btn btn-ghost btn-sm" id="exportExcelDashBtn">📥 تصدير Excel</button>
-        <button class="btn btn-primary btn-sm" id="dashNewReceiptBtn">➕ استلام جهاز جديد</button>
+        <div id="networkSyncPill" class="sync-pill online" onclick="syncOfflineQueue(true)"><span style="width:7px;height:7px;border-radius:50%;background:var(--primary);display:inline-block;"></span> متصل</div>
+        <button class="btn btn-ghost btn-sm" id="exportExcelDashBtn">${getSvgIcon('invoices', 14)} تصدير Excel</button>
+        <button class="btn btn-primary btn-sm" id="dashNewReceiptBtn">${getSvgIcon('plus', 14)} استلام جهاز جديد</button>
       </div>
     </div>
 
@@ -1530,52 +1582,53 @@ function renderDashboard(main){
       <div class="stat-card blue">
         <div class="top-row">
           <span class="lbl">أجهزة قيد العمل</span>
-          <div class="icon-box">⏳</div>
+          <div class="icon-box">${getSvgIcon('maintenance', 16)}</div>
         </div>
         <div class="num mono">${inProgress}</div>
       </div>
       <div class="stat-card green">
         <div class="top-row">
           <span class="lbl">جاهزة للاستلام</span>
-          <div class="icon-box">✅</div>
+          <div class="icon-box">${getSvgIcon('check', 16)}</div>
         </div>
         <div class="num mono">${done}</div>
       </div>
       <div class="stat-card purple" style="border-right-color:#8b5cf6;">
         <div class="top-row">
           <span class="lbl">تم تسليمها للعملاء</span>
-          <div class="icon-box">🤝</div>
+          <div class="icon-box">${getSvgIcon('check', 16)}</div>
         </div>
         <div class="num mono">${delivered}</div>
       </div>
       <div class="stat-card amber">
         <div class="top-row">
           <span class="lbl">مقبوضات اليوم</span>
-          <div class="icon-box">💵</div>
+          <div class="icon-box">${getSvgIcon('finance', 16)}</div>
         </div>
         <div class="num mono">${todayIncome.toLocaleString()} <span style="font-size:13px;font-weight:600;">ج.م</span></div>
       </div>
       <div class="stat-card red">
         <div class="top-row">
           <span class="lbl">متروكة +7 أيام</span>
-          <div class="icon-box">⏰</div>
+          <div class="icon-box">${getSvgIcon('alert', 16)}</div>
         </div>
         <div class="num mono">${overdueList.length}</div>
       </div>
       <div class="stat-card">
         <div class="top-row">
           <span class="lbl">إجمالي الإيصالات</span>
-          <div class="icon-box">📑</div>
+          <div class="icon-box">${getSvgIcon('invoices', 16)}</div>
         </div>
         <div class="num mono">${r.length}</div>
       </div>
     </div>
 
     ${overdueList.length > 0 ? `
-    <div class="card" style="border-right: 4px solid var(--amber);background:var(--amber-bg);color:var(--amber-text);padding:14px 18px;margin-bottom:18px;">
+    <div class="card" style="border-right: 3px solid var(--amber);background:var(--amber-bg);color:var(--amber-text);padding:14px 18px;margin-bottom:18px;border-radius:var(--radius-sm);">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-        <div style="font-size:13px;font-weight:700;">
-          ⚠️ يوجد <b>${overdueList.length}</b> أجهزة جاهزة ومكتملة الصيانة ولم يستلمها العملاء لأكثر من أسبوع!
+        <div style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;">
+          ${getSvgIcon('alert', 16)}
+          <span>يوجد <b>${overdueList.length}</b> أجهزة جاهزة ومكتملة الصيانة ولم يستلمها العملاء لأكثر من أسبوع!</span>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <button class="btn btn-whatsapp btn-sm" id="dashBulkOverdueWaBtn">${WA_ICON} إرسال تذكيرات واتساب</button>
@@ -1589,10 +1642,10 @@ function renderDashboard(main){
     <div class="card">
       <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
         <div style="display:flex;align-items:center;gap:12px;">
-          <h3>⚡ آخر الأجهزة المستلمة</h3>
+          <h3>آخر الأجهزة المستلمة</h3>
           <div class="view-mode-toggle">
-            <button type="button" class="view-mode-btn ${state.maintenanceViewMode!=='cards'?'active':''}" id="dashViewTableBtn" title="عرض جدول تفصيلي">📋 جدول</button>
-            <button type="button" class="view-mode-btn ${state.maintenanceViewMode==='cards'?'active':''}" id="dashViewCardsBtn" title="عرض بطاقات ذكية">🗂️ بطاقات ذكية</button>
+            <button type="button" class="view-mode-btn ${state.maintenanceViewMode!=='cards'?'active':''}" id="dashViewTableBtn" title="عرض جدول تفصيلي">جدول</button>
+            <button type="button" class="view-mode-btn ${state.maintenanceViewMode==='cards'?'active':''}" id="dashViewCardsBtn" title="عرض بطاقات تفصيلية">بطاقات</button>
           </div>
         </div>
         <button class="btn btn-ghost btn-sm" id="dashViewAllBtn">عرض كل الأرشيف (${r.length})</button>
@@ -1663,8 +1716,8 @@ function renderMaintenanceAnalytics(main){
   main.innerHTML = `
     <div class="top-header">
       <div>
-        <h2 class="page-title">📈 التقارير والتحليلات البيانية</h2>
-              </div>
+        <h2 class="page-title">التقارير والتحليلات البيانية</h2>
+      </div>
     </div>
 
     <div class="stat-grid">
@@ -1676,7 +1729,7 @@ function renderMaintenanceAnalytics(main){
 
     <div class="grid2">
       <div class="card">
-        <h3>💻 فئات الأجهزة الأكثر استلاماً</h3>
+        <h3>فئات الأجهزة الأكثر استلاماً</h3>
         <div style="margin-top:14px;">
           ${Object.entries(catCounts).sort((a,b)=>b[1]-a[1]).map(([cat,count])=>{
             const pct = Math.round((count/r.length)*100);
@@ -1693,7 +1746,7 @@ function renderMaintenanceAnalytics(main){
       </div>
 
       <div class="card">
-        <h3>👨‍🔧 إنتاجية وكفاءة الفنيين</h3>
+        <h3>إنتاجية وكفاءة الفنيين</h3>
         <div class="table-wrap" style="margin-top:12px;">
           <table>
             <thead><tr><th>الفني</th><th>المسند</th><th>المكتمل</th><th>نسبة النجاح</th><th>عائد الخدمات</th></tr></thead>

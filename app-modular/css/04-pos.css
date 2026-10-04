@@ -53,7 +53,13 @@
 }
 .pos-pin-star-btn.pinned {
   color: #f59e0b;
-  text-shadow: 0 0 6px rgba(245, 158, 11, 0.45);
+}
+.pos-pin-star-btn.pinned svg {
+  fill: #f59e0b;
+  stroke: #f59e0b;
+}
+.pos-pin-star-btn:not(.pinned) svg {
+  opacity: 0.4;
 }
 
 .pos-cat-scroll {

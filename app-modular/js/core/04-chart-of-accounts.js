@@ -7,6 +7,7 @@ const DEFAULT_ACCOUNTS = [
   {Code:'1102', Name:'البنك والحسابات الإلكترونية', Type:'الأصول', ParentCode:'11', Nature:'مدين', Description:'حسابات البنوك وفودافون كاش وإنستاباي', Balance:0},
   {Code:'1103', Name:'العملاء والمدينون', Type:'الأصول', ParentCode:'11', Nature:'مدين', Description:'مستحقات على العملاء', Balance:0},
   {Code:'1104', Name:'مخزون البضائع وقطع الغيار', Type:'الأصول', ParentCode:'11', Nature:'مدين', Description:'قيمة البضائع وقطع الغيار بالمخزن', Balance:0},
+  {Code:'1105', Name:'ضريبة القيمة المضافة القابلة للخصم (مدخلات)', Type:'الأصول', ParentCode:'11', Nature:'مدين', Description:'الضريبة المسددة على المشتريات والمصروفات', Balance:0},
   {Code:'12', Name:'الأصول الثابتة', Type:'الأصول', ParentCode:'1', Nature:'مدين', Description:'الممتلكات والمعدات', Balance:0},
   {Code:'1201', Name:'أجهزة ومعدات مركز الصيانة', Type:'الأصول', ParentCode:'12', Nature:'مدين', Description:'كاوية، هوت إير، باور سبلاي، ميكروسكوب...', Balance:0},
   {Code:'1202', Name:'ديكورات وتجهيزات المحل', Type:'الأصول', ParentCode:'12', Nature:'مدين', Description:'أرفف، لافتات، أثاث', Balance:0},
@@ -17,6 +18,7 @@ const DEFAULT_ACCOUNTS = [
   {Code:'2101', Name:'الموردون والدائنون', Type:'الخصوم', ParentCode:'21', Nature:'دائن', Description:'حسابات الموردين وفواتير الآجل', Balance:0},
   {Code:'2102', Name:'أمانات ومقدمات عملاء الصيانة', Type:'الخصوم', ParentCode:'21', Nature:'دائن', Description:'الدفعات المقدمة المستلمة قبل التسليم', Balance:0},
   {Code:'2103', Name:'مصروفات مستحقة', Type:'الخصوم', ParentCode:'21', Nature:'دائن', Description:'مستحقات لم تسدد بعد', Balance:0},
+  {Code:'2104', Name:'ضريبة القيمة المضافة المستحقة (مخرجات)', Type:'الخصوم', ParentCode:'21', Nature:'دائن', Description:'الضريبة المحصلة من العملاء على المبيعات والفواتير', Balance:0},
 
   // 3 - حقوق الملكية
   {Code:'3', Name:'حقوق الملكية', Type:'حقوق الملكية', ParentCode:'', Nature:'دائن', Description:'حقوق أصحاب المنشأة', Balance:0},
@@ -88,19 +90,190 @@ async function deleteAccountRemote(code){
   return apiPost('deleteAccount', {code, role: state.user.role});
 }
 
+function getNextJournalEntryNumber(){
+  const list = state.journalEntries || [];
+  const y = new Date().getFullYear();
+  const prefix = `JE-${y}-`;
+  let maxNum = 0;
+  list.forEach(e => {
+    if (e.EntryNumber && String(e.EntryNumber).startsWith(prefix)) {
+      const n = parseInt(String(e.EntryNumber).replace(prefix, ''), 10);
+      if (!isNaN(n) && n > maxNum) maxNum = n;
+    }
+  });
+  return `${prefix}${String(maxNum + 1).padStart(5, '0')}`;
+}
+
+function reconcileHistoricalJournalEntries(){
+  if (!state.journalEntries) state.journalEntries = [];
+  const existingRefs = new Set((state.journalEntries || []).map(e => `${e.ReferenceType}_${e.ReferenceID}`));
+  const newEntries = [];
+
+  // 1. Reconcile Payments
+  (state.payments || []).forEach(p => {
+    const refKey = `Receipt_${p.ReceiptID || p.ID}`;
+    if (!existingRefs.has(refKey)) {
+      const numAmt = Number(p.Amount || 0);
+      if (numAmt > 0) {
+        const payMethod = p.PaymentMethod || 'نقدي (كاش)';
+        const pLow = String(payMethod).toLowerCase();
+        const isBank = pLow.includes('فيزا') || pLow.includes('انستاباي') || pLow.includes('محفظ') || pLow.includes('فودافون');
+        const debitCode = isBank ? '1102' : '1101';
+        const debitName = isBank ? 'البنك والحسابات الإلكترونية' : 'الخزينة الرئيسية (النقدية)';
+        const entry = {
+          ID: 'je_hist_p_' + (p.ID || Math.random().toString(36).slice(2, 7)),
+          EntryNumber: getNextJournalEntryNumber(),
+          Date: (p.Date || new Date().toISOString()).slice(0, 10),
+          Description: `تحصيل صيانة [${payMethod}] (${p.Note || 'دفعة إيصال'})`,
+          ReferenceType: 'Receipt',
+          ReferenceID: p.ReceiptID || p.ID,
+          Lines: [
+            { AccountCode: debitCode, AccountName: debitName, Debit: numAmt, Credit: 0, Notes: `تحصيل عبر ${payMethod}` },
+            { AccountCode: '4101', AccountName: 'إيرادات خدمات صيانة وتصليح', Debit: 0, Credit: numAmt, Notes: `إيصال #${p.ReceiptNumber || p.ReceiptID}` }
+          ],
+          TotalDebit: numAmt,
+          TotalCredit: numAmt,
+          By: p.By || 'نظام'
+        };
+        entry.LinesJSON = JSON.stringify(entry.Lines);
+        newEntries.push(entry);
+        state.journalEntries.push(entry);
+        existingRefs.add(refKey);
+      }
+    }
+  });
+
+  // 2. Reconcile POS Sales
+  (state.sales || []).forEach(s => {
+    const refKey = `Sale_${s.ID}`;
+    if (!existingRefs.has(refKey)) {
+      const total = Number(s.Total || 0);
+      const paid = Number(s.AmountPaid != null ? s.AmountPaid : total);
+      if (total > 0) {
+        const lines = [];
+        if (paid > 0) {
+          lines.push({ AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: paid, Credit: 0, Notes: `مقبوضات مبيعات POS` });
+        }
+        if (total > paid) {
+          lines.push({ AccountCode: '1103', AccountName: 'العملاء والمدينون', Debit: total - paid, Credit: 0, Notes: `آجل مبيعات POS للعميل ${s.CustomerName || ''}` });
+        }
+        lines.push({ AccountCode: '4102', AccountName: 'إيرادات مبيعات بضائع وقطع غيار', Debit: 0, Credit: total, Notes: `فاتورة مبيعات #${s.ID.slice(-8)}` });
+
+        const entry = {
+          ID: 'je_hist_s_' + s.ID,
+          EntryNumber: getNextJournalEntryNumber(),
+          Date: (s.Date || new Date().toISOString()).slice(0, 10),
+          Description: `مبيعات كاشير POS (${s.ItemsSummary || 'أصناف متنوعة'})`,
+          ReferenceType: 'Sale',
+          ReferenceID: s.ID,
+          Lines: lines,
+          TotalDebit: total,
+          TotalCredit: total,
+          By: s.By || 'نظام'
+        };
+        entry.LinesJSON = JSON.stringify(entry.Lines);
+        newEntries.push(entry);
+        state.journalEntries.push(entry);
+        existingRefs.add(refKey);
+      }
+    }
+  });
+
+  // 3. Reconcile Purchases
+  (state.purchases || []).forEach(pur => {
+    const refKey = `Purchase_${pur.ID}`;
+    if (!existingRefs.has(refKey)) {
+      const total = Number(pur.Total || 0);
+      const paid = Number(pur.AmountPaid != null ? pur.AmountPaid : 0);
+      if (total > 0) {
+        const lines = [
+          { AccountCode: '1104', AccountName: 'مخزون البضائع وقطع الغيار', Debit: total, Credit: 0, Notes: `شراء أصناف من المورد (${pur.Supplier || ''})` }
+        ];
+        if (paid > 0) {
+          lines.push({ AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: 0, Credit: paid, Notes: `سداد نقدي لفاتورة شراء` });
+        }
+        if (total > paid) {
+          lines.push({ AccountCode: '2101', AccountName: 'الموردون والدائنون', Debit: 0, Credit: total - paid, Notes: `مستحقات آجلة للمورد (${pur.Supplier || ''})` });
+        }
+        const entry = {
+          ID: 'je_hist_pur_' + pur.ID,
+          EntryNumber: getNextJournalEntryNumber(),
+          Date: (pur.Date || new Date().toISOString()).slice(0, 10),
+          Description: `فاتورة شراء مخزون من المورد [${pur.Supplier || ''}]`,
+          ReferenceType: 'Purchase',
+          ReferenceID: pur.ID,
+          Lines: lines,
+          TotalDebit: total,
+          TotalCredit: total,
+          By: pur.By || 'نظام'
+        };
+        entry.LinesJSON = JSON.stringify(entry.Lines);
+        newEntries.push(entry);
+        state.journalEntries.push(entry);
+        existingRefs.add(refKey);
+      }
+    }
+  });
+
+  // 4. Reconcile Delivered Receipts with Unpaid Balance (Customer Receivables)
+  (state.receipts || []).forEach(r => {
+    if (r.status === 'تم التسليم' || r.status === 'مكتمل') {
+      const cost = Number(r.cost || 0);
+      const deposit = Number(r.deposit || 0);
+      const partsCost = Number(r.partsCost || 0);
+      const totalDue = cost + partsCost + Number(r.otherAccountAmount || 0);
+      const remaining = Math.max(0, totalDue - deposit);
+      const refKey = `Receipt_Debt_${r.id}`;
+      if (remaining > 0 && !existingRefs.has(refKey)) {
+        const custName = (r.customer && r.customer.name) || r.CustomerName || 'عميل';
+        const entry = {
+          ID: 'je_hist_debt_' + r.id,
+          EntryNumber: getNextJournalEntryNumber(),
+          Date: (r.deliveryDate || r.date || new Date().toISOString()).slice(0, 10),
+          Description: `إثبات مستحقات صيانة آجلة عند التسليم للعميل (${custName}) - إيصال #${r.receiptNumber}`,
+          ReferenceType: 'Receipt_Debt',
+          ReferenceID: r.id,
+          Lines: [
+            { AccountCode: '1103', AccountName: 'العملاء والمدينون', Debit: remaining, Credit: 0, Notes: `متبقي صيانة آجل لم يسدد` },
+            { AccountCode: '4101', AccountName: 'إيرادات خدمات صيانة وتصليح', Debit: 0, Credit: remaining, Notes: `إيصال #${r.receiptNumber}` }
+          ],
+          TotalDebit: remaining,
+          TotalCredit: remaining,
+          By: r.updatedBy || 'نظام'
+        };
+        entry.LinesJSON = JSON.stringify(entry.Lines);
+        newEntries.push(entry);
+        state.journalEntries.push(entry);
+        existingRefs.add(refKey);
+      }
+    }
+  });
+
+  if (newEntries.length > 0) {
+    setCache('journal', state.journalEntries);
+    console.log(`[reconcileHistoricalJournalEntries] Reconciled ${newEntries.length} entries for General Ledger.`);
+  }
+  return state.journalEntries;
+}
+
 async function loadJournalEntries(){
   const rows = await apiGet('getJournalEntries');
   const mapped = (Array.isArray(rows)?rows:[]).map(e=>({
     ...e,
     Lines: typeof e.LinesJSON==='string' ? (JSON.parse(e.LinesJSON||'[]')) : (e.Lines||[])
   }));
-  state.journalEntries = mapped;
-  setCache('journal', mapped);
-  return mapped;
+  state.journalEntries = mapped.length ? mapped : (getCache('journal', []) || []);
+  // Auto reconcile if empty or missing operational entries
+  if(!state.journalEntries || state.journalEntries.length === 0){
+    reconcileHistoricalJournalEntries();
+  }
+  setCache('journal', state.journalEntries);
+  return state.journalEntries;
 }
+
 async function saveJournalEntryRemote(entry){
   if(!entry.ID) entry.ID = 'je_' + Date.now();
-  if(!entry.EntryNumber) entry.EntryNumber = 'JE-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-4);
+  if(!entry.EntryNumber) entry.EntryNumber = getNextJournalEntryNumber();
   if(!entry.Date) entry.Date = new Date().toISOString().slice(0,10);
   entry.By = state.user ? state.user.name : 'نظام';
   state.journalEntries.push(entry);
@@ -113,7 +286,7 @@ async function recordAutoJournalEntry(desc, refType, refId, lines){
   const totalCredit = lines.reduce((s,l)=>s+Number(l.Credit||0),0);
   const entry = {
     ID: 'je_' + Date.now() + '_' + Math.floor(Math.random()*1000),
-    EntryNumber: 'JE-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-4),
+    EntryNumber: getNextJournalEntryNumber(),
     Date: new Date().toISOString().slice(0,10),
     Description: desc,
     ReferenceType: refType,
@@ -158,9 +331,9 @@ function getAccountStats(accountCode){
   return { totalDebit, totalCredit, netBalance, nature };
 }
 
-async function loadReceipts(){
+async function loadReceipts(params){
   try {
-    const rows = await apiGet('getReceipts');
+    const rows = await apiGet('getReceipts', params);
     if(Array.isArray(rows) && rows.length > 0){
       state.receipts = rows.map(rowToReceipt);
       setCache('receipts_raw', rows);
@@ -252,9 +425,9 @@ function _extractCustomersFromReceipts(){
   }
 }
 
-async function loadCustomers(){
+async function loadCustomers(params){
   try {
-    const rows = await apiGet('getCustomers');
+    const rows = await apiGet('getCustomers', params);
     if(Array.isArray(rows) && rows.length > 0){
       const cloudList = [];
       const seen = new Set();
@@ -453,8 +626,10 @@ async function saveCustomerRemote(c, oldName = null){
     return false;
   });
 
+  const cDebt = Number(c.Debt != null ? c.Debt : (c.debt != null ? c.debt : (exists ? (exists.Debt || exists.debt || 0) : 0)));
+
   if(!exists){
-    state.customers.push({ title: cTitle, name: c.name, phone: cPhone, email: c.email||'', taxNumber: c.taxNumber||'', address: c.address||'' });
+    state.customers.push({ title: cTitle, name: c.name, phone: cPhone, email: c.email||'', taxNumber: c.taxNumber||'', address: c.address||'', debt: cDebt, Debt: cDebt });
   } else {
     exists.title = cTitle;
     exists.name = c.name;
@@ -463,10 +638,12 @@ async function saveCustomerRemote(c, oldName = null){
     if(c.email != null) exists.email = c.email;
     if(c.taxNumber != null) exists.taxNumber = c.taxNumber;
     if(c.address != null) exists.address = c.address;
+    exists.debt = cDebt;
+    exists.Debt = cDebt;
   }
   setCache('customers', state.customers);
   // Use Name as upsert key instead of Phone to prevent overwriting different customers
-  return apiPost('saveCustomer', {data: {Title:cTitle, Name:c.name, OldName:oldName||'', Phone:cPhone, Email:c.email||'', TaxNumber:c.taxNumber||'', Address:c.address||''}});
+  return apiPost('saveCustomer', {data: {Title:cTitle, Name:c.name, OldName:oldName||'', Phone:cPhone, Email:c.email||'', TaxNumber:c.taxNumber||'', Address:c.address||'', Debt: cDebt}});
 }
 async function saveTechnicianRemote(name){
   if(!state.technicians.includes(name)) state.technicians.push(name);

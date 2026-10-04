@@ -44,17 +44,17 @@ async function renderPublicTrackingPortal(receiptNum = ''){
   const brandHeaderHtml = `
     <div style="text-align:center;border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:20px;">
       <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:6px;flex-wrap:wrap;">
-        ${logoUrl ? `<img src="${logoUrl}" style="max-height:42px;max-width:140px;object-fit:contain;" alt="${shopName}">` : '<div style="font-size:32px;">⚡</div>'}
+        ${logoUrl ? `<img src="${logoUrl}" style="max-height:42px;max-width:140px;object-fit:contain;" alt="${shopName}">` : `<div style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:var(--radius-sm);background:var(--primary-subtle);color:var(--primary);">${getSvgIcon('tool', 22)}</div>`}
         <div style="text-align:right;">
           <h2 style="margin:0;font-size:18px;font-weight:900;color:var(--ink);">${shopName}</h2>
           <div style="display:flex;align-items:center;gap:6px;margin-top:2px;">
-            <span class="badge" style="background:rgba(16,185,129,0.12);color:var(--green);font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:12px;">🏢 مركز صيانة معتمد</span>
-            ${shopPhone ? `<span style="font-size:11px;color:var(--ink-secondary);"><span class="mono">${shopPhone}</span> 📞</span>` : ''}
+            <span class="badge" style="background:rgba(16,185,129,0.12);color:var(--green);font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:12px;">مركز صيانة معتمد</span>
+            ${shopPhone ? `<span style="font-size:11px;color:var(--ink-secondary);display:inline-flex;align-items:center;gap:4px;"><span class="mono">${shopPhone}</span> ${getSvgIcon('phone', 12)}</span>` : ''}
           </div>
         </div>
       </div>
       <div style="font-size:12px;color:var(--ink-secondary);margin-top:6px;">
-        بوابة المتابعة اللحظية المباشرة لحالة أجهزة الصيانة 🔍
+        بوابة المتابعة المباشرة لحالة أجهزة الصيانة
       </div>
     </div>
   `;
@@ -67,7 +67,7 @@ async function renderPublicTrackingPortal(receiptNum = ''){
           ${brandHeaderHtml}
 
           <div style="text-align:center;padding:10px 0 20px;">
-            <div style="font-size:46px;margin-bottom:12px;">📱💻</div>
+            <div style="display:inline-flex;align-items:center;justify-content:center;width:56px;height:56px;border-radius:50%;background:var(--primary-subtle);color:var(--primary);margin-bottom:12px;">${getSvgIcon('laptop', 28)}</div>
             <h3 style="margin:0 0 6px 0;font-size:16px;color:var(--ink);">تابع حالة صيانة جهازك مباشرة</h3>
             <p style="font-size:12.5px;color:var(--ink-secondary);max-width:440px;margin:0 auto 20px;line-height:1.6;">
               أدخل رقم إيصال الصيانة أو رقم هاتفك المسجل لمعرفة تفاصيل الفحص وتكلفة الصيانة وموعد الاستلام اللحظي.
@@ -75,20 +75,20 @@ async function renderPublicTrackingPortal(receiptNum = ''){
 
             <form id="trackingSearchForm" style="display:flex;gap:8px;max-width:480px;margin:0 auto;flex-wrap:wrap;" onsubmit="return false;">
               <input type="text" id="trackSearchInput" class="input" placeholder="رقم الإيصال (مثال: MT-2026-0001) أو رقم الهاتف..." style="flex:1;min-width:220px;padding:10px 14px;font-size:13px;border-radius:var(--radius-sm);border:1.5px solid var(--line-strong);" autofocus>
-              <button type="submit" id="trackSearchBtn" class="btn btn-primary" style="padding:10px 20px;font-weight:800;border-radius:var(--radius-sm);font-size:13px;">🔍 تتبع الجهاز</button>
+              <button type="submit" id="trackSearchBtn" class="btn btn-primary" style="padding:10px 20px;font-weight:800;border-radius:var(--radius-sm);font-size:13px;display:inline-flex;align-items:center;gap:6px;">${getSvgIcon('search', 14)} تتبع الجهاز</button>
             </form>
           </div>
 
           <div style="background:var(--paper3);border-radius:var(--radius-sm);padding:14px;border:1px dashed var(--line);margin:16px 0;font-size:12px;line-height:1.7;color:var(--ink-secondary);">
-            <b style="color:var(--ink);">💡 أين تجد رقم الإيصال؟</b><br>
+            <b style="color:var(--ink);display:inline-flex;align-items:center;gap:6px;">${getSvgIcon('info', 14)} أين تجد رقم الإيصال؟</b><br>
             • في الجزء العلوي من إيصال الاستلام الورقي المختوم المسلم لحضرتكم.<br>
             • في رسالة الواتساب الترحيبية المرسلة من المركز عند إيداع الجهاز.
           </div>
 
           <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:20px;" class="tracking-no-print">
             <a href="https://wa.me/${waPhone}?text=${encodeURIComponent('السلام عليكم، أود الاستفسار عن حالة جهازي في المركز')}" target="_blank" class="btn btn-whatsapp btn-sm">${WA_ICON} تواصل مع خدمة العملاء</a>
-            ${shopPhone ? `<a href="tel:${shopPhone}" class="btn btn-ghost btn-sm" style="border:1px solid var(--line);">📞 اتصال هاتفي</a>` : ''}
-            <a href="${window.location.pathname}" class="btn btn-ghost btn-sm" style="color:var(--ink-secondary);">🔒 دخول الموظفين</a>
+            ${shopPhone ? `<a href="tel:${shopPhone}" class="btn btn-ghost btn-sm" style="border:1px solid var(--line);">${getSvgIcon('phone', 13)} اتصال هاتفي</a>` : ''}
+            <a href="${window.location.pathname}" class="btn btn-ghost btn-sm" style="color:var(--ink-secondary);">${getSvgIcon('lock', 13)} دخول الموظفين</a>
           </div>
         </div>
       </div>
@@ -123,34 +123,11 @@ async function renderPublicTrackingPortal(receiptNum = ''){
   let r = null;
   let candidateList = [];
 
-  // 1. Check local memory / cache first for instant 0ms response
-  const localReceipts = (Array.isArray(state.receipts) && state.receipts.length)
-    ? state.receipts
-    : (getCache('receipts', []) || []);
-
-  if(localReceipts.length){
-    const matchNum = localReceipts.find(x => String(x.receiptNumber || '').trim().toLowerCase() === cleanQuery.toLowerCase());
-    if(matchNum){
-      r = (typeof normalizeReceipt === 'function') ? normalizeReceipt(matchNum) : matchNum;
-    } else {
-      const cleanPhoneDigits = cleanQuery.replace(/[^0-9]/g, '');
-      if(cleanPhoneDigits.length >= 7){
-        candidateList = localReceipts.filter(x => {
-          const p = String(x.customer?.phone || x.CustomerPhone || '').replace(/[^0-9]/g, '');
-          return p && p.includes(cleanPhoneDigits);
-        });
-        if(candidateList.length === 1){
-          r = (typeof normalizeReceipt === 'function') ? normalizeReceipt(candidateList[0]) : candidateList[0];
-        }
-      }
-    }
-  }
-
-  // 2. If not found locally and online, attempt remote API with a 3.5s timeout
-  if(!r && !candidateList.length && navigator.onLine){
+  // 1. Query remote API securely for the requested receipt (no local DB dumping)
+  if(navigator.onLine){
     try{
       const fetchPromise = apiGet('trackReceipt', { receiptNumber: cleanQuery });
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3500));
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 6000));
       const res = await Promise.race([fetchPromise, timeoutPromise]);
       if(res && res.found && res.receipt){
         r = res.receipt;
@@ -160,15 +137,30 @@ async function renderPublicTrackingPortal(receiptNum = ''){
     }
   }
 
-  // If MULTIPLE RECEIPTS matched by phone number:
-  if(!r && candidateList.length > 1){
+  // Fallback only if offline and user searched for exact receiptNumber match
+  if(!r && !navigator.onLine){
+    const localReceipts = getCache('receipts', []) || [];
+    const matchNum = localReceipts.find(x => String(x.receiptNumber || '').trim().toLowerCase() === cleanQuery.toLowerCase());
+    if(matchNum){
+      const safeMatch = (typeof normalizeReceipt === 'function') ? normalizeReceipt(matchNum) : { ...matchNum };
+      // Strip sensitive internal fields
+      delete safeMatch.password;
+      if(safeMatch.device) delete safeMatch.device.password;
+      delete safeMatch.technician;
+      delete safeMatch.partsCost;
+      delete safeMatch.bonus;
+      r = safeMatch;
+    }
+  }
+
+  if(candidateList.length > 1){
     app.innerHTML = `
       <div class="tracking-container">
         <div class="tracking-card">
           ${brandHeaderHtml}
           
           <div style="margin-bottom:16px;">
-            <h3 style="margin:0 0 4px 0;font-size:15px;">📋 تم العثور على (${candidateList.length}) أجهزة صيانة مسجلة</h3>
+            <h3 style="margin:0 0 4px 0;font-size:15px;display:inline-flex;align-items:center;gap:6px;">${getSvgIcon('fileText', 16)} تم العثور على (${candidateList.length}) أجهزة صيانة مسجلة</h3>
             <div style="font-size:12px;color:var(--ink-secondary);">المرتبطة بالرقم: <b class="mono">${escapeHtml(cleanQuery)}</b>. اختر الجهاز لمتابعة حالته:</div>
           </div>
 
@@ -176,13 +168,13 @@ async function renderPublicTrackingPortal(receiptNum = ''){
             ${candidateList.map(item => {
               const devName = `${(item.device?.category||'جهاز')} ${(item.device?.brand||'')} ${(item.device?.model||'')}`.trim();
               const st = item.status || 'قيد الفحص';
-              const stInfo = STATUSES.find(s => s.v === st) || { cls: 'st-check', icon: '🔍' };
+              const stInfo = STATUSES.find(s => s.v === st) || { cls: 'st-check', icon: '' };
               return `
                 <div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:var(--paper2);border:1px solid var(--line);border-radius:var(--radius-sm);cursor:pointer;transition:transform 0.15s ease;" onclick="renderPublicTrackingPortal('${escapeHtml(item.receiptNumber)}')">
                   <div>
                     <div style="display:flex;align-items:center;gap:6px;">
                       <b class="mono" style="font-size:13px;color:var(--primary);">#${escapeHtml(item.receiptNumber)}</b>
-                      <span class="badge ${stInfo.cls}" style="font-size:10.5px;">${stInfo.icon} ${escapeHtml(st)}</span>
+                      <span class="badge ${stInfo.cls}" style="font-size:10.5px;">${escapeHtml(st)}</span>
                     </div>
                     <div style="font-weight:700;font-size:12.5px;margin-top:2px;color:var(--ink);">${escapeHtml(devName || 'جهاز صيانة')}</div>
                     <div style="font-size:11px;color:var(--ink-secondary);margin-top:1px;">تاريخ الاستلام: ${cleanDate(item.date)}</div>
@@ -194,7 +186,7 @@ async function renderPublicTrackingPortal(receiptNum = ''){
           </div>
 
           <div style="text-align:center;">
-            <button type="button" class="btn btn-ghost btn-sm" onclick="renderPublicTrackingPortal('')">🔍 بحث برقم آخر</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="renderPublicTrackingPortal('')">${getSvgIcon('search', 13)} بحث برقم آخر</button>
           </div>
         </div>
       </div>
@@ -209,7 +201,7 @@ async function renderPublicTrackingPortal(receiptNum = ''){
         <div class="tracking-card" style="text-align:center;">
           ${brandHeaderHtml}
 
-          <div style="font-size:48px;margin-bottom:12px;">🔍⚠️</div>
+          <div style="display:inline-flex;align-items:center;justify-content:center;width:56px;height:56px;border-radius:50%;background:rgba(239,68,68,0.1);color:var(--red);margin-bottom:12px;">${getSvgIcon('alert', 28)}</div>
           <h2 style="margin:0 0 6px 0;font-size:17px;color:var(--ink);">لم نتمكن من العثور على الإيصال</h2>
           <p style="font-size:12.5px;color:var(--ink-secondary);max-width:440px;margin:0 auto 18px;line-height:1.6;">
             تأكد من كتابة رقم الإيصال بدقة (مثال: <b class="mono">MT-2026-0001</b>) أو رقم الهاتف المسجل عند تسليم الجهاز.
@@ -217,12 +209,12 @@ async function renderPublicTrackingPortal(receiptNum = ''){
 
           <form id="trackingNotFoundForm" style="display:flex;gap:8px;max-width:420px;margin:0 auto 20px;flex-wrap:wrap;" onsubmit="return false;">
             <input type="text" id="trackNotFoundInput" value="${escapeHtml(cleanQuery)}" class="input" placeholder="رقم الإيصال أو الهاتف..." style="flex:1;min-width:200px;padding:9px 12px;font-size:13px;border-radius:var(--radius-sm);border:1.5px solid var(--line-strong);">
-            <button type="submit" class="btn btn-primary" style="padding:9px 16px;font-weight:800;border-radius:var(--radius-sm);">🔍 إعادة البحث</button>
+            <button type="submit" class="btn btn-primary" style="padding:9px 16px;font-weight:800;border-radius:var(--radius-sm);display:inline-flex;align-items:center;gap:6px;">${getSvgIcon('search', 14)} إعادة البحث</button>
           </form>
 
           <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:16px;">
             <a href="https://wa.me/${waPhone}?text=${encodeURIComponent('السلام عليكم، لم أجد إيصال الصيانة رقم: ' + cleanQuery + '، أرجو المساعدة')}" target="_blank" class="btn btn-whatsapp btn-sm">${WA_ICON} مساعدة عبر واتساب</a>
-            <a href="${window.location.pathname}" class="btn btn-ghost btn-sm">🔒 دخول الموظفين</a>
+            <a href="${window.location.pathname}" class="btn btn-ghost btn-sm">${getSvgIcon('lock', 13)} دخول الموظفين</a>
           </div>
         </div>
       </div>
@@ -278,7 +270,7 @@ async function renderPublicTrackingPortal(receiptNum = ''){
     bg: '#eff6ff',
     border: '#bfdbfe',
     color: '#1d4ed8',
-    icon: '🔍',
+    icon: getSvgIcon('search', 20),
     title: 'الجهاز قيد الفحص والتشخيص الفني',
     desc: 'يقوم مهندس الصيانة حالياً بفحص الجهاز والدوائر الإلكترونية لتشخيص العطل بدقة وتقدير التكلفة المطلوبة.'
   };
@@ -288,7 +280,7 @@ async function renderPublicTrackingPortal(receiptNum = ''){
       bg: '#ecfdf5',
       border: '#a7f3d0',
       color: '#047857',
-      icon: '🎉',
+      icon: getSvgIcon('check', 20),
       title: 'تم الانتهاء من الصيانة والجهاز جاهز للاستلام!',
       desc: 'تم إصلاح جهازكم واجتياز اختبارات الجودة بنجاح. نتشرف بزيارتكم للمركز لاستلام الجهاز.'
     };
@@ -297,7 +289,7 @@ async function renderPublicTrackingPortal(receiptNum = ''){
       bg: '#f8fafc',
       border: '#cbd5e1',
       color: '#334155',
-      icon: '🤝',
+      icon: getSvgIcon('check', 20),
       title: 'تم تسليم الجهاز بنجاح للعميل',
       desc: 'تم تسليم الجهاز وإغلاق دورة الصيانة. شكراً لثقتكم بخدمات مركزنا، ويسعدنا دائماً خدمتكم.'
     };
@@ -306,7 +298,7 @@ async function renderPublicTrackingPortal(receiptNum = ''){
       bg: '#eff6ff',
       border: '#93c5fd',
       color: '#1e40af',
-      icon: '🛠️',
+      icon: getSvgIcon('tool', 20),
       title: 'جاري العمل والصيانة الفنية للجهاز',
       desc: 'الجهاز حالياً في مرحلة الإصلاح وتغيير قطع الغيار اللازمة على طاولة الفني المختص.'
     };
@@ -315,7 +307,7 @@ async function renderPublicTrackingPortal(receiptNum = ''){
       bg: '#fffbeb',
       border: '#fde68a',
       color: '#b45309',
-      icon: '⏸️',
+      icon: getSvgIcon('pause', 20),
       title: 'صيانة الجهاز معلقة مؤقتاً',
       desc: 'الصيانة معلقة بانتظار موافقة العميل على مقايسة التكلفة أو وصول قطع غيار أصلية مطلوبة.'
     };
@@ -324,7 +316,7 @@ async function renderPublicTrackingPortal(receiptNum = ''){
       bg: '#fef2f2',
       border: '#fecaca',
       color: '#b91c1c',
-      icon: '❌',
+      icon: getSvgIcon('alert', 20),
       title: 'تم الاعتذار عن الإصلاح / تعذر الصيانة',
       desc: 'تعذر إتمام الصيانة لعدم جدوى الإصلاح أو عدم توفر القطع. الجهاز متاح للاستلام بالفرع.'
     };
@@ -333,7 +325,7 @@ async function renderPublicTrackingPortal(receiptNum = ''){
       bg: '#ecfeff',
       border: '#a5f3fc',
       color: '#0e7490',
-      icon: '🛡️',
+      icon: getSvgIcon('shield', 20),
       title: 'صيانة مجانية تحت مظلة الضمان المعتمد',
       desc: 'الجهاز يخضع للفحص والدعم الفني ضمن فترة الضمان الرسمية الممنوحة من المركز.'
     };
@@ -360,13 +352,13 @@ async function renderPublicTrackingPortal(receiptNum = ''){
           </div>
           <div style="text-align:left;">
             <div style="font-size:11px;color:var(--ink-secondary);">تاريخ الاستلام</div>
-            <div style="font-size:12px;font-weight:700;color:var(--ink);">${rDate} ${rTime ? '⏰ '+rTime : ''}</div>
+            <div style="font-size:12px;font-weight:700;color:var(--ink);">${rDate} ${rTime ? `<span style="color:var(--ink-secondary);font-size:11px;">(${rTime})</span>` : ''}</div>
           </div>
         </div>
 
         <!-- Dynamic Status Banner -->
         <div style="background:${statusBanner.bg};border:1.5px solid ${statusBanner.border};border-radius:var(--radius-sm);padding:14px;margin-bottom:20px;display:flex;gap:12px;align-items:flex-start;">
-          <div style="font-size:26px;line-height:1;">${statusBanner.icon}</div>
+          <div style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:var(--radius-sm);background:rgba(255,255,255,0.7);color:${statusBanner.color};flex-shrink:0;">${statusBanner.icon}</div>
           <div style="flex:1;">
             <div style="font-weight:900;font-size:14px;color:${statusBanner.color};margin-bottom:3px;">
               ${statusBanner.title}
@@ -387,27 +379,27 @@ async function renderPublicTrackingPortal(receiptNum = ''){
           <div class="tracking-timeline">
             <!-- Step 1: Intake -->
             <div class="timeline-step done">
-              <div class="timeline-node">✓</div>
+              <div class="timeline-node">${getSvgIcon('check', 12)}</div>
               <div class="timeline-title">الاستلام والتوثيق</div>
             </div>
             <!-- Step 2: Diagnostics -->
             <div class="timeline-step ${isCheck ? 'active' : (isRepair || isDone ? 'done' : (isPending ? 'alert' : ''))}">
-              <div class="timeline-node">${(isRepair || isDone) ? '✓' : (isCheck ? '🔍' : (isPending ? '⏸️' : '2'))}</div>
+              <div class="timeline-node">${(isRepair || isDone || isDelivered) ? getSvgIcon('check', 12) : '2'}</div>
               <div class="timeline-title">الفحص والتشخيص</div>
             </div>
             <!-- Step 3: Repair -->
             <div class="timeline-step ${isRepair ? 'active' : (isDone ? 'done' : '')}">
-              <div class="timeline-node">${isDone ? '✓' : (isRepair ? '🛠️' : '3')}</div>
+              <div class="timeline-node">${(isDone || isDelivered) ? getSvgIcon('check', 12) : '3'}</div>
               <div class="timeline-title">أعمال الصيانة</div>
             </div>
             <!-- Step 4: Quality Check & Ready -->
             <div class="timeline-step ${(status === 'مكتمل') ? 'active' : (isDelivered ? 'done' : '')}">
-              <div class="timeline-node">${isDelivered ? '✓' : ((status === 'مكتمل') ? '🎉' : '4')}</div>
+              <div class="timeline-node">${isDelivered ? getSvgIcon('check', 12) : '4'}</div>
               <div class="timeline-title">جاهز للاستلام</div>
             </div>
             <!-- Step 5: Delivered -->
             <div class="timeline-step ${isDelivered ? 'active done' : ''}">
-              <div class="timeline-node">${isDelivered ? '🤝' : '5'}</div>
+              <div class="timeline-node">${isDelivered ? getSvgIcon('check', 12) : '5'}</div>
               <div class="timeline-title">تم التسليم</div>
             </div>
           </div>
@@ -416,8 +408,7 @@ async function renderPublicTrackingPortal(receiptNum = ''){
         <!-- Device & Inspection Details Card -->
         <div class="card" style="background:var(--paper3);border-radius:var(--radius-sm);padding:14px;border:1px solid var(--line);margin-bottom:16px;">
           <h4 style="margin:0 0 10px 0;font-size:13.5px;display:flex;align-items:center;gap:6px;color:var(--ink);">
-            <span>💻</span>
-            <span>بيانات الجهاز والأعطال المسجلة</span>
+            ${getSvgIcon('laptop', 16)} <span>بيانات الجهاز والأعطال المسجلة</span>
           </h4>
 
           ${hasMultipleDevices ? `
@@ -431,20 +422,20 @@ async function renderPublicTrackingPortal(receiptNum = ''){
             </div>
           ` : `
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;margin-bottom:8px;">
-              <div><b>👤 صاحب الجهاز:</b> ${custName}</div>
-              <div><b>📱 رقم الهاتف:</b> <span class="mono">${maskedPhone || '-'}</span></div>
-              <div><b>💻 الجهاز:</b> ${dCat} - ${dBrand} ${dModel}</div>
-              <div><b>🔌 الملحقات:</b> ${dAcc}</div>
+              <div><span style="color:var(--ink-secondary);">صاحب الجهاز:</span> <b>${custName}</b></div>
+              <div><span style="color:var(--ink-secondary);">رقم الهاتف:</span> <span class="mono">${maskedPhone || '-'}</span></div>
+              <div><span style="color:var(--ink-secondary);">الجهاز:</span> <b>${dCat} - ${dBrand} ${dModel}</b></div>
+              <div><span style="color:var(--ink-secondary);">الملحقات:</span> ${dAcc}</div>
             </div>
             <div style="font-size:12px;border-top:1px dashed var(--line);padding-top:8px;margin-top:4px;">
-              <b>⚠️ الأعطال المبلغ عنها:</b> <span style="color:var(--ink);">${faultsText}</span>
+              <span style="color:var(--ink-secondary);font-weight:700;">الأعطال المبلغ عنها:</span> <span style="color:var(--ink);">${faultsText}</span>
               ${faultNotes ? `<div style="font-size:11.5px;color:var(--ink-secondary);margin-top:3px;"><b>ملاحظات الفحص:</b> ${faultNotes}</div>` : ''}
             </div>
           `}
 
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:8px;border-top:1px solid var(--line);font-size:11.5px;">
-            <span><b>📅 موعد التسليم المتوقع:</b> <b style="color:var(--primary);">${delDate}</b></span>
-            <span><b>🏢 الفرع المستلم:</b> ${shopAddress || shopName}</span>
+            <span><span style="color:var(--ink-secondary);">موعد التسليم المتوقع:</span> <b style="color:var(--primary);">${delDate}</b></span>
+            <span><span style="color:var(--ink-secondary);">الفرع المستلم:</span> ${shopAddress || shopName}</span>
           </div>
         </div>
 
@@ -453,10 +444,9 @@ async function renderPublicTrackingPortal(receiptNum = ''){
           <div class="card" style="background:var(--paper3);border-radius:var(--radius-sm);padding:14px;border:1px solid var(--line);margin-bottom:16px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
               <h4 style="margin:0;font-size:13.5px;display:flex;align-items:center;gap:6px;color:var(--ink);">
-                <span>📷</span>
-                <span>توثيق صور وفحص الجهاز (${photosList.length} صور)</span>
+                ${getSvgIcon('camera', 16)} <span>توثيق صور وفحص الجهاز (${photosList.length} صور)</span>
               </h4>
-              <span style="font-size:11px;color:var(--ink-secondary);">اضغط على أي صورة لتكبيرها وفحصها 🔍</span>
+              <span style="font-size:11px;color:var(--ink-secondary);">اضغط على أي صورة لتكبيرها</span>
             </div>
 
             <div id="publicTrackingPhotosGrid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(110px, 1fr));gap:8px;">
@@ -467,14 +457,13 @@ async function renderPublicTrackingPortal(receiptNum = ''){
         <!-- Itemized Services & Financial Box -->
         <div class="card" style="background:var(--paper3);border-radius:var(--radius-sm);padding:14px;border:1px solid var(--line);margin-bottom:20px;">
           <h4 style="margin:0 0 10px 0;font-size:13.5px;display:flex;align-items:center;gap:6px;color:var(--ink);">
-            <span>🧾</span>
-            <span>المقايسة وتفاصيل الحساب المالي</span>
+            ${getSvgIcon('fileText', 16)} <span>المقايسة وتفاصيل الحساب المالي</span>
           </h4>
 
           ${(Array.isArray(r.partsList) && r.partsList.length > 0) ? `
             <div style="margin-bottom:12px;border:1px solid rgba(124,58,237,0.25);border-radius:var(--radius-xs);overflow:hidden;background:var(--paper);">
               <div style="background:rgba(124,58,237,0.08);padding:6px 10px;font-size:11.5px;font-weight:800;color:var(--purple);display:flex;justify-content:space-between;align-items:center;">
-                <span>⚙️ قطع الغيار ومستلزمات الصيانة المستبدلة</span>
+                <span style="display:inline-flex;align-items:center;gap:6px;">${getSvgIcon('tool', 14)} قطع الغيار ومستلزمات الصيانة المستبدلة</span>
                 <span class="mono" style="font-size:12px;">${Number(r.partsCost || 0).toLocaleString()} ج.م</span>
               </div>
               <table style="width:100%;border-collapse:collapse;font-size:11.5px;">
@@ -533,13 +522,13 @@ async function renderPublicTrackingPortal(receiptNum = ''){
             <div style="background:${remaining <= 0 ? 'rgba(16,185,129,0.1)' : 'var(--amber-bg)'};border:1.5px solid ${remaining <= 0 ? 'var(--green)' : 'var(--amber)'};border-radius:var(--radius-xs);padding:10px 8px;text-align:center;">
               <div style="font-size:11px;color:${remaining <= 0 ? 'var(--green)' : 'var(--amber-text)'};margin-bottom:4px;font-weight:700;">${remaining <= 0 ? 'حالة الحساب' : 'المتبقي عند الاستلام'}</div>
               <div class="mono" style="color:${remaining <= 0 ? 'var(--green)' : 'var(--amber-text)'};font-size:15px;font-weight:900;">
-                ${remaining <= 0 ? 'خالص بالكامل ✅' : `${remaining.toLocaleString()} ج.م`}
+                ${remaining <= 0 ? `<span style="display:inline-flex;align-items:center;gap:4px;">خالص بالكامل ${getSvgIcon('check', 13)}</span>` : `${remaining.toLocaleString()} ج.م`}
               </div>
             </div>
           </div>
 
           <div style="font-size:11.5px;text-align:center;padding:6px;background:${isPaid ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.08)'};border-radius:var(--radius-xs);color:${isPaid ? 'var(--green)' : 'var(--amber-text)'};font-weight:800;">
-            ${isPaid ? '✅ تم سداد جميع المستحقات بالكامل، لا توجد مبالغ مطلوبة عند الاستلام' : `💵 يرجى سداد المبلغ المتبقي (${remaining.toLocaleString()} ج.م) نقداً أو إلكترونياً عند الاستلام`}
+            ${isPaid ? `<span style="display:inline-flex;align-items:center;gap:6px;">${getSvgIcon('check', 14)} تم سداد جميع المستحقات بالكامل، لا توجد مبالغ مطلوبة عند الاستلام</span>` : `يرجى سداد المبلغ المتبقي (${remaining.toLocaleString()} ج.م) نقداً أو إلكترونياً عند الاستلام`}
           </div>
         </div>
 
@@ -548,10 +537,10 @@ async function renderPublicTrackingPortal(receiptNum = ''){
           <a href="https://wa.me/${waPhone}?text=${encodeURIComponent(`السلام عليكم، بخصوص جهاز (${dCat} ${dBrand} ${dModel}) إيصال رقم #${r.receiptNumber}.. أود الاستفسار عن حالة الصيانة.`)}" target="_blank" class="btn btn-whatsapp btn-sm">
             ${WA_ICON} محادثة فورية عبر واتساب
           </a>
-          ${shopPhone ? `<a href="tel:${shopPhone}" class="btn btn-ghost btn-sm" style="border:1px solid var(--line);">📞 اتصال بالفرع</a>` : ''}
-          <button type="button" class="btn btn-ghost btn-sm" onclick="document.body.classList.add('printing-tracking-portal'); window.print();" style="border:1px solid var(--line);">🖨️ طباعة المتابعة</button>
-          <button type="button" class="btn btn-ghost btn-sm" onclick="renderPublicTrackingPortal('')" style="border:1px solid var(--line);">🔍 تتبع جهاز آخر</button>
-          <a href="${window.location.pathname}" class="btn btn-ghost btn-sm" style="color:var(--ink-secondary);">🔒 دخول الموظفين</a>
+          ${shopPhone ? `<a href="tel:${shopPhone}" class="btn btn-ghost btn-sm" style="border:1px solid var(--line);">${getSvgIcon('phone', 13)} اتصال بالفرع</a>` : ''}
+          <button type="button" class="btn btn-ghost btn-sm" onclick="document.body.classList.add('printing-tracking-portal'); window.print();" style="border:1px solid var(--line);">${getSvgIcon('printer', 13)} طباعة المتابعة</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="renderPublicTrackingPortal('')" style="border:1px solid var(--line);">${getSvgIcon('search', 13)} تتبع جهاز آخر</button>
+          <a href="${window.location.pathname}" class="btn btn-ghost btn-sm" style="color:var(--ink-secondary);">${getSvgIcon('lock', 13)} دخول الموظفين</a>
         </div>
       </div>
     </div>

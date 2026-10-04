@@ -2996,10 +2996,7 @@ function archiveTable(list){
       <td>${deviceHtml}</td>
       <td>${r.technician ? `<span style="font-weight:600;">${escapeHtml(r.technician)}</span>` : '<span style="color:var(--slate-400);">-</span>'}</td>
       <td style="text-align:center;">
-        <button class="btn-status-quick" onclick="openQuickStatusModalDirect('${safeTargetId}', '${rNum}'); event.stopPropagation();" title="اضغط لتغيير حالة الجهاز فورًا">
-          <span class="status-badge ${st.cls}">${escapeHtml(r.status)}</span>
-          
-        </button>
+        <button class="btn-status-quick" onclick="openQuickStatusModalDirect('${safeTargetId}', '${rNum}'); event.stopPropagation();" title="اضغط لتغيير حالة الجهاز فورًا"><span class="status-badge ${st.cls}">${escapeHtml(r.status)}</span></button>
       </td>
       <td class="mono" style="font-weight:700;color:var(--ink);text-align:center;">
         ${totalDue.toLocaleString()} ج.م
@@ -3062,10 +3059,7 @@ function archiveCards(list){
               </div>
             </div>
           </div>
-          <button class="btn-status-quick" onclick="openQuickStatusModalDirect('${safeTargetId}', '${rNum}'); event.stopPropagation();" title="اضغط لتغيير حالة الجهاز فوراً" style="margin:0;">
-            <span class="status-badge ${st.cls}">${escapeHtml(r.status)}</span>
-            
-          </button>
+          <button class="btn-status-quick" onclick="openQuickStatusModalDirect('${safeTargetId}', '${rNum}'); event.stopPropagation();" title="اضغط لتغيير حالة الجهاز فوراً" style="margin:0;"><span class="status-badge ${st.cls}">${escapeHtml(r.status)}</span></button>
         </div>
 
         <div style="margin-top:10px;">

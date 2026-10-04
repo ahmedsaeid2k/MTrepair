@@ -187,7 +187,7 @@ function renderCustomersPage(main){
                 <tr class="selectable-row ${isSelectedCust ? 'selected-row' : ''}" data-cust-name="${escapeHtml(cName)}" data-cust-phone="${escapeHtml(cPhone||'')}" onclick="handleCustomerRowClick('${escapeHtml(cName)}', '${escapeHtml(cPhone||'')}', event)" style="cursor:pointer;">
                   <td>
                     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                      ${isSelectedCust ? '<span class="selected-badge-indicator">' + getSvgIcon('check', 11) + '</span>' : ''}
+                      ${isSelectedCust ? `<span class="selected-badge-indicator">${getSvgIcon('check', 11)}</span>` : ''}
                       ${cTitle ? `<span class="badge" style="background:var(--paper2);color:var(--primary);font-size:11px;font-weight:700;border:1px solid var(--line);padding:1px 6px;border-radius:4px;white-space:nowrap;">${escapeHtml(cTitle)}</span>` : ''}
                       <span style="font-weight:800;font-size:13.5px;color:var(--ink);">${highlightSpotlightMatch(cName, state.custSearch)}</span>
                     </div>
@@ -2708,7 +2708,7 @@ function renderDeviceHistoryCard(rawR){
     <div class="card" style="background:var(--paper3);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px;margin-top:10px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid var(--line);padding-bottom:6px;">
         <div style="display:flex;align-items:center;gap:6px;">
-          <span style="display:inline-flex;align-items:center;">' + getSvgIcon('fileText', 16) + '</span>
+          <span style="display:inline-flex;align-items:center;">${getSvgIcon('fileText', 16)}</span>
           <div>
             <h4 style="margin:0;font-size:13.5px;font-weight:900;color:var(--ink);">سجل الصيانة التراكمي للجهاز</h4>
             <div style="font-size:11px;color:var(--ink-secondary);">إجمالي مرات دخول هذا الجهاز للصيانة: <b class="mono" style="color:var(--primary);">${history.length}</b> ${history.length>1?'(زيارات سابقة وحالية)':'(الدخول الأول)'}</div>
@@ -3041,7 +3041,7 @@ function openInventoryPartPickerModal(onSelect){
     <div class="modal-card" style="max-width: 600px; width: 95%; max-height: 85vh; display:flex; flex-direction:column; background:var(--bg-card, #fff); border-radius:14px; overflow:hidden; border:1px solid var(--border-color, #cbd5e1); box-shadow:0 20px 40px rgba(0,0,0,0.25);">
       <div style="padding:12px 16px; background:linear-gradient(135deg, #1e293b, #0f172a); color:#fff; display:flex; justify-content:space-between; align-items:center;">
         <div style="display:flex; align-items:center; gap:8px;">
-          <span style="display:inline-flex;align-items:center;">' + getSvgIcon('package', 18) + '</span>
+          <span style="display:inline-flex;align-items:center;">${getSvgIcon('package', 18)}</span>
           <div>
             <h3 style="margin:0; font-size:14px; font-weight:800; color:#fff;">اختيار قطعة غيار من رصيد المخزن</h3>
             <div style="font-size:11px; color:#94a3b8;">حدد الصنف لإدراجه في إيصال الصيانة وخصمه آلياً</div>
@@ -3194,7 +3194,7 @@ async function openReceiptDetail(rawR){
         <h3 style="margin:0;font-size:17px;display:flex;align-items:center;gap:6px;">${getSvgIcon("tool", 18)} إيصال صيانة: <span class="mono" style="color:var(--primary);">${escapeHtml(r.receiptNumber)}</span></h3>
         <div style="display:flex;align-items:center;gap:6px;">
           <button type="button" class="btn btn-xs" id="detailAiDiagBtn" style="background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;border:none;border-radius:6px;font-weight:700;display:inline-flex;align-items:center;gap:4px;box-shadow:0 2px 5px rgba(124,58,237,0.25);cursor:pointer;" title="المساعد الذكي لتشخيص العطل واقتراح القياسات">
-            <span>' + getSvgIcon('chart', 14) + '</span> تشخيص الأعطال
+            <span>${getSvgIcon('chart', 14)}</span> تشخيص الأعطال
           </button>
           <button class="btn btn-ghost btn-xs" id="closeDetailBtn">إغلاق</button>
         </div>

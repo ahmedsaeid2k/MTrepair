@@ -234,7 +234,7 @@ function stepDevice(body,d){
       ${priorDevices.length > 0 ? `
         <div style="background:rgba(245,158,11,0.08);border:1px dashed var(--amber);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:14px;">
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-            <span style="display:inline-flex;">' + getSvgIcon('refresh', 16) + '</span>
+            <span style="display:inline-flex;">${getSvgIcon('refresh', 16)}</span>
             <b style="color:var(--amber-text);font-size:12.5px;">أجهزة سابقة لهذا العميل في السجل:</b>
           </div>
           <div style="font-size:11px;color:var(--ink-secondary);margin-bottom:8px;">
@@ -764,7 +764,7 @@ function stepFinance(body,d){
             <input type="text" inputmode="decimal" class="draft-s-price mono" value="${it.price||0}" placeholder="0" style="width:100%;padding:6px 8px;font-size:12.5px;direction:ltr;text-align:right;">
             <span style="font-size:11.5px;color:var(--ink-secondary);">ج.م</span>
           </div>
-          <button type="button" class="btn btn-ghost btn-xs draft-del-s-item" data-sidx="${idx}" style="color:var(--red);padding:4px 8px;" title="حذف هذا البند">' + getSvgIcon('trash', 13) + '</button>
+          <button type="button" class="btn btn-ghost btn-xs draft-del-s-item" data-sidx="${idx}" style="color:var(--red);padding:4px 8px;" title="حذف هذا البند">${getSvgIcon('trash', 13)}</button>
         </div>
       `).join('');
     }
@@ -2688,22 +2688,22 @@ window.openReceiptActionSheet = function(receiptId, receiptNum){
       <div class="action-sheet-section-title">إجراءات وخدمات الصيانة</div>
       <div class="action-sheet-grid">
         <div class="action-sheet-card-btn" style="border-color:rgba(124,58,237,0.35);background:rgba(124,58,237,0.04);" onclick="document.getElementById('receiptActionSheetModal').remove(); openAiDiagnosisModalDirect('${safeTargetId}', '${rNum}');">
-          <div class="act-icon" style="color:#7c3aed;">' + getSvgIcon('chart', 20) + '</div>
+          <div class="act-icon" style="color:#7c3aed;">${getSvgIcon('chart', 20)}</div>
           <div class="act-label" style="color:#6d28d9;">تشخيص العطل (AI)</div>
           <div class="act-desc">تحليل ذكي ومساعد الفني</div>
         </div>
         <div class="action-sheet-card-btn" onclick="document.getElementById('receiptActionSheetModal').remove(); openQuickStatusModalDirect('${safeTargetId}', '${rNum}');">
-          <div class="act-icon">' + getSvgIcon('refresh', 20) + '</div>
+          <div class="act-icon">${getSvgIcon('refresh', 20)}</div>
           <div class="act-label">تغيير الحالة</div>
           <div class="act-desc">تحديث فوري لموقف الجهاز</div>
         </div>
         <div class="action-sheet-card-btn" onclick="document.getElementById('receiptActionSheetModal').remove(); openReceiptDetailModal('${safeTargetId}', '${rNum}');">
-          <div class="act-icon">' + getSvgIcon('edit', 20) + '</div>
+          <div class="act-icon">${getSvgIcon('edit', 20)}</div>
           <div class="act-label">تعديل الإيصال</div>
           <div class="act-desc">تعديل الأعطال والمبالغ</div>
         </div>
         <div class="action-sheet-card-btn" onclick="document.getElementById('receiptActionSheetModal').remove(); openReIntakeModalDirect('${safeTargetId}', '${rNum}');">
-          <div class="act-icon">' + getSvgIcon('tool', 20) + '</div>
+          <div class="act-icon">${getSvgIcon('tool', 20)}</div>
           <div class="act-label">صيانة راجعة</div>
           <div class="act-desc">إعادة إدخال نفس الجهاز</div>
         </div>
@@ -2712,22 +2712,22 @@ window.openReceiptActionSheet = function(receiptId, receiptNum){
       <div class="action-sheet-section-title">الطباعة والمستندات الرسمية</div>
       <div class="action-sheet-grid">
         <div class="action-sheet-card-btn" onclick="document.getElementById('receiptActionSheetModal').remove(); openReceiptPrintDirect('${safeTargetId}', '${rNum}', 'receipt');">
-          <div class="act-icon">' + getSvgIcon('printer', 20) + '</div>
+          <div class="act-icon">${getSvgIcon('printer', 20)}</div>
           <div class="act-label">طباعة A5</div>
           <div class="act-desc">إيصال استلام رسمي</div>
         </div>
         <div class="action-sheet-card-btn" onclick="document.getElementById('receiptActionSheetModal').remove(); openStickerPrintDirect('${safeTargetId}', '${rNum}', event);">
-          <div class="act-icon">' + getSvgIcon('tag', 20) + '</div>
+          <div class="act-icon">${getSvgIcon('tag', 20)}</div>
           <div class="act-label">ملصق الباركود</div>
           <div class="act-desc">طباعة لاصق للجهاز فوراً</div>
         </div>
         <div class="action-sheet-card-btn" onclick="document.getElementById('receiptActionSheetModal').remove(); openStickerOptionsDirect('${safeTargetId}', '${rNum}');">
-          <div class="act-icon">' + getSvgIcon('settings', 20) + '</div>
+          <div class="act-icon">${getSvgIcon('settings', 20)}</div>
           <div class="act-label">مقاس وضبط الملصق</div>
           <div class="act-desc">تغيير مقاس الرول (40×20 / 50×25)</div>
         </div>
         <div class="action-sheet-card-btn" onclick="document.getElementById('receiptActionSheetModal').remove(); convertReceiptToInvoiceDirect('${safeTargetId}', '${rNum}');">
-          <div class="act-icon">' + getSvgIcon('invoices', 20) + '</div>
+          <div class="act-icon">${getSvgIcon('invoices', 20)}</div>
           <div class="act-label">تحويل لفاتورة</div>
           <div class="act-desc">فاتورة ضريبية رسمية</div>
         </div>
@@ -2736,30 +2736,30 @@ window.openReceiptActionSheet = function(receiptId, receiptNum){
       <div class="action-sheet-section-title">التواصل والعمليات</div>
       <div class="action-sheet-grid">
         <div class="action-sheet-card-btn" style="border-color:rgba(16,185,129,0.35);background:rgba(16,185,129,0.04);" onclick="document.getElementById('receiptActionSheetModal').remove(); openCostEstimateModalDirect('${safeTargetId}', '${rNum}');">
-          <div class="act-icon" style="color:#059669;">' + getSvgIcon('wallet', 20) + '</div>
+          <div class="act-icon" style="color:#059669;">${getSvgIcon('wallet', 20)}</div>
           <div class="act-label" style="color:#047857;">عرض ومقايسة التكلفة</div>
           <div class="act-desc">موافقة/رفض ورسوم الفحص</div>
         </div>
         <div class="action-sheet-card-btn" onclick="document.getElementById('receiptActionSheetModal').remove(); openWhatsappDirect('${safeTargetId}', '${rNum}');">
-          <div class="act-icon" style="color:#22c55e;">' + getSvgIcon('message', 20) + '</div>
+          <div class="act-icon" style="color:#22c55e;">${getSvgIcon('message', 20)}</div>
           <div class="act-label">محادثة واتساب</div>
           <div class="act-desc">إرسال التحديث للعميل</div>
         </div>
         ${cPhone && cPhone !== '0000000000' ? `
           <a href="tel:${cPhone}" class="action-sheet-card-btn" style="text-decoration:none;" onclick="document.getElementById('receiptActionSheetModal').remove();">
-            <div class="act-icon" style="color:var(--blue);">' + getSvgIcon('phone', 20) + '</div>
+            <div class="act-icon" style="color:var(--blue);">${getSvgIcon('phone', 20)}</div>
             <div class="act-label">اتصال بالعميل</div>
             <div class="act-desc mono">${escapeHtml(cPhone)}</div>
           </a>
         ` : `
           <div class="action-sheet-card-btn" onclick="document.getElementById('receiptActionSheetModal').remove(); openQuickAddPhoneModal('${escapeHtml(cName)}', '${escapeHtml(cTitle)}', '${safeTargetId}', '${rNum}');">
-            <div class="act-icon" style="color:var(--amber);">' + getSvgIcon('alert', 20) + '</div>
+            <div class="act-icon" style="color:var(--amber);">${getSvgIcon('alert', 20)}</div>
             <div class="act-label">تسجيل هاتف</div>
             <div class="act-desc">إضافة رقم للعميل</div>
           </div>
         `}
         <div class="action-sheet-card-btn" style="border-color:rgba(239,68,68,0.3);background:rgba(239,68,68,0.03);" onclick="document.getElementById('receiptActionSheetModal').remove(); deleteReceiptDirect('${safeTargetId}', '${rNum}');">
-          <div class="act-icon" style="color:var(--red);">' + getSvgIcon('trash', 20) + '</div>
+          <div class="act-icon" style="color:var(--red);">${getSvgIcon('trash', 20)}</div>
           <div class="act-label" style="color:var(--red);">${(state.user && state.user.role === 'admin') ? 'حذف الإيصال' : 'طلب حذف'}</div>
           <div class="act-desc">${(state.user && state.user.role === 'admin') ? 'حذف نهائي' : 'طلب تصريح إداري'}</div>
         </div>
@@ -2841,28 +2841,28 @@ window.openCustomerActionSheet = function(custName, custPhone, custTitle, custEm
       <div class="action-sheet-section-title">العمليات والمعاملات المباشرة</div>
       <div class="action-sheet-grid">
         <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); startNewReceiptForCustomer('${escapeHtml(custName)}', '${escapeHtml(custPhone||'')}', '${escapeHtml(custTitle||'')}');">
-          <div class="act-icon">' + getSvgIcon('plus', 20) + '</div>
+          <div class="act-icon">${getSvgIcon('plus', 20)}</div>
           <div class="act-label">إيصال صيانة جديد</div>
           <div class="act-desc">استلام جهاز للعميل</div>
         </div>
         <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); startNewInvoiceForCustomer('${escapeHtml(custName)}', '${escapeHtml(custPhone||'')}', '${escapeHtml(custTitle||'')}');">
-          <div class="act-icon">' + getSvgIcon('invoices', 20) + '</div>
+          <div class="act-icon">${getSvgIcon('invoices', 20)}</div>
           <div class="act-label">فاتورة جديدة</div>
           <div class="act-desc">إصدار فاتورة بيع/خدمة</div>
         </div>
         <div class="action-sheet-card-btn" style="background:#eff6ff;border-color:#bfdbfe;" onclick="document.getElementById('customerActionSheetModal').remove(); openCustomerStatementModal('${escapeHtml(custName)}', '${escapeHtml(custPhone||'')}');">
-          <div class="act-icon" style="color:#2563eb;">' + getSvgIcon('chart', 20) + '</div>
+          <div class="act-icon" style="color:#2563eb;">${getSvgIcon('chart', 20)}</div>
           <div class="act-label">كشف حساب تفصيلي</div>
           <div class="act-desc">سجل حركات ورصيد العميل</div>
         </div>
         <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); openEditCustomerModal({ title: '${escapeHtml(custTitle||'')}', name: '${escapeHtml(custName)}', phone: '${escapeHtml(custPhone||'')}', email: '${escapeHtml(custEmail||'')}' });">
-          <div class="act-icon">' + getSvgIcon('edit', 20) + '</div>
+          <div class="act-icon">${getSvgIcon('edit', 20)}</div>
           <div class="act-label">تعديل البيانات</div>
           <div class="act-desc">تحديث الهاتف والاسم</div>
         </div>
         ${clientReceipts.length > 1 ? `
           <div class="action-sheet-card-btn" style="background:#f5f3ff;border-color:#ddd6fe;" onclick="document.getElementById('customerActionSheetModal').remove(); openCustomerConsolidatedInvoiceModal('${escapeHtml(custName)}');">
-            <div class="act-icon" style="color:#7c3aed;">' + getSvgIcon('fileText', 20) + '</div>
+            <div class="act-icon" style="color:#7c3aed;">${getSvgIcon('fileText', 20)}</div>
             <div class="act-label">فاتورة مجمعة (${clientReceipts.length})</div>
             <div class="act-desc">فوترة لكافة أجهزة العميل</div>
           </div>
@@ -2873,25 +2873,25 @@ window.openCustomerActionSheet = function(custName, custPhone, custTitle, custEm
       <div class="action-sheet-grid">
         ${custPhone && custPhone !== '0000000000' ? `
           <a href="https://wa.me/${normalizePhoneForWa(custPhone)}" target="_blank" class="action-sheet-card-btn" style="text-decoration:none;" onclick="document.getElementById('customerActionSheetModal').remove();">
-            <div class="act-icon" style="color:#22c55e;">' + getSvgIcon('message', 20) + '</div>
+            <div class="act-icon" style="color:#22c55e;">${getSvgIcon('message', 20)}</div>
             <div class="act-label">واتساب</div>
             <div class="act-desc">محادثة فورية</div>
           </a>
           <a href="tel:${custPhone}" class="action-sheet-card-btn" style="text-decoration:none;" onclick="document.getElementById('customerActionSheetModal').remove();">
-            <div class="act-icon" style="color:var(--blue);">' + getSvgIcon('phone', 20) + '</div>
+            <div class="act-icon" style="color:var(--blue);">${getSvgIcon('phone', 20)}</div>
             <div class="act-label">اتصال مباشر</div>
             <div class="act-desc mono">${escapeHtml(custPhone)}</div>
           </a>
         ` : `
           <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); openQuickAddPhoneModal('${escapeHtml(custName)}', '${escapeHtml(custTitle||'')}');">
-            <div class="act-icon" style="color:var(--amber);">' + getSvgIcon('alert', 20) + '</div>
+            <div class="act-icon" style="color:var(--amber);">${getSvgIcon('alert', 20)}</div>
             <div class="act-label">إضافة هاتف</div>
             <div class="act-desc">تسجيل رقم للتواصل</div>
           </div>
         `}
         ${clientReceipts.length > 0 ? `
           <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); viewCustomerReceiptsInArchive('${escapeHtml(custName)}');">
-            <div class="act-icon" style="color:var(--primary);">' + getSvgIcon('folder', 20) + '</div>
+            <div class="act-icon" style="color:var(--primary);">${getSvgIcon('folder', 20)}</div>
             <div class="act-label">سجل أجهزة العميل</div>
             <div class="act-desc">${clientReceipts.length} جهاز في الأرشيف</div>
           </div>
@@ -2970,7 +2970,7 @@ function archiveTable(list){
       </td>
       <td>
         <div style="display:flex;align-items:center;gap:4px;">
-          ${isSelected ? '<span class="selected-badge-indicator" title="إيصال محدد">' + getSvgIcon('check', 11) + '</span>' : ''}
+          ${isSelected ? `<span class="selected-badge-indicator" title="إيصال محدد">${getSvgIcon('check', 11)}</span>` : ''}
           <span class="mono" style="font-weight:800;font-size:13px;color:var(--primary);direction:ltr;unicode-bidi:isolate;display:inline-block;">${rNum}</span>
         </div>
         ${r.previousReceiptNumber ? `<div style="font-size:10px;color:#b45309;font-weight:700;margin-top:1px;direction:ltr;unicode-bidi:isolate;">صيانة راجعة (#${escapeHtml(r.previousReceiptNumber)})</div>` : ''}
@@ -2987,7 +2987,7 @@ function archiveTable(list){
         ${cPhone && cPhone !== '0000000000' ? `
           <div style="color:var(--ink-secondary);font-size:11.5px;display:flex;align-items:center;gap:4px;margin-top:2px;" class="mono">
             <span>${escapeHtml(cPhone)}</span>
-            <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" style="color:#22c55e;text-decoration:none;font-size:12px;" title="محادثة واتساب" onclick="event.stopPropagation();">' + getSvgIcon('message', 12) + '</a>
+            <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" style="color:#22c55e;text-decoration:none;font-size:12px;" title="محادثة واتساب" onclick="event.stopPropagation();">${getSvgIcon('message', 12)}</a>
           </div>
         ` : `
           <div style="color:var(--amber-text);font-size:10.5px;font-weight:700;cursor:pointer;margin-top:2px;" onclick="openQuickAddPhoneModal('${escapeHtml(cName)}', '${escapeHtml(cTitle)}', '${safeTargetId}', '${rNum}'); event.stopPropagation();">هاتف غير مسجل (اضغط للإضافة)</div>
@@ -3049,7 +3049,7 @@ function archiveCards(list){
             <input type="checkbox" class="receipt-select-cb" value="${safeTargetId}" ${isChecked ? 'checked' : ''} onclick="event.stopPropagation();" onchange="window.toggleReceiptMultiSelection('${safeTargetId}', this.checked, event)" style="cursor:pointer;width:18px;height:18px;margin-top:2px;" />
             <div>
               <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                ${isSelected ? '<span class="selected-badge-indicator">' + getSvgIcon('check', 11) + ' محدد</span>' : ''}
+                ${isSelected ? `<span class="selected-badge-indicator">${getSvgIcon('check', 11)} محدد</span>` : ''}
                 <span class="badge" style="background:var(--paper2);color:var(--primary);font-size:11.5px;font-weight:800;border:1px solid var(--line);padding:2px 8px;border-radius:4px;">
                   إيصال <span class="mono" style="direction:ltr;unicode-bidi:isolate;display:inline-block;font-size:12.5px;">${rNum}</span>
                 </span>
@@ -3085,7 +3085,7 @@ function archiveCards(list){
             ${cPhone && cPhone !== '0000000000' ? `
               <span class="mono" style="color:var(--ink-secondary);font-size:11.5px;display:inline-flex;align-items:center;gap:3px;margin-right:auto;">
                 <span>${escapeHtml(cPhone)}</span>
-                <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" style="color:#22c55e;text-decoration:none;font-size:13px;" title="واتساب">' + getSvgIcon('message', 12) + '</a>
+                <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" style="color:#22c55e;text-decoration:none;font-size:13px;" title="واتساب">${getSvgIcon('message', 12)}</a>
               </span>
             ` : `
               <span style="color:var(--amber-text);font-size:10.5px;font-weight:700;cursor:pointer;margin-right:auto;" onclick="openQuickAddPhoneModal('${escapeHtml(cName)}', '${escapeHtml(cTitle)}', '${safeTargetId}', '${rNum}'); event.stopPropagation();">هاتف غير مسجل</span>

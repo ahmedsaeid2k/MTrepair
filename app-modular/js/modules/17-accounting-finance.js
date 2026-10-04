@@ -131,9 +131,9 @@ function renderFinanceOverview(main){
       <div class="card">
         <h3>وصول سريع للعمليات المحاسبية</h3>
         <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px;">
-          <button class="btn btn-primary" onclick="state.financeTab='accounts';renderFinanceSectionApp(document.getElementById('app'));">' + getSvgIcon('folder', 14) + ' استعراض شجرة الحسابات الكاملة</button>
-          <button class="btn btn-ghost" onclick="state.financeTab='journal';renderFinanceSectionApp(document.getElementById('app'));">' + getSvgIcon('fileText', 14) + ' دفتر القيود اليومية (+ قيد يدوي)</button>
-          <button class="btn btn-ghost" onclick="state.financeTab='trialbalance';renderFinanceSectionApp(document.getElementById('app'));">' + getSvgIcon('scale', 14) + ' عرض ميزان المراجعة العام</button>
+          <button class="btn btn-primary" onclick="state.financeTab='accounts';renderFinanceSectionApp(document.getElementById('app'));">${getSvgIcon('folder', 14)} استعراض شجرة الحسابات الكاملة</button>
+          <button class="btn btn-ghost" onclick="state.financeTab='journal';renderFinanceSectionApp(document.getElementById('app'));">${getSvgIcon('fileText', 14)} دفتر القيود اليومية (+ قيد يدوي)</button>
+          <button class="btn btn-ghost" onclick="state.financeTab='trialbalance';renderFinanceSectionApp(document.getElementById('app'));">${getSvgIcon('scale', 14)} عرض ميزان المراجعة العام</button>
         </div>
       </div>
     </div>
@@ -214,10 +214,10 @@ function renderTreeNodes(mount, filterQ){
         <div style="display:flex;align-items:center;gap:12px;">
           <span class="mono font-bold" style="font-size:13.5px;color:${stats.netBalance<0?'var(--red)':'var(--ink)'};">${stats.netBalance.toLocaleString()} ج.م</span>
           <div style="display:flex;gap:4px;">
-            <button class="btn btn-xs btn-blue" data-accledger="${acc.Code}" title="كشف الحساب">' + getSvgIcon('chart', 12) + ' كشف</button>
-            <button class="btn btn-xs btn-ghost" data-accsub="${acc.Code}" title="إضافة حساب فرعي">' + getSvgIcon('plus', 12) + ' فرعي</button>
-            <button class="btn btn-xs btn-ghost" data-accedit="${acc.Code}" title="تعديل">' + getSvgIcon('edit', 12) + '</button>
-            ${(!hasChildren && state.user.role==='admin') ? `<button class="btn btn-xs btn-red" data-accdel="${acc.Code}" title="حذف">' + getSvgIcon('trash', 12) + '</button>` : ''}
+            <button class="btn btn-xs btn-blue" data-accledger="${acc.Code}" title="كشف الحساب">${getSvgIcon('chart', 12)} كشف</button>
+            <button class="btn btn-xs btn-ghost" data-accsub="${acc.Code}" title="إضافة حساب فرعي">${getSvgIcon('plus', 12)} فرعي</button>
+            <button class="btn btn-xs btn-ghost" data-accedit="${acc.Code}" title="تعديل">${getSvgIcon('edit', 12)}</button>
+            ${(!hasChildren && state.user.role==='admin') ? `<button class="btn btn-xs btn-red" data-accdel="${acc.Code}" title="حذف">${getSvgIcon('trash', 12)}</button>` : ''}
           </div>
         </div>
       </div>
@@ -2073,7 +2073,7 @@ function openUserModal(editUser=null){
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
           <div style="flex:1;">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-              <span style="display:inline-flex;">' + getSvgIcon('shield', 22) + '</span>
+              <span style="display:inline-flex;">${getSvgIcon('shield', 22)}</span>
               <div>
                 <div style="color:#b91c1c;font-weight:900;font-size:14px;line-height:1.4;">
                   صلاحية الحذف والتعديل المباشر (Superuser Authorization)
@@ -2333,7 +2333,7 @@ function renderUsersManagementPage(main){
   if(!canUserAccessSection('users')){
     main.innerHTML = `
       <div class="card" style="text-align:center;padding:40px 20px;border-top:4px solid var(--red);">
-        <div style="display:flex;justify-content:center;margin-bottom:12px;">' + getSvgIcon('alert', 48) + '</div>
+        <div style="display:flex;justify-content:center;margin-bottom:12px;">${getSvgIcon('alert', 48)}</div>
         <h2 style="color:var(--red);margin:0 0 8px;">غير مصرح بالدخول</h2>
         <p style="color:var(--ink-secondary);font-size:14px;max-width:480px;margin:0 auto 16px;">
           عفواً، لا يمتلك حسابك صلاحية إدارة المستخدمين وتخصيص الصلاحيات. يُسمح فقط للمدير العام ومسؤولي النظام المعتمدين بالوصول لهذه الصفحة.
@@ -2435,7 +2435,7 @@ function renderUsersManagementPage(main){
                   <td>
                     <div style="display:flex;align-items:center;gap:6px;">
                       <input type="password" value="${u.Password||''}" id="pass_${idx}" readonly style="width:90px;height:26px;padding:2px 6px;background:var(--paper3);border:1px solid var(--line);font-size:12px;" class="mono">
-                      <button class="btn btn-xs btn-ghost" data-togglepass="pass_${idx}" title="إظهار / إخفاء">' + getSvgIcon('eye', 13) + '</button>
+                      <button class="btn btn-xs btn-ghost" data-togglepass="pass_${idx}" title="إظهار / إخفاء">${getSvgIcon('eye', 13)}</button>
                     </div>
                   </td>
                   <td>
@@ -2450,7 +2450,7 @@ function renderUsersManagementPage(main){
                   <td class="row-actions">
                     <button class="btn btn-xs btn-primary" data-useract="edit" data-uid="${u.ID||u.Name}">${getSvgIcon("edit", 13)} تخصيص الصلاحيات</button>
                     ${u.Name !== 'admin' && (!state.user || state.user.name !== u.Name) ? `
-                      <button class="btn btn-xs btn-red" data-useract="del" data-uid="${u.ID||u.Name}">' + getSvgIcon('trash', 13) + '</button>
+                      <button class="btn btn-xs btn-red" data-useract="del" data-uid="${u.ID||u.Name}">${getSvgIcon('trash', 13)}</button>
                     ` : ''}
                   </td>
                 </tr>
@@ -2866,7 +2866,7 @@ function renderAuditCenterPage(main){
 
         ${pendingRequests.length === 0 ? `
           <div class="card" style="padding:24px;text-align:center;color:var(--ink-secondary);background:var(--paper2);">
-            <div style="margin-bottom:6px;">' + getSvgIcon('check', 24) + '</div>
+            <div style="margin-bottom:6px;">${getSvgIcon('check', 24)}</div>
             <div style="font-weight:700;font-size:13.5px;color:var(--ink);">صندوق التصاريح فارغ!</div>
             <div style="font-size:12px;margin-top:2px;">لا توجد أي طلبات حذف أو تعديلات معلقة من الموظفين حالياً.</div>
           </div>
@@ -2877,7 +2877,7 @@ function renderAuditCenterPage(main){
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
                   <div>
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-                      <span style="display:inline-flex;">' + getSvgIcon('lock', 18) + '</span>
+                      <span style="display:inline-flex;">${getSvgIcon('lock', 18)}</span>
                       <span style="font-weight:900;font-size:14.5px;color:var(--ink);">${escapeHtml(req.action)}</span>
                       <span class="badge" style="background:#fee2e2;color:#b91c1c;font-weight:800;border:1px solid #fecaca;font-size:11px;">${escapeHtml(req.entityType)}</span>
                     </div>

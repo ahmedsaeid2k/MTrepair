@@ -239,7 +239,7 @@ function renderDailyJournalPage(main){
       return `
         <div style="background:#fef2f2;border:1.5px solid #f87171;border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
           <div style="display:flex;align-items:center;gap:8px;">
-            <span style="display:inline-flex;">' + getSvgIcon('alert', 18) + '</span>
+            <span style="display:inline-flex;">${getSvgIcon('alert', 18)}</span>
             <div>
               <div style="font-size:13px;font-weight:800;color:#991b1b;">
                 تنبيه تدقيق الخزينة: تم اكتشاف ${detectedDuplicates.length} دفعة صيانة مكررة مسجلة بالخزينة تؤثر على توازن الرصيد!
@@ -314,9 +314,9 @@ function renderDailyJournalPage(main){
                   <td style="text-align:center;">
                     ${t.canDelete && state.user.role==='admin' ? `
                       ${t.sourceType==='maintenance' ? `
-                        <button class="btn btn-xs btn-red" data-txpaydel="${t.rawPayId}" title="حذف دفعة الصيانة وتصحيح الخزينة والإيصال">' + getSvgIcon('trash', 13) + '</button>
+                        <button class="btn btn-xs btn-red" data-txpaydel="${t.rawPayId}" title="حذف دفعة الصيانة وتصحيح الخزينة والإيصال">${getSvgIcon('trash', 13)}</button>
                       ` : `
-                        <button class="btn btn-xs btn-red" data-txdel="${t.rawExpId}" title="حذف القيد اليدوي">' + getSvgIcon('trash', 13) + '</button>
+                        <button class="btn btn-xs btn-red" data-txdel="${t.rawExpId}" title="حذف القيد اليدوي">${getSvgIcon('trash', 13)}</button>
                       `}
                     ` : ''}
                   </td>
@@ -745,7 +745,7 @@ function renderCashDrawerPage(main){
     ` : `
       <div class="card" style="padding:10px 14px;margin-bottom:14px;background:linear-gradient(135deg, rgba(245,158,11,0.08), rgba(239,68,68,0.04));border:1px dashed rgba(245,158,11,0.5);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
         <div style="display:flex;align-items:center;gap:10px;">
-          <span style="display:inline-flex;">' + getSvgIcon('alert', 18) + '</span>
+          <span style="display:inline-flex;">${getSvgIcon('alert', 18)}</span>
           <div>
             <div style="font-weight:800;font-size:12.5px;color:var(--ink);">لا توجد وردية كاشير مفتوحة حالياً بالدرج</div>
             <div style="font-size:11px;color:var(--ink-secondary);">افتح وردية جديدة لتعيين عهدة النقدية ومتابعة المبيعات والتقفيل اليومي بدقة.</div>
@@ -897,7 +897,7 @@ function renderCashDrawerPage(main){
                   <td style="font-size:11.5px;">${t.by}</td>
                   <td style="text-align:center;">
                     ${t.canDelete && (state.user && (state.user.role==='admin' || !!state.user.superuser)) ? `
-                      <button class="btn btn-xs btn-red" data-txdel="${t.rawExpId}" title="حذف القيد اليدوي">' + getSvgIcon('trash', 13) + '</button>
+                      <button class="btn btn-xs btn-red" data-txdel="${t.rawExpId}" title="حذف القيد اليدوي">${getSvgIcon('trash', 13)}</button>
                     ` : ''}
                   </td>
                 </tr>

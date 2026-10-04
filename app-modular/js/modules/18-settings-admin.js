@@ -216,7 +216,7 @@ function renderAppearanceSettings(main){
           <div class="accent-color-btn" data-color="${c.hex}" style="display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:var(--radius-sm);border:2px solid ${currentPrimary===c.hex?c.hex:'var(--line-strong)'};background:var(--paper2);cursor:pointer;box-shadow:var(--shadow-sm);transition:all 0.15s ease;">
             <span style="width:20px;height:20px;border-radius:50%;background:${c.hex};display:inline-block;box-shadow:0 2px 6px rgba(0,0,0,0.2);"></span>
             <span style="font-size:12px;font-weight:700;color:var(--ink);">${c.name}</span>
-            ${currentPrimary===c.hex?'' + getSvgIcon('check', 12) + '':''}
+            ${currentPrimary===c.hex?getSvgIcon('check', 12):''}
           </div>
         `).join('')}
       </div>
@@ -484,7 +484,7 @@ function renderPrintersSettings(main){
         <div style="background:var(--paper);border:1.5px solid var(--line);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;justify-content:space-between;">
           <div>
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-              <span style="display:inline-flex;">' + getSvgIcon('pos', 24) + '</span>
+              <span style="display:inline-flex;">${getSvgIcon('pos', 24)}</span>
               <div>
                 <b style="font-size:13.5px;display:block;">1. طابعة الريسيت / الكاشير</b>
                 <span class="status-badge st-done" style="font-size:10.5px;">رول حراري عريض ${r.paperSize||'80mm'}</span>
@@ -504,7 +504,7 @@ function renderPrintersSettings(main){
         <div style="background:var(--paper);border:1.5px solid var(--line);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;justify-content:space-between;">
           <div>
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-              <span style="display:inline-flex;">' + getSvgIcon('tag', 24) + '</span>
+              <span style="display:inline-flex;">${getSvgIcon('tag', 24)}</span>
               <div>
                 <b style="font-size:13.5px;display:block;">2. طابعة ملصقات الباركود</b>
                 <span class="status-badge st-repair" style="font-size:10.5px;">رول ملصقات ${b.defaultSize||'50x30'} مم</span>
@@ -524,7 +524,7 @@ function renderPrintersSettings(main){
         <div style="background:var(--paper);border:1.5px solid var(--line);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;justify-content:space-between;">
           <div>
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-              <span style="display:inline-flex;">' + getSvgIcon('fileText', 24) + '</span>
+              <span style="display:inline-flex;">${getSvgIcon('fileText', 24)}</span>
               <div>
                 <b style="font-size:13.5px;display:block;">3. طابعة الليزر والمستندات العادية</b>
                 <span class="status-badge st-check" style="font-size:10.5px;">أوراق A4 / A5</span>
@@ -2216,7 +2216,7 @@ function renderAiSettings(main){
     <div class="card" style="border-right:4px solid #7c3aed;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
         <div style="display:flex;align-items:center;gap:8px;">
-          <span style="display:inline-flex;">' + getSvgIcon('chart', 22) + '</span>
+          <span style="display:inline-flex;">${getSvgIcon('chart', 22)}</span>
           <h3 style="margin:0;font-size:16px;">إعدادات وتكامل Google Gemini API</h3>
         </div>
         <span class="status-badge ${hasKey ? 'st-done' : 'st-repair'}">

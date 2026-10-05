@@ -330,6 +330,241 @@ function renderAppHtml() {
     .setTitle('ميكروERP');
 }
 
+/**
+ * Unified Read Action Dispatcher
+ * Serves read queries for both doGet (legacy) and doPost (modern, URL-token free).
+ * S13: Strips Gemini API key and any credentials from non-admin responses.
+ */
+function executeReadAction(action, session, params) {
+  const isAdmin = (session.role === 'admin' || !!session.superuser);
+
+  if (action === 'getMe') {
+    return jsonOut({
+      ok: true,
+      name: session.name,
+      role: session.role,
+      sections: session.sections || '',
+      superuser: !!session.superuser
+    });
+  }
+
+  if (action === 'getAuditLog') {
+    if (!isAdmin) return jsonOut({ error: 'سجل الرقابة متاح للمدير فقط' }, 403);
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sh = ss.getSheetByName('AuditLog');
+    if (!sh || sh.getLastRow() < 2) return jsonOut({ ok: true, logs: [] });
+    const values = sh.getDataRange().getValues();
+    const headers = values[0].map(h => String(h || '').trim());
+    const logs = [];
+    for (let i = 1; i < values.length; i++) {
+      const row = values[i];
+      const item = {};
+      headers.forEach((h, col) => { item[h] = row[col]; });
+      logs.push(item);
+    }
+    return jsonOut({ ok: true, logs: logs });
+  }
+
+  if (action === 'getBootstrapData') {
+    const receipts = getAllRows(SHEET_RECEIPTS);
+    const customers = getAllRows(SHEET_CUSTOMERS);
+    const technicians = getAllRows(SHEET_TECHNICIANS);
+    const rawSettings = getAllRows(SHEET_SETTINGS);
+    const settings = {};
+    rawSettings.forEach(r => {
+      const k = String(r.Key || '');
+      // S13: Strip Gemini API key and secrets from non-admin bootstrap
+      if (!isAdmin && (k.toLowerCase().includes('gemini') || k.toLowerCase().includes('apikey') || k.toLowerCase().includes('secret'))) {
+        return;
+      }
+      settings[r.Key] = r.Value;
+    });
+    const payments = getAllRows(SHEET_PAYMENTS);
+    const inventory = getAllRows(SHEET_INVENTORY);
+    const sales = getAllRows(SHEET_SALES);
+    const quotations = getAllRows(SHEET_QUOTATIONS);
+    const services = getAllRows(SHEET_SERVICES);
+    const purchases = getAllRows(SHEET_PURCHASES);
+    const suppliers = getAllRows(SHEET_SUPPLIERS);
+    const expenses = getAllRows(SHEET_EXPENSES);
+    const accounts = getAllRows(SHEET_ACCOUNTS);
+    const journalEntries = getAllRows(SHEET_JOURNAL);
+    const invoices = getAllRows(SHEET_INVOICES);
+    const users = getAllRows(SHEET_USERS).map(u => ({
+      Name: u.Name,
+      Role: u.Role,
+      Sections: u.Sections || '',
+      Superuser: !!u.Superuser
+    }));
+    const returns = getAllRows(SHEET_RETURNS);
+    const serials = getAllRows(SHEET_SERIALS);
+    const supplierPayments = getAllRows(SHEET_SUPPLIER_PAYMENTS);
+
+    return jsonOut({
+      ok: true,
+      timestamp: new Date().toISOString(),
+      users,
+      receipts,
+      customers,
+      technicians,
+      settings,
+      payments,
+      inventory,
+      sales,
+      quotations,
+      services,
+      purchases,
+      suppliers,
+      expenses,
+      accounts,
+      journalEntries,
+      invoices,
+      returns,
+      serials,
+      supplierPayments
+    });
+  }
+
+  if (action === 'getUsers') {
+    if (!isAdmin) return jsonOut({ error: 'غير مصرح' }, 403);
+    const users = getAllRows(SHEET_USERS).map(u => ({
+      ID: u.ID,
+      Name: u.Name,
+      Role: u.Role,
+      Sections: u.Sections || '',
+      Superuser: !!u.Superuser
+    }));
+    return jsonOut(users);
+  }
+
+  if (action === 'getSettings') {
+    const rows = getAllRows(SHEET_SETTINGS);
+    const obj = {};
+    rows.forEach(r => {
+      const k = String(r.Key || '');
+      // S13: Strip Gemini API key and secrets from non-admin settings
+      if (!isAdmin && (k.toLowerCase().includes('gemini') || k.toLowerCase().includes('apikey') || k.toLowerCase().includes('secret'))) {
+        return;
+      }
+      obj[r.Key] = r.Value;
+    });
+    return jsonOut(obj);
+  }
+
+  if (action === 'getReceipts') return jsonOut(getAllRows(SHEET_RECEIPTS));
+  if (action === 'getCustomers') return jsonOut(getAllRows(SHEET_CUSTOMERS));
+  if (action === 'getTechnicians') return jsonOut(getAllRows(SHEET_TECHNICIANS));
+  if (action === 'getPayments') {
+    let rows = getAllRows(SHEET_PAYMENTS);
+    if (params && params.receiptId) rows = rows.filter(r => String(r.ReceiptID) === String(params.receiptId));
+    return jsonOut(rows);
+  }
+  if (action === 'getInventory') return jsonOut(getAllRows(SHEET_INVENTORY));
+  if (action === 'getSales') return jsonOut(getAllRows(SHEET_SALES));
+  if (action === 'getReturns') return jsonOut(getAllRows(SHEET_RETURNS));
+  if (action === 'getQuotations') return jsonOut(getAllRows(SHEET_QUOTATIONS));
+  if (action === 'getServices') return jsonOut(getAllRows(SHEET_SERVICES));
+  if (action === 'getPurchases') return jsonOut(getAllRows(SHEET_PURCHASES));
+  if (action === 'getSuppliers') return jsonOut(getAllRows(SHEET_SUPPLIERS));
+  if (action === 'getSerials') {
+    let rows = getAllRows(SHEET_SERIALS);
+    if (params && params.itemId) rows = rows.filter(r => String(r.ItemID) === String(params.itemId));
+    if (params && params.status) rows = rows.filter(r => r.Status === params.status);
+    return jsonOut(rows);
+  }
+  if (action === 'getSupplierPayments') return jsonOut(getAllRows(SHEET_SUPPLIER_PAYMENTS));
+  if (action === 'getExpenses') return jsonOut(getAllRows(SHEET_EXPENSES));
+  if (action === 'getAccounts') return jsonOut(getAllRows(SHEET_ACCOUNTS));
+  if (action === 'getJournalEntries') return jsonOut(getAllRows(SHEET_JOURNAL));
+  if (action === 'getInvoices') return jsonOut(getAllRows(SHEET_INVOICES));
+
+  return null;
+}
+
+/**
+ * Public Customer Tracking Portal Handler
+ * Sanitizes customer details and masks personal info. No auth required.
+ */
+function handleTrackReceipt(tokenParam) {
+  const qToken = String(tokenParam || '').trim();
+  if (!qToken) return jsonOut({ error: 'رمز التتبع مطلوب' }, 400);
+
+  const sh = getSheet(SHEET_RECEIPTS);
+  const headers = sh.getRange(1, 1, 1, Math.max(1, sh.getLastColumn())).getValues()[0].map(h => String(h || '').trim());
+  const tokenCol = headers.indexOf('TrackToken');
+  const rNumCol = headers.indexOf('ReceiptNumber');
+
+  let matchedRow = null;
+  const values = sh.getDataRange().getValues();
+
+  // 1. Primary lookup: Match exact 20-char TrackToken
+  if (tokenCol !== -1) {
+    for (let i = 1; i < values.length; i++) {
+      if (String(values[i][tokenCol] || '').trim() === qToken) {
+        matchedRow = values[i];
+        break;
+      }
+    }
+  }
+
+  // 2. Strict Fallback for legacy receipts not yet backfilled with TrackToken
+  // Only match strictly formatted receipt numbers (e.g. MT-2026-0001)
+  if (!matchedRow && rNumCol !== -1 && /^MT-\d{4}-\d+$/i.test(qToken)) {
+    for (let i = 1; i < values.length; i++) {
+      if (String(values[i][rNumCol] || '').trim().toUpperCase() === qToken.toUpperCase()) {
+        matchedRow = values[i];
+        // Auto backfill TrackToken if column exists
+        if (tokenCol !== -1 && !values[i][tokenCol]) {
+          const newToken = (Utilities.getUuid() + Utilities.getUuid()).replace(/[^a-zA-Z0-9]/g, '').slice(0, 20);
+          sh.getRange(i + 1, tokenCol + 1).setValue(newToken);
+        }
+        break;
+      }
+    }
+  }
+
+  if (!matchedRow) return jsonOut({ found: false }, 404);
+
+  const r = {};
+  headers.forEach((h, i) => r[h] = matchedRow[i]);
+
+  // Calculate customer-facing totals without exposing internal costs, partsCost, or wholesale margins
+  const customerTotal = Number(r.Cost || 0);
+  const deposit = Number(r.Deposit || 0);
+  const refunded = Number(r.Refunded || 0);
+  const remainingDue = Math.max(0, customerTotal - deposit + refunded);
+  const isPaid = (customerTotal > 0 && remainingDue <= 0) || String(r.Paid || '').toUpperCase() === 'TRUE';
+
+  // Mask customer name (e.g. 'محمد ***')
+  const rawName = String(r.CustomerName || '').trim();
+  const maskedCustName = rawName ? (rawName.split(' ')[0] + ' ***') : 'عميل كريم';
+
+  return jsonOut({
+    found: true,
+    receipt: {
+      receiptNumber: r.ReceiptNumber,
+      trackToken: r.TrackToken || '',
+      date: r.Date,
+      customer: { name: maskedCustName },
+      device: {
+        category: r.Category || '',
+        brand: r.Brand || '',
+        brandOther: '',
+        model: r.Model || '',
+        accessories: r.Accessories || 'بدون ملحقات'
+      },
+      faults: (r.Faults ? String(r.Faults).split('،') : []),
+      faultNotes: r.FaultNotes || '',
+      status: r.Status || 'قيد الفحص',
+      totalCost: customerTotal,
+      deposit: deposit,
+      remaining: remainingDue,
+      isPaid: isPaid,
+      deliveryDate: r.DeliveryDate || ''
+    }
+  });
+}
+
 function doGet(e) {
   const action = e.parameter.action;
   if (!action) {
@@ -345,83 +580,8 @@ function doGet(e) {
   try {
     // ✅ PUBLIC endpoint — no auth required (customer public tracking portal)
     if (action === 'trackReceipt') {
-      const qToken = String(e.parameter.t || e.parameter.token || e.parameter.receiptNumber || e.parameter.r || '').trim();
-      if (!qToken) return jsonOut({ error: 'رمز التتبع مطلوب' }, 400);
-
-      const sh = getSheet(SHEET_RECEIPTS);
-      const headers = sh.getRange(1, 1, 1, Math.max(1, sh.getLastColumn())).getValues()[0].map(h => String(h || '').trim());
-      const tokenCol = headers.indexOf('TrackToken');
-      const rNumCol = headers.indexOf('ReceiptNumber');
-
-      let matchedRow = null;
-      const values = sh.getDataRange().getValues();
-
-      // 1. Primary lookup: Match exact 20-char TrackToken
-      if (tokenCol !== -1) {
-        for (let i = 1; i < values.length; i++) {
-          if (String(values[i][tokenCol] || '').trim() === qToken) {
-            matchedRow = values[i];
-            break;
-          }
-        }
-      }
-
-      // 2. Strict Fallback for legacy receipts not yet backfilled with TrackToken
-      // Only match strictly formatted receipt numbers (e.g. MT-2026-0001)
-      if (!matchedRow && rNumCol !== -1 && /^MT-\d{4}-\d+$/i.test(qToken)) {
-        for (let i = 1; i < values.length; i++) {
-          if (String(values[i][rNumCol] || '').trim().toUpperCase() === qToken.toUpperCase()) {
-            matchedRow = values[i];
-            // Auto backfill TrackToken if column exists
-            if (tokenCol !== -1 && !values[i][tokenCol]) {
-              const newToken = (Utilities.getUuid() + Utilities.getUuid()).replace(/[^a-zA-Z0-9]/g, '').slice(0, 20);
-              sh.getRange(i + 1, tokenCol + 1).setValue(newToken);
-            }
-            break;
-          }
-        }
-      }
-
-      if (!matchedRow) return jsonOut({ found: false }, 404);
-
-      const r = {};
-      headers.forEach((h, i) => r[h] = matchedRow[i]);
-
-      // Calculate customer-facing totals without exposing internal costs, partsCost, or wholesale margins
-      const customerTotal = Number(r.Cost || 0);
-      const deposit = Number(r.Deposit || 0);
-      const refunded = Number(r.Refunded || 0);
-      const remainingDue = Math.max(0, customerTotal - deposit + refunded);
-      const isPaid = (customerTotal > 0 && remainingDue <= 0) || String(r.Paid || '').toUpperCase() === 'TRUE';
-
-      // Mask customer name (e.g. 'محمد ***')
-      const rawName = String(r.CustomerName || '').trim();
-      const maskedCustName = rawName ? (rawName.split(' ')[0] + ' ***') : 'عميل كريم';
-
-      return jsonOut({
-        found: true,
-        receipt: {
-          receiptNumber: r.ReceiptNumber,
-          trackToken: r.TrackToken || '',
-          date: r.Date,
-          customer: { name: maskedCustName },
-          device: {
-            category: r.Category || '',
-            brand: r.Brand || '',
-            brandOther: '',
-            model: r.Model || '',
-            accessories: r.Accessories || 'بدون ملحقات'
-          },
-          faults: (r.Faults ? String(r.Faults).split('،') : []),
-          faultNotes: r.FaultNotes || '',
-          status: r.Status || 'قيد الفحص',
-          totalCost: customerTotal,
-          deposit: deposit,
-          remaining: remainingDue,
-          isPaid: isPaid,
-          deliveryDate: r.DeliveryDate || ''
-        }
-      });
+      const qToken = e.parameter.t || e.parameter.token || e.parameter.receiptNumber || e.parameter.r || '';
+      return handleTrackReceipt(qToken);
     }
 
     // 🔒 All remaining GET endpoints require a valid Server-Issued Session Token
@@ -430,139 +590,9 @@ function doGet(e) {
       return jsonOut({ error: 'جلسة العمل غير صالحة أو منتهية، يرجى تسجيل الدخول مجدداً (Session Expired)', sessionExpired: true }, 401);
     }
 
-    // 🔒 Current Authenticated Identity Endpoint
-    if (action === 'getMe') {
-      return jsonOut({
-        ok: true,
-        name: session.name,
-        role: session.role,
-        sections: session.sections || '',
-        superuser: !!session.superuser
-      });
-    }
+    const readResult = executeReadAction(action, session, e.parameter);
+    if (readResult) return readResult;
 
-    // 🔒 Audit Log Retrieval (Admin only)
-    if (action === 'getAuditLog') {
-      const role = String(session.role || '').toLowerCase();
-      if (role !== 'admin' && !session.superuser) {
-        return jsonOut({ error: 'سجل الرقابة متاح للمدير فقط' }, 403);
-      }
-      const ss = SpreadsheetApp.getActiveSpreadsheet();
-      const sh = ss.getSheetByName('AuditLog');
-      if (!sh || sh.getLastRow() < 2) {
-        return jsonOut({ ok: true, logs: [] });
-      }
-      const values = sh.getDataRange().getValues();
-      const headers = values[0].map(h => String(h || '').trim());
-      const logs = [];
-      for (let i = 1; i < values.length; i++) {
-        const row = values[i];
-        const item = {};
-        headers.forEach((h, col) => { item[h] = row[col]; });
-        logs.push(item);
-      }
-      return jsonOut({ ok: true, logs: logs });
-    }
-
-    // 🚀 Unified Bootstrap Endpoint: Reads all sheets in a single roundtrip (93% request reduction)
-    if (action === 'getBootstrapData') {
-      const receipts = getAllRows(SHEET_RECEIPTS);
-      const customers = getAllRows(SHEET_CUSTOMERS);
-      const technicians = getAllRows(SHEET_TECHNICIANS);
-      const rawSettings = getAllRows(SHEET_SETTINGS);
-      const settings = {};
-      rawSettings.forEach(r => settings[r.Key] = r.Value);
-      const payments = getAllRows(SHEET_PAYMENTS);
-      const inventory = getAllRows(SHEET_INVENTORY);
-      const sales = getAllRows(SHEET_SALES);
-      const quotations = getAllRows(SHEET_QUOTATIONS);
-      const services = getAllRows(SHEET_SERVICES);
-      const purchases = getAllRows(SHEET_PURCHASES);
-      const suppliers = getAllRows(SHEET_SUPPLIERS);
-      const expenses = getAllRows(SHEET_EXPENSES);
-      const accounts = getAllRows(SHEET_ACCOUNTS);
-      const journalEntries = getAllRows(SHEET_JOURNAL);
-      const invoices = getAllRows(SHEET_INVOICES);
-      const users = getAllRows(SHEET_USERS).map(u => ({
-        Name: u.Name,
-        Role: u.Role,
-        Sections: u.Sections || '',
-        Superuser: !!u.Superuser
-      }));
-
-      const returns = getAllRows(SHEET_RETURNS);
-      const serials = getAllRows(SHEET_SERIALS);
-      const supplierPayments = getAllRows(SHEET_SUPPLIER_PAYMENTS);
-
-      return jsonOut({
-        ok: true,
-        timestamp: new Date().toISOString(),
-        users,
-        receipts,
-        customers,
-        technicians,
-        settings,
-        payments,
-        inventory,
-        sales,
-        quotations,
-        services,
-        purchases,
-        suppliers,
-        expenses,
-        accounts,
-        journalEntries,
-        invoices,
-        returns,
-        serials,
-        supplierPayments
-      });
-    }
-
-    if (action === 'getUsers') {
-      const users = getAllRows(SHEET_USERS).map(u => ({
-        ID: u.ID,
-        Name: u.Name,
-        Role: u.Role,
-        Sections: u.Sections || '',
-        Superuser: !!u.Superuser
-      }));
-      return jsonOut(users);
-    }
-    if (action === 'getReceipts') return jsonOut(getAllRows(SHEET_RECEIPTS));
-    if (action === 'getCustomers') return jsonOut(getAllRows(SHEET_CUSTOMERS));
-    if (action === 'getTechnicians') return jsonOut(getAllRows(SHEET_TECHNICIANS));
-    if (action === 'getSettings') {
-      const rows = getAllRows(SHEET_SETTINGS);
-      const obj = {};
-      rows.forEach(r => obj[r.Key] = r.Value);
-      return jsonOut(obj);
-    }
-    if (action === 'getPayments') {
-      let rows = getAllRows(SHEET_PAYMENTS);
-      if (e.parameter.receiptId) rows = rows.filter(r => String(r.ReceiptID) === String(e.parameter.receiptId));
-      return jsonOut(rows);
-    }
-    if (action === 'getInventory') return jsonOut(getAllRows(SHEET_INVENTORY));
-    if (action === 'getSales') return jsonOut(getAllRows(SHEET_SALES));
-    if (action === 'getReturns') return jsonOut(getAllRows(SHEET_RETURNS));
-    if (action === 'getQuotations') return jsonOut(getAllRows(SHEET_QUOTATIONS));
-    if (action === 'getServices') return jsonOut(getAllRows(SHEET_SERVICES));
-    if (action === 'getPurchases') return jsonOut(getAllRows(SHEET_PURCHASES));
-    if (action === 'getSuppliers') return jsonOut(getAllRows(SHEET_SUPPLIERS));
-    if (action === 'getSerials') {
-      let rows = getAllRows(SHEET_SERIALS);
-      if (e.parameter.itemId) rows = rows.filter(r => String(r.ItemID) === String(e.parameter.itemId));
-      if (e.parameter.status) rows = rows.filter(r => r.Status === e.parameter.status);
-      return jsonOut(rows);
-    }
-    if (action === 'getSupplierPayments') return jsonOut(getAllRows(SHEET_SUPPLIER_PAYMENTS));
-    if (action === 'getExpenses') return jsonOut(getAllRows(SHEET_EXPENSES));
-    if (action === 'getAccounts') return jsonOut(getAllRows(SHEET_ACCOUNTS));
-    if (action === 'getJournalEntries') return jsonOut(getAllRows(SHEET_JOURNAL));
-    if (action === 'getInvoices') return jsonOut(getAllRows(SHEET_INVOICES));
-    // NOTE: GET-based login is intentionally removed — passwords must never appear in URL or server logs.
-    //       Login is handled exclusively via POST (doPost → action === 'login').
     return jsonOut({ error: 'إجراء غير معروف' }, 400);
   } catch (err) {
     return jsonOut({ error: err.message }, 500);
@@ -593,6 +623,12 @@ function doPost(e) {
 
   try {
     const action = body.action;
+
+    // Public: Track receipt via POST as well
+    if (action === 'trackReceipt') {
+      const qToken = body.t || body.token || body.receiptNumber || body.r || '';
+      return handleTrackReceipt(qToken);
+    }
 
     // 🔓 1. LOGIN (Public: Credentials exchange for Server-Issued Session Token)
     if (action === 'login') {
@@ -678,6 +714,10 @@ function doPost(e) {
     if (!session) {
       return jsonOut({ error: 'جلسة العمل غير صالحة أو منتهية، يرجى تسجيل الدخول مجدداً (Session Expired)', sessionExpired: true }, 401);
     }
+
+    // Support read actions over POST (prevents sessionToken in URL query strings)
+    const readResult = executeReadAction(action, session, body);
+    if (readResult) return readResult;
 
     // Secure Identity: Server-authenticated user replaces any client-supplied body.user
     const actorUser = session.name;
@@ -1536,27 +1576,6 @@ function doPost(e) {
       deleteRow(SHEET_USERS, String(body.id || body.name), 'Name');
       logAudit(body.id || body.name, body.user, 'حذف مستخدم: ' + (body.id || body.name));
       return jsonOut({ ok: true });
-    }
-    if (action === 'getAuditLog') {
-      const role = String(session.role || '').toLowerCase();
-      if (role !== 'admin' && !session.superuser) {
-        return jsonOut({ error: 'سجل الرقابة متاح للمدير فقط' }, 403);
-      }
-      const ss = SpreadsheetApp.getActiveSpreadsheet();
-      const sh = ss.getSheetByName('AuditLog');
-      if (!sh || sh.getLastRow() < 2) {
-        return jsonOut({ ok: true, logs: [] });
-      }
-      const values = sh.getDataRange().getValues();
-      const headers = values[0].map(h => String(h || '').trim());
-      const logs = [];
-      for (let i = 1; i < values.length; i++) {
-        const row = values[i];
-        const item = {};
-        headers.forEach((h, col) => { item[h] = row[col]; });
-        logs.push(item);
-      }
-      return jsonOut({ ok: true, logs: logs });
     }
     if (action === 'saveAuditLog') {
       // Security audit trail from client — restricted to whitelisted actions only, no free-form text injection

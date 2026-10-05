@@ -2374,8 +2374,14 @@ function renderAiSettings(main){
 
       if(!state.settings) state.settings = {};
       state.settings.gemini = newSettings;
-      setCache('settings', state.settings);
-      localStorage.setItem('microtech_gemini_api_key', k);
+      // S13: Do not store the plain API key in persistent localStorage cache
+      const diskSafeSettings = JSON.parse(JSON.stringify(state.settings));
+      if (diskSafeSettings.gemini && diskSafeSettings.gemini.apiKey) {
+        delete diskSafeSettings.gemini.apiKey;
+      }
+      setCache('settings', diskSafeSettings);
+      sessionStorage.setItem('microtech_gemini_api_key', k);
+      try { localStorage.removeItem('microtech_gemini_api_key'); } catch(e){}
 
       saveBtn.disabled = true;
       saveBtn.textContent = 'جاري الحفظ...';

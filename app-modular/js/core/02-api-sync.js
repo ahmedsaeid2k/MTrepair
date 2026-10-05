@@ -48,8 +48,9 @@ function saveSyncQueue(q){
 }
 function addToSyncQueue(action, data){
   const q = getSyncQueue();
-  const token = getSessionToken();
-  const itemData = { ...(data || {}), ...(token ? { sessionToken: token } : {}) };
+  // Strip sessionToken from offline queue storage in localStorage to prevent token exposure on disk
+  const itemData = { ...(data || {}) };
+  delete itemData.sessionToken;
   const serialized = JSON.stringify({action, data: itemData});
   const alreadyInQueue = q.some(item => JSON.stringify({action: item.action, data: item.data}) === serialized);
   if(alreadyInQueue){
@@ -161,12 +162,17 @@ async function apiGet(action, params){
   // 3. Make the actual network request
   _inflightReqs[swrKey] = networkThrottler.schedule(async () => {
     try {
-      // Send Server-Issued Session Token for all authenticated requests (trackReceipt is public)
+      // S13: Send session token in POST payload to prevent token exposure in URL query strings
       const token = getSessionToken();
-      const q = new URLSearchParams({action, ...(token ? {sessionToken: token} : {}), ...(params||{})});
+      const payload = { action, ...(token ? {sessionToken: token} : {}), ...(params||{}) };
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 20000);
-      const res = await fetch(`${API_URL}?${q.toString()}`, { signal: controller.signal });
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: {'Content-Type': 'text/plain;charset=utf-8'},
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
       clearTimeout(timeout);
       const json = await res.json();
       if(json && json.sessionExpired){

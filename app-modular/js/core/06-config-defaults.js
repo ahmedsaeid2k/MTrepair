@@ -114,10 +114,23 @@ const DEFAULT_GEMINI_SETTINGS = {
 };
 
 function getGeminiSettings(){
-  const s = (state.settings && state.settings.gemini) || {};
+  let s = (state.settings && state.settings.gemini) || {};
+  if (typeof s === 'string') {
+    try { s = JSON.parse(s); } catch(e){ s = {}; }
+  }
   return {
     enabled: s.enabled !== false,
-    apiKey: (s.apiKey || (function(){ try{ return localStorage.getItem('microtech_gemini_api_key'); }catch(e){ return ''; } })() || '').trim(),
+    apiKey: (s.apiKey || (function(){
+      try {
+        // S13: Purge any legacy key from persistent disk storage (localStorage)
+        const legacyKey = localStorage.getItem('microtech_gemini_api_key');
+        if (legacyKey) {
+          sessionStorage.setItem('microtech_gemini_api_key', legacyKey);
+          localStorage.removeItem('microtech_gemini_api_key');
+        }
+        return sessionStorage.getItem('microtech_gemini_api_key') || '';
+      } catch(e){ return ''; }
+    })() || '').trim(),
     model: s.model || 'gemini-3.5-flash',
     temperature: s.temperature ?? 0.7,
     systemInstruction: s.systemInstruction || DEFAULT_GEMINI_SETTINGS.systemInstruction

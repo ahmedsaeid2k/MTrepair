@@ -1045,7 +1045,27 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
     if(btn){ btn.disabled = true; btn.textContent = 'جارٍ تسجيل العملية...'; }
 
     try {
-      const cartSnapshot = [...cart];
+      // Capture items snapshot with unit cost at sale time (costAtSale) [F4]
+      let hasZeroCost = false;
+      const zeroCostItems = [];
+      const cartSnapshot = cart.map(c => {
+        let cost = 0;
+        if(c.itemId && !String(c.itemId).startsWith('srv_')){
+          const it = (state.inventory||[]).find(x => String(x.ID) === String(c.itemId));
+          if(it && Number(it.PurchasePrice) > 0){
+            cost = Number(it.PurchasePrice);
+          } else if(c.itemId && !String(c.itemId).startsWith('srv_')){
+            hasZeroCost = true;
+            zeroCostItems.push(c.name);
+          }
+        }
+        return {
+          ...c,
+          costAtSale: cost,
+          purchasePrice: cost
+        };
+      });
+
       // Update local inventory quantities immediately
       for(const c of cartSnapshot){
         if(c.itemId && !String(c.itemId).startsWith('srv_')){
@@ -1055,8 +1075,19 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
       }
       setCache('inventory', state.inventory);
 
-      const itemsSummary = cart.map(c => `${c.name} × ${c.qty} (${(c.qty*c.price).toLocaleString()} ج.م)`).join('، ');
-      const itemsJson = JSON.stringify(cart.map(c => ({ name: c.name, qty: c.qty, price: c.price, itemId: c.itemId })));
+      if(hasZeroCost){
+        recordAuditLog('تحذير تكلفة المخزون', 'المبيعات', `تم بيع أصناف بدون سعر تكلفة مسجل: (${zeroCostItems.join('، ')}) - تم تسجيل COGS بـ 0 والتنبيه لتحديث سعر التكلفة بالمخزن`, customerName);
+      }
+
+      const itemsSummary = cartSnapshot.map(c => `${c.name} × ${c.qty} (${(c.qty*c.price).toLocaleString()} ج.م)`).join('، ');
+      const itemsJson = JSON.stringify(cartSnapshot.map(c => ({
+        name: c.name,
+        qty: c.qty,
+        price: c.price,
+        itemId: c.itemId,
+        costAtSale: c.costAtSale,
+        purchasePrice: c.purchasePrice
+      })));
       
       const paidAmount = ps.amountPaid !== '' ? Number(ps.amountPaid) : grandTotal;
       const fullCustName = customerTitle ? `${customerTitle} / ${customerName}` : customerName;
@@ -1954,6 +1985,7 @@ function openPosReturnModal(sale){
               qty: retQty,
               price: it.price,
               itemId: it.itemId,
+              costAtSale: Number(it.costAtSale != null ? it.costAtSale : (it.purchasePrice || 0)),
               restocked: shouldRestock,
               lineTotal: lineTot
             });
@@ -2035,9 +2067,9 @@ function openPosReturnModal(sale){
         let restockedCOGS = 0;
         returnedItems.forEach(it => {
           if(it.restocked && it.itemId && !String(it.itemId).startsWith('srv_')){
-            const inv = (state.inventory||[]).find(x => x.ID === it.itemId);
-            const cost = inv ? Number(inv.PurchasePrice||0) : 0;
-            restockedCOGS += cost * Number(it.qty||1);
+            const inv = (state.inventory||[]).find(x => String(x.ID) === String(it.itemId));
+            const cost = Number(it.costAtSale != null ? it.costAtSale : (inv ? inv.PurchasePrice : 0)) || 0;
+            restockedCOGS += round2(cost * Number(it.qty||1));
           }
         });
 

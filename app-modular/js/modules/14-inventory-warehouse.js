@@ -103,13 +103,15 @@ function renderInventory(main, categoryFilter, titleOverride){
     list = list.filter(it => (it.Warehouse || 'المخزن الرئيسي') === state.selectedWarehouseFilter);
   }
 
-  // Stock Filter (Low Stock / Out of Stock / In Stock)
+  // Stock Filter (Low Stock / Out of Stock / In Stock / Zero Cost) [F4]
   if(state.invStockFilter === 'low'){
     list = list.filter(it => Number(it.Quantity||0) <= Number(it.MinStock||2));
   } else if(state.invStockFilter === 'out'){
     list = list.filter(it => Number(it.Quantity||0) <= 0);
   } else if(state.invStockFilter === 'available'){
     list = list.filter(it => Number(it.Quantity||0) > 0);
+  } else if(state.invStockFilter === 'zero_cost'){
+    list = list.filter(it => Number(it.PurchasePrice||0) <= 0);
   }
 
   // Text Search
@@ -131,6 +133,7 @@ function renderInventory(main, categoryFilter, titleOverride){
   const totalCostValue = rawList.reduce((s,it)=>s + (Number(it.Quantity||0) * Number(it.PurchasePrice||0)), 0);
   const totalRetailValue = rawList.reduce((s,it)=>s + (Number(it.Quantity||0) * Number(it.SellPrice||it.PurchasePrice||0)), 0);
   const lowStockCount = rawList.filter(it=>Number(it.Quantity||0) <= Number(it.MinStock||2)).length;
+  const zeroCostCount = rawList.filter(it=>Number(it.PurchasePrice||0) <= 0).length;
   const whNames = (state.warehouses || ['المخزن الرئيسي', 'مخزن المعرض / المحل', 'مخزن قطع الغيار']).map(w => typeof w === 'string' ? w : w.name);
 
   main.innerHTML = `
@@ -166,6 +169,12 @@ function renderInventory(main, categoryFilter, titleOverride){
         <div class="top-row"><span class="lbl">النواقص وحد الأمان</span><div class="icon-box">${getSvgIcon('alert', 16)}</div></div>
         <div class="num mono">${lowStockCount}</div>
       </div>
+      ${zeroCostCount > 0 ? `
+      <div class="stat-card red" style="cursor:pointer;border:1.5px solid var(--red);" id="kpiZeroCostBtn" title="انقر لتصفية الأصناف التي بدون سعر تكلفة">
+        <div class="top-row"><span class="lbl" style="color:var(--red);font-weight:800;">تكلفة صفرية (تنبيه)</span><div class="icon-box" style="color:var(--red);">${getSvgIcon('alert', 16)}</div></div>
+        <div class="num mono" style="color:var(--red);">${zeroCostCount}</div>
+      </div>
+      ` : ''}
     </div>
 
     <!-- Filters & Quick Actions Bar -->
@@ -183,6 +192,7 @@ function renderInventory(main, categoryFilter, titleOverride){
         <option value="available" ${state.invStockFilter==='available'?'selected':''}>متوفر بالمخزن</option>
         <option value="low" ${state.invStockFilter==='low'?'selected':''}>قارب على النفاد (حد الأمان)</option>
         <option value="out" ${state.invStockFilter==='out'?'selected':''}>رصيد صفري (منتهي)</option>
+        <option value="zero_cost" ${state.invStockFilter==='zero_cost'?'selected':''}>⚠️ تكلفة صفرية (${zeroCostCount})</option>
       </select>
       ${(state.invSearchQ || state.invStockFilter!=='all' || state.selectedWarehouseFilter!=='all') ? `<button class="btn btn-ghost btn-sm" id="clearInvFiltersBtn">مسح الفلاتر</button>` : ''}
     </div>
@@ -258,7 +268,9 @@ function renderInventory(main, categoryFilter, titleOverride){
                       ${isLowStock ? `<span title="الكمية وصلت لحد الأمان أو نفدت" style="color:var(--amber);display:inline-flex;">${getSvgIcon('alert', 12)}</span>` : ''}
                     </div>
                   </td>
-                  <td class="mono font-bold" style="text-align:center;">${buy.toLocaleString()} ج.م</td>
+                  <td class="mono font-bold" style="text-align:center;">
+                    ${buy > 0 ? `${buy.toLocaleString()} ج.م` : `<span class="badge" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:10px;font-weight:800;padding:2px 6px;">بدون تكلفة (0)</span>`}
+                  </td>
                   <td class="mono font-bold" style="color:var(--green);text-align:center;">${sell.toLocaleString()} ج.م</td>
                   <td class="mono" style="text-align:center;">${wholesale ? wholesale.toLocaleString() + ' ج.م' : '<span style="color:var(--slate-400);">-</span>'}</td>
                   <td style="text-align:center;">
@@ -288,6 +300,14 @@ function renderInventory(main, categoryFilter, titleOverride){
 
   const filterSelect = document.getElementById('invStockFilterSelect');
   if(filterSelect) filterSelect.onchange = (e)=>{ state.invStockFilter = e.target.value; renderInventory(main, categoryFilter, titleOverride); };
+
+  const kpiZeroBtn = document.getElementById('kpiZeroCostBtn');
+  if(kpiZeroBtn){
+    kpiZeroBtn.onclick = () => {
+      state.invStockFilter = 'zero_cost';
+      renderInventory(main, categoryFilter, titleOverride);
+    };
+  }
 
   const clearBtn = document.getElementById('clearInvFiltersBtn');
   if(clearBtn) clearBtn.onclick = ()=>{ 

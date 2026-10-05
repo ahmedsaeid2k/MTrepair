@@ -176,6 +176,29 @@ function reconcileHistoricalJournalEntries(){
           lines.push({ AccountCode: '2104', AccountName: 'ضريبة القيمة المضافة المستحقة (مخرجات)', Debit: 0, Credit: taxAmt, Notes: `ضريبة مخرجات مبيعات POS #${s.ID.slice(-8)}` });
         }
 
+        // COGS & Inventory Asset reduction [F4]
+        let histCOGS = 0;
+        if (s.ItemsJSON) {
+          try {
+            const its = JSON.parse(s.ItemsJSON);
+            if (Array.isArray(its)) {
+              its.forEach(it => {
+                if (it.itemId && String(it.itemId).startsWith('srv_')) return;
+                const inv = (state.inventory || []).find(x => String(x.ID) === String(it.itemId || it.id));
+                const buy = Number(it.costAtSale != null ? it.costAtSale : (it.purchasePrice != null ? it.purchasePrice : (inv ? inv.PurchasePrice : 0))) || 0;
+                histCOGS += Math.round(buy * Number(it.qty || 1) * 100) / 100;
+              });
+            }
+          } catch(e) {}
+        }
+        if (histCOGS > 0) {
+          lines.push(
+            { AccountCode: '5102', AccountName: 'تكلفة البضاعة المباعة (POS)', Debit: histCOGS, Credit: 0, Notes: `تكلفة مبيعات فاتورة #${s.ID.slice(-8)}` },
+            { AccountCode: '1104', AccountName: 'مخزون البضائع وقطع الغيار', Debit: 0, Credit: histCOGS, Notes: `صرف مخزون أصناف مباعة (${s.ItemsSummary || ''})` }
+          );
+        }
+
+        const entryTot = Math.round((total + histCOGS) * 100) / 100;
         const entry = {
           ID: 'je_hist_s_' + s.ID,
           EntryNumber: getNextJournalEntryNumber(),
@@ -184,8 +207,8 @@ function reconcileHistoricalJournalEntries(){
           ReferenceType: 'Sale',
           ReferenceID: s.ID,
           Lines: lines,
-          TotalDebit: total,
-          TotalCredit: total,
+          TotalDebit: entryTot,
+          TotalCredit: entryTot,
           By: s.By || 'نظام'
         };
         entry.LinesJSON = JSON.stringify(entry.Lines);

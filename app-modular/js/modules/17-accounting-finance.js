@@ -765,15 +765,15 @@ function getIncomeStatementData(startDate, endDate){
           const items = JSON.parse(s.ItemsJSON);
           if(Array.isArray(items)){
             items.forEach(it => {
-              const inv = (state.inventory||[]).find(x => x.ID === (it.itemId||it.id));
-              const buy = inv ? Number(inv.PurchasePrice||0) : Number(it.purchasePrice||0);
-              saleCOGS += buy * Number(it.qty||1);
+              const inv = (state.inventory||[]).find(x => String(x.ID) === String(it.itemId||it.id));
+              const buy = Number(it.costAtSale != null ? it.costAtSale : (it.purchasePrice != null ? it.purchasePrice : (inv ? inv.PurchasePrice : 0))) || 0;
+              saleCOGS += round2(buy * Number(it.qty||1));
             });
           }
         } catch(e){}
       }
       if(saleCOGS === 0 && tot > 0){
-        saleCOGS = tot * 0.70; // تقدير متحفظ في حال عدم توفر تفاصيل الأصناف القديمة
+        saleCOGS = 0; // F4: لا يُخترع تقدير وهمي (0.70) - التكلفة غير محددة
       }
 
       if(s.IsReturned){
@@ -785,9 +785,9 @@ function getIncomeStatementData(startDate, endDate){
         if(Array.isArray(retDetails.returnedItems)){
           retDetails.returnedItems.forEach(it => {
             if(it.restocked && it.itemId && !String(it.itemId).startsWith('srv_')){
-              const inv = (state.inventory||[]).find(x => x.ID === it.itemId);
-              const buy = inv ? Number(inv.PurchasePrice||0) : 0;
-              returnedCOGS += buy * Number(it.qty||1);
+              const inv = (state.inventory||[]).find(x => String(x.ID) === String(it.itemId));
+              const buy = Number(it.costAtSale != null ? it.costAtSale : (inv ? inv.PurchasePrice : 0)) || 0;
+              returnedCOGS += round2(buy * Number(it.qty||1));
             }
           });
         }

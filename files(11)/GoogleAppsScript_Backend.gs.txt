@@ -104,6 +104,16 @@ function parseBool(val) {
   return ['true', '1', 'yes', 'نعم'].includes(String(val).trim().toLowerCase());
 }
 
+function round2(num) {
+  const n = Number(num || 0);
+  return Math.round(n * 100) / 100;
+}
+
+function round4(num) {
+  const n = Number(num || 0);
+  return Math.round(n * 10000) / 10000;
+}
+
 function hashPassword(pass) {
   if (!pass) return '';
   const rawBytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(pass).trim(), Utilities.Charset.UTF_8);
@@ -1335,8 +1345,8 @@ function doPost(e) {
               if (item.purchasePrice != null && buyPriceCol >= 0) {
                 const currentBuyPrice = Number(values[i][buyPriceCol] || 0);
                 const itemBuyPrice = Number(item.purchasePrice || 0);
-                const totalCost = (currentQty > 0 ? (currentQty * currentBuyPrice) : 0) + (addQty * itemBuyPrice);
-                const wacPrice = newQty > 0 ? Math.round((totalCost / newQty) * 100) / 100 : itemBuyPrice;
+                const totalCost = (Math.max(0, currentQty) * currentBuyPrice) + (addQty * itemBuyPrice);
+                const wacPrice = newQty > 0 ? round4(totalCost / newQty) : itemBuyPrice;
                 values[i][buyPriceCol] = wacPrice;
                 shInv.getRange(i + 1, buyPriceCol + 1).setValue(wacPrice);
               }

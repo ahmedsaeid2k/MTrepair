@@ -85,6 +85,24 @@ function getSvgIcon(name, size=16, extraClass=''){
 }
 
 /* ============================================================
+   Precision Financial Rounding Utilities [F4]
+   round2: standard currency / UI rounding (2 decimals)
+   round4: unit cost / weighted average inventory cost (4 decimals)
+   ============================================================ */
+function round2(num) {
+  const n = Number(num || 0);
+  return Math.round(n * 100) / 100;
+}
+function round4(num) {
+  const n = Number(num || 0);
+  return Math.round(n * 10000) / 10000;
+}
+if (typeof window !== 'undefined') {
+  window.round2 = round2;
+  window.round4 = round4;
+}
+
+/* ============================================================
    Unified Financial Document Calculation Engine (VAT & Totals) [F3]
    Supports tax-inclusive and tax-exclusive calculations, discounts,
    and rounding to 2 decimal places.
@@ -1308,12 +1326,23 @@ async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, cust
 
   recordAuditLog('مبيعات كاشير POS', 'مبيعات', `فاتورة مبيعات POS بقيمة ${total} ج.م للعميل (${customerName||'عميل زائر'}) - الأصناف: ${itemsSummary}`, sale.ID);
 
-  // Calculate Cost of Goods Sold (COGS)
+  // Calculate Cost of Goods Sold (COGS) using costAtSale [F4]
+  let zeroCostFound = false;
+  const zeroCostItems = [];
   const cogsAmount = (itemsList || []).reduce((s, c) => {
-    const invItem = (state.inventory || []).find(x => x.ID === (c.itemId || c.id));
-    const buyPrice = invItem ? Number(invItem.PurchasePrice || 0) : Number(c.purchasePrice || 0);
-    return s + (buyPrice * Number(c.qty || 1));
+    if (c.itemId && String(c.itemId).startsWith('srv_')) return s;
+    const invItem = (state.inventory || []).find(x => String(x.ID) === String(c.itemId || c.id));
+    const buyPrice = Number(c.costAtSale != null ? c.costAtSale : (c.purchasePrice != null ? c.purchasePrice : (invItem ? invItem.PurchasePrice : 0))) || 0;
+    if (buyPrice <= 0 && c.itemId && !String(c.itemId).startsWith('srv_')) {
+      zeroCostFound = true;
+      zeroCostItems.push(c.name || (invItem ? invItem.Name : c.itemId));
+    }
+    return s + round2(buyPrice * Number(c.qty || 1));
   }, 0);
+
+  if (zeroCostFound) {
+    recordAuditLog('تحذير تكلفة المخزون', 'المخزن', `أصناف مباعة بدون سعر تكلفة مسجل: (${zeroCostItems.join('، ')}) في فاتورة #${sale.ID} - يرجى مراجعة وتحديث أسعار التكلفة بالمخزن`, sale.ID);
+  }
 
   // Payment account routing
   const pLow = String(paymentMethod || '').toLowerCase();
@@ -1577,15 +1606,22 @@ async function savePurchaseRemote(p, itemsList = []){
   else state.purchases.push(p);
   setCache('purchases', state.purchases);
 
-  // Auto-increment local inventory
+  // Auto-increment local inventory & Moving Weighted Average Cost (WAC) [F4]
   if(Array.isArray(itemsList) && itemsList.length > 0){
     for(const it of itemsList){
       if(!it.itemId) continue;
-      const invItem = (state.inventory || []).find(x => x.ID === it.itemId);
+      const invItem = (state.inventory || []).find(x => String(x.ID) === String(it.itemId));
       if(invItem){
-        invItem.Quantity = Number(invItem.Quantity || 0) + Number(it.qty || 0);
-        if(it.purchasePrice != null && Number(it.purchasePrice) > 0){
-          invItem.PurchasePrice = Number(it.purchasePrice);
+        const oldQty = Number(invItem.Quantity || 0);
+        const oldCost = Number(invItem.PurchasePrice || 0);
+        const newQty = Number(it.qty || 0);
+        const newCost = Number(it.purchasePrice || 0);
+        const totalQty = oldQty + newQty;
+        invItem.Quantity = totalQty;
+        if(newCost > 0){
+          invItem.PurchasePrice = totalQty > 0
+            ? round4(((Math.max(0, oldQty) * oldCost) + (newQty * newCost)) / totalQty)
+            : newCost;
         }
       }
     }

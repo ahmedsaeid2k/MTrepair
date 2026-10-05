@@ -1060,7 +1060,7 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
       
       const paidAmount = ps.amountPaid !== '' ? Number(ps.amountPaid) : grandTotal;
       const fullCustName = customerTitle ? `${customerTitle} / ${customerName}` : customerName;
-      const saleRes = await saveSaleRemote(itemsSummary, itemsJson, grandTotal, fullCustName, customerPhone, payMethodName, paidAmount, cartSnapshot);
+      const saleRes = await saveSaleRemote(itemsSummary, itemsJson, grandTotal, fullCustName, customerPhone, payMethodName, paidAmount, cartSnapshot, taxAmount);
       
       showToast('تمت عملية البيع بنجاح', 'success');
 

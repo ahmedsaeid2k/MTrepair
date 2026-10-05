@@ -169,7 +169,12 @@ function reconcileHistoricalJournalEntries(){
         if (total > paid) {
           lines.push({ AccountCode: '1103', AccountName: 'العملاء والمدينون', Debit: total - paid, Credit: 0, Notes: `آجل مبيعات POS للعميل ${s.CustomerName || ''}` });
         }
-        lines.push({ AccountCode: '4102', AccountName: 'إيرادات مبيعات بضائع وقطع غيار', Debit: 0, Credit: total, Notes: `فاتورة مبيعات #${s.ID.slice(-8)}` });
+        const taxAmt = Math.max(0, Number(s.TaxAmount || 0));
+        const netRevenue = Math.max(0, Math.round((total - taxAmt) * 100) / 100);
+        lines.push({ AccountCode: '4102', AccountName: 'إيرادات مبيعات بضائع وقطع غيار', Debit: 0, Credit: netRevenue, Notes: `فاتورة مبيعات #${s.ID.slice(-8)}` });
+        if (taxAmt > 0) {
+          lines.push({ AccountCode: '2104', AccountName: 'ضريبة القيمة المضافة المستحقة (مخرجات)', Debit: 0, Credit: taxAmt, Notes: `ضريبة مخرجات مبيعات POS #${s.ID.slice(-8)}` });
+        }
 
         const entry = {
           ID: 'je_hist_s_' + s.ID,
@@ -198,9 +203,14 @@ function reconcileHistoricalJournalEntries(){
       const total = Number(pur.Total || 0);
       const paid = Number(pur.AmountPaid != null ? pur.AmountPaid : 0);
       if (total > 0) {
+        const taxAmt = Math.max(0, Number(pur.TaxAmount || 0));
+        const netCost = Math.max(0, Math.round((total - taxAmt) * 100) / 100);
         const lines = [
-          { AccountCode: '1104', AccountName: 'مخزون البضائع وقطع الغيار', Debit: total, Credit: 0, Notes: `شراء أصناف من المورد (${pur.Supplier || ''})` }
+          { AccountCode: '1104', AccountName: 'مخزون البضائع وقطع الغيار', Debit: netCost, Credit: 0, Notes: `شراء أصناف من المورد (${pur.Supplier || ''})` }
         ];
+        if (taxAmt > 0) {
+          lines.push({ AccountCode: '1105', AccountName: 'ضريبة القيمة المضافة القابلة للخصم (مدخلات)', Debit: taxAmt, Credit: 0, Notes: `ضريبة مدخلات مشتريات #${pur.ID.slice(-8)}` });
+        }
         if (paid > 0) {
           lines.push({ AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: 0, Credit: paid, Notes: `سداد نقدي لفاتورة شراء` });
         }
@@ -322,7 +332,12 @@ function reconcileHistoricalJournalEntries(){
         if (total > paid) {
           lines.push({ AccountCode: '1103', AccountName: 'العملاء والمدينون', Debit: total - paid, Credit: 0, Notes: `آجل فاتورة مبيعات للعميل ${inv.CustomerName || ''}` });
         }
-        lines.push({ AccountCode: '4102', AccountName: 'إيرادات مبيعات بضائع وقطع غيار', Debit: 0, Credit: total, Notes: `فاتورة مبيعات #${inv.InvoiceNumber || inv.ID}` });
+        const taxAmt = Math.max(0, Number(inv.TaxAmount || 0));
+        const netRev = Math.max(0, Math.round((total - taxAmt) * 100) / 100);
+        lines.push({ AccountCode: '4102', AccountName: 'إيرادات مبيعات بضائع وقطع غيار', Debit: 0, Credit: netRev, Notes: `فاتورة مبيعات #${inv.InvoiceNumber || inv.ID}` });
+        if (taxAmt > 0) {
+          lines.push({ AccountCode: '2104', AccountName: 'ضريبة القيمة المضافة المستحقة (مخرجات)', Debit: 0, Credit: taxAmt, Notes: `ضريبة مخرجات فاتورة #${inv.InvoiceNumber || inv.ID}` });
+        }
 
         const entry = {
           ID: 'je_hist_inv_' + inv.ID,

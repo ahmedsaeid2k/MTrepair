@@ -84,6 +84,62 @@ function getSvgIcon(name, size=16, extraClass=''){
   return `<svg class="ui-icon ui-icon-${name}${cls}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;display:inline-block;flex-shrink:0;">${path}</svg>`;
 }
 
+/* ============================================================
+   Unified Financial Document Calculation Engine (VAT & Totals) [F3]
+   Supports tax-inclusive and tax-exclusive calculations, discounts,
+   and rounding to 2 decimal places.
+   ============================================================ */
+function computeDocTotals(opts = {}) {
+  const items = Array.isArray(opts.items) ? opts.items : [];
+  const discount = Math.max(0, Number(opts.discount || 0));
+  const taxPercent = Math.max(0, Number(opts.taxPercent || 0));
+  const isTaxInclusive = Boolean(opts.isTaxInclusive);
+
+  let subtotal = 0;
+  items.forEach(it => {
+    const qty = Number(it.Qty != null ? it.Qty : (it.qty != null ? it.qty : 1));
+    const price = Number(it.Price != null ? it.Price : (it.price != null ? it.price : 0));
+    subtotal += Math.round(qty * price * 100) / 100;
+  });
+  subtotal = Math.round(subtotal * 100) / 100;
+
+  const effectiveDiscount = Math.min(subtotal, discount);
+  const discountedBase = Math.round((subtotal - effectiveDiscount) * 100) / 100;
+
+  const tRate = taxPercent / 100;
+  let netAmount = 0;
+  let taxAmount = 0;
+  let total = 0;
+
+  if (tRate > 0) {
+    if (isTaxInclusive) {
+      netAmount = Math.round((discountedBase / (1 + tRate)) * 100) / 100;
+      taxAmount = Math.round((discountedBase - netAmount) * 100) / 100;
+      total = discountedBase;
+    } else {
+      netAmount = discountedBase;
+      taxAmount = Math.round((discountedBase * tRate) * 100) / 100;
+      total = Math.round((discountedBase + taxAmount) * 100) / 100;
+    }
+  } else {
+    netAmount = discountedBase;
+    taxAmount = 0;
+    total = discountedBase;
+  }
+
+  return {
+    subtotal,
+    discount: effectiveDiscount,
+    discountedBase,
+    taxPercent,
+    isTaxInclusive,
+    netAmount,
+    taxAmount,
+    total
+  };
+}
+if (typeof window !== 'undefined') window.computeDocTotals = computeDocTotals;
+
 /* ---- Toast Notification Utility ---- */
 function showToast(msg, type='info', duration=2800){
   const container = document.getElementById('toastContainer');
@@ -1217,10 +1273,11 @@ async function loadSales(){
   setCache('sales', rows);
   return rows;
 }
-async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, customerPhone, paymentMethod, amountPaid, itemsList = []){
+async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, customerPhone, paymentMethod, amountPaid, itemsList = [], taxAmount = 0){
   const sale = {
     ID: 'sale_' + Date.now(), Date: new Date().toISOString().slice(0,10),
     ItemsSummary: itemsSummary, ItemsJSON: itemsJson||'', Total: Number(total||0),
+    TaxAmount: Math.max(0, Number(taxAmount||0)),
     PaymentMethod: paymentMethod||'نقدي', AmountPaid: amountPaid!=null?Number(amountPaid):Number(total||0),
     CustomerName: customerName||'', CustomerPhone: customerPhone||'', By: state.user ? state.user.name : 'نظام',
     ShiftID: state.activeShift ? state.activeShift.id : ''
@@ -1265,11 +1322,23 @@ async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, cust
   const debitAccCode = isCredit ? '1103' : (isBankOrWallet ? '1102' : '1101');
   const debitAccName = isCredit ? 'العملاء والمدينون' : (isBankOrWallet ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)');
 
-  // Dual Journal Entry: 1) Cash & Revenue  2) COGS & Inventory Asset
+  // F3: Dual Journal Entry: 1) Cash & Net Revenue + VAT  2) COGS & Inventory Asset
+  const taxAmt = Math.max(0, Number(taxAmount || 0));
+  const netRevenue = Math.max(0, Math.round((Number(total) - taxAmt) * 100) / 100);
+
   const journalLines = [
     {AccountCode: debitAccCode, AccountName: debitAccName, Debit: Number(total), Credit: 0, Notes: `مقبوضات مبيعات [${paymentMethod||'نقدي'}]`},
-    {AccountCode: '4102', AccountName: 'إيرادات مبيعات بضائع وقطع غيار', Debit: 0, Credit: Number(total), Notes: itemsSummary}
+    {AccountCode: '4102', AccountName: 'إيرادات مبيعات بضائع وقطع غيار', Debit: 0, Credit: netRevenue, Notes: itemsSummary}
   ];
+  if(taxAmt > 0){
+    journalLines.push({
+      AccountCode: '2104',
+      AccountName: 'ضريبة القيمة المضافة المستحقة (مخرجات)',
+      Debit: 0,
+      Credit: taxAmt,
+      Notes: `ضريبة مبيعات فاتورة: ${sale.ID}`
+    });
+  }
   if(cogsAmount > 0){
     journalLines.push(
       {AccountCode: '5102', AccountName: 'تكلفة البضاعة المباعة (POS)', Debit: Number(cogsAmount), Credit: 0, Notes: `تكلفة مبيعات فاتورة: ${sale.ID}`},
@@ -1299,6 +1368,7 @@ async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, cust
     itemsSummary,
     itemsJson,
     total,
+    taxAmount: sale.TaxAmount,
     customerName,
     customerPhone,
     paymentMethod,
@@ -1522,13 +1592,26 @@ async function savePurchaseRemote(p, itemsList = []){
     setCache('inventory', state.inventory);
   }
 
-  // Auto Journal Entry for Purchase:
-  // Dr. 1104 (مخزون البضائع وقطع الغيار): Total
+  // F3: Auto Journal Entry for Purchase with Input VAT routing
+  // Dr. 1104 (مخزون البضائع وقطع الغيار): netInventoryCost
+  // Dr. 1105 (ضريبة القيمة المضافة القابلة للخصم - مدخلات): taxAmt (if taxAmt > 0)
   // Cr. 1101/1102 (الخزينة/البنك): AmountPaid
   // Cr. 2101 (الموردون والدائنون): Remaining
+  const taxAmt = Math.max(0, Number(p.TaxAmount || 0));
+  const netInventoryCost = Math.max(0, Math.round((p.Total - taxAmt) * 100) / 100);
+
   const journalLines = [
-    { AccountCode: '1104', AccountName: 'مخزون البضائع وقطع الغيار', Debit: p.Total, Credit: 0, Notes: `شراء وتوريد مخزون (${p.Supplier} - ${p.ItemsSummary})` }
+    { AccountCode: '1104', AccountName: 'مخزون البضائع وقطع الغيار', Debit: netInventoryCost, Credit: 0, Notes: `شراء وتوريد مخزون (${p.Supplier} - ${p.ItemsSummary})` }
   ];
+  if(taxAmt > 0){
+    journalLines.push({
+      AccountCode: '1105',
+      AccountName: 'ضريبة القيمة المضافة القابلة للخصم (مدخلات)',
+      Debit: taxAmt,
+      Credit: 0,
+      Notes: `ضريبة مدخلات مشتريات فاتورة: ${p.ID}`
+    });
+  }
   if(p.AmountPaid > 0){
     const pLow = String(p.PaymentMethod || 'نقدي').toLowerCase();
     const isBank = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('محفظ') || pLow.includes('فودافون');
@@ -1566,6 +1649,7 @@ async function savePurchaseRemote(p, itemsList = []){
     supplierId: p.SupplierID || '',
     itemsSummary: p.ItemsSummary,
     total: p.Total,
+    taxAmount: taxAmt,
     amountPaid: p.AmountPaid,
     warrantyMonths: p.WarrantyMonths || '',
     items: itemsList,
@@ -1685,13 +1769,25 @@ async function saveInvoiceRemote(inv){
         Notes: `آجل فاتورة مبيعات #${invNum} (${custName})`
       });
     }
+    const taxAmt = Math.max(0, Number(inv.TaxAmount || 0));
+    const netRevenue = Math.max(0, Math.round((totalAmt - taxAmt) * 100) / 100);
+
     lines.push({
       AccountCode: '4102',
       AccountName: 'إيرادات مبيعات بضائع وقطع غيار',
       Debit: 0,
-      Credit: totalAmt,
-      Notes: `فاتورة مبيعات #${invNum} (${custName})`
+      Credit: netRevenue,
+      Notes: `صافي إيراد فاتورة مبيعات #${invNum} (${custName})`
     });
+    if (taxAmt > 0) {
+      lines.push({
+        AccountCode: '2104',
+        AccountName: 'ضريبة القيمة المضافة المستحقة (مخرجات)',
+        Debit: 0,
+        Credit: taxAmt,
+        Notes: `ضريبة مخرجات فاتورة مبيعات #${invNum}`
+      });
+    }
 
     journalEntry = await recordAutoJournalEntry(
       `فاتورة مبيعات #${invNum} - العميل: ${custName}`,

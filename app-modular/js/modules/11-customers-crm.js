@@ -6339,6 +6339,7 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
     Subtotal: 0,
     TaxPercent: 0,
     TaxAmount: 0,
+    IsTaxInclusive: false,
     Discount: 0,
     Total: 0,
     AmountPaid: 0,
@@ -6353,15 +6354,25 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
   if(!inv.Items.length) inv.Items = [{ Name: '', Qty: 1, Price: 0, Total: 0 }];
 
   function renderModal(){
-    // Calculate sums
-    let sub = 0;
-    inv.Items.forEach(it => {
-      it.Total = Number(it.Qty||1) * Number(it.Price||0);
-      sub += it.Total;
-    });
-    inv.Subtotal = sub;
-    inv.TaxAmount = Math.round((inv.Subtotal * (Number(inv.TaxPercent||0) / 100)) * 100) / 100;
-    inv.Total = Math.round((inv.Subtotal + inv.TaxAmount - Number(inv.Discount||0)) * 100) / 100;
+    // Calculate sums using unified computeDocTotals [F3]
+    const docTotals = (typeof computeDocTotals === 'function')
+      ? computeDocTotals({
+          items: inv.Items,
+          discount: inv.Discount,
+          taxPercent: inv.TaxPercent,
+          isTaxInclusive: inv.IsTaxInclusive
+        })
+      : {
+          subtotal: inv.Items.reduce((s, it) => s + (Number(it.Qty||1)*Number(it.Price||0)), 0),
+          discount: Number(inv.Discount||0),
+          taxAmount: Math.round(((inv.Items.reduce((s, it) => s + (Number(it.Qty||1)*Number(it.Price||0)), 0) - Number(inv.Discount||0)) * (Number(inv.TaxPercent||0)/100)) * 100) / 100,
+          total: 0
+        };
+
+    inv.Subtotal = docTotals.subtotal;
+    inv.Discount = docTotals.discount;
+    inv.TaxAmount = docTotals.taxAmount;
+    inv.Total = docTotals.total;
     inv.Remaining = Math.round(Math.max(0, inv.Total - Number(inv.AmountPaid||0)) * 100) / 100;
     if(inv.Total > 0 && inv.Remaining <= 0){ inv.Status = 'مدفوعة بالكامل'; }
     else if(inv.AmountPaid > 0 && inv.Remaining > 0){ inv.Status = 'مدفوعة جزئياً'; }
@@ -6462,8 +6473,14 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
             <h3 style="font-size:13.5px;margin-bottom:10px;display:flex;align-items:center;gap:6px;">${getSvgIcon("finance", 15)} الملخص المالي</h3>
             <div style="display:flex;flex-direction:column;gap:8px;">
               <div style="display:flex;justify-content:space-between;"><span>المجموع الفرعي:</span><span class="mono font-bold">${inv.Subtotal.toLocaleString()} ج.م</span></div>
-              <div style="display:flex;justify-content:space-between;align-items:center;">
-                <div style="display:flex;align-items:center;gap:6px;"><span>ضريبة (VAT):</span><select id="invTaxPercentSelect" style="width:70px;"><option value="0" ${Number(inv.TaxPercent)===0?'selected':''}>0%</option><option value="14" ${Number(inv.TaxPercent)===14?'selected':''}>14%</option></select></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                  <span>ضريبة (VAT):</span>
+                  <select id="invTaxPercentSelect" style="width:70px;"><option value="0" ${Number(inv.TaxPercent)===0?'selected':''}>0%</option><option value="14" ${Number(inv.TaxPercent)===14?'selected':''}>14%</option></select>
+                  <label style="font-size:11px;display:inline-flex;align-items:center;gap:3px;margin:0;cursor:pointer;color:var(--ink-secondary);">
+                    <input type="checkbox" id="invTaxInclusiveCheck" ${inv.IsTaxInclusive?'checked':''}> شامل الضريبة
+                  </label>
+                </div>
                 <span class="mono font-bold" style="color:var(--blue);">${inv.TaxAmount.toLocaleString()} ج.م</span>
               </div>
               <div style="display:flex;justify-content:space-between;"><span>الخصم:</span><input id="invDiscountInput" type="number" value="${inv.Discount||0}" style="width:90px;text-align:center;" class="mono"></div>
@@ -6549,6 +6566,8 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
     };
 
     overlay.querySelector('#invTaxPercentSelect').onchange = (e)=>{ inv.TaxPercent = Number(e.target.value); renderModal(); };
+    const taxIncCheck = overlay.querySelector('#invTaxInclusiveCheck');
+    if(taxIncCheck) taxIncCheck.onchange = (e)=>{ inv.IsTaxInclusive = e.target.checked; renderModal(); };
     overlay.querySelector('#invDiscountInput').oninput = (e)=>{ inv.Discount = Number(e.target.value)||0; };
     overlay.querySelector('#invDiscountInput').onblur = ()=>renderModal();
     overlay.querySelector('#invPaidInput').oninput = (e)=>{ inv.AmountPaid = Number(e.target.value)||0; };
@@ -6564,6 +6583,7 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
       inv.DueDate = overlay.querySelector('#invDueDate').value;
       inv.PaymentMethod = overlay.querySelector('#invPaymentMethod').value;
       inv.Notes = overlay.querySelector('#invNotesText').value.trim();
+      inv.IsTaxInclusive = Boolean(overlay.querySelector('#invTaxInclusiveCheck')?.checked);
       inv.ItemsSummary = inv.Items.map(i=>i.Name).filter(Boolean).join(' + ');
       inv.ItemsJSON = JSON.stringify(inv.Items);
     }

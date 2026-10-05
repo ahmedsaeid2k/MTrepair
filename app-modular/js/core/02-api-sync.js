@@ -42,8 +42,61 @@ function getCache(key, fallback){
     return d ? JSON.parse(d) : fallback;
   } catch(e) { return fallback; }
 }
+let isQuotaWarningShown = false;
+
+function showStorageQuotaWarning() {
+  if (isQuotaWarningShown) return;
+  isQuotaWarningShown = true;
+  
+  if (typeof showToast === 'function') {
+    showToast('⚠️ تحذير: مساحة تخزين المتصفح المحلية ممتلئة (Storage Quota Exceeded). تم الحفظ في الذاكرة الحية فقط.', 'warning', 7000);
+  }
+  
+  let banner = document.getElementById('storageQuotaBanner');
+  if (!banner && typeof document !== 'undefined' && document.body) {
+    banner = document.createElement('div');
+    banner.id = 'storageQuotaBanner';
+    banner.style.cssText = 'position:fixed;bottom:12px;left:12px;z-index:99999;background:#b91c1c;color:#fff;padding:8px 14px;border-radius:8px;font-size:12px;font-weight:700;display:flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(0,0,0,0.3);';
+    banner.innerHTML = `
+      <span>⚠️ مساحة التخزين المحلية ممتلئة. البيانات تُحفظ مؤقتاً في الذاكرة الحية.</span>
+      <button type="button" style="background:#fff;color:#b91c1c;border:none;border-radius:4px;padding:2px 6px;font-size:11px;font-weight:800;cursor:pointer;" onclick="this.parentElement.remove()">إغلاق</button>
+    `;
+    document.body.appendChild(banner);
+  }
+}
+
+function freeStorageSpace() {
+  try {
+    const evictableKeys = [
+      'microerp_cache_audit_logs',
+      'microerp_audit_logs',
+      'microerp_cache_bootstrapData',
+      'microerp_cache_journal',
+      'microerp_cache_invoices'
+    ];
+    for (const k of evictableKeys) {
+      localStorage.removeItem(k);
+    }
+  } catch(e) {}
+}
+
 function setCache(key, val){
-  try { localStorage.setItem('microerp_cache_' + key, JSON.stringify(val)); } catch(e){}
+  try {
+    localStorage.setItem('microerp_cache_' + key, JSON.stringify(val));
+  } catch(e) {
+    if (e && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' || e.code === 22 || e.code === 1014)) {
+      console.warn(`[setCache] QuotaExceededError for key "${key}". Attempting smart eviction...`);
+      freeStorageSpace();
+      try {
+        localStorage.setItem('microerp_cache_' + key, JSON.stringify(val));
+      } catch (retryErr) {
+        console.error(`[setCache] Storage quota exceeded even after eviction for key "${key}". Data retained in memory.`);
+        showStorageQuotaWarning();
+      }
+    } else {
+      console.warn(`[setCache] Failed to cache "${key}":`, e.message);
+    }
+  }
 }
 
 /* Offline Sync Queue */

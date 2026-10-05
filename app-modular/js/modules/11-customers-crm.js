@@ -465,20 +465,9 @@ function openEditCustomerModal(c, targetReceiptId='', targetReceiptNum=''){
 }
 
 function exportCustomersToExcel(list){
-  const rows = [
-    ['اللقب', 'اسم العميل', 'رقم الهاتف', 'البريد الإلكتروني']
-  ];
-  list.forEach(c => {
-    rows.push([c.title||'', c.name, c.phone, c.email||'']);
-  });
-  let csv = '\uFEFF' + rows.map(r => r.map(f => `"${String(f||'').replace(/"/g,'""')}"`).join(',')).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `customers_directory_${new Date().toISOString().slice(0,10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  const headers = ['اللقب', 'اسم العميل', 'رقم الهاتف', 'البريد الإلكتروني'];
+  const rows = (list || []).map(c => [c.title||'', c.name||'', c.phone||'', c.email||'']);
+  downloadCSV(`customers_directory_${new Date().toISOString().slice(0,10)}.csv`, headers, rows);
 }
 
 function attachRowActions(root){
@@ -5950,8 +5939,9 @@ function exportInventoryToExcel(items){
 }
 
 function downloadCSV(filename, headers, rows){
-  let csvContent = '\uFEFF' + headers.join(',') + '\n';
-  rows.forEach(r => { csvContent += r.join(',') + '\n'; });
+  const safeHeaders = (headers || []).map(h => csvSafe(h)).join(',');
+  const safeRows = (rows || []).map(r => (r || []).map(c => csvSafe(c)).join(','));
+  let csvContent = '\uFEFF' + safeHeaders + '\n' + safeRows.join('\n');
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

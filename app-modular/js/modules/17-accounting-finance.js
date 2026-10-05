@@ -2665,30 +2665,19 @@ async function fetchServerAuditLogs(){
 }
 
 function exportAuditLogsToExcel(list){
-  const rows = [
-    ['#', 'التاريخ والوقت', 'المستخدم', 'الدور', 'نوع العملية', 'القسم', 'البيان والتفاصيل', 'المرجع', 'الحالة']
-  ];
-  list.forEach((l, idx) => {
-    rows.push([
-      idx + 1,
-      new Date(l.timestamp).toLocaleString('ar-EG'),
-      l.user || '',
-      l.role === 'admin' ? 'مدير عام' : 'موظف',
-      l.action || '',
-      l.section || '',
-      l.details || '',
-      l.refId || '',
-      l.status || ''
-    ]);
-  });
-  let csv = '\uFEFF' + rows.map(r => r.map(f => `"${String(f||'').replace(/"/g,'""')}"`).join(',')).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `audit_logs_${new Date().toISOString().slice(0,10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  const headers = ['#', 'التاريخ والوقت', 'المستخدم', 'الدور', 'نوع العملية', 'القسم', 'البيان والتفاصيل', 'المرجع', 'الحالة'];
+  const rows = (list || []).map((l, idx) => [
+    idx + 1,
+    new Date(l.timestamp).toLocaleString('ar-EG'),
+    l.user || '',
+    l.role === 'admin' ? 'مدير عام' : 'موظف',
+    l.action || '',
+    l.section || '',
+    l.details || '',
+    l.refId || '',
+    l.status || ''
+  ]);
+  downloadCSV(`audit_logs_${new Date().toISOString().slice(0,10)}.csv`, headers, rows);
 }
 
 function renderAuditCenterPage(main){

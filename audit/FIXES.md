@@ -31,6 +31,7 @@
 | **S9** | تحصين بوابة التتبع العامة برموز عشوائية (TrackToken) وحجب التفاصيل المالية | `GoogleAppsScript_Backend.gs.txt`, `03-utils-and-mappings.js`, `06-config-defaults.js`, `08-public-tracking.js`, `11-customers-crm.js`, `audit/MIGRATIONS.md` | PASSED | إضافة عمود `TrackToken` عشوائي 20 حرفاً، حصر البحث على الرمز لمنع الاستخراج الشامل، حجب تكاليف الصيانة وهوامش الربح الداخلية وتعتيم اسم العميل |
 | **S10** | فرض التحقق والسقوف وعدم التكرار (Idempotency) على المرتجعات وسداد الديون | `files(11)/GoogleAppsScript_Backend.gs.txt`, `15-pos-retail.js`, `audit/MIGRATIONS.md` | PASSED | منع زيادة سداد دين البيع عن المتبقي، التحقق من الفاتورة الأصلية للمرتجع ومنع تجاوز مجموع المرتجعات لإجمالي الفاتورة، إضافة `ClientRef` وكاش 600 ثانية لمنع التكرار، إعادة إدخال المخزون وتوليد قيود اليومية العكسية سيرفرياً |
 | **S11** | تحصين سجل الرقابة بسلسلة تجزئة مشفرة وتدقيق كل عمليات الكتابة على الخادم | `files(11)/GoogleAppsScript_Backend.gs.txt`, `17-accounting-finance.js`, `audit/MIGRATIONS.md` | PASSED | إضافة `RowHash` كسلسلة SHA-256 متصلة، إزالة التلويث عبر تقييد `saveAuditLog` بقائمة بيضاء صارمة، تفعيل `logAudit` على كل عمليات الكتابة مع القيم السابقة والجديدة، وإضافة نقطة نهاية `getAuditLog` لجلب السجل المباشر من السيرفر للمدير |
+| **S12** | تطهير تصدير ملفات CSV من حقن الصيغ والمعادلات (CSV Formula Injection) | `06-config-defaults.js`, `11-customers-crm.js`, `17-accounting-finance.js` | PASSED | إنشاء دالة `csvSafe` لتهريب البادئات الخطرة (`=`, `+`, `-`, `@`, `\t`, `\r`) بفاصلة عليا (`'`) وتطبيقها مركزياً في `downloadCSV` على كافة أعمدة وصفوف التصدير |
 
 ---
 

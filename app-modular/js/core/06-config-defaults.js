@@ -850,6 +850,24 @@ function safeImageUrl(u){
 }
 
 /**
+ * Sanitizes CSV cell values to prevent CSV Formula Injection (CWE-1236).
+ * Any cell value beginning with =, +, -, @, \t, or \r is prefixed with a single quote (')
+ * so spreadsheet applications (Excel, LibreOffice, Google Sheets) treat it strictly as text.
+ * @param {any} v - Cell value.
+ * @returns {string} Sanitized and escaped CSV cell string.
+ */
+function csvSafe(v){
+  if (typeof v === 'number' && Number.isFinite(v)) return String(v);
+  let s = String(v == null ? '' : v);
+  if (s.startsWith('"') && s.endsWith('"') && s.length >= 2) {
+    s = s.slice(1, -1).replace(/""/g, '"');
+  }
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;      // يمنع تنفيذ الصيغة في Excel
+  if (/[",\n\r]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+/**
  * Safely parses any value to a finite number, returning fallback if invalid.
  * @param {any} val - Value to parse.
  * @param {number} fallback - Default value if parsing fails.

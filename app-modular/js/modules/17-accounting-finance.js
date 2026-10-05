@@ -646,6 +646,21 @@ function renderTrialBalance(main){
 
   const isBalanced = Math.abs(grandDebit - grandCredit) < 0.01;
 
+  // F1: Ledger verification calculation across all journal entries
+  let totalJournalDebits = 0;
+  let totalJournalCredits = 0;
+  (state.journalEntries || []).forEach(je => {
+    const lines = Array.isArray(je.Lines) ? je.Lines : (typeof je.LinesJSON === 'string' ? JSON.parse(je.LinesJSON || '[]') : []);
+    lines.forEach(l => {
+      totalJournalDebits += Number(l.Debit || 0);
+      totalJournalCredits += Number(l.Credit || 0);
+    });
+  });
+  totalJournalDebits = round2(totalJournalDebits);
+  totalJournalCredits = round2(totalJournalCredits);
+  const journalDiff = round2(Math.abs(totalJournalDebits - totalJournalCredits));
+  const isJournalBalanced = journalDiff < 0.01;
+
   main.innerHTML = `
     <div class="top-header">
       <div>
@@ -653,6 +668,19 @@ function renderTrialBalance(main){
       </div>
       <div>
         <button class="btn btn-ghost btn-sm" id="exportTrialExcelBtn">${getSvgIcon("download", 14)} تصدير ميزان المراجعة Excel</button>
+      </div>
+    </div>
+
+    <!-- Ledger Verification Banner (F1) -->
+    <div class="card" style="padding:12px 18px;margin-bottom:14px;border-radius:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;background:${isJournalBalanced ? '#f0fdf4' : '#fef2f2'};border:1.5px solid ${isJournalBalanced ? '#86efac' : '#fca5a5'};color:${isJournalBalanced ? '#166534' : '#991b1b'};">
+      <div style="display:flex;align-items:center;gap:10px;font-size:13.5px;font-weight:800;">
+        <span>${isJournalBalanced ? getSvgIcon("checkCircle", 18) : getSvgIcon("alertTriangle", 18)}</span>
+        <span>مطابقة الدفتر: مجموع مدين القيود = <b class="mono font-bold">${totalJournalDebits.toLocaleString()} ج.م</b> · مجموع دائن القيود = <b class="mono font-bold">${totalJournalCredits.toLocaleString()} ج.م</b> · الفرق = <b class="mono font-bold">${journalDiff.toLocaleString()} ج.م</b> ${isJournalBalanced ? '(الدفتر متزن تماماً ومطابق للقيد المزدوج)' : '(تنبيه: يوجد عدم اتزان محاسبي في قيود الدفتر العام!)'}</span>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <button class="btn btn-xs ${isJournalBalanced ? 'btn-ghost' : 'btn-red'}" id="reconcileTrialLedgerBtn" title="إعادة مطابقة وترحيل كافة القيود التاريخية الناقصة لدفتر الأستاذ">
+          ${getSvgIcon("sync", 13)} تحديث وترحيل قيود الدفتر
+        </button>
       </div>
     </div>
 
@@ -695,6 +723,15 @@ function renderTrialBalance(main){
       </div>
     </div>
   `;
+
+  const recTrialBtn = document.getElementById('reconcileTrialLedgerBtn');
+  if(recTrialBtn){
+    recTrialBtn.onclick = () => {
+      if(typeof reconcileHistoricalJournalEntries === 'function') reconcileHistoricalJournalEntries();
+      showToast('تم فحص وترحيل قيود دفتر الأستاذ العام بنجاح', 'success');
+      renderTrialBalance(main);
+    };
+  }
 
   document.getElementById('exportTrialExcelBtn').onclick = ()=>{
     const headers = ['كود الحساب','اسم الحساب','النوع','الطبيعة','رصيد أول المدة','إجمالي المدين','إجمالي الدائن','الرصيد الختامي'];
@@ -745,104 +782,33 @@ function getIncomeStatementData(startDate, endDate){
   const sDate = startDate || '2000-01-01';
   const eDate = endDate || '2099-12-31';
 
-  // 1. POS Sales Revenue, Returns & COGS
-  let posSalesRev = 0;
-  let posSalesReturns = 0;
-  let posSalesCOGS = 0;
-  let posSalesCount = 0;
-  let posReturnsCount = 0;
-  (state.sales || []).forEach(s => {
-    const dt = cleanDate(s.Date) || s.Date;
-    if(dt >= sDate && dt <= eDate){
-      posSalesCount++;
-      const tot = Number(s.Total || 0);
-      posSalesRev += tot;
-
-      let saleCOGS = 0;
-      let returnedCOGS = 0;
-      if(s.ItemsJSON){
-        try {
-          const items = JSON.parse(s.ItemsJSON);
-          if(Array.isArray(items)){
-            items.forEach(it => {
-              const inv = (state.inventory||[]).find(x => String(x.ID) === String(it.itemId||it.id));
-              const buy = Number(it.costAtSale != null ? it.costAtSale : (it.purchasePrice != null ? it.purchasePrice : (inv ? inv.PurchasePrice : 0))) || 0;
-              saleCOGS += round2(buy * Number(it.qty||1));
-            });
-          }
-        } catch(e){}
-      }
-      if(saleCOGS === 0 && tot > 0){
-        saleCOGS = 0; // F4: لا يُخترع تقدير وهمي (0.70) - التكلفة غير محددة
-      }
-
-      if(s.IsReturned){
-        posReturnsCount++;
-        const retDetails = s.ReturnDetails || {};
-        const retAmt = Number(retDetails.totalRefund != null ? retDetails.totalRefund : tot);
-        posSalesReturns += retAmt;
-
-        if(Array.isArray(retDetails.returnedItems)){
-          retDetails.returnedItems.forEach(it => {
-            if(it.restocked && it.itemId && !String(it.itemId).startsWith('srv_')){
-              const inv = (state.inventory||[]).find(x => String(x.ID) === String(it.itemId));
-              const buy = Number(it.costAtSale != null ? it.costAtSale : (inv ? inv.PurchasePrice : 0)) || 0;
-              returnedCOGS += round2(buy * Number(it.qty||1));
-            }
-          });
-        }
-        if(returnedCOGS === 0 && retAmt > 0 && saleCOGS > 0){
-          returnedCOGS = (retAmt / tot) * saleCOGS;
-        }
-      }
-
-      posSalesCOGS += Math.max(0, saleCOGS - returnedCOGS);
+  // F1: If journal entries are empty but operational records exist, prime the ledger
+  if((!state.journalEntries || state.journalEntries.length === 0) &&
+     ((state.sales && state.sales.length) || (state.receipts && state.receipts.length) || (state.expenses && state.expenses.length))){
+    if(typeof reconcileHistoricalJournalEntries === 'function'){
+      reconcileHistoricalJournalEntries();
     }
-  });
+  }
 
-  const netPosSalesRev = Math.max(0, posSalesRev - posSalesReturns);
+  // --- 1. Ledger-derived Financial Metrics (Single Source of Truth) ---
+  let totalJournalDebits = 0;
+  let totalJournalCredits = 0;
+  let journalEntriesCount = 0;
 
-  // 2. Maintenance Revenue & Parts COGS
-  let maintLaborRev = 0;
-  let maintPartsRev = 0;
-  let maintPartsCOGS = 0;
-  let maintRefunds = 0;
-  let maintCount = 0;
-  (state.receipts || []).forEach(r => {
-    const dt = cleanDate(r.date) || r.date;
-    if(dt >= sDate && dt <= eDate){
-      const isCancelled = r.status === 'تعذرت الصيانة' || r.status === 'رفض العميل' || r.status === 'ملغي';
-      const labor = isCancelled ? 0 : (Number(r.cost || 0) + Number(r.otherAccountAmount || 0));
-      const parts = isCancelled ? 0 : Number(r.partsCost || 0);
-      const partsCostReal = isCancelled ? 0 : Number(r.partsBuyCost != null ? r.partsBuyCost : (r.partsCost || 0));
-      const refAmt = Number(r.refunded || 0);
-      maintCount++;
-      maintLaborRev += labor;
-      maintPartsRev += parts;
-      maintPartsCOGS += partsCostReal;
-      maintRefunds += refAmt;
-    }
-  });
+  // Revenue accounts (Credit nature: 4*)
+  let rev4101 = 0; // إيرادات خدمات صيانة وتصليح
+  let rev4102 = 0; // إيرادات مبيعات بضائع وقطع غيار
+  let rev4103 = 0; // إيرادات تركيب كاميرات وأنظمة
+  let revOther4 = 0; // إيرادات أخرى متنوعة (42 أو حسابات 4 أخرى)
+  let totalRevenue = 0;
 
-  const netMaintRev = Math.max(0, (maintLaborRev + maintPartsRev) - maintRefunds);
+  // COGS accounts (Debit nature: 51*)
+  let cogs5101 = 0; // تكلفة قطع الغيار المستخدمة بالصيانة
+  let cogs5102 = 0; // تكلفة البضاعة المباعة (POS)
+  let cogsOther51 = 0; // تكاليف نشاط ومبيعات أخرى
+  let totalCOGS = 0;
 
-  // 3. Other Invoices & Services
-  let servicesRev = 0;
-  (state.invoices || []).forEach(inv => {
-    const dt = cleanDate(inv.Date) || inv.Date;
-    if(dt >= sDate && dt <= eDate){
-      if(inv.ReferenceType !== 'Receipt' && inv.ReferenceType !== 'POS_Sale'){
-        servicesRev += Number(inv.Total || 0);
-      }
-    }
-  });
-
-  const totalRevenue = netPosSalesRev + netMaintRev + servicesRev;
-  const totalCOGS = posSalesCOGS + maintPartsCOGS;
-  const grossProfit = totalRevenue - totalCOGS;
-  const grossMargin = totalRevenue > 0 ? ((grossProfit / totalRevenue) * 100) : 0;
-
-  // 4. Operating Expenses Breakdown (Excluding POS returns, drawings, and supplier pay)
+  // Operating Expenses accounts (Debit nature: 52* or any 5* not 51*)
   const expCategories = {
     'إيجار': 0,
     'كهرباء ومياه': 0,
@@ -854,34 +820,147 @@ function getIncomeStatementData(startDate, endDate){
     'مصروفات أخرى': 0
   };
   let totalOperatingExpenses = 0;
-  (state.expenses || []).forEach(exp => {
-    const dt = cleanDate(exp.Date) || exp.Date;
+
+  const CODE_TO_EXP_CAT = {
+    '5201': 'إيجار',
+    '5202': 'كهرباء ومياه',
+    '5203': 'رواتب وسلفيات',
+    '5204': 'بوفيه ونثريات',
+    '5205': 'دعاية وإعلانات',
+    '5206': 'أدوات وصيانة مقر',
+    '5207': 'شحن وتوصيل'
+  };
+
+  (state.journalEntries || []).forEach(je => {
+    const dt = cleanDate(je.Date) || (typeof je.Date === 'string' ? je.Date.slice(0, 10) : '');
     if(dt >= sDate && dt <= eDate){
-      const isSupplier = exp.Category === 'سداد موردين ومشتريات' || String(exp.Category||'').includes('مورد') || exp.Type === 'supplier';
-      const isDraw = exp.Type === 'out' || exp.Category === 'مسحوبات شخصية' || exp.Category === 'جاري الشركاء';
-      const isIncome = exp.Type === 'in' || exp.Type === 'income';
-      const isPosReturn = exp.Category === 'مرتجع مبيعات POS' || exp.AccountCode === '4102-RET' || exp.Type === 'pos_return';
-      if(!isSupplier && !isDraw && !isIncome && !isPosReturn){
-        const amt = Number(exp.Amount || 0);
-        totalOperatingExpenses += amt;
-        const cat = exp.Category || 'مصروفات أخرى';
-        if(expCategories[cat] !== undefined) expCategories[cat] += amt;
-        else expCategories['مصروفات أخرى'] += amt;
+      journalEntriesCount++;
+      const lines = Array.isArray(je.Lines) ? je.Lines : (typeof je.LinesJSON === 'string' ? JSON.parse(je.LinesJSON || '[]') : []);
+      lines.forEach(l => {
+        const code = String(l.AccountCode || '').trim();
+        const dr = Number(l.Debit || 0);
+        const cr = Number(l.Credit || 0);
+
+        totalJournalDebits += dr;
+        totalJournalCredits += cr;
+
+        // 1. Revenue: Accounts starting with '4' (Credit - Debit)
+        if(code.startsWith('4')){
+          const net = cr - dr;
+          totalRevenue += net;
+          if(code === '4101') rev4101 += net;
+          else if(code === '4102') rev4102 += net;
+          else if(code === '4103') rev4103 += net;
+          else revOther4 += net;
+        }
+
+        // 2. COGS: Accounts starting with '51' (Debit - Credit)
+        else if(code.startsWith('51')){
+          const net = dr - cr;
+          totalCOGS += net;
+          if(code === '5101') cogs5101 += net;
+          else if(code === '5102') cogs5102 += net;
+          else cogsOther51 += net;
+        }
+
+        // 3. Operating Expenses: Accounts starting with '5' (excluding 51*) (Debit - Credit)
+        else if(code.startsWith('5')){
+          const net = dr - cr;
+          totalOperatingExpenses += net;
+          const cat = CODE_TO_EXP_CAT[code] || (l.AccountName && expCategories[l.AccountName] !== undefined ? l.AccountName : 'مصروفات أخرى');
+          if(expCategories[cat] !== undefined) expCategories[cat] += net;
+          else expCategories['مصروفات أخرى'] += net;
+        }
+      });
+    }
+  });
+
+  // Round all ledger totals
+  totalRevenue = round2(totalRevenue);
+  rev4101 = round2(rev4101);
+  rev4102 = round2(rev4102);
+  rev4103 = round2(rev4103);
+  revOther4 = round2(revOther4);
+
+  totalCOGS = round2(totalCOGS);
+  cogs5101 = round2(cogs5101);
+  cogs5102 = round2(cogs5102);
+  cogsOther51 = round2(cogsOther51);
+
+  totalOperatingExpenses = round2(totalOperatingExpenses);
+  Object.keys(expCategories).forEach(k => {
+    expCategories[k] = round2(expCategories[k]);
+  });
+
+  totalJournalDebits = round2(totalJournalDebits);
+  totalJournalCredits = round2(totalJournalCredits);
+  const ledgerImbalance = round2(Math.abs(totalJournalDebits - totalJournalCredits));
+  const isLedgerBalanced = ledgerImbalance < 0.01;
+
+  const grossProfit = round2(totalRevenue - totalCOGS);
+  const grossMargin = totalRevenue > 0 ? round2((grossProfit / totalRevenue) * 100) : 0;
+  const netOperatingProfit = round2(grossProfit - totalOperatingExpenses);
+  const netMargin = totalRevenue > 0 ? round2((netOperatingProfit / totalRevenue) * 100) : 0;
+
+  // --- 2. Statistical Operational Counts (Designated as non-accounting operational data) ---
+  let posSalesCount = 0;
+  let posReturnsCount = 0;
+  let statPosSalesRev = 0;
+  (state.sales || []).forEach(s => {
+    const dt = cleanDate(s.Date) || s.Date;
+    if(dt >= sDate && dt <= eDate){
+      posSalesCount++;
+      statPosSalesRev += Number(s.Total || 0);
+      if(s.IsReturned) posReturnsCount++;
+    }
+  });
+
+  let maintCount = 0;
+  let maintDeliveredCount = 0;
+  let statMaintLabor = 0;
+  let statMaintParts = 0;
+  (state.receipts || []).forEach(r => {
+    const dt = cleanDate(r.date) || r.date;
+    if(dt >= sDate && dt <= eDate){
+      maintCount++;
+      if(r.status === 'تم التسليم' || r.status === 'delivered') maintDeliveredCount++;
+      const isCancelled = r.status === 'تعذرت الصيانة' || r.status === 'رفض العميل' || r.status === 'ملغي';
+      if(!isCancelled){
+        statMaintLabor += Number(r.cost || 0) + Number(r.otherAccountAmount || 0);
+        statMaintParts += Number(r.partsCost || 0);
       }
     }
   });
 
-  const netOperatingProfit = grossProfit - totalOperatingExpenses;
-  const netMargin = totalRevenue > 0 ? ((netOperatingProfit / totalRevenue) * 100) : 0;
+  let invoicesCount = 0;
+  (state.invoices || []).forEach(inv => {
+    const dt = cleanDate(inv.Date) || inv.Date;
+    if(dt >= sDate && dt <= eDate){
+      invoicesCount++;
+    }
+  });
 
   return {
     sDate, eDate,
-    posSalesRev, posSalesReturns, netPosSalesRev, posSalesCOGS, posSalesCount, posReturnsCount,
-    maintLaborRev, maintPartsRev, maintPartsCOGS, maintRefunds, netMaintRev, maintCount,
-    servicesRev,
     totalRevenue, totalCOGS, grossProfit, grossMargin,
-    expCategories, totalOperatingExpenses,
-    netOperatingProfit, netMargin
+    totalOperatingExpenses, expCategories,
+    netOperatingProfit, netMargin,
+    // Ledger verification
+    totalJournalDebits, totalJournalCredits, ledgerImbalance, isLedgerBalanced, journalEntriesCount,
+    // Ledger Accounts
+    rev4101, rev4102, rev4103, revOther4,
+    cogs5101, cogs5102, cogsOther51,
+    // Operational & backward-compatibility aliases
+    maintLaborRev: rev4101,
+    maintPartsRev: 0,
+    posSalesRev: rev4102,
+    servicesRev: round2(rev4103 + revOther4),
+    posSalesCOGS: cogs5102,
+    maintPartsCOGS: cogs5101,
+    posSalesCount, posReturnsCount, maintCount, maintDeliveredCount, invoicesCount,
+    statPosSalesRev, statMaintLabor, statMaintParts,
+    netPosSalesRev: rev4102,
+    netMaintRev: rev4101
   };
 }
 
@@ -939,18 +1018,31 @@ function renderFinanceReportPage(main){
       </div>
     </div>
 
+    <!-- Ledger Verification Banner (F1) -->
+    <div class="card" style="padding:12px 18px;margin-bottom:14px;border-radius:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;background:${data.isLedgerBalanced ? '#f0fdf4' : '#fef2f2'};border:1.5px solid ${data.isLedgerBalanced ? '#86efac' : '#fca5a5'};color:${data.isLedgerBalanced ? '#166534' : '#991b1b'};">
+      <div style="display:flex;align-items:center;gap:10px;font-size:13.5px;font-weight:800;">
+        <span>${data.isLedgerBalanced ? getSvgIcon("checkCircle", 18) : getSvgIcon("alertTriangle", 18)}</span>
+        <span>مطابقة الدفتر: مجموع مدين القيود = <b class="mono font-bold">${data.totalJournalDebits.toLocaleString()} ج.م</b> · مجموع دائن القيود = <b class="mono font-bold">${data.totalJournalCredits.toLocaleString()} ج.م</b> · الفرق = <b class="mono font-bold">${data.ledgerImbalance.toLocaleString()} ج.م</b> ${data.isLedgerBalanced ? '(الدفتر متزن تماماً ومطابق للقيد المزدوج)' : '(تنبيه: يوجد عدم اتزان محاسبي في قيود الفترة!)'}</span>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <button class="btn btn-xs ${data.isLedgerBalanced ? 'btn-ghost' : 'btn-red'}" id="reconcileLedgerBtn" title="إعادة مطابقة وترحيل كافة القيود التاريخية الناقصة لدفتر الأستاذ">
+          ${getSvgIcon("sync", 13)} تحديث وترحيل قيود الدفتر
+        </button>
+      </div>
+    </div>
+
     <!-- 6 Executive KPI Metric Cards -->
     <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(170px, 1fr));gap:12px;margin-bottom:16px;">
       <div class="card" style="padding:14px;margin:0;border-right:4px solid #0284c7;">
         <div style="font-size:11.5px;color:var(--ink-secondary);font-weight:700;">إجمالي الإيرادات</div>
         <div class="num mono font-bold" style="font-size:19px;margin-top:4px;color:#0284c7;">${data.totalRevenue.toLocaleString()} ج.م</div>
-        <div style="font-size:10.5px;color:var(--ink-secondary);margin-top:2px;">مبيعات + صيانة + خدمات</div>
+        <div style="font-size:10.5px;color:var(--ink-secondary);margin-top:2px;">حسابات الإيرادات (4)</div>
       </div>
 
       <div class="card" style="padding:14px;margin:0;border-right:4px solid #ea580c;">
         <div style="font-size:11.5px;color:var(--ink-secondary);font-weight:700;">تكلفة البضاعة والمبيعات (COGS)</div>
         <div class="num mono font-bold" style="font-size:19px;margin-top:4px;color:#ea580c;">${data.totalCOGS.toLocaleString()} ج.م</div>
-        <div style="font-size:10.5px;color:var(--ink-secondary);margin-top:2px;">تكلفة الشراء للبضاعة والقطع</div>
+        <div style="font-size:10.5px;color:var(--ink-secondary);margin-top:2px;">تكلفة النشاط والمبيعات (51)</div>
       </div>
 
       <div class="card" style="padding:14px;margin:0;border-right:4px solid #16a34a;">
@@ -962,7 +1054,7 @@ function renderFinanceReportPage(main){
       <div class="card" style="padding:14px;margin:0;border-right:4px solid #dc2626;">
         <div style="font-size:11.5px;color:var(--ink-secondary);font-weight:700;">المصروفات التشغيلية</div>
         <div class="num mono font-bold" style="font-size:19px;margin-top:4px;color:#dc2626;">${data.totalOperatingExpenses.toLocaleString()} ج.م</div>
-        <div style="font-size:10.5px;color:var(--ink-secondary);margin-top:2px;">إيجار، رواتب، مرافق، نثريات</div>
+        <div style="font-size:10.5px;color:var(--ink-secondary);margin-top:2px;">المصروفات العمومية (52)</div>
       </div>
 
       <div class="card" style="padding:14px;margin:0;border-right:4px solid #7c3aed;">
@@ -970,7 +1062,7 @@ function renderFinanceReportPage(main){
         <div class="num mono font-bold" style="font-size:20px;margin-top:4px;color:${data.netOperatingProfit>=0?'#7c3aed':'#dc2626'};">
           ${data.netOperatingProfit.toLocaleString()} ج.م
         </div>
-        <div style="font-size:10.5px;color:var(--ink-secondary);margin-top:2px;">بعد خصم كافة الأعباء والتكاليف</div>
+        <div style="font-size:10.5px;color:var(--ink-secondary);margin-top:2px;">مطابق لميزان المراجعة</div>
       </div>
 
       <div class="card" style="padding:14px;margin:0;border-right:4px solid #0d9488;">
@@ -983,7 +1075,7 @@ function renderFinanceReportPage(main){
     <!-- Structured Income Statement Ledger -->
     <div class="card" style="padding:0;overflow:hidden;border:1px solid #cbd5e1;">
       <div style="background:#0f172a;color:#fff;padding:12px 18px;display:flex;justify-content:space-between;align-items:center;">
-        <h3 style="margin:0;font-size:15px;font-weight:800;display:flex;align-items:center;gap:6px;">${getSvgIcon("fileText", 16)} هيكل قائمة الدخل المحاسبية المعتمدة</h3>
+        <h3 style="margin:0;font-size:15px;font-weight:800;display:flex;align-items:center;gap:6px;">${getSvgIcon("fileText", 16)} هيكل قائمة الدخل المحاسبية المعتمدة من دفتر الأستاذ</h3>
         <span class="mono" style="font-size:12px;color:#94a3b8;">معايير المحاسبة والتقارير المالية الدولية</span>
       </div>
 
@@ -999,25 +1091,27 @@ function renderFinanceReportPage(main){
             </td>
           </tr>
           <tr style="border-bottom:1px solid #f1f5f9;">
-            <td style="padding:8px 24px;color:#334155;">إيرادات خدمات صيانة وتصليح الأجهزة (مصنعيات وأجور شغل)</td>
-            <td style="padding:8px;color:#64748b;font-size:11.5px;">حساب 4101 (${data.maintCount} أمر شغل)</td>
-            <td style="padding:8px 16px;text-align:left;" class="mono">${data.maintLaborRev.toLocaleString()} ج.م</td>
+            <td style="padding:8px 24px;color:#334155;">إيرادات خدمات صيانة وتصليح الأجهزة (مصنعيات وقطع الأجهزة المسلمة)</td>
+            <td style="padding:8px;color:#64748b;font-size:11.5px;">حساب 4101 (إحصاء: ${data.maintCount} أمر شغل)</td>
+            <td style="padding:8px 16px;text-align:left;" class="mono">${data.rev4101.toLocaleString()} ج.م</td>
           </tr>
           <tr style="border-bottom:1px solid #f1f5f9;">
             <td style="padding:8px 24px;color:#334155;">إيرادات مبيعات بضائع وإكسسوار ومتجر (نقطة البيع POS)</td>
-            <td style="padding:8px;color:#64748b;font-size:11.5px;">حساب 4102 (${data.posSalesCount} فاتورة بيع)</td>
-            <td style="padding:8px 16px;text-align:left;" class="mono">${data.posSalesRev.toLocaleString()} ج.م</td>
+            <td style="padding:8px;color:#64748b;font-size:11.5px;">حساب 4102 (إحصاء: ${data.posSalesCount} فاتورة بيع)</td>
+            <td style="padding:8px 16px;text-align:left;" class="mono">${data.rev4102.toLocaleString()} ج.م</td>
           </tr>
-          <tr style="border-bottom:1px solid #f1f5f9;">
-            <td style="padding:8px 24px;color:#334155;">إيرادات قطع الغيار المباعة والمستهلكة في الصيانة</td>
-            <td style="padding:8px;color:#64748b;font-size:11.5px;">سعر قطع الغيار المحصلة</td>
-            <td style="padding:8px 16px;text-align:left;" class="mono">${data.maintPartsRev.toLocaleString()} ج.م</td>
-          </tr>
-          ${data.servicesRev > 0 ? `
+          ${data.rev4103 > 0 ? `
             <tr style="border-bottom:1px solid #f1f5f9;">
-              <td style="padding:8px 24px;color:#334155;">إيرادات عقود وخدمات كاميرات ومشاريع وفواتير مستقلة</td>
-              <td style="padding:8px;color:#64748b;font-size:11.5px;">حساب 4103</td>
-              <td style="padding:8px 16px;text-align:left;" class="mono">${data.servicesRev.toLocaleString()} ج.م</td>
+              <td style="padding:8px 24px;color:#334155;">إيرادات تركيب كاميرات وأنظمة وعقود مشاريع</td>
+              <td style="padding:8px;color:#64748b;font-size:11.5px;">حساب 4103 (إحصاء: ${data.invoicesCount} فاتورة)</td>
+              <td style="padding:8px 16px;text-align:left;" class="mono">${data.rev4103.toLocaleString()} ج.م</td>
+            </tr>
+          ` : ''}
+          ${data.revOther4 > 0 ? `
+            <tr style="border-bottom:1px solid #f1f5f9;">
+              <td style="padding:8px 24px;color:#334155;">إيرادات أخرى متنوعة</td>
+              <td style="padding:8px;color:#64748b;font-size:11.5px;">حساب 42</td>
+              <td style="padding:8px 16px;text-align:left;" class="mono">${data.revOther4.toLocaleString()} ج.م</td>
             </tr>
           ` : ''}
 
@@ -1033,13 +1127,20 @@ function renderFinanceReportPage(main){
           <tr style="border-bottom:1px solid #f1f5f9;">
             <td style="padding:8px 24px;color:#334155;">تكلفة البضاعة المباعة في نقطة البيع (سعر الشراء للأصناف المباعة)</td>
             <td style="padding:8px;color:#64748b;font-size:11.5px;">حساب 5102</td>
-            <td style="padding:8px 16px;text-align:left;" class="mono font-bold" style="color:#ea580c;">(${data.posSalesCOGS.toLocaleString()}) ج.م</td>
+            <td style="padding:8px 16px;text-align:left;" class="mono font-bold" style="color:#ea580c;">(${data.cogs5102.toLocaleString()}) ج.م</td>
           </tr>
           <tr style="border-bottom:1px solid #f1f5f9;">
             <td style="padding:8px 24px;color:#334155;">تكلفة قطع الغيار المستهلكة في الصيانة (سعر الشراء من المخزن)</td>
             <td style="padding:8px;color:#64748b;font-size:11.5px;">حساب 5101</td>
-            <td style="padding:8px 16px;text-align:left;" class="mono font-bold" style="color:#ea580c;">(${data.maintPartsCOGS.toLocaleString()}) ج.م</td>
+            <td style="padding:8px 16px;text-align:left;" class="mono font-bold" style="color:#ea580c;">(${data.cogs5101.toLocaleString()}) ج.م</td>
           </tr>
+          ${data.cogsOther51 > 0 ? `
+            <tr style="border-bottom:1px solid #f1f5f9;">
+              <td style="padding:8px 24px;color:#334155;">تكاليف مبيعات ونشاط أخرى</td>
+              <td style="padding:8px;color:#64748b;font-size:11.5px;">حساب 51</td>
+              <td style="padding:8px 16px;text-align:left;" class="mono font-bold" style="color:#ea580c;">(${data.cogsOther51.toLocaleString()}) ج.م</td>
+            </tr>
+          ` : ''}
 
           <!-- 3. Gross Profit Summary Row -->
           <tr style="background:#ecfdf5;border-top:2.5px solid #86efac;border-bottom:2.5px solid #86efac;">
@@ -1068,7 +1169,7 @@ function renderFinanceReportPage(main){
             return `
               <tr style="border-bottom:1px solid #f1f5f9;">
                 <td style="padding:7px 24px;color:#334155;">مصروفات: ${escapeHtml(cat)}</td>
-                <td style="padding:7px;color:#64748b;font-size:11px;">تشغيلي</td>
+                <td style="padding:7px;color:#64748b;font-size:11px;">تشغيلي (52)</td>
                 <td style="padding:7px 16px;text-align:left;" class="mono">(${amt.toLocaleString()}) ج.م</td>
               </tr>
             `;
@@ -1088,6 +1189,37 @@ function renderFinanceReportPage(main){
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <!-- Statistical Operational Metrics Card (F1) -->
+    <div class="card" style="padding:14px 18px;margin-top:16px;background:var(--paper2);border:1.5px dashed var(--line);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <h4 style="margin:0;font-size:13px;font-weight:800;color:var(--ink-secondary);display:flex;align-items:center;gap:6px;">
+          ${getSvgIcon("info", 15)} بيانات إحصائية تشغيلية للفترة (ليست الأساس المحاسبي — للعلم والاسترشاد)
+        </h4>
+        <span class="badge" style="font-size:10.5px;background:#e2e8f0;color:#475569;">إحصاء تشغيلي</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:10px;font-size:12px;">
+        <div style="background:var(--paper);padding:10px;border-radius:6px;border:1px solid var(--line);">
+          <div style="color:var(--ink-secondary);font-size:11px;">أوامر شغل الصيانة</div>
+          <div class="mono font-bold" style="font-size:15px;margin-top:2px;">${data.maintCount} أمر (${data.maintDeliveredCount} مسلم)</div>
+        </div>
+        <div style="background:var(--paper);padding:10px;border-radius:6px;border:1px solid var(--line);">
+          <div style="color:var(--ink-secondary);font-size:11px;">فواتير مبيعات POS</div>
+          <div class="mono font-bold" style="font-size:15px;margin-top:2px;">${data.posSalesCount} فاتورة (${data.posReturnsCount} مرتجع)</div>
+        </div>
+        <div style="background:var(--paper);padding:10px;border-radius:6px;border:1px solid var(--line);">
+          <div style="color:var(--ink-secondary);font-size:11px;">فواتير وعقود الخدمات</div>
+          <div class="mono font-bold" style="font-size:15px;margin-top:2px;">${data.invoicesCount} فاتورة</div>
+        </div>
+        <div style="background:var(--paper);padding:10px;border-radius:6px;border:1px solid var(--line);">
+          <div style="color:var(--ink-secondary);font-size:11px;">إجمالي قيود اليومية بالفترة</div>
+          <div class="mono font-bold" style="font-size:15px;margin-top:2px;color:var(--primary);">${data.journalEntriesCount} قيد محاسبي</div>
+        </div>
+      </div>
+      <div style="margin-top:8px;font-size:11px;color:var(--ink-secondary);line-height:1.6;">
+        ملاحظة: كافة أرقام الإيرادات وتكلفة البضاعة المباعة والمصروفات وصافي الربح في هذا التقرير مستخرجة بالكامل ومطابقة 100% مع واقع قيود دفتر الأستاذ العام (General Ledger) المعتمد محاسبياً.
+      </div>
     </div>
   `;
 
@@ -1110,6 +1242,16 @@ function renderFinanceReportPage(main){
       }
       state.incomeReportPeriod.from = fromVal;
       state.incomeReportPeriod.to = toVal;
+      renderFinanceReportPage(main);
+    };
+  }
+
+  // Reconcile Ledger Button Handler
+  const recLedgerBtn = main.querySelector('#reconcileLedgerBtn');
+  if(recLedgerBtn){
+    recLedgerBtn.onclick = () => {
+      if(typeof reconcileHistoricalJournalEntries === 'function') reconcileHistoricalJournalEntries();
+      showToast('تم فحص وتحديث قيود دفتر الأستاذ العام بنجاح', 'success');
       renderFinanceReportPage(main);
     };
   }
@@ -1155,8 +1297,9 @@ function openPrintIncomeStatement(data, periodInfo){
         </div>
       </div>
 
-      <div style="background:#f8fafc;border:1px solid #e2e8f0;padding:10px 14px;border-radius:6px;margin-bottom:16px;font-size:12px;display:flex;justify-content:space-between;">
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;padding:10px 14px;border-radius:6px;margin-bottom:16px;font-size:12px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
         <span><b>الفترة المحاسبية:</b> ${escapeHtml(periodInfo.label)}</span>
+        <span><b>حالة الدفتر:</b> ${data.isLedgerBalanced ? 'متزن ومطابق' : 'يوجد فرق: ' + data.ledgerImbalance + ' ج.م'}</span>
         <span>المسؤول: <b>${escapeHtml(state.user?.name || 'الإدارة')}</b></span>
       </div>
 
@@ -1165,7 +1308,7 @@ function openPrintIncomeStatement(data, periodInfo){
         <thead>
           <tr style="background:#0f172a;color:#fff;">
             <th style="padding:8px 12px;text-align:right;">البند المالي / التصنيف المحاسبي</th>
-            <th style="padding:8px 12px;text-align:center;">الملاحظات</th>
+            <th style="padding:8px 12px;text-align:center;">رقم الحساب</th>
             <th style="padding:8px 12px;text-align:left;width:140px;">القيمة</th>
           </tr>
         </thead>
@@ -1174,16 +1317,18 @@ function openPrintIncomeStatement(data, periodInfo){
             <td colspan="2" style="padding:8px 12px;color:#0284c7;">١. إجمالي الإيرادات التشغيلية</td>
             <td style="padding:8px 12px;text-align:left;color:#0284c7;">${data.totalRevenue.toLocaleString()} ج.م</td>
           </tr>
-          <tr><td style="padding:6px 20px;">• إيرادات الصيانة والتصليح (مصنعيات وأجور)</td><td style="text-align:center;">4101</td><td style="padding:6px 12px;text-align:left;">${data.maintLaborRev.toLocaleString()} ج.م</td></tr>
-          <tr><td style="padding:6px 20px;">• إيرادات مبيعات البضائع والإكسسوار (POS)</td><td style="text-align:center;">4102</td><td style="padding:6px 12px;text-align:left;">${data.posSalesRev.toLocaleString()} ج.م</td></tr>
-          <tr><td style="padding:6px 20px;">• إيرادات قطع الغيار المستخدمة</td><td style="text-align:center;">قطع غيار</td><td style="padding:6px 12px;text-align:left;">${data.maintPartsRev.toLocaleString()} ج.م</td></tr>
+          <tr><td style="padding:6px 20px;">• إيرادات الصيانة والتصليح (مصنعيات وقطع)</td><td style="text-align:center;">4101</td><td style="padding:6px 12px;text-align:left;">${data.rev4101.toLocaleString()} ج.م</td></tr>
+          <tr><td style="padding:6px 20px;">• إيرادات مبيعات البضائع والإكسسوار (POS)</td><td style="text-align:center;">4102</td><td style="padding:6px 12px;text-align:left;">${data.rev4102.toLocaleString()} ج.م</td></tr>
+          ${data.rev4103 > 0 ? `<tr><td style="padding:6px 20px;">• إيرادات عقود وتركيب كاميرات ومشاريع</td><td style="text-align:center;">4103</td><td style="padding:6px 12px;text-align:left;">${data.rev4103.toLocaleString()} ج.م</td></tr>` : ''}
+          ${data.revOther4 > 0 ? `<tr><td style="padding:6px 20px;">• إيرادات أخرى متنوعة</td><td style="text-align:center;">42</td><td style="padding:6px 12px;text-align:left;">${data.revOther4.toLocaleString()} ج.م</td></tr>` : ''}
 
           <tr style="background:#f1f5f9;font-weight:bold;">
             <td colspan="2" style="padding:8px 12px;color:#ea580c;">٢. يطرح: تكلفة النشاط والمبيعات (COGS)</td>
             <td style="padding:8px 12px;text-align:left;color:#ea580c;">(${data.totalCOGS.toLocaleString()}) ج.م</td>
           </tr>
-          <tr><td style="padding:6px 20px;">• تكلفة البضاعة المباعة بالمحل (POS)</td><td style="text-align:center;">5102</td><td style="padding:6px 12px;text-align:left;">(${data.posSalesCOGS.toLocaleString()}) ج.م</td></tr>
-          <tr><td style="padding:6px 20px;">• تكلفة قطع الغيار المستخدمة بالصيانة</td><td style="text-align:center;">5101</td><td style="padding:6px 12px;text-align:left;">(${data.maintPartsCOGS.toLocaleString()}) ج.م</td></tr>
+          <tr><td style="padding:6px 20px;">• تكلفة البضاعة المباعة بالمحل (POS)</td><td style="text-align:center;">5102</td><td style="padding:6px 12px;text-align:left;">(${data.cogs5102.toLocaleString()}) ج.م</td></tr>
+          <tr><td style="padding:6px 20px;">• تكلفة قطع الغيار المستخدمة بالصيانة</td><td style="text-align:center;">5101</td><td style="padding:6px 12px;text-align:left;">(${data.cogs5101.toLocaleString()}) ج.م</td></tr>
+          ${data.cogsOther51 > 0 ? `<tr><td style="padding:6px 20px;">• تكاليف نشاط ومبيعات أخرى</td><td style="text-align:center;">51</td><td style="padding:6px 12px;text-align:left;">(${data.cogsOther51.toLocaleString()}) ج.م</td></tr>` : ''}
 
           <tr style="background:#ecfdf5;font-weight:900;border-top:1.5px solid #86efac;border-bottom:1.5px solid #86efac;">
             <td style="padding:10px 12px;color:#15803d;">مجمل الربح (Gross Profit)</td>
@@ -1196,7 +1341,7 @@ function openPrintIncomeStatement(data, periodInfo){
             <td style="padding:8px 12px;text-align:left;color:#dc2626;">(${data.totalOperatingExpenses.toLocaleString()}) ج.م</td>
           </tr>
           ${Object.entries(data.expCategories).map(([c, a]) => a > 0 ? `
-            <tr><td style="padding:5px 20px;">• ${escapeHtml(c)}</td><td style="text-align:center;">تشغيلي</td><td style="padding:5px 12px;text-align:left;">(${a.toLocaleString()}) ج.م</td></tr>
+            <tr><td style="padding:5px 20px;">• ${escapeHtml(c)}</td><td style="text-align:center;">52</td><td style="padding:5px 12px;text-align:left;">(${a.toLocaleString()}) ج.م</td></tr>
           ` : '').join('')}
 
           <tr style="background:#f5f3ff;font-weight:900;border-top:2px solid #a855f7;border-bottom:2px solid #a855f7;font-size:14px;">
@@ -1229,21 +1374,26 @@ function openPrintIncomeStatement(data, periodInfo){
 }
 
 function exportIncomeStatementToExcel(data, periodInfo){
-  const headers = ['التصنيف المحاسبي', 'البند التفصيلي', 'القيمة بالجنيه'];
+  const headers = ['التصنيف المحاسبي', 'رقم الحساب', 'البند التفصيلي', 'القيمة بالجنيه'];
   const rows = [
-    ['الإيرادات', 'إيرادات خدمات صيانة وتصليح (4101)', data.maintLaborRev],
-    ['الإيرادات', 'إيرادات مبيعات متجر وقطع غيار (4102)', data.posSalesRev],
-    ['الإيرادات', 'إيرادات قطع الغيار المباعة بالصيانة', data.maintPartsRev],
-    ['الإيرادات', 'إجمالي الإيرادات التشغيلية', data.totalRevenue],
-    ['تكلفة المبيعات', 'تكلفة البضاعة المباعة في POS (5102)', -data.posSalesCOGS],
-    ['تكلفة المبيعات', 'تكلفة قطع الغيار المستخدمة بالصيانة (5101)', -data.maintPartsCOGS],
-    ['تكلفة المبيعات', 'إجمالي تكلفة المبيعات (COGS)', -data.totalCOGS],
-    ['الربحية', 'مجمل الربح التشغيلي (Gross Profit)', data.grossProfit],
-    ['الربحية', 'نسبة هامش مجمل الربح %', data.grossMargin.toFixed(1) + '%'],
-    ...Object.entries(data.expCategories).filter(([_, a]) => a > 0).map(([c, a]) => ['المصروفات التشغيلية', c, -a]),
-    ['المصروفات التشغيلية', 'إجمالي المصروفات التشغيلية', -data.totalOperatingExpenses],
-    ['الربحية', 'صافي الربح الفعلي النهائي (Net Profit)', data.netOperatingProfit],
-    ['الربحية', 'نسبة صافي الربح النهائي %', data.netMargin.toFixed(1) + '%']
+    ['الإيرادات', '4101', 'إيرادات خدمات صيانة وتصليح الأجهزة', data.rev4101],
+    ['الإيرادات', '4102', 'إيرادات مبيعات متجر وبضائع (POS)', data.rev4102],
+    ...(data.rev4103 > 0 ? [['الإيرادات', '4103', 'إيرادات تركيب كاميرات وأنظمة ومشاريع', data.rev4103]] : []),
+    ...(data.revOther4 > 0 ? [['الإيرادات', '42', 'إيرادات أخرى متنوعة', data.revOther4]] : []),
+    ['الإيرادات', '4', 'إجمالي الإيرادات التشغيلية', data.totalRevenue],
+    ['تكلفة المبيعات', '5102', 'تكلفة البضاعة المباعة في POS', -data.cogs5102],
+    ['تكلفة المبيعات', '5101', 'تكلفة قطع الغيار المستخدمة بالصيانة', -data.cogs5101],
+    ...(data.cogsOther51 > 0 ? [['تكلفة المبيعات', '51', 'تكاليف نشاط ومبيعات أخرى', -data.cogsOther51]] : []),
+    ['تكلفة المبيعات', '51', 'إجمالي تكلفة المبيعات (COGS)', -data.totalCOGS],
+    ['الربحية', '-', 'مجمل الربح التشغيلي (Gross Profit)', data.grossProfit],
+    ['الربحية', '-', 'نسبة هامش مجمل الربح %', data.grossMargin.toFixed(1) + '%'],
+    ...Object.entries(data.expCategories).filter(([_, a]) => a > 0).map(([c, a]) => ['المصروفات التشغيلية', '52', c, -a]),
+    ['المصروفات التشغيلية', '52', 'إجمالي المصروفات التشغيلية', -data.totalOperatingExpenses],
+    ['الربحية', '-', 'صافي الربح الفعلي النهائي (Net Profit)', data.netOperatingProfit],
+    ['الربحية', '-', 'نسبة صافي الربح النهائي %', data.netMargin.toFixed(1) + '%'],
+    ['مطابقة الدفتر', '-', 'مجموع مدين القيود', data.totalJournalDebits],
+    ['مطابقة الدفتر', '-', 'مجموع دائن القيود', data.totalJournalCredits],
+    ['مطابقة الدفتر', '-', 'فرق التوازن', data.ledgerImbalance]
   ];
   downloadCSV(`Income_Statement_${new Date().toISOString().slice(0,10)}.csv`, headers, rows);
 }

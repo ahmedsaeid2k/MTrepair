@@ -47,7 +47,8 @@ const DEFAULT_ACCOUNTS = [
   {Code:'5204', Name:'بوفيه ونثريات وضيافة', Type:'المصروفات', ParentCode:'52', Nature:'مدين', Description:'مشروبات ومستلزمات يومية', Balance:0},
   {Code:'5205', Name:'دعاية وإعلان وتسويق', Type:'المصروفات', ParentCode:'52', Nature:'مدين', Description:'إعلانات ممولة ومطبوعات', Balance:0},
   {Code:'5206', Name:'أدوات ومستهلكات مركز الصيانة', Type:'المصروفات', ParentCode:'52', Nature:'مدين', Description:'قصدير، فلكس، أسلاك، شيلد، مفكات...', Balance:0},
-  {Code:'5207', Name:'شحن وتوصيل ونقليات', Type:'المصروفات', ParentCode:'52', Nature:'مدين', Description:'مصاريف الشحن والمواصلات', Balance:0}
+  {Code:'5207', Name:'شحن وتوصيل ونقليات', Type:'المصروفات', ParentCode:'52', Nature:'مدين', Description:'مصاريف الشحن والمواصلات', Balance:0},
+  {Code:'5208', Name:'مصروفات تشغيلية أخرى وفروق الدرج', Type:'المصروفات', ParentCode:'52', Nature:'مدين', Description:'مصروفات متنوعة ونثريات وفروق الدرج', Balance:0}
 ];
 
 const EXPENSE_ACCOUNT_MAP = {
@@ -65,6 +66,7 @@ const EXPENSE_ACCOUNT_MAP = {
   'أدوات وصيانة مقر': '5206',
   'أدوات ومستهلكات': '5206',
   'شحن وتوصيل': '5207',
+  'مصروفات أخرى': '5208',
   'مسحوبات شخصية': '3103',
   'جاري الشركاء': '3103',
   'سداد موردين ومشتريات': '2101',
@@ -378,6 +380,53 @@ function reconcileHistoricalJournalEntries(){
         newEntries.push(entry);
         state.journalEntries.push(entry);
         existingRefs.add(refKey);
+      }
+    }
+  });
+
+  // 6. Reconcile Operating Expenses (F1: Ensure complete ledger coverage)
+  (state.expenses || []).forEach(exp => {
+    const refKey = `Expense_${exp.ID}`;
+    if (!existingRefs.has(refKey)) {
+      const amt = Number(exp.Amount || 0);
+      if (amt > 0) {
+        const cat = exp.Category || 'مصروفات أخرى';
+        const isSupplier = cat === 'سداد موردين ومشتريات' || String(cat).includes('مورد') || exp.Type === 'supplier';
+        const isDraw = exp.Type === 'out' || cat === 'مسحوبات شخصية' || cat === 'جاري الشركاء';
+        const isIncome = exp.Type === 'in' || exp.Type === 'income';
+        const isPosReturn = cat === 'مرتجع مبيعات POS' || exp.AccountCode === '4102-RET' || exp.Type === 'pos_return';
+
+        if (!isIncome && !isPosReturn && !isSupplier && !isDraw) {
+          const debitCode = EXPENSE_ACCOUNT_MAP[cat] || exp.AccountCode || '5208';
+          const debitAcc = (state.accounts || []).find(a => String(a.Code) === String(debitCode));
+          const debitName = debitAcc ? debitAcc.Name : (cat || 'مصروفات تشغيلية');
+
+          const payMethod = exp.PaymentMethod || 'نقدي';
+          const pLow = String(payMethod).toLowerCase();
+          const isBank = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('إنستاباي') || pLow.includes('محفظ') || pLow.includes('فودافون');
+          const creditCode = isBank ? '1102' : '1101';
+          const creditName = isBank ? 'البنك والحسابات الإلكترونية' : 'الخزينة الرئيسية (النقدية)';
+
+          const entry = {
+            ID: 'je_hist_exp_' + exp.ID,
+            EntryNumber: getNextJournalEntryNumber(),
+            Date: (exp.Date || new Date().toISOString()).slice(0, 10),
+            Description: `مصروف تشغيلي: ${cat} - ${exp.Title || exp.Notes || ''}`.trim(),
+            ReferenceType: 'Expense',
+            ReferenceID: String(exp.ID),
+            Lines: [
+              { AccountCode: debitCode, AccountName: debitName, Debit: amt, Credit: 0, Notes: exp.Notes || cat },
+              { AccountCode: creditCode, AccountName: creditName, Debit: 0, Credit: amt, Notes: `سداد عبر ${payMethod}` }
+            ],
+            TotalDebit: amt,
+            TotalCredit: amt,
+            By: exp.By || 'نظام'
+          };
+          entry.LinesJSON = JSON.stringify(entry.Lines);
+          newEntries.push(entry);
+          state.journalEntries.push(entry);
+          existingRefs.add(refKey);
+        }
       }
     }
   });

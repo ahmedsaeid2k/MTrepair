@@ -624,9 +624,10 @@ function cleanTime(val){
 
 /**
  * Compresses an image file via Canvas down to optimal dimensions and quality.
- * Reduces 4MB+ camera photos to ~40-70KB crisp JPEGs to preserve localStorage and network speed.
+ * Guaranteed to produce base64 strings under 45KB (45,000 characters)
+ * to comply with Google Sheets cell size limits (50,000 chars) and preserve storage.
  */
-function compressImageFile(file, maxWidth = 900, maxHeight = 900, quality = 0.72){
+function compressImageFile(file, maxWidth = 800, maxHeight = 800, initialQuality = 0.72){
   return new Promise((resolve, reject) => {
     if(!file || !file.type.startsWith('image/')){
       return reject(new Error('الملف المختار ليس صورة صالحة'));
@@ -637,27 +638,43 @@ function compressImageFile(file, maxWidth = 900, maxHeight = 900, quality = 0.72
       const img = new Image();
       img.onerror = () => reject(new Error('تعذر معالجة بيانات الصورة'));
       img.onload = () => {
-        let width = img.width;
-        let height = img.height;
-        if(width > height){
-          if(width > maxWidth){
-            height = Math.round((height * maxWidth) / width);
-            width = maxWidth;
+        let curMaxWidth = maxWidth;
+        let curMaxHeight = maxHeight;
+        let quality = initialQuality;
+        let dataUrl = '';
+        
+        // Iteratively downscale / reduce quality to guarantee base64 string fits safely under 45,000 chars
+        for (let attempt = 0; attempt < 5; attempt++) {
+          let width = img.width;
+          let height = img.height;
+          if(width > height){
+            if(width > curMaxWidth){
+              height = Math.round((height * curMaxWidth) / width);
+              width = curMaxWidth;
+            }
+          } else {
+            if(height > curMaxHeight){
+              width = Math.round((width * curMaxHeight) / height);
+              height = curMaxHeight;
+            }
           }
-        } else {
-          if(height > maxHeight){
-            width = Math.round((width * maxHeight) / height);
-            height = maxHeight;
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, width);
+          canvas.height = Math.max(1, height);
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+          dataUrl = canvas.toDataURL('image/jpeg', quality);
+          
+          if (dataUrl.length <= 45000) {
+            break;
           }
+          // Reduce dimensions by 20% and quality by 0.15 for next attempt
+          curMaxWidth = Math.round(curMaxWidth * 0.8);
+          curMaxHeight = Math.round(curMaxHeight * 0.8);
+          quality = Math.max(0.3, quality - 0.15);
         }
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, width, height);
-        ctx.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL('image/jpeg', quality);
         resolve(dataUrl);
       };
       img.src = e.target.result;

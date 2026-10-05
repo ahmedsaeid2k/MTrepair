@@ -1698,6 +1698,14 @@ function ensureHeaders(sh, obj) {
 function sanitizeCellForSheet(val) {
   if (val === null || val === undefined) return '';
   if (typeof val === 'string') {
+    // U8: Google Sheets 50,000 char per cell limit protection (cap at 45,000 to prevent sheet crashes)
+    if (val.length > 45000) {
+      if (val.startsWith('data:image/')) {
+        val = val.slice(0, 45000);
+      } else {
+        val = val.slice(0, 45000) + '... [مقتطع لتجاوز سعة الخلية]';
+      }
+    }
     const trimmed = val.trim();
     if (trimmed.length > 0 && ('=+-\t\r@'.indexOf(trimmed.charAt(0)) !== -1)) {
       return "'" + val; // Neutralize formula execution in Google Sheets

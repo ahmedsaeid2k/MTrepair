@@ -221,6 +221,73 @@ function requireActionRole(action, session) {
   return allowed.includes(role) || !!session.superuser;
 }
 
+const AUTOPOST_REFS = [
+  'Sale', 'POS_Sale', 'Purchase', 'Receipt', 'Receipt_Parts',
+  'Receipt_Debt', 'Receipt_Reversal', 'Expense', 'Supplier_Payment'
+];
+
+function postAutoJournal(desc, refType, refId, lines, actorUser) {
+  if (!AUTOPOST_REFS.includes(refType)) {
+    console.warn('postAutoJournal: ReferenceType rejected:', refType);
+    return null;
+  }
+  if (!refId) {
+    console.warn('postAutoJournal: missing refId');
+    return null;
+  }
+
+  const parsedLines = typeof lines === 'string' ? JSON.parse(lines || '[]') : (lines || []);
+  if (!parsedLines.length) return null;
+
+  const td = parsedLines.reduce((s, l) => s + Number(l.Debit || 0), 0);
+  const tc = parsedLines.reduce((s, l) => s + Number(l.Credit || 0), 0);
+  if (Math.abs(td - tc) > 0.005) {
+    console.warn('postAutoJournal: unbalanced journal entry:', td, tc);
+    return null;
+  }
+
+  if (parsedLines.some(l => !l.AccountCode)) {
+    console.warn('postAutoJournal: missing AccountCode in lines');
+    return null;
+  }
+
+  // Deduplication check: verify refId was not previously posted under this refType
+  try {
+    const shJournal = getSheet(SHEET_JOURNAL);
+    const headers = shJournal.getRange(1, 1, 1, shJournal.getLastColumn()).getValues()[0];
+    const refTypeCol = headers.indexOf('ReferenceType');
+    const refIdCol = headers.indexOf('ReferenceID');
+    if (refTypeCol >= 0 && refIdCol >= 0 && shJournal.getLastRow() > 1) {
+      const data = shJournal.getRange(2, 1, shJournal.getLastRow() - 1, shJournal.getLastColumn()).getValues();
+      const alreadyPosted = data.some(row => String(row[refTypeCol]) === String(refType) && String(row[refIdCol]) === String(refId));
+      if (alreadyPosted) {
+        console.warn('postAutoJournal: duplicate reference skipped:', refType, refId);
+        return null;
+      }
+    }
+
+    const now = new Date();
+    const entry = {
+      ID: 'je_' + now.getTime() + '_' + Math.floor(Math.random() * 1000),
+      EntryNumber: 'JE-' + now.getFullYear() + '-' + String(now.getTime()).slice(-4),
+      Date: now.toISOString().slice(0, 10),
+      Description: desc || ('قيد آلي - ' + refType),
+      ReferenceType: refType,
+      ReferenceID: String(refId),
+      LinesJSON: JSON.stringify(parsedLines),
+      TotalDebit: Math.round(td * 100) / 100,
+      TotalCredit: Math.round(tc * 100) / 100,
+      By: actorUser || 'نظام'
+    };
+
+    appendRow(SHEET_JOURNAL, entry);
+    return entry;
+  } catch (err) {
+    console.warn('postAutoJournal failed:', err);
+    return null;
+  }
+}
+
 function renderAppHtml() {
   const candidateNames = ['Index', 'index', 'Index.html', 'index.html', 'ميكروERP', 'app'];
   for (let i = 0; i < candidateNames.length; i++) {
@@ -536,9 +603,13 @@ function doPost(e) {
         }
       }
 
-      // Record auto journal entry if attached
+      // Record auto journal entry if attached (validated server-side)
       if (body.journalEntry) {
-        appendRow(SHEET_JOURNAL, body.journalEntry);
+        const je = body.journalEntry;
+        const refType = String(je.ReferenceType || 'Receipt');
+        const refId = String(je.ReferenceID || (body.data && body.data.ID) || '');
+        const lines = je.LinesJSON || je.Lines || [];
+        postAutoJournal(je.Description || 'إثبات مصاريف/قطع إيصال صيانة', refType, refId, lines, actorUser);
       }
 
       return jsonOut({ ok: true });
@@ -582,9 +653,13 @@ function doPost(e) {
         }
       }
 
-      // Append reversal journal entry if provided
+      // Append reversal journal entry if provided (validated server-side)
       if (body.reversalEntry) {
-        appendRow(SHEET_JOURNAL, body.reversalEntry);
+        const je = body.reversalEntry;
+        const refType = String(je.ReferenceType || 'Receipt_Reversal');
+        const refId = String(je.ReferenceID || (body.id + '_rev'));
+        const lines = je.LinesJSON || je.Lines || [];
+        postAutoJournal(je.Description || 'عكس قيد إيصال صيانة محذوف', refType, refId, lines, actorUser);
       }
 
       deleteRow(SHEET_RECEIPTS, body.id, 'ID');
@@ -669,7 +744,11 @@ function doPost(e) {
       };
       appendRow(SHEET_PAYMENTS, payment);
       if (body.journalEntry) {
-        appendRow(SHEET_JOURNAL, body.journalEntry);
+        const je = body.journalEntry;
+        const refType = String(je.ReferenceType || 'Receipt');
+        const refId = String(je.ReferenceID || pId || body.receiptId || '');
+        const lines = je.LinesJSON || je.Lines || [];
+        postAutoJournal(je.Description || ('تحصيل دفعة إيصال ' + body.receiptId), refType, refId, lines, actorUser);
       }
       logAudit(body.receiptId, body.user, 'تسجيل دفعة: ' + body.amount + ' ج.م (' + (body.paymentMethod || 'نقدي') + ')');
       return jsonOut({ ok: true, payment });
@@ -782,9 +861,13 @@ function doPost(e) {
         }
       }
 
-      // Record auto journal entry if attached
+      // Record auto journal entry if attached (validated server-side)
       if (body.journalEntry) {
-        appendRow(SHEET_JOURNAL, body.journalEntry);
+        const je = body.journalEntry;
+        const refType = String(je.ReferenceType || 'POS_Sale');
+        const refId = String(je.ReferenceID || sale.ID || '');
+        const lines = je.LinesJSON || je.Lines || [];
+        postAutoJournal(je.Description || ('مبيعات نقدية/آجلة - فاتورة ' + sale.ID), refType, refId, lines, actorUser);
       }
 
       return jsonOut({ ok: true, sale });
@@ -905,9 +988,13 @@ function doPost(e) {
         }
       }
 
-      // Record auto journal entry if attached
+      // Record auto journal entry if attached (validated server-side)
       if (body.journalEntry) {
-        appendRow(SHEET_JOURNAL, body.journalEntry);
+        const je = body.journalEntry;
+        const refType = String(je.ReferenceType || 'Purchase');
+        const refId = String(je.ReferenceID || p.ID || '');
+        const lines = je.LinesJSON || je.Lines || [];
+        postAutoJournal(je.Description || ('فاتورة مشتريات - توريد ' + p.ID), refType, refId, lines, actorUser);
       }
 
       return jsonOut({ ok: true, purchase: p });
@@ -985,7 +1072,11 @@ function doPost(e) {
       };
       upsertRow(SHEET_EXPENSES, exp, 'ID');
       if (body.journalEntry) {
-        appendRow(SHEET_JOURNAL, body.journalEntry);
+        const je = body.journalEntry;
+        const refType = String(je.ReferenceType || 'Expense');
+        const refId = String(je.ReferenceID || exp.ID || '');
+        const lines = je.LinesJSON || je.Lines || [];
+        postAutoJournal(je.Description || ('صرف مصروف: ' + (exp.Category || exp.Title || '')), refType, refId, lines, actorUser);
       }
       return jsonOut({ ok: true, expense: exp });
     }
@@ -1016,22 +1107,46 @@ function doPost(e) {
       return jsonOut({ ok: true });
     }
     if (action === 'saveJournalEntry') {
-      const isAdmin = verifyAdminRole(body, session);
-      const isAuto = body.data && body.data.ReferenceType && body.data.ReferenceType !== 'Manual';
-      if (!isAdmin && !isAuto) return jsonOut({ error: 'القيود المحاسبية اليدوية متاحة للمدير فقط' }, 403);
+      const role = String(session.role || '').toLowerCase();
+      if (!['admin', 'accountant'].includes(role) && !session.superuser) {
+        return jsonOut({ error: 'القيود المحاسبية متاحة للمدير والمحاسب فقط' }, 403);
+      }
+
+      if (!body.data) return jsonOut({ error: 'بيانات القيد مطلوبة' }, 400);
+
+      const lines = typeof body.data.Lines === 'string'
+        ? JSON.parse(body.data.Lines || '[]')
+        : (body.data.Lines || (typeof body.data.LinesJSON === 'string' ? JSON.parse(body.data.LinesJSON || '[]') : []));
+
+      if (!Array.isArray(lines) || lines.length < 2) {
+        return jsonOut({ error: 'القيد المحاسبي يجب أن يحتوي على طرفين على الأقل (مدين ودائن)' }, 400);
+      }
+
+      const td = lines.reduce((s, l) => s + Number(l.Debit || 0), 0);
+      const tc = lines.reduce((s, l) => s + Number(l.Credit || 0), 0);
+      if (Math.abs(td - tc) > 0.005) {
+        return jsonOut({ error: 'القيد غير متوازن: إجمالي المدين (' + td + ') لا يساوي إجمالي الدائن (' + tc + ')' }, 400);
+      }
+
+      if (lines.some(l => !l.AccountCode)) {
+        return jsonOut({ error: 'كل سطر في القيد يجب أن يحتوي على كود حساب صالح' }, 400);
+      }
+
       const entry = {
         ID: body.data.ID || ('je_' + new Date().getTime()),
         EntryNumber: body.data.EntryNumber || ('JE-' + new Date().getFullYear() + '-' + String(new Date().getTime()).slice(-4)),
         Date: body.data.Date || new Date().toISOString().slice(0, 10),
-        Description: body.data.Description || '',
-        ReferenceType: body.data.ReferenceType || 'Manual',
+        Description: body.data.Description || 'قيد يدوي',
+        ReferenceType: 'Manual', // Client can ONLY submit Manual entries
         ReferenceID: body.data.ReferenceID || '',
-        LinesJSON: typeof body.data.Lines === 'string' ? body.data.Lines : JSON.stringify(body.data.Lines || []),
-        TotalDebit: Number(body.data.TotalDebit || 0),
-        TotalCredit: Number(body.data.TotalCredit || 0),
-        By: body.user || 'نظام'
+        LinesJSON: JSON.stringify(lines),
+        TotalDebit: Math.round(td * 100) / 100,
+        TotalCredit: Math.round(tc * 100) / 100,
+        By: actorUser
       };
+
       appendRow(SHEET_JOURNAL, entry);
+      logAudit(entry.ID, actorUser, 'حفظ قيد محاسبي يدوي: ' + entry.Description);
       return jsonOut({ ok: true, entry: entry });
     }
     if (action === 'saveInvoice') {

@@ -437,6 +437,29 @@ function doPost(e) {
     const actorUser = session.name;
     body.user = actorUser;
 
+    // 🔒 Verify Supervisor / Admin PIN or Password for sensitive approvals
+    if (action === 'verifySupervisorPin') {
+      const pin = String(body.pin || body.password || '').trim();
+      if (!pin) return jsonOut({ error: 'رمز المشرف مطلوب', valid: false }, 400);
+
+      const users = getAllRows(SHEET_USERS);
+      const hashed = hashPassword(pin);
+      const adminUser = users.find(u => {
+        const role = String(u.Role || '').toLowerCase();
+        const isSuper = ['true','1','yes','نعم'].includes(String(u.Superuser || '').trim().toLowerCase());
+        const passMatch = (String(u.Password || '').trim() === pin || String(u.Password || '').trim() === hashed);
+        return (role === 'admin' || isSuper) && passMatch;
+      });
+
+      if (adminUser) {
+        logAudit('', actorUser, 'تصريح فوري ناجح بكلمة مرور المشرف: ' + adminUser.Name);
+        return jsonOut({ ok: true, valid: true, adminName: adminUser.Name });
+      } else {
+        logAudit('', actorUser, 'محاولة تصريح فاشلة بكلمة مرور المشرف');
+        return jsonOut({ ok: false, valid: false, error: 'كلمة مرور المشرف غير صحيحة' }, 401);
+      }
+    }
+
     if (action === 'saveReceipt') {
       upsertRow(SHEET_RECEIPTS, body.data, 'ID');
       logAudit(body.data.ID, body.user, 'حفظ/تعديل إيصال');

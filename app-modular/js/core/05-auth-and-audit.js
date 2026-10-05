@@ -346,13 +346,19 @@ function openNotificationCenterModal(){
   });
 }
 
-function verifySupervisorPin(pass){
+async function verifySupervisorPin(pass){
   const clean = String(pass||'').trim();
   if(!clean) return null;
-  const adminUser = (state.users || []).find(u => (u.Role === 'admin' || u.role === 'admin') && String(u.Password||'').trim() === clean);
-  if(adminUser) return adminUser.Name;
-  if(clean === 'admin') return 'admin';
-  return null;
+  try {
+    const res = await apiPost('verifySupervisorPin', { pin: clean });
+    if(res && res.valid && res.adminName){
+      return res.adminName;
+    }
+    return null;
+  } catch(e) {
+    console.warn('Supervisor PIN verification failed:', e.message);
+    return null;
+  }
 }
 
 /**
@@ -458,20 +464,41 @@ function requestAdminAuthorization({ action, entityType, entityId, entityTitle, 
   };
 
   // 1. Submit Supervisor Password
-  overlay.querySelector('#confirmSupervisorPinBtn').onclick = ()=>{
-    const pass = overlay.querySelector('#supervisorPasswordInp').value;
-    const adminName = verifySupervisorPin(pass);
-    if(!adminName){
-      showToast('كلمة مرور المدير غير صحيحة! تم رفض التصريح', 'error');
-      recordAuditLog('محاولة حذف فاشلة', entityType, `محاولة حذف غير مصرح بها لـ (${entityTitle}) من الموظف (${currentUser.name}) - كلمة سر خاطئة`, entityId, 'مرفوض');
-      overlay.querySelector('#supervisorPasswordInp').focus();
+  overlay.querySelector('#confirmSupervisorPinBtn').onclick = async ()=>{
+    const btn = overlay.querySelector('#confirmSupervisorPinBtn');
+    const passInp = overlay.querySelector('#supervisorPasswordInp');
+    const pass = passInp.value;
+    if(!pass.trim()){
+      showToast('يرجى إدخال كلمة مرور المشرف أو المدير', 'error');
+      passInp.focus();
       return;
     }
 
-    recordAuditLog(action, entityType, `تم التصريح الفوري بالحذف من المدير (${adminName}) للموظف (${currentUser.name})`, entityId, 'بتصريح فوري');
-    close();
-    showToast(`تم التصريح بنجاح بواسطة المدير (${adminName}) وجارٍ الحذف`, 'success');
-    onApproved();
+    btn.disabled = true;
+    const oldBtnText = btn.innerHTML;
+    btn.innerHTML = 'جارٍ التحقق...';
+
+    try {
+      const adminName = await verifySupervisorPin(pass);
+      if(!adminName){
+        showToast('كلمة مرور المدير غير صحيحة! تم رفض التصريح', 'error');
+        recordAuditLog('محاولة حذف فاشلة', entityType, `محاولة حذف غير مصرح بها لـ (${entityTitle}) من الموظف (${currentUser.name}) - كلمة سر خاطئة`, entityId, 'مرفوض');
+        passInp.value = '';
+        passInp.focus();
+        btn.disabled = false;
+        btn.innerHTML = oldBtnText;
+        return;
+      }
+
+      recordAuditLog(action, entityType, `تم التصريح الفوري بالحذف من المدير (${adminName}) للموظف (${currentUser.name})`, entityId, 'بتصريح فوري');
+      close();
+      showToast(`تم التصريح بنجاح بواسطة المدير (${adminName}) وجارٍ الحذف`, 'success');
+      onApproved();
+    } catch(err) {
+      showToast('حدث خطأ أثناء الاتصال بالخادم للتحقق من التصريح', 'error');
+      btn.disabled = false;
+      btn.innerHTML = oldBtnText;
+    }
   };
 
   // 2. Send Authorization Request to Admin Box

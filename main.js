@@ -24,8 +24,19 @@ if (!gotTheLock) {
   app.whenReady().then(createMainWindow);
 }
 
+function isSafeExternalUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return false;
+  try {
+    const parsed = new URL(rawUrl);
+    return ['https:', 'http:', 'tel:', 'mailto:'].includes(parsed.protocol);
+  } catch (e) {
+    return /^(tel|mailto):/.test(rawUrl);
+  }
+}
+
 function createMainWindow() {
   const iconPath = path.join(__dirname, 'assets', 'icon.png');
+  const isDev = !app.isPackaged;
 
   mainWindow = new BrowserWindow({
     width: 1366,
@@ -41,7 +52,7 @@ function createMainWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       spellcheck: false,
-      sandbox: false
+      sandbox: true
     }
   });
 
@@ -93,11 +104,13 @@ function createMainWindow() {
       submenu: [
         { role: 'reload', label: 'تحديث الشاشة' },
         { role: 'forceReload', label: 'تحديث إجباري' },
-        {
-          label: 'أدوات المطور (F12)',
-          accelerator: 'F12',
-          click: () => mainWindow.webContents.toggleDevTools()
-        },
+        ...(isDev ? [
+          {
+            label: 'أدوات المطور (F12)',
+            accelerator: 'F12',
+            click: () => mainWindow.webContents.toggleDevTools()
+          }
+        ] : []),
         { type: 'separator' },
         { role: 'resetZoom', label: 'الحجم الطبيعي' },
         { role: 'zoomIn', label: 'تكبير (+)' },
@@ -117,18 +130,19 @@ function createMainWindow() {
 
   // Intercept new window creations (e.g. WhatsApp, phone links, external websites)
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('https://wa.me/') || url.startsWith('https://web.whatsapp.com/') || url.startsWith('http://') || url.startsWith('https://') || url.startsWith('tel:')) {
+    if (isSafeExternalUrl(url)) {
       shell.openExternal(url);
-      return { action: 'deny' };
     }
-    return { action: 'allow' };
+    return { action: 'deny' };
   });
 
   // Intercept navigation away from local file
   mainWindow.webContents.on('will-navigate', (event, url) => {
     if (!url.startsWith('file://')) {
       event.preventDefault();
-      shell.openExternal(url);
+      if (isSafeExternalUrl(url)) {
+        shell.openExternal(url);
+      }
     }
   });
 
@@ -181,11 +195,16 @@ ipcMain.handle('print-dialog', async (event, options = {}) => {
   });
 });
 
-// 4. Open External URL
+// 4. Open External URL (strictly validated protocols)
 ipcMain.handle('open-external', async (event, url) => {
-  if (url) {
-    await shell.openExternal(url);
-    return true;
+  if (isSafeExternalUrl(url)) {
+    try {
+      await shell.openExternal(url);
+      return true;
+    } catch (err) {
+      console.warn('Failed to open external url:', err.message);
+      return false;
+    }
   }
   return false;
 });

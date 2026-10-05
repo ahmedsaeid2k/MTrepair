@@ -2629,9 +2629,40 @@ function renderAuditSectionApp(app){
   if(toSet) toSet.onclick = ()=>{ state.currentSection = 'settings'; render(); };
 
   renderAuditCenterPage(document.getElementById('main'));
+  fetchServerAuditLogs().then(() => {
+    const m = document.getElementById('main');
+    if (m && state.currentSection === 'audit') {
+      renderAuditCenterPage(m);
+    }
+  });
 }
 
 /* ---------------- Audit & Control Center (مركز الرقابة والتدقيق وتصاريح العمليات) ---------------- */
+
+async function fetchServerAuditLogs(){
+  if(state.user && state.user.role === 'admin'){
+    try {
+      const res = await apiGet('getAuditLog');
+      if(res && res.ok && Array.isArray(res.logs)){
+        state.auditLogs = res.logs.map(r => ({
+          id: r.RowHash || ('srv_' + r.Timestamp),
+          timestamp: r.Timestamp ? new Date(r.Timestamp).toISOString() : new Date().toISOString(),
+          user: r.User || 'نظام',
+          role: 'admin',
+          action: r.Action || '',
+          section: r.RefType || '',
+          details: r.Details || '',
+          refId: r.ReceiptID || '',
+          status: 'success',
+          rowHash: r.RowHash || ''
+        })).reverse();
+        setCache('audit_logs', state.auditLogs);
+      }
+    } catch(err){
+      console.warn('fetchServerAuditLogs error:', err);
+    }
+  }
+}
 
 function exportAuditLogsToExcel(list){
   const rows = [
@@ -3028,7 +3059,12 @@ function renderAuditCenterPage(main){
   };
 
   const refreshBtn = document.getElementById('refreshAuditBtn');
-  if(refreshBtn) refreshBtn.onclick = ()=> renderAuditCenterPage(main);
+  if(refreshBtn) refreshBtn.onclick = async ()=>{
+    refreshBtn.disabled = true;
+    refreshBtn.textContent = 'جارٍ التحديث...';
+    await fetchServerAuditLogs();
+    renderAuditCenterPage(main);
+  };
 
   const expBtn = document.getElementById('exportAuditExcelBtn');
   if(expBtn) expBtn.onclick = ()=> exportAuditLogsToExcel(filteredLogs);

@@ -238,6 +238,7 @@ const ACTION_ROLES = {
   saveUser:           ['admin'],
   deleteUser:         ['admin'],
   saveAuditLog:       ['admin','accountant','cashier','technician'],
+  getAuditLog:        ['admin'],
   verifySupervisorPin:['admin','accountant','cashier','technician']
 };
 
@@ -249,7 +250,7 @@ function requireActionRole(action, session) {
 }
 
 const AUTOPOST_REFS = [
-  'Sale', 'POS_Sale', 'Purchase', 'Receipt', 'Receipt_Parts',
+  'Sale', 'POS_Sale', 'POS_Return', 'Purchase', 'Receipt', 'Receipt_Parts',
   'Receipt_Debt', 'Receipt_Reversal', 'Expense', 'Supplier_Payment'
 ];
 
@@ -438,6 +439,29 @@ function doGet(e) {
         sections: session.sections || '',
         superuser: !!session.superuser
       });
+    }
+
+    // 🔒 Audit Log Retrieval (Admin only)
+    if (action === 'getAuditLog') {
+      const role = String(session.role || '').toLowerCase();
+      if (role !== 'admin' && !session.superuser) {
+        return jsonOut({ error: 'سجل الرقابة متاح للمدير فقط' }, 403);
+      }
+      const ss = SpreadsheetApp.getActiveSpreadsheet();
+      const sh = ss.getSheetByName('AuditLog');
+      if (!sh || sh.getLastRow() < 2) {
+        return jsonOut({ ok: true, logs: [] });
+      }
+      const values = sh.getDataRange().getValues();
+      const headers = values[0].map(h => String(h || '').trim());
+      const logs = [];
+      for (let i = 1; i < values.length; i++) {
+        const row = values[i];
+        const item = {};
+        headers.forEach((h, col) => { item[h] = row[col]; });
+        logs.push(item);
+      }
+      return jsonOut({ ok: true, logs: logs });
     }
 
     // 🚀 Unified Bootstrap Endpoint: Reads all sheets in a single roundtrip (93% request reduction)
@@ -829,6 +853,7 @@ function doPost(e) {
         }
         sh.getRange(rowIndex + 1, 1, 1, row.length).setValues([row]);
       }
+      logAudit(body.data.Name, actorUser, (rowIndex === -1 ? 'إضافة عميل جديد' : 'تعديل بيانات عميل'), 'Customer', { name: body.data.Name, phone: body.data.Phone, debt: body.data.Debt });
       return jsonOut({ ok: true });
     }
     if (action === 'saveTechnician') {
@@ -931,12 +956,13 @@ function doPost(e) {
         ImageURL: body.data.ImageURL || ''
       };
       upsertRow(SHEET_INVENTORY, item, 'ID');
+      logAudit(item.ID, actorUser, 'حفظ/تعديل صنف مخزن: ' + item.Name, 'Inventory', { name: item.Name, qty: item.Quantity, buyPrice: item.PurchasePrice, sellPrice: item.SellPrice });
       return jsonOut({ ok: true, item });
     }
     if (action === 'deleteInventoryItem') {
       if (!verifyAdminRole(body, session)) return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
       deleteRow(SHEET_INVENTORY, body.id, 'ID');
-      logAudit(body.id, body.user, 'حذف صنف من المخزن: ' + body.id);
+      logAudit(body.id, body.user, 'حذف صنف من المخزن: ' + body.id, 'Inventory');
       return jsonOut({ ok: true });
     }
     if (action === 'adjustInventoryQty') {
@@ -947,8 +973,10 @@ function doPost(e) {
       const values = sh.getDataRange().getValues();
       for (let i = 1; i < values.length; i++) {
         if (String(values[i][idCol]) === String(body.id)) {
-          const newQty = safeNumber(values[i][qtyCol], 0) + safeNumber(body.delta, 0);
+          const oldQty = safeNumber(values[i][qtyCol], 0);
+          const newQty = oldQty + safeNumber(body.delta, 0);
           sh.getRange(i + 1, qtyCol + 1).setValue(newQty);
+          logAudit(body.id, actorUser, 'تعديل كمية صنف مخزني', 'Inventory', { before: oldQty, delta: body.delta, after: newQty, reason: body.reason || '' });
           return jsonOut({ ok: true, newQty });
         }
       }
@@ -1002,6 +1030,7 @@ function doPost(e) {
         postAutoJournal(je.Description || ('مبيعات نقدية/آجلة - فاتورة ' + sale.ID), refType, refId, lines, actorUser);
       }
 
+      logAudit(sale.ID, actorUser, 'تسجيل عملية بيع جديدة', 'Sale', { total: sale.Total, paid: sale.AmountPaid, paymentMethod: sale.PaymentMethod, customer: sale.CustomerName });
       return jsonOut({ ok: true, sale });
     }
     if (action === 'settleSaleDebt') {
@@ -1272,6 +1301,7 @@ function doPost(e) {
         postAutoJournal(je.Description || ('فاتورة مشتريات - توريد ' + p.ID), refType, refId, lines, actorUser);
       }
 
+      logAudit(p.ID, actorUser, 'تسجيل فاتورة توريد/مشتريات', 'Purchase', { supplier: p.Supplier, total: p.Total, paid: p.AmountPaid });
       return jsonOut({ ok: true, purchase: p });
     }
     if (action === 'settlePurchaseDebt') {
@@ -1282,13 +1312,15 @@ function doPost(e) {
       const values = sh.getDataRange().getValues();
       for (let i = 1; i < values.length; i++) {
         if (String(values[i][idCol]) === String(body.purchaseId)) {
-          const newPaid = safeNumber(values[i][paidCol], 0) + safeNumber(body.amount, 0);
+          const curPaid = safeNumber(values[i][paidCol], 0);
+          const newPaid = curPaid + safeNumber(body.amount, 0);
           sh.getRange(i + 1, paidCol + 1).setValue(newPaid);
           const sp = {
             ID: 'sp_' + new Date().getTime(), SupplierID: body.supplierId || '', PurchaseID: body.purchaseId,
             Date: body.date, Amount: body.amount, Note: body.note || '', By: body.user
           };
           appendRow(SHEET_SUPPLIER_PAYMENTS, sp);
+          logAudit(body.purchaseId, actorUser, 'سداد دفعة لمورد', 'Purchase', { before: curPaid, amount: body.amount, after: newPaid, supplierId: body.supplierId });
           return jsonOut({ ok: true, newPaid });
         }
       }
@@ -1325,6 +1357,7 @@ function doPost(e) {
           sh.getRange(i + 1, statusCol + 1).setValue('Sold');
           sh.getRange(i + 1, soldRefCol + 1).setValue(body.soldRef || '');
           sh.getRange(i + 1, soldDateCol + 1).setValue(body.soldDate || '');
+          logAudit(body.serialId, actorUser, 'بيع وتخصيص رقم تسلسلي', 'Serial', { soldRef: body.soldRef, soldDate: body.soldDate });
           return jsonOut({ ok: true });
         }
       }
@@ -1353,12 +1386,13 @@ function doPost(e) {
         const lines = je.LinesJSON || je.Lines || [];
         postAutoJournal(je.Description || ('صرف مصروف: ' + (exp.Category || exp.Title || '')), refType, refId, lines, actorUser);
       }
+      logAudit(exp.ID, actorUser, 'تسجيل مصروف: ' + (exp.Category || exp.Title || ''), 'Expense', { amount: exp.Amount, paymentMethod: exp.PaymentMethod, category: exp.Category, accountCode: exp.AccountCode });
       return jsonOut({ ok: true, expense: exp });
     }
     if (action === 'deleteExpense') {
       if (!verifyAdminRole(body, session)) return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
       deleteRow(SHEET_EXPENSES, body.id, 'ID');
-      logAudit(body.id, body.user, 'حذف مصروف: ' + body.id);
+      logAudit(body.id, body.user, 'حذف مصروف: ' + body.id, 'Expense');
       return jsonOut({ ok: true });
     }
     if (action === 'saveAccount') {
@@ -1373,12 +1407,13 @@ function doPost(e) {
         Balance: Number(body.data.Balance || 0)
       };
       upsertRow(SHEET_ACCOUNTS, acc, 'Code');
+      logAudit(acc.Code, actorUser, 'تعديل/إضافة حساب محاسبي: ' + acc.Name, 'Account', { code: acc.Code, balance: acc.Balance });
       return jsonOut({ ok: true, account: acc });
     }
     if (action === 'deleteAccount') {
       if (!verifyAdminRole(body, session)) return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
       deleteRow(SHEET_ACCOUNTS, String(body.code), 'Code');
-      logAudit(body.code, body.user, 'حذف حساب محاسبي: ' + body.code);
+      logAudit(body.code, body.user, 'حذف حساب محاسبي: ' + body.code, 'Account');
       return jsonOut({ ok: true });
     }
     if (action === 'saveJournalEntry') {
@@ -1421,7 +1456,7 @@ function doPost(e) {
       };
 
       appendRow(SHEET_JOURNAL, entry);
-      logAudit(entry.ID, actorUser, 'حفظ قيد محاسبي يدوي: ' + entry.Description);
+      logAudit(entry.ID, actorUser, 'حفظ قيد محاسبي يدوي: ' + entry.Description, 'Journal', { totalDebit: entry.TotalDebit, totalCredit: entry.TotalCredit, linesCount: lines.length });
       return jsonOut({ ok: true, entry: entry });
     }
     if (action === 'saveInvoice') {
@@ -1451,6 +1486,7 @@ function doPost(e) {
         By: body.user || 'نظام'
       };
       upsertRow(SHEET_INVOICES, inv, 'ID');
+      logAudit(inv.ID, actorUser, 'حفظ/تعديل فاتورة ضريبية', 'Invoice', { invoiceNumber: inv.InvoiceNumber, customer: inv.CustomerName, total: inv.Total, paid: inv.AmountPaid, remaining: inv.Remaining });
       return jsonOut({ ok: true, invoice: inv });
     }
     if (action === 'deleteInvoice') {
@@ -1501,10 +1537,37 @@ function doPost(e) {
       logAudit(body.id || body.name, body.user, 'حذف مستخدم: ' + (body.id || body.name));
       return jsonOut({ ok: true });
     }
+    if (action === 'getAuditLog') {
+      const role = String(session.role || '').toLowerCase();
+      if (role !== 'admin' && !session.superuser) {
+        return jsonOut({ error: 'سجل الرقابة متاح للمدير فقط' }, 403);
+      }
+      const ss = SpreadsheetApp.getActiveSpreadsheet();
+      const sh = ss.getSheetByName('AuditLog');
+      if (!sh || sh.getLastRow() < 2) {
+        return jsonOut({ ok: true, logs: [] });
+      }
+      const values = sh.getDataRange().getValues();
+      const headers = values[0].map(h => String(h || '').trim());
+      const logs = [];
+      for (let i = 1; i < values.length; i++) {
+        const row = values[i];
+        const item = {};
+        headers.forEach((h, col) => { item[h] = row[col]; });
+        logs.push(item);
+      }
+      return jsonOut({ ok: true, logs: logs });
+    }
     if (action === 'saveAuditLog') {
-      // Security audit trail — logs security events from the frontend
+      // Security audit trail from client — restricted to whitelisted actions only, no free-form text injection
       const logData = body.data || {};
-      logAudit(logData.RefID || '', body.user, logData.Action || logData.action || 'حدث أمني');
+      const allowedActions = [
+        'تسجيل دخول', 'تسجيل خروج', 'محاولة وصول غير مصرح', 'طلب تصريح مشرف',
+        'اعتماد تصريح حذف', 'رفض تصريح حذف', 'تصدير بيانات', 'تغيير كلمة المرور'
+      ];
+      const reqAction = String(logData.Action || logData.action || '').trim();
+      const safeAction = allowedActions.includes(reqAction) ? reqAction : 'حدث أمني من العميل';
+      logAudit(String(logData.RefID || logData.refId || ''), actorUser, safeAction, 'ClientSecurity', logData.details || null);
       return jsonOut({ ok: true });
     }
     return jsonOut({ error: 'إجراء غير معروف' }, 400);
@@ -1569,7 +1632,8 @@ function ensureHeaders(sh, obj) {
     'Accounts': ['Code','Name','Type','ParentCode','Nature','Description','Balance'],
     'JournalEntries': ['ID','EntryNumber','Date','Description','ReferenceType','ReferenceID','LinesJSON','TotalDebit','TotalCredit','By'],
     'Invoices': ['ID','InvoiceNumber','Date','DueDate','CustomerName','CustomerPhone','CustomerTaxNumber','CustomerAddress','ItemsSummary','ItemsJSON','Subtotal','TaxPercent','TaxAmount','Discount','Total','AmountPaid','Remaining','Status','PaymentMethod','ReferenceType','ReferenceID','Notes','By'],
-    'Users': ['ID','Name','Password','Salt','Role','Sections','Superuser','Notes']
+    'Users': ['ID','Name','Password','Salt','Role','Sections','Superuser','Notes'],
+    'AuditLog': ['Timestamp','User','Action','ReceiptID','RefType','Details','RowHash']
   };
   const lastCol = Math.max(1, sh.getLastColumn());
   let headers = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || '').trim());
@@ -1643,14 +1707,44 @@ function deleteRow(sheetName, keyValue, keyField) {
   }
 }
 
-function logAudit(receiptId, user, action) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sh = ss.getSheetByName('AuditLog');
-  if (!sh) {
-    sh = ss.insertSheet('AuditLog');
-    sh.appendRow(['Timestamp', 'User', 'Action', 'ReceiptID']);
+function logAudit(refId, user, action, refType, detailsJson) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sh = ss.getSheetByName('AuditLog');
+    if (!sh) {
+      sh = ss.insertSheet('AuditLog');
+      sh.appendRow(['Timestamp', 'User', 'Action', 'ReceiptID', 'RefType', 'Details', 'RowHash']);
+    } else {
+      const lastCol = Math.max(1, sh.getLastColumn());
+      const headers = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || '').trim());
+      const expectedHeaders = ['Timestamp', 'User', 'Action', 'ReceiptID', 'RefType', 'Details', 'RowHash'];
+      const missing = expectedHeaders.filter(h => !headers.includes(h));
+      if (missing.length > 0) {
+        sh.getRange(1, headers.length + 1, 1, missing.length).setValues([missing]);
+      }
+    }
+    const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(h => String(h || '').trim());
+    const hashCol = headers.indexOf('RowHash');
+    const lastRow = sh.getLastRow();
+    const prev = (lastRow > 1 && hashCol >= 0) ? String(sh.getRange(lastRow, hashCol + 1).getValue() || '') : '';
+    const ts = new Date();
+    const details = detailsJson ? (typeof detailsJson === 'string' ? detailsJson : JSON.stringify(detailsJson)) : '';
+    const rowHash = hashPassword(prev + '|' + ts.toISOString() + '|' + String(user || '') + '|' + String(action || '') + '|' + details);
+
+    const rowObj = {
+      Timestamp: ts,
+      User: user || '',
+      Action: action || '',
+      ReceiptID: refId || '',
+      RefType: refType || '',
+      Details: details,
+      RowHash: rowHash
+    };
+    const rowData = headers.map(h => rowObj[h] !== undefined ? rowObj[h] : '');
+    sh.appendRow(rowData);
+  } catch(e) {
+    console.warn('logAudit failed:', e);
   }
-  sh.appendRow([new Date(), user, action, receiptId]);
 }
 
 function jsonOut(obj, statusCode) {

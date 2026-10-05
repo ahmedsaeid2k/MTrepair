@@ -63,33 +63,25 @@ const SHEET_INVOICES = 'Invoices';
               AmountPaid | Remaining | Status | PaymentMethod | ReferenceType | ReferenceID | Notes | By */
 
 /**
- * Anti-DoS & Quota Protection Rate Limiter
- * Tracks requests per minute via ScriptCache with client and global thresholds.
+ * Anti-DoS & Brute-Force Rate Limiter
+ * Tracks requests per minute via ScriptCache. Fail-closed.
  */
-function checkRateLimit(clientId) {
+function checkRateLimit(bucketKey, maxPerMinute) {
   try {
     const cache = CacheService.getScriptCache();
-    const rawKey = String(clientId || 'anonymous').trim().toLowerCase();
-    const cleanKey = rawKey.replace(/[^a-zA-Z0-9_\u0600-\u06FF]/g, '_').slice(0, 30);
-    const key = 'rl_' + (cleanKey || 'anon');
+    if (!cache) return false;                            // fail-closed
+    const key = 'rl_' + String(bucketKey).replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 40);
     const count = Number(cache.get(key) || 0) + 1;
-    if (count > 90) {
-      return false; // Rate limit exceeded (Anti-DoS)
-    }
-    cache.put(key, String(count), 60); // 1 minute window
-
-    // Global quota exhaustion guard (max 800 total requests/min across the entire web app)
-    const globalKey = 'rl_global_traffic';
-    const globalCount = Number(cache.get(globalKey) || 0) + 1;
-    if (globalCount > 800) {
-      return false; // Global script traffic limit exceeded
-    }
-    cache.put(globalKey, String(globalCount), 60);
-
+    if (count > (maxPerMinute || 90)) return false;
+    cache.put(key, String(count), 60);
     return true;
   } catch (e) {
-    return false; // Fail-closed: deny requests if rate limiter errors
+    return false;
   }
+}
+
+function hashKey(v) {
+  return hashPassword(String(v || 'anon')).slice(0, 24);
 }
 
 /**
@@ -308,9 +300,9 @@ function doGet(e) {
     return renderAppHtml();
   }
 
-  // Anti-DoS Rate Limit Check
-  const clientKey = e.parameter.sessionToken || 'anon_get';
-  if (!checkRateLimit(clientKey)) {
+  // Anti-DoS Rate Limit Check with derived key + global traffic limit
+  const clientKey = 'get_' + hashKey(e.parameter.sessionToken || 'anon_get');
+  if (!checkRateLimit(clientKey, 90) || !checkRateLimit('global_get', 800)) {
     return jsonOut({ error: 'تم تجاوز الحد الأقصى لمعدل الطلبات في الدقيقة (Rate Limit Exceeded). يرجى الانتظار قليلاً.' }, 429);
   }
 
@@ -466,9 +458,9 @@ function doPost(e) {
     return jsonOut({ error: 'محتوى الطلب غير صالح (Invalid JSON)' }, 400);
   }
 
-  // Anti-DoS Rate Limit Check on Writes
-  const clientKey = body.sessionToken || 'anon_post';
-  if (!checkRateLimit(clientKey)) {
+  // Anti-DoS Rate Limit Check on Writes with derived key + global write limit
+  const clientKey = 'post_' + hashKey(body.sessionToken || 'anon_post');
+  if (!checkRateLimit(clientKey, 90) || !checkRateLimit('global_post', 500)) {
     return jsonOut({ error: 'تم تجاوز الحد الأقصى لعمليات الحفظ المتزامنة (Rate Limit Exceeded). يرجى الانتظار لحظات.' }, 429);
   }
 
@@ -489,11 +481,24 @@ function doPost(e) {
       const pass = String(body.password || '').trim();
       if (!name || !pass) return jsonOut({ error: 'اسم المستخدم وكلمة المرور مطلوبان' }, 400);
 
+      const uname = name.toLowerCase();
+      const userBucket = 'login_' + hashKey(uname);
+      if (!checkRateLimit(userBucket, 5)) {
+        logAudit('', uname, 'قفل أمني: تجاوز عدد محاولات الدخول');
+        return jsonOut({ error: 'تم تجاوز عدد محاولات الدخول المسموح. أعد المحاولة بعد دقيقة.' }, 429);
+      }
+      if (!checkRateLimit('login_global', 60)) {
+        return jsonOut({ error: 'ضغط عالٍ على الخدمة، يرجى الانتظار قليلاً.' }, 429);
+      }
+
       const users = getAllRows(SHEET_USERS);
       const hashed = hashPassword(pass);
-      const found = users.find(u => u.Name && u.Name.trim().toLowerCase() === name.toLowerCase() && (String(u.Password || '').trim() === pass || String(u.Password || '').trim() === hashed));
+      const found = users.find(u => u.Name && u.Name.trim().toLowerCase() === uname && (String(u.Password || '').trim() === pass || String(u.Password || '').trim() === hashed));
 
-      if (!found) return jsonOut({ error: 'بيانات الدخول غير صحيحة' }, 401);
+      if (!found) {
+        logAudit('', uname, 'محاولة دخول فاشلة');
+        return jsonOut({ error: 'بيانات الدخول غير صحيحة' }, 401);
+      }
 
       // Auto-upgrade plaintext password to SHA-256 hash in sheet if it was stored as plaintext
       if (String(found.Password || '').trim() === pass && String(found.Password || '').trim() !== hashed) {

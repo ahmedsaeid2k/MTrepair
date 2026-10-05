@@ -26,11 +26,12 @@
 | **S4** | تصحيح حد الطلبات وقفل محاولات الدخول السيرفري (Rate Limit & Anti-Brute-Force) | `files(11)/GoogleAppsScript_Backend.gs.txt` | PASSED | استخدام مفاتيح مشتقة بـ `hashKey` لمنع التلاعب بالتوكنات، تطبيق سقف 5 محاولات دخول فاشلة لكل مستخدم مع عداد عام، وتسجيل المحاولات الفاشلة أمنياً |
 | **S5** | تجزئة كلمات المرور بـ Salt + تكرار PBKDF2 وإخفاء كلمة المرور من الواجهة | `files(11)/GoogleAppsScript_Backend.gs.txt`, `app-modular/js/modules/17-accounting-finance.js`, `audit/MIGRATIONS.md` | PASSED | إضافة عمود `Salt`، تكرار 5000 لـ SHA-256، مقارنة ثابتة الزمن `safeEquals`، ترحيل تلقائي، واستبدال حقول كلمة المرور بشارات مؤمنة |
 | **S6** | منع تصعيد الصلاحيات من localStorage وتأمين الجلسات في sessionStorage | `09-shell-and-router.js`, `19-login.js`, `20-app-boot.js`, `02-api-sync.js`, `05-auth-and-audit.js`, `17-accounting-finance.js`, `Backend.gs.txt` | PASSED | حذف استدعاء `normalizeUserSections` من `render()` وإلغاء قراءة الدور من `localStorage`، حصر الجلسة والتوكن في `sessionStorage`، وإضافة تحقق سيرفري `getMe` عند بدء التشغيل |
+| **S7** | منع الدخول في وضع عدم الاتصال بالاسم فقط واشتراط المصادقة الحقيقية | `app-modular/js/core/05-auth-and-audit.js` | PASSED | إلغاء مسار الدخول الأوفلاين الشكلي بدون فحص كلمة المرور واشتراط اتصال الإنترنت للتوثيق المعتمد |
 
 ---
 
 ## المراحل اللاحقة (تُحدَّث بعد كل بند):
-- **المرحلة 1: الأمان (P0) — S7 إلى S16**
+- **المرحلة 1: الأمان (P0) — S8 إلى S16**
 - **المرحلة 2: سلامة الأرقام المالية (P1) — F1 إلى F11**
 - **المرحلة 3: الوظائف الناقصة (P2) — U1 إلى U14**
 - **المرحلة 4: الجودة والصيانة (P3) — Q1 إلى Q5**

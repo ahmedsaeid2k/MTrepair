@@ -557,12 +557,7 @@ async function loginRemote(name, password){
   };
 
   if(!navigator.onLine){
-    // In offline mode, check cached active session
-    const savedSession = state.user || JSON.parse(localStorage.getItem('microerp_session') || 'null');
-    if(savedSession && savedSession.name && savedSession.name.toLowerCase() === cleanName.toLowerCase()){
-      return savedSession;
-    }
-    throw new Error('لا يمكن تسجيل الدخول لأول مرة في الوضع غير المتصل، يرجى الاتصال بالإنترنت للمصادقة');
+    throw new Error('لا يمكن تسجيل الدخول في وضع عدم الاتصال بالإنترنت. يرجى الاتصال بالإنترنت لمصادقة بيانات الدخول.');
   }
 
   const res = await apiPost('login', {name: cleanName, password: cleanPass});
@@ -570,8 +565,8 @@ async function loginRemote(name, password){
     if (res.sessionToken) {
       state.sessionToken = res.sessionToken;
       try {
-        localStorage.setItem('microerp_session_token', res.sessionToken);
         sessionStorage.setItem('microerp_session_token', res.sessionToken);
+        localStorage.removeItem('microerp_session_token');
       } catch(e) {}
     }
 

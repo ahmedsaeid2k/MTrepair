@@ -34,7 +34,7 @@ async function renderPublicTrackingPortal(receiptNum = ''){
   const shopName = escapeHtml(String(shopSettings.shopName || 'ميكروتك للصيانة الذكية'));
   const shopPhone = escapeHtml(String(shopSettings.shopPhone != null ? shopSettings.shopPhone : (shopSettings.phone || '')));
   const shopAddress = escapeHtml(String(shopSettings.shopAddress || ''));
-  const logoUrl = shopSettings.logoUrl || '';
+  const logoUrl = safeImageUrl(shopSettings.logoUrl || '');
   const rawWaPhone = String(shopSettings.shopPhone != null ? shopSettings.shopPhone : (shopSettings.phone || '201000000000')).replace(/[^0-9]/g, '');
   const waPhone = rawWaPhone.startsWith('01') ? ('2' + rawWaPhone) : (rawWaPhone || '201000000000');
 

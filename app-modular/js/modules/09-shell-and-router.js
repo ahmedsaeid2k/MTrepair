@@ -431,15 +431,15 @@ function openCommandPalette(initialQuery=''){
         const st = STATUSES.find(s=>s.v===r.status) || STATUSES[0];
         const rem = Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0);
         return `
-          <div class="cmd-item" data-cmd="open_receipt" data-id="${r.id}">
+          <div class="cmd-item" data-cmd="open_receipt" data-id="${escapeHtml(r.id)}">
             <div class="cmd-item-left">
               <div class="cmd-item-icon">${getSvgIcon('maintenance', 16)}</div>
               <div>
-                <div class="cmd-item-title">${r.receiptNumber} — ${r.customer.name} <span style="font-weight:normal;color:var(--ink-secondary);">(${r.device.category} ${r.device.brand})</span></div>
-                <div class="cmd-item-sub">العطل: ${(r.faults||[]).join('، ')||'-'} • المتبقي: ${rem} ج.م</div>
+                <div class="cmd-item-title">${escapeHtml(r.receiptNumber)} — ${escapeHtml(r.customer?.name || '')} <span style="font-weight:normal;color:var(--ink-secondary);">(${escapeHtml(r.device?.category || '')} ${escapeHtml(r.device?.brand || '')})</span></div>
+                <div class="cmd-item-sub">العطل: ${escapeHtml((r.faults||[]).join('، ')||'-')} • المتبقي: ${rem.toLocaleString()} ج.م</div>
               </div>
             </div>
-            <span class="status-badge ${st.cls}">${r.status}</span>
+            <span class="status-badge ${escapeHtml(st.cls)}">${escapeHtml(r.status)}</span>
           </div>
         `;
       }).join('');
@@ -448,12 +448,12 @@ function openCommandPalette(initialQuery=''){
     if(invoices.length > 0){
       html += `<div class="cmd-group-title">الفواتير وعروض الأسعار (${invoices.length})</div>`;
       html += invoices.map(i => `
-        <div class="cmd-item" data-cmd="open_invoice" data-id="${i.id}">
+        <div class="cmd-item" data-cmd="open_invoice" data-id="${escapeHtml(i.id)}">
           <div class="cmd-item-left">
             <div class="cmd-item-icon">${getSvgIcon('invoices', 16)}</div>
             <div>
-              <div class="cmd-item-title">${i.invoiceNumber} — ${i.customerName}</div>
-              <div class="cmd-item-sub">الإجمالي: ${i.netTotal||i.total} ج.م • ${cleanDate(i.date)}</div>
+              <div class="cmd-item-title">${escapeHtml(i.invoiceNumber)} — ${escapeHtml(i.customerName)}</div>
+              <div class="cmd-item-sub">الإجمالي: ${Number(i.netTotal||i.total||0).toLocaleString()} ج.م • ${escapeHtml(cleanDate(i.date))}</div>
             </div>
           </div>
           <span class="cmd-item-badge">${i.isPaid ? 'مسددة' : 'معلقة'}</span>
@@ -464,15 +464,15 @@ function openCommandPalette(initialQuery=''){
     if(items.length > 0){
       html += `<div class="cmd-group-title">المخزن والأصناف (${items.length})</div>`;
       html += items.map(item => `
-        <div class="cmd-item" data-cmd="open_item" data-name="${item.Name}">
+        <div class="cmd-item" data-cmd="open_item" data-name="${escapeHtml(item.Name)}">
           <div class="cmd-item-left">
             <div class="cmd-item-icon">${getSvgIcon('package', 16)}</div>
             <div>
-              <div class="cmd-item-title">${item.Name}</div>
-              <div class="cmd-item-sub">الكمية: ${item.Quantity||0} • السعر: ${item.SellPrice||item.Price||0} ج.م ${item.Barcode?'• باركود: '+item.Barcode:''}</div>
+              <div class="cmd-item-title">${escapeHtml(item.Name)}</div>
+              <div class="cmd-item-sub">الكمية: ${Number(item.Quantity||0)} • السعر: ${Number(item.SellPrice||item.Price||0)} ج.م ${item.Barcode?'• باركود: '+escapeHtml(item.Barcode):''}</div>
             </div>
           </div>
-          <span class="cmd-item-badge">${item.Category||'عام'}</span>
+          <span class="cmd-item-badge">${escapeHtml(item.Category||'عام')}</span>
         </div>
       `).join('');
     }

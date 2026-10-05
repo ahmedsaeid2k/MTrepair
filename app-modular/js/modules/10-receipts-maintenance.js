@@ -999,9 +999,9 @@ function stepReview(body,d){
         </div>
       ` : `
         <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);font-size:13.5px;line-height:1.8;">
-          <div><b>الجهاز:</b> ${d.device.category} / ${d.device.brand==='أخرى'?d.device.brandOther:d.device.brand} / ${d.device.model||'-'} ${((d.device && d.device.password) || d.password) ? `<span style="margin-right:6px;color:var(--amber-text);font-size:12px;">(كلمة السر: <span class="mono">${escapeHtml((d.device && d.device.password) || d.password)}</span>)</span>` : ''}</div>
-          <div><b>الأعطال:</b> ${d.faults.join('، ')||'-'}${d.faultNotes ? ' ('+escapeHtml(d.faultNotes)+')' : ''}</div>
-          <div><b>الملحقات:</b> ${(d.device && d.device.accessories) || 'بدون'}</div>
+          <div><b>الجهاز:</b> ${escapeHtml(d.device?.category || '')} / ${escapeHtml(d.device?.brand==='أخرى' ? d.device?.brandOther : (d.device?.brand || ''))} / ${escapeHtml(d.device?.model||'-')} ${((d.device && d.device.password) || d.password) ? `<span style="margin-right:6px;color:var(--amber-text);font-size:12px;">(كلمة السر: <span class="mono">${escapeHtml((d.device && d.device.password) || d.password)}</span>)</span>` : ''}</div>
+          <div><b>الأعطال:</b> ${escapeHtml((d.faults||[]).join('، ')||'-')}${d.faultNotes ? ' ('+escapeHtml(d.faultNotes)+')' : ''}</div>
+          <div><b>الملحقات:</b> ${escapeHtml((d.device && d.device.accessories) || 'بدون')}</div>
         </div>
       `}
 
@@ -1781,28 +1781,28 @@ window.renderUnifiedSelectionBar = function(){
       </div>
 
       <div class="unified-bar-actions">
-        <button class="unified-bar-btn btn-primary" onclick="openCustomerActionSheet('${escapeHtml(custName)}', '${escapeHtml(cPhone)}', '${escapeHtml(cTitle)}', '${escapeHtml(cEmail)}');" title="فتح لوحة إجراءات وخيارات العميل الموحدة">
+        <button class="unified-bar-btn btn-primary" onclick="openCustomerActionSheet('${escapeJsString(custName)}', '${escapeJsString(cPhone)}', '${escapeJsString(cTitle)}', '${escapeJsString(cEmail)}');" title="فتح لوحة إجراءات وخيارات العميل الموحدة">
           خيارات العميل
         </button>
-        <button class="unified-bar-btn" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-weight:700;" onclick="openCustomerStatementModal('${escapeHtml(custName)}', '${escapeHtml(cPhone)}');" title="كشف حساب تفصيلي للعميل والمبيعات والتحصيلات">
+        <button class="unified-bar-btn" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-weight:700;" onclick="openCustomerStatementModal('${escapeJsString(custName)}', '${escapeJsString(cPhone)}');" title="كشف حساب تفصيلي للعميل والمبيعات والتحصيلات">
           ${getSvgIcon("chart", 13)} كشف حساب
         </button>
-        <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="openEditCustomerModal({ title: '${escapeHtml(cTitle)}', name: '${escapeHtml(custName)}', phone: '${escapeHtml(cPhone)}', email: '${escapeHtml(cEmail)}' });" title="تعديل بيانات العميل">
+        <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="openEditCustomerModal({ title: '${escapeJsString(cTitle)}', name: '${escapeJsString(custName)}', phone: '${escapeJsString(cPhone)}', email: '${escapeJsString(cEmail)}' });" title="تعديل بيانات العميل">
           ${getSvgIcon("edit", 13)} تعديل
         </button>
-        <button class="unified-bar-btn btn-blue" onclick="startNewReceiptForCustomer('${escapeHtml(custName)}', '${escapeHtml(cPhone)}', '${escapeHtml(cTitle)}');" title="إنشاء إيصال صيانة جديد لهذا العميل">
+        <button class="unified-bar-btn btn-blue" onclick="startNewReceiptForCustomer('${escapeJsString(custName)}', '${escapeJsString(cPhone)}', '${escapeJsString(cTitle)}');" title="إنشاء إيصال صيانة جديد لهذا العميل">
           ${getSvgIcon("plus", 13)} إيصال صيانة
         </button>
-        <button class="unified-bar-btn btn-ghost" style="background:#faf5ff;color:#7c3aed;border:1px solid #ddd6fe;" onclick="startNewInvoiceForCustomer('${escapeHtml(custName)}', '${escapeHtml(cPhone)}', '${escapeHtml(cTitle)}');" title="إنشاء فاتورة جديدة">
+        <button class="unified-bar-btn btn-ghost" style="background:#faf5ff;color:#7c3aed;border:1px solid #ddd6fe;" onclick="startNewInvoiceForCustomer('${escapeJsString(custName)}', '${escapeJsString(cPhone)}', '${escapeJsString(cTitle)}');" title="إنشاء فاتورة جديدة">
           ${getSvgIcon("invoices", 13)} فاتورة
         </button>
         ${clientReceipts.length > 0 ? `
-          <button class="unified-bar-btn btn-ghost" style="color:var(--primary);font-weight:800;border:1px solid var(--line);" onclick="viewCustomerReceiptsInArchive('${escapeHtml(custName)}');" title="استعراض أجهزة العميل بالأرشيف">
+          <button class="unified-bar-btn btn-ghost" style="color:var(--primary);font-weight:800;border:1px solid var(--line);" onclick="viewCustomerReceiptsInArchive('${escapeJsString(custName)}');" title="استعراض أجهزة العميل بالأرشيف">
             ${getSvgIcon("folder", 13)} الأجهزة (${clientReceipts.length})
           </button>
         ` : ''}
         ${clientReceipts.length > 1 ? `
-          <button class="unified-bar-btn btn-ghost" style="background:#ede9fe;color:#6d28d9;border:1px solid #c4b5fd;font-weight:800;" onclick="openCustomerConsolidatedInvoiceModal('${escapeHtml(custName)}');" title="إصدار فاتورة مجمعة لكافة أجهزة هذا العميل">
+          <button class="unified-bar-btn btn-ghost" style="background:#ede9fe;color:#6d28d9;border:1px solid #c4b5fd;font-weight:800;" onclick="openCustomerConsolidatedInvoiceModal('${escapeJsString(custName)}');" title="إصدار فاتورة مجمعة لكافة أجهزة هذا العميل">
             ${getSvgIcon("fileText", 13)} فاتورة مجمعة
           </button>
         ` : ''}
@@ -2883,14 +2883,14 @@ window.openCustomerActionSheet = function(custName, custPhone, custTitle, custEm
             <div class="act-desc mono">${escapeHtml(custPhone)}</div>
           </a>
         ` : `
-          <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); openQuickAddPhoneModal('${escapeHtml(custName)}', '${escapeHtml(custTitle||'')}');">
+          <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); openQuickAddPhoneModal('${escapeJsString(custName)}', '${escapeJsString(custTitle||'')}');">
             <div class="act-icon" style="color:var(--amber);">${getSvgIcon('alert', 20)}</div>
             <div class="act-label">إضافة هاتف</div>
             <div class="act-desc">تسجيل رقم للتواصل</div>
           </div>
         `}
         ${clientReceipts.length > 0 ? `
-          <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); viewCustomerReceiptsInArchive('${escapeHtml(custName)}');">
+          <div class="action-sheet-card-btn" onclick="document.getElementById('customerActionSheetModal').remove(); viewCustomerReceiptsInArchive('${escapeJsString(custName)}');">
             <div class="act-icon" style="color:var(--primary);">${getSvgIcon('folder', 20)}</div>
             <div class="act-label">سجل أجهزة العميل</div>
             <div class="act-desc">${clientReceipts.length} جهاز في الأرشيف</div>

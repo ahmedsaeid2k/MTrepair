@@ -1576,12 +1576,12 @@ function openDailyClosePrint(date, stats, list){
         ${list.map((t, idx)=>`
           <tr style="border-bottom:1px solid #e2e8f0;">
             <td style="padding:5px 8px;color:#64748b;" class="mono">${idx+1}</td>
-            <td style="padding:5px 8px;font-weight:700;">${t.title}</td>
-            <td style="padding:5px 8px;font-size:10px;font-weight:600;white-space:nowrap;">${t.method || 'نقدي (كاش)'}</td>
-            <td style="padding:5px 8px;color:#475569;">${t.reference}</td>
-            <td style="padding:5px 8px;text-align:center;font-weight:800;color:#16a34a;" class="mono">${t.in > 0 ? t.in.toLocaleString() : '-'}</td>
-            <td style="padding:5px 8px;text-align:center;font-weight:800;color:#dc2626;" class="mono">${t.out > 0 ? t.out.toLocaleString() : '-'}</td>
-            <td style="padding:5px 8px;text-align:center;font-weight:900;" class="mono">${(t.runningBalance||0).toLocaleString()} ج.م</td>
+            <td style="padding:5px 8px;font-weight:700;">${escapeHtml(t.title)}</td>
+            <td style="padding:5px 8px;font-size:10px;font-weight:600;white-space:nowrap;">${escapeHtml(t.method || 'نقدي (كاش)')}</td>
+            <td style="padding:5px 8px;color:#475569;">${escapeHtml(t.reference)}</td>
+            <td style="padding:5px 8px;text-align:center;font-weight:800;color:#16a34a;" class="mono">${t.in > 0 ? Number(t.in).toLocaleString() : '-'}</td>
+            <td style="padding:5px 8px;text-align:center;font-weight:800;color:#dc2626;" class="mono">${t.out > 0 ? Number(t.out).toLocaleString() : '-'}</td>
+            <td style="padding:5px 8px;text-align:center;font-weight:900;" class="mono">${(Number(t.runningBalance)||0).toLocaleString()} ج.م</td>
           </tr>
         `).join('')}
       </tbody>
@@ -1624,5 +1624,5 @@ function getAccountBadgeHtml(t){
   if(t.sourceType === 'purchase'){
     return `<span class="badge" style="background:#ffedd5;color:#c2410c;font-weight:800;border:1px solid #fed7aa;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;">${getSvgIcon('truck', 12)} 2101 موردين</span>`;
   }
-  return `<span class="badge" style="background:#fee2e2;color:#b91c1c;font-weight:800;border:1px solid #fecaca;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;">${getSvgIcon('dollar', 12)} ${(t.accountTag || '5200 مصروف')}</span>`;
+  return `<span class="badge" style="background:#fee2e2;color:#b91c1c;font-weight:800;border:1px solid #fecaca;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;">${getSvgIcon('dollar', 12)} ${escapeHtml(t.accountTag || '5200 مصروف')}</span>`;
 }

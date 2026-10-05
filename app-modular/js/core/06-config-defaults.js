@@ -695,7 +695,7 @@ function openImageLightbox(photo, allPhotos = [], onDelete = null){
 
       <!-- Image Canvas Viewport -->
       <div style="flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:16px;background:#090d16;">
-        <img id="lbMainImage" src="${photo.url || photo.thumb}" alt="Device condition" style="max-width:100%;max-height:100%;object-fit:contain;transition:transform 0.2s ease;border-radius:6px;box-shadow:0 10px 25px rgba(0,0,0,0.5);">
+        <img id="lbMainImage" src="${safeImageUrl(photo.url || photo.thumb)}" alt="Device condition" style="max-width:100%;max-height:100%;object-fit:contain;transition:transform 0.2s ease;border-radius:6px;box-shadow:0 10px 25px rgba(0,0,0,0.5);">
       </div>
 
       ${photo.note ? `
@@ -726,8 +726,10 @@ function openImageLightbox(photo, allPhotos = [], onDelete = null){
     applyTransform();
   };
   overlay.querySelector('#lbDownloadBtn').onclick = () => {
+    const safeSrc = safeImageUrl(photo.url || photo.thumb);
+    if(!safeSrc) return;
     const a = document.createElement('a');
-    a.href = photo.url || photo.thumb;
+    a.href = safeSrc;
     a.download = `MicroTech_Device_${photo.angle || 'photo'}_${Date.now()}.jpg`;
     a.click();
   };
@@ -773,7 +775,7 @@ function renderDevicePhotosThumbnails(photos, containerEl, options = {}){
     return `
       <div class="device-photo-card" data-pidx="${idx}" style="position:relative;background:var(--paper);border:1px solid var(--line);border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);display:flex;flex-direction:column;cursor:pointer;">
         <div style="height:76px;overflow:hidden;background:#000;display:flex;align-items:center;justify-content:center;">
-          <img src="${p.url || p.thumb}" style="width:100%;height:100%;object-fit:cover;" loading="lazy">
+          <img src="${safeImageUrl(p.url || p.thumb)}" style="width:100%;height:100%;object-fit:cover;" loading="lazy">
         </div>
         <div style="padding:4px 6px;font-size:10px;display:flex;justify-content:space-between;align-items:center;background:var(--paper2);">
           <span style="font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(angle)}">${escapeHtml(angle)}</span>
@@ -830,6 +832,21 @@ function escapeHtml(str){
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+/** يهرّب نصاً للاستخدام داخل سلسلة JavaScript ضمن سمة onclick */
+function escapeJsString(str){
+  return String(str == null ? '' : str)
+    .replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n').replace(/\r/g, '\\r')
+    .replace(/</g, '\\x3c').replace(/>/g, '\\x3e').replace(/&/g, '\\x26');
+}
+
+/** يسمح فقط بمخططات الصور الآمنة */
+function safeImageUrl(u){
+  const s = String(u == null ? '' : u).trim();
+  if (/^(https?:|data:image\/)/i.test(s)) return escapeHtml(s);
+  return '';
 }
 
 /**

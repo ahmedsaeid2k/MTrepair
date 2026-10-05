@@ -428,12 +428,12 @@ function openInventoryItemModal(editItem, cloneMode=false, defaultCategory='صي
           <div class="grid3">
             <div class="field" style="grid-column: span 2;">
               <label>اسم الصنف والموديل *</label>
-              <input id="mItemName" value="${item.Name}" placeholder="مثال: شاشة لابتوب 15.6 LED Slim 30 Pin FHD" autofocus>
+              <input id="mItemName" value="${escapeHtml(item.Name||'')}" placeholder="مثال: شاشة لابتوب 15.6 LED Slim 30 Pin FHD" autofocus>
             </div>
             <div class="field">
               <label>القسم الرئيسي *</label>
               <select id="mItemCategory">
-                ${INVENTORY_CATEGORIES.map(c=>`<option ${c===item.Category?'selected':''}>${c}</option>`).join('')}
+                ${INVENTORY_CATEGORIES.map(c=>`<option ${c===item.Category?'selected':''}>${escapeHtml(c)}</option>`).join('')}
               </select>
             </div>
           </div>
@@ -441,31 +441,31 @@ function openInventoryItemModal(editItem, cloneMode=false, defaultCategory='صي
           <div class="grid3">
             <div class="field">
               <label>التصنيف الفرعي / النوع</label>
-              <input id="mItemSubCat" value="${item.SubCategory}" list="subCatList" placeholder="اختر أو اكتب...">
+              <input id="mItemSubCat" value="${escapeHtml(item.SubCategory||'')}" list="subCatList" placeholder="اختر أو اكتب...">
               <datalist id="subCatList">
-                ${(COMMON_SUBCATS[item.Category]||[]).map(sc=>`<option value="${sc}">`).join('')}
+                ${(COMMON_SUBCATS[item.Category]||[]).map(sc=>`<option value="${escapeHtml(sc)}">`).join('')}
               </datalist>
             </div>
             <div class="field">
               <label>المخزن أو الفرع *</label>
               <select id="mItemWarehouse">
-                ${whNames.map(w=>`<option value="${w}" ${(item.Warehouse||'المخزن الرئيسي')===w?'selected':''}>${w}</option>`).join('')}
+                ${whNames.map(w=>`<option value="${escapeHtml(w)}" ${(item.Warehouse||'المخزن الرئيسي')===w?'selected':''}>${escapeHtml(w)}</option>`).join('')}
               </select>
             </div>
             <div class="field">
               <label>مكان التخزين والرف</label>
-              <input id="mItemShelf" value="${item.ShelfLocation}" placeholder="مثال: رف A-2 / درج 4">
+              <input id="mItemShelf" value="${escapeHtml(item.ShelfLocation||'')}" placeholder="مثال: رف A-2 / درج 4">
             </div>
           </div>
 
           <div class="grid2">
             <div class="field">
               <label>كود القطعة / SKU (اختياري)</label>
-              <input id="mItemSKU" value="${item.SKU}" placeholder="مثال: NT156FHM-N61">
+              <input id="mItemSKU" value="${escapeHtml(item.SKU||'')}" placeholder="مثال: NT156FHM-N61">
             </div>
             <div class="field">
               <label>الأجهزة والموديلات المتوافقة (Compatibility)</label>
-              <input id="mItemCompat" value="${item.CompatibleModels}" placeholder="مثال: Dell G15 5515, HP 15-ec...">
+              <input id="mItemCompat" value="${escapeHtml(item.CompatibleModels||'')}" placeholder="مثال: Dell G15 5515, HP 15-ec...">
             </div>
           </div>
         </div>
@@ -479,7 +479,7 @@ function openInventoryItemModal(editItem, cloneMode=false, defaultCategory='صي
           <div class="grid2">
             <div class="field" style="margin-bottom:0;">
               <label>رقم الباركود (امسح بالليزر أو اكتب)</label>
-              <input id="mItemBarcode" class="mono" value="${item.Barcode}" placeholder="6220000000000">
+              <input id="mItemBarcode" class="mono" value="${escapeHtml(item.Barcode||'')}" placeholder="6220000000000">
             </div>
             <div style="display:flex;align-items:flex-end;gap:8px;">
               <button class="btn btn-amber btn-sm" id="modalPrintStickerPreviewBtn" type="button" style="width:100%;">

@@ -286,20 +286,20 @@ function renderDailyJournalPage(main){
                   <td class="mono font-bold" style="color:var(--ink-secondary);font-size:11px;">${filtered.length - idx}</td>
                   <td style="font-size:11.5px;color:var(--ink-secondary);white-space:nowrap;">${cleanDate(t.date)}</td>
                   <td>
-                    <div style="font-weight:800;font-size:13px;">${t.title}</div>
-                    ${t.notes ? `<div style="font-size:11px;color:var(--ink-secondary);">${t.notes}</div>` : ''}
+                    <div style="font-weight:800;font-size:13px;">${escapeHtml(t.title)}</div>
+                    ${t.notes ? `<div style="font-size:11px;color:var(--ink-secondary);">${escapeHtml(t.notes)}</div>` : ''}
                   </td>
                   <td>
                     ${getPaymentMethodBadge(t.method)}
                   </td>
                   <td>
-                    <span class="status-badge st-check" style="font-size:10.5px;">${t.sourceIcon} ${t.reference}</span>
+                    <span class="status-badge st-check" style="font-size:10.5px;">${t.sourceIcon} ${escapeHtml(t.reference)}</span>
                   </td>
                   <td>
                     ${getAccountBadgeHtml(t)}
                   </td>
                   <td>
-                    <span style="font-size:11.5px;color:var(--ink-secondary);">${t.category}</span>
+                    <span style="font-size:11.5px;color:var(--ink-secondary);">${escapeHtml(t.category)}</span>
                   </td>
                   <td class="mono font-bold" style="text-align:center;color:var(--green);font-size:13px;">
                     ${t.in > 0 ? `+${Number(t.in).toLocaleString()} ج.م` : '-'}
@@ -310,7 +310,7 @@ function renderDailyJournalPage(main){
                   <td class="mono font-bold" style="text-align:center;font-size:13px;color:var(--primary);">
                     ${(t.runningBalance||0).toLocaleString()} ج.م
                   </td>
-                  <td style="font-size:11.5px;">${t.by}</td>
+                  <td style="font-size:11.5px;">${escapeHtml(t.by)}</td>
                   <td style="text-align:center;">
                     ${t.canDelete && state.user.role==='admin' ? `
                       ${t.sourceType==='maintenance' ? `
@@ -1073,7 +1073,7 @@ function renderQuotationBuilder(main){
         <div class="field" style="flex:2;margin-bottom:0;"><label>المنتج</label>
           <select id="quoPickItem">
             <option value="">-- اختر منتج --</option>
-            ${state.inventory.filter(it=>(it.Category||'صيانة')==='كاميرات').map(it=>`<option value="${it.ID}">${it.Name} (متاح: ${it.Quantity}) - ${it.SellPrice||it.PurchasePrice} ج.م</option>`).join('')}
+            ${state.inventory.filter(it=>(it.Category||'صيانة')==='كاميرات').map(it=>`<option value="${escapeHtml(it.ID)}">${escapeHtml(it.Name)} (متاح: ${Number(it.Quantity)||0}) - ${Number(it.SellPrice||it.PurchasePrice)||0} ج.م</option>`).join('')}
           </select>
         </div>
         <div class="field" style="flex:1;margin-bottom:0;"><label>الكمية</label><input id="quoPickQty" type="number" value="1" min="1"></div>
@@ -1086,7 +1086,7 @@ function renderQuotationBuilder(main){
         <div class="field" style="flex:2;margin-bottom:0;"><label>الخدمة</label>
           <select id="quoPickService">
             <option value="">-- اختر خدمة من الكتالوج --</option>
-            ${state.services.map(s=>`<option value="${s.Name}" data-price="${s.DefaultPrice}">${s.Name} (${s.DefaultPrice} ج.م)</option>`).join('')}
+            ${state.services.map(s=>`<option value="${escapeHtml(s.Name)}" data-price="${Number(s.DefaultPrice)||0}">${escapeHtml(s.Name)} (${Number(s.DefaultPrice)||0} ج.م)</option>`).join('')}
           </select>
         </div>
         <div class="field" style="flex:2;margin-bottom:0;"><label>أو خدمة يدويًا</label><input id="quoManualService" placeholder="مثال: تمديد كابلات وشبكة..."></div>
@@ -1098,7 +1098,7 @@ function renderQuotationBuilder(main){
       <h3>بنود عرض السعر</h3>
       ${cart.length===0 ? '<div class="empty">لم تتم إضافة بنود بعد.</div>' : `
       <div class="table-wrap"><table><thead><tr><th>البند</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th><th></th></tr></thead><tbody>
-        ${cart.map((c,i)=>`<tr><td>${c.name}${c.type==='service'?' <span style="color:var(--ink-secondary);font-size:11px;">(خدمة)</span>':''}</td><td class="mono">${c.qty}</td><td class="mono">${c.price}</td><td class="mono font-bold">${c.qty*c.price}</td>
+        ${cart.map((c,i)=>`<tr><td>${escapeHtml(c.name)}${c.type==='service'?' <span style="color:var(--ink-secondary);font-size:11px;">(خدمة)</span>':''}</td><td class="mono">${Number(c.qty)||0}</td><td class="mono">${Number(c.price)||0}</td><td class="mono font-bold">${(Number(c.qty)||0)*(Number(c.price)||0)}</td>
         <td><button class="btn btn-xs btn-red" data-quocartidx="${i}">إزالة</button></td></tr>`).join('')}
       </tbody></table></div>`}
       <div style="text-align:left;font-size:20px;font-weight:900;margin-top:14px;">الإجمالي: <span class="mono" style="color:var(--primary);">${itemsTotal}</span> ج.م</div>

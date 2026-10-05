@@ -184,7 +184,7 @@ function renderCustomersPage(main){
               const isSelectedCust = String(cName) === String(state.selectedCustomerId);
 
               return `
-                <tr class="selectable-row ${isSelectedCust ? 'selected-row' : ''}" data-cust-name="${escapeHtml(cName)}" data-cust-phone="${escapeHtml(cPhone||'')}" onclick="handleCustomerRowClick('${escapeHtml(cName)}', '${escapeHtml(cPhone||'')}', event)" style="cursor:pointer;">
+                <tr class="selectable-row ${isSelectedCust ? 'selected-row' : ''}" data-cust-name="${escapeHtml(cName)}" data-cust-phone="${escapeHtml(cPhone||'')}" style="cursor:pointer;">
                   <td>
                     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                       ${isSelectedCust ? `<span class="selected-badge-indicator">${getSvgIcon('check', 11)}</span>` : ''}
@@ -200,14 +200,14 @@ function renderCustomersPage(main){
                         <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" class="btn btn-ghost btn-xs" style="padding:2px 6px;color:#22c55e;" title="محادثة واتساب" onclick="event.stopPropagation();">${getSvgIcon("message", 13)}</a>
                       </div>
                     ` : `
-                      <button class="btn btn-ghost btn-xs edit-cust-quick-phone-btn" style="color:var(--amber-text);border-color:var(--amber);font-weight:700;" onclick="event.stopPropagation(); openQuickAddPhoneModal('${escapeHtml(cName)}', '${escapeHtml(cTitle||'')}');" title="إضافة رقم هاتف للعميل">
+                      <button class="btn btn-ghost btn-xs edit-cust-quick-phone-btn" data-cust-name="${escapeHtml(cName)}" data-cust-title="${escapeHtml(cTitle||'')}" style="color:var(--amber-text);border-color:var(--amber);font-weight:700;" title="إضافة رقم هاتف للعميل">
                         ${getSvgIcon("alert", 12)} إضافة رقم الهاتف
                       </button>
                     `}
                   </td>
                   <td style="text-align:center;">
                     ${clientReceipts.length > 0 ? `
-                      <button class="btn btn-ghost btn-xs view-cust-receipts-btn" style="font-weight:800;color:var(--primary);" onclick="event.stopPropagation(); viewCustomerReceiptsInArchive('${escapeHtml(cName)}');" title="استعراض أجهزة العميل بالأرشيف">
+                      <button class="btn btn-ghost btn-xs view-cust-receipts-btn" data-cust-name="${escapeHtml(cName)}" style="font-weight:800;color:var(--primary);" title="استعراض أجهزة العميل بالأرشيف">
                         ${getSvgIcon("maintenance", 12)} ${clientReceipts.length} جهاز
                       </button>
                     ` : `<span style="color:var(--ink-secondary);font-size:11px;">-</span>`}
@@ -260,6 +260,25 @@ function renderCustomersPage(main){
 
   // Export Excel
   document.getElementById('exportCustsExcelBtn').onclick = ()=>exportCustomersToExcel(allCusts);
+
+  // Bound event handlers for customer rows and action buttons
+  main.querySelectorAll('tr.selectable-row').forEach(tr => {
+    tr.onclick = (e) => {
+      handleCustomerRowClick(tr.dataset.custName, tr.dataset.custPhone, e);
+    };
+  });
+  main.querySelectorAll('.edit-cust-quick-phone-btn').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      openQuickAddPhoneModal(btn.dataset.custName, btn.dataset.custTitle);
+    };
+  });
+  main.querySelectorAll('.view-cust-receipts-btn').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      viewCustomerReceiptsInArchive(btn.dataset.custName);
+    };
+  });
 
   if(typeof window.renderUnifiedSelectionBar === 'function'){
     window.renderUnifiedSelectionBar();

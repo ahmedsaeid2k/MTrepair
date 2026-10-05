@@ -261,7 +261,8 @@ function requireActionRole(action, session) {
 
 const AUTOPOST_REFS = [
   'Sale', 'POS_Sale', 'POS_Return', 'Purchase', 'Receipt', 'Receipt_Parts',
-  'Receipt_Debt', 'Receipt_Reversal', 'Expense', 'Supplier_Payment', 'DeliveryCredit'
+  'Receipt_Debt', 'Receipt_Reversal', 'Expense', 'Supplier_Payment', 'DeliveryCredit',
+  'Receipt_Payment', 'Receipt_Payment_Void', 'Receipt_Delivery', 'Receipt_Revenue', 'Receipt_Void'
 ];
 
 function postAutoJournal(desc, refType, refId, lines, actorUser) {

@@ -783,6 +783,15 @@ function openQuickStatusModal(rawR){
           r.updatedAt = new Date().toISOString();
           recordAuditLog('تسليم جهاز', 'صيانة', `تم تسليم الجهاز للإيصال #${r.receiptNumber} للعميل (${r.customer.name})` + (shouldPay ? ` مع سداد كامل المتبقي (${remaining} ج.م) بواسطة [${payMethodName||'نقدي'}]` : ' (المتبقي آجل)'), r.id);
 
+          const totalCostDue = Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0);
+          const depositBefore = Math.min(totalCostDue, Number(r.deposit || 0));
+          const remainingDebt = Math.max(0, totalCostDue - depositBefore);
+          
+          // Post single full revenue recognition entry (F2: Cr 4101 full cost, Dr 2102 deposit, Dr 1103 remaining debt)
+          if(typeof postReceiptDeliveryRevenue === 'function'){
+            await postReceiptDeliveryRevenue(r, depositBefore, remainingDebt);
+          }
+
           if(shouldPay){
             try {
               await savePaymentRemote(r.id, remaining, 'سداد المتبقي عند التسليم', payMethodName || 'نقدي (كاش)');
@@ -791,7 +800,7 @@ function openQuickStatusModal(rawR){
               await refreshPayments();
             } catch(e){}
           } else {
-            // التسليم بالآجل: تسجيل المتبقي كمديونية على العميل وترحيل قيد للعملاء (أرصدة مدينة)
+            // التسليم بالآجل: تسجيل المتبقي كمديونية على العميل
             try {
               const custName = r.customer ? r.customer.name : '';
               const custPhone = r.customer ? r.customer.phone : '';
@@ -799,18 +808,6 @@ function openQuickStatusModal(rawR){
               if(cust){
                 cust.Debt = Number(cust.Debt || cust.debt || 0) + remaining;
                 await saveCustomerRemote(cust);
-              }
-              if(typeof autoPostJournalEntry === 'function'){
-                await autoPostJournalEntry({
-                  date: new Date().toISOString().slice(0, 10),
-                  description: `مستحقات آجل تسليم جهاز إيصال #${r.receiptNumber || r.id} - عميل: ${custName || 'عميل'}`,
-                  referenceType: 'DeliveryCredit',
-                  referenceId: r.receiptNumber || r.id,
-                  entries: [
-                    { accountId: '1103', accountName: 'العملاء (أرصدة مدينة)', debit: remaining, credit: 0 },
-                    { accountId: '4101', accountName: 'إيرادات خدمات الصيانة', debit: 0, credit: remaining }
-                  ]
-                });
               }
             } catch(errDebt) {
               console.warn('Auto debt recording error:', errDebt);
@@ -4040,6 +4037,15 @@ async function openReceiptDetail(rawR){
       const btn = overlay.querySelector('#saveEditBtn');
       if(btn){ btn.disabled = true; btn.textContent = 'جارٍ الحفظ...'; }
       promptDeliveryRemainingPayment(r, remainingNow, async (shouldPay, payMethodName)=>{
+        const totalCostDue = Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0);
+        const depositBefore = Math.min(totalCostDue, Number(r.deposit || 0));
+        const remainingDebt = Math.max(0, totalCostDue - depositBefore);
+
+        // Post single full revenue recognition entry (F2: Cr 4101 full cost, Dr 2102 deposit, Dr 1103 remaining debt)
+        if(typeof postReceiptDeliveryRevenue === 'function'){
+          await postReceiptDeliveryRevenue(r, depositBefore, remainingDebt);
+        }
+
         if(shouldPay){
           try{
             await savePaymentRemote(r.id, remainingNow, 'سداد المتبقي عند التسليم', payMethodName || 'نقدي (كاش)');
@@ -4048,7 +4054,7 @@ async function openReceiptDetail(rawR){
             await refreshPayments();
           }catch(e){}
         } else {
-          // التسليم بالآجل: تسجيل المتبقي كمديونية على العميل وترحيل قيد للعملاء (أرصدة مدينة)
+          // التسليم بالآجل: تسجيل المتبقي كمديونية على العميل
           try {
             const custName = r.customer ? r.customer.name : '';
             const custPhone = r.customer ? r.customer.phone : '';
@@ -4056,18 +4062,6 @@ async function openReceiptDetail(rawR){
             if(cust){
               cust.Debt = Number(cust.Debt || cust.debt || 0) + remainingNow;
               await saveCustomerRemote(cust);
-            }
-            if(typeof autoPostJournalEntry === 'function'){
-              await autoPostJournalEntry({
-                date: new Date().toISOString().slice(0, 10),
-                description: `مستحقات آجل تسليم جهاز إيصال #${r.receiptNumber || r.id} - عميل: ${custName || 'عميل'}`,
-                referenceType: 'DeliveryCredit',
-                referenceId: r.receiptNumber || r.id,
-                entries: [
-                  { accountId: '1103', accountName: 'العملاء (أرصدة مدينة)', debit: remainingNow, credit: 0 },
-                  { accountId: '4101', accountName: 'إيرادات خدمات الصيانة', debit: 0, credit: remainingNow }
-                ]
-              });
             }
           } catch(errDebt) {
             console.warn('Auto debt recording error:', errDebt);

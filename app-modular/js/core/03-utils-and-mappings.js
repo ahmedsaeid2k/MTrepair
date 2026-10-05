@@ -1076,13 +1076,25 @@ async function savePaymentRemote(receiptId, amount, note, paymentMethod){
   const debitAccCode = isCredit ? '1103' : (isBankOrWallet ? '1102' : '1101');
   const debitAccName = isCredit ? 'العملاء والمدينون' : (isBankOrWallet ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)');
 
+  // F2: Determine credit account based on delivery status
+  // Deposits prior to delivery are liabilities (2102). Debt settlements after delivery clear receivables (1103).
+  // Payments NEVER credit 4101 directly to prevent revenue duplication.
+  const rPayment = (state.receipts||[]).find(x => String(x.id) === String(receiptId) || String(x.receiptNumber) === String(receiptId));
+  const isDeliveredPayment = rPayment && (rPayment.status === 'تم التسليم' || rPayment.status === 'delivered');
+  const creditAccCode = isDeliveredPayment ? '1103' : '2102';
+  const creditAccName = isDeliveredPayment ? 'العملاء والمدينون' : 'أمانات ومقدمات عملاء الصيانة';
+  const rNumPayment = rPayment ? (rPayment.receiptNumber || rPayment.id) : receiptId;
+  const paymentDesc = isDeliveredPayment
+    ? `سداد مديونية صيانة [${payMethod}] (${note || 'سداد متبقي'}) - إيصال #${rNumPayment}`
+    : `تحصيل دفعة مقدمة صيانة [${payMethod}] (${note || 'مقدم صيانة'}) - إيصال #${rNumPayment}`;
+
   recordAutoJournalEntry(
-    `تحصيل صيانة [${payMethod}] (${note || 'دفعة إيصال'})`,
-    'Receipt',
-    receiptId,
+    paymentDesc,
+    'Receipt_Payment',
+    payment.ID,
     [
       {AccountCode: debitAccCode, AccountName: debitAccName, Debit: numAmt, Credit: 0, Notes: `تحصيل عبر ${payMethod}`},
-      {AccountCode: '4101', AccountName: 'إيرادات خدمات صيانة وتصليح', Debit: 0, Credit: numAmt, Notes: `إيصال: ${receiptId}`}
+      {AccountCode: creditAccCode, AccountName: creditAccName, Debit: 0, Credit: numAmt, Notes: isDeliveredPayment ? `سداد مديونية إيصال #${rNumPayment}` : `دفعة مقدمة إيصال #${rNumPayment}`}
     ]
   ).catch(e=>{});
   return apiPost('savePayment', {id: payment.ID, receiptId, amount: payment.Amount, note: payment.Note, paymentMethod: payMethod, date: payment.Date, user: payment.By});
@@ -1108,7 +1120,7 @@ async function deletePaymentRemote(paymentId){
     try { await saveReceiptRemote(r); } catch(e){}
   }
 
-  // 3. Reverse Auto-Journal Entry
+  // 3. Reverse Auto-Journal Entry (F2: Reversal routes to 2102 or 1103 - NEVER 4101)
   const payMethod = p.PaymentMethod || 'نقدي (كاش)';
   const pLow = String(payMethod).toLowerCase();
   const isCredit = pLow.includes('آجل') || pLow.includes('اجل') || pLow.includes('credit');
@@ -1116,12 +1128,16 @@ async function deletePaymentRemote(paymentId){
   const debitAccCode = isCredit ? '1103' : (isBankOrWallet ? '1102' : '1101');
   const debitAccName = isCredit ? 'العملاء والمدينون' : (isBankOrWallet ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)');
 
+  const isDelivered = r && (r.status === 'تم التسليم' || r.status === 'delivered');
+  const origCreditCode = isDelivered ? '1103' : '2102';
+  const origCreditName = isDelivered ? 'العملاء والمدينون' : 'أمانات ومقدمات عملاء الصيانة';
+
   recordAutoJournalEntry(
     `إلغاء / عكس تحصيل صيانة [${payMethod}] (${p.Note || 'دفعة إيصال'})`,
-    'Receipt_Void',
-    p.ReceiptID,
+    'Receipt_Payment_Void',
+    p.ID || p.ReceiptID,
     [
-      {AccountCode: '4101', AccountName: 'إيرادات خدمات صيانة وتصليح', Debit: Number(p.Amount), Credit: 0, Notes: `عكس تحصيل دفعة صيانة: ${p.ReceiptID}`},
+      {AccountCode: origCreditCode, AccountName: origCreditName, Debit: Number(p.Amount), Credit: 0, Notes: `عكس تحصيل دفعة صيانة: ${p.ReceiptID}`},
       {AccountCode: debitAccCode, AccountName: debitAccName, Debit: 0, Credit: Number(p.Amount), Notes: `عكس تحصيل عبر ${payMethod}`}
     ]
   ).catch(e=>{});

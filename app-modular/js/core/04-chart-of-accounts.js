@@ -109,27 +109,39 @@ function reconcileHistoricalJournalEntries(){
   const existingRefs = new Set((state.journalEntries || []).map(e => `${e.ReferenceType}_${e.ReferenceID}`));
   const newEntries = [];
 
-  // 1. Reconcile Payments
+  // 1. Reconcile Payments (F2: Route to 2102 deposit or 1103 debt settlement - never 4101)
   (state.payments || []).forEach(p => {
-    const refKey = `Receipt_${p.ReceiptID || p.ID}`;
-    if (!existingRefs.has(refKey)) {
+    const payId = p.ID || `p_${p.ReceiptID}_${p.Amount}_${p.Date}`;
+    const refKey = `Receipt_Payment_${payId}`;
+    const legacyKey = `Receipt_${p.ReceiptID || p.ID}`;
+    if (!existingRefs.has(refKey) && !existingRefs.has(legacyKey)) {
       const numAmt = Number(p.Amount || 0);
       if (numAmt > 0) {
+        const r = (state.receipts || []).find(x => String(x.id) === String(p.ReceiptID) || String(x.receiptNumber) === String(p.ReceiptID));
+        const isDelivered = r && (r.status === 'تم التسليم' || r.status === 'delivered');
+
         const payMethod = p.PaymentMethod || 'نقدي (كاش)';
         const pLow = String(payMethod).toLowerCase();
-        const isBank = pLow.includes('فيزا') || pLow.includes('انستاباي') || pLow.includes('محفظ') || pLow.includes('فودافون');
+        const isBank = pLow.includes('فيزا') || pLow.includes('انستاباي') || pLow.includes('محفظ') || pLow.includes('فودافون') || pLow.includes('card');
         const debitCode = isBank ? '1102' : '1101';
         const debitName = isBank ? 'البنك والحسابات الإلكترونية' : 'الخزينة الرئيسية (النقدية)';
+
+        const creditCode = isDelivered ? '1103' : '2102';
+        const creditName = isDelivered ? 'العملاء والمدينون' : 'أمانات ومقدمات عملاء الصيانة';
+        const desc = isDelivered 
+          ? `تحصيل مديونية صيانة [${payMethod}] (${p.Note || 'سداد متبقي'})`
+          : `تحصيل دفعة مقدمة صيانة [${payMethod}] (${p.Note || 'مقدم صيانة'})`;
+
         const entry = {
-          ID: 'je_hist_p_' + (p.ID || Math.random().toString(36).slice(2, 7)),
+          ID: 'je_hist_p_' + payId,
           EntryNumber: getNextJournalEntryNumber(),
           Date: (p.Date || new Date().toISOString()).slice(0, 10),
-          Description: `تحصيل صيانة [${payMethod}] (${p.Note || 'دفعة إيصال'})`,
-          ReferenceType: 'Receipt',
-          ReferenceID: p.ReceiptID || p.ID,
+          Description: desc,
+          ReferenceType: 'Receipt_Payment',
+          ReferenceID: payId,
           Lines: [
             { AccountCode: debitCode, AccountName: debitName, Debit: numAmt, Credit: 0, Notes: `تحصيل عبر ${payMethod}` },
-            { AccountCode: '4101', AccountName: 'إيرادات خدمات صيانة وتصليح', Debit: 0, Credit: numAmt, Notes: `إيصال #${p.ReceiptNumber || p.ReceiptID}` }
+            { AccountCode: creditCode, AccountName: creditName, Debit: 0, Credit: numAmt, Notes: isDelivered ? `سداد مديونية إيصال #${p.ReceiptID}` : `مقدم صيانة إيصال #${p.ReceiptID}` }
           ],
           TotalDebit: numAmt,
           TotalCredit: numAmt,
@@ -215,36 +227,79 @@ function reconcileHistoricalJournalEntries(){
     }
   });
 
-  // 4. Reconcile Delivered Receipts with Unpaid Balance (Customer Receivables)
+  // 4. Reconcile Delivered Receipts Revenue (F2: Full revenue recognized once at delivery)
   (state.receipts || []).forEach(r => {
-    if (r.status === 'تم التسليم' || r.status === 'مكتمل') {
-      const cost = Number(r.cost || 0);
-      const deposit = Number(r.deposit || 0);
-      const partsCost = Number(r.partsCost || 0);
-      const totalDue = cost + partsCost + Number(r.otherAccountAmount || 0);
-      const remaining = Math.max(0, totalDue - deposit);
-      const refKey = `Receipt_Debt_${r.id}`;
-      if (remaining > 0 && !existingRefs.has(refKey)) {
-        const custName = (r.customer && r.customer.name) || r.CustomerName || 'عميل';
-        const entry = {
-          ID: 'je_hist_debt_' + r.id,
-          EntryNumber: getNextJournalEntryNumber(),
-          Date: (r.deliveryDate || r.date || new Date().toISOString()).slice(0, 10),
-          Description: `إثبات مستحقات صيانة آجلة عند التسليم للعميل (${custName}) - إيصال #${r.receiptNumber}`,
-          ReferenceType: 'Receipt_Debt',
-          ReferenceID: r.id,
-          Lines: [
-            { AccountCode: '1103', AccountName: 'العملاء والمدينون', Debit: remaining, Credit: 0, Notes: `متبقي صيانة آجل لم يسدد` },
-            { AccountCode: '4101', AccountName: 'إيرادات خدمات صيانة وتصليح', Debit: 0, Credit: remaining, Notes: `إيصال #${r.receiptNumber}` }
-          ],
-          TotalDebit: remaining,
-          TotalCredit: remaining,
-          By: r.updatedBy || 'نظام'
-        };
-        entry.LinesJSON = JSON.stringify(entry.Lines);
-        newEntries.push(entry);
-        state.journalEntries.push(entry);
-        existingRefs.add(refKey);
+    if (r.status === 'تم التسليم' || r.status === 'delivered') {
+      const refKey = `Receipt_Delivery_${r.id}`;
+      const legacyKey1 = `Receipt_Revenue_${r.id}`;
+      const legacyKey2 = `DeliveryCredit_${r.id}`;
+      const legacyKey3 = `DeliveryCredit_${r.receiptNumber}`;
+      const legacyKey4 = `Receipt_Debt_${r.id}`;
+      if (!existingRefs.has(refKey) && !existingRefs.has(legacyKey1) && !existingRefs.has(legacyKey2) && !existingRefs.has(legacyKey3) && !existingRefs.has(legacyKey4)) {
+        const cost = Number(r.cost || 0);
+        const partsCost = Number(r.partsCost || 0);
+        const otherCost = Number(r.otherAccountAmount || 0);
+        const totalCost = cost + partsCost + otherCost;
+
+        if (totalCost > 0) {
+          const rPayments = (state.payments || []).filter(p => 
+            String(p.ReceiptID) === String(r.id) || 
+            (r.receiptNumber && String(p.ReceiptID) === String(r.receiptNumber))
+          );
+          let depositPaid = 0;
+          if (rPayments.length > 0) {
+            depositPaid = rPayments
+              .filter(p => {
+                const n = String(p.Note || '');
+                return n.includes('مقدم') || (!n.includes('متبقي') && !n.includes('تسليم'));
+              })
+              .reduce((sum, p) => sum + Number(p.Amount || 0), 0);
+            depositPaid = Math.min(totalCost, depositPaid);
+          } else {
+            depositPaid = Math.min(totalCost, Math.max(0, Number(r.deposit || 0)));
+          }
+          const remainingDebt = Math.max(0, totalCost - depositPaid);
+          const rNum = r.receiptNumber || r.id;
+          const custName = (r.customer && r.customer.name) || r.CustomerName || 'عميل';
+
+          const lines = [];
+          if (depositPaid > 0) {
+            lines.push({
+              AccountCode: '2102', AccountName: 'أمانات ومقدمات عملاء الصيانة',
+              Debit: depositPaid, Credit: 0,
+              Notes: `تسوية الدفعة المقدمة لإيصال صيانة #${rNum}`
+            });
+          }
+          if (remainingDebt > 0) {
+            lines.push({
+              AccountCode: '1103', AccountName: 'العملاء والمدينون',
+              Debit: remainingDebt, Credit: 0,
+              Notes: `مستحقات آجل تسليم جهاز إيصال #${rNum}`
+            });
+          }
+          lines.push({
+            AccountCode: '4101', AccountName: 'إيرادات خدمات صيانة وتصليح',
+            Debit: 0, Credit: totalCost,
+            Notes: `إيراد صيانة جهاز إيصال #${rNum}`
+          });
+
+          const entry = {
+            ID: 'je_hist_rd_' + r.id,
+            EntryNumber: getNextJournalEntryNumber(),
+            Date: (r.deliveryDate || r.date || new Date().toISOString()).slice(0, 10),
+            Description: `إثبات إيراد تسليم جهاز إيصال #${rNum} - العميل: ${custName}`,
+            ReferenceType: 'Receipt_Delivery',
+            ReferenceID: String(r.id),
+            Lines: lines,
+            TotalDebit: totalCost,
+            TotalCredit: totalCost,
+            By: r.updatedBy || 'نظام'
+          };
+          entry.LinesJSON = JSON.stringify(lines);
+          newEntries.push(entry);
+          state.journalEntries.push(entry);
+          existingRefs.add(refKey);
+        }
       }
     }
   });
@@ -263,10 +318,6 @@ async function loadJournalEntries(){
     Lines: typeof e.LinesJSON==='string' ? (JSON.parse(e.LinesJSON||'[]')) : (e.Lines||[])
   }));
   state.journalEntries = mapped.length ? mapped : (getCache('journal', []) || []);
-  // Auto reconcile if empty or missing operational entries
-  if(!state.journalEntries || state.journalEntries.length === 0){
-    reconcileHistoricalJournalEntries();
-  }
   setCache('journal', state.journalEntries);
   return state.journalEntries;
 }
@@ -508,6 +559,91 @@ async function loadTechnicians(){
   return finalNames;
 }
 
+async function postReceiptDeliveryRevenue(receipt, forcedDeposit, forcedRemaining) {
+  if (!receipt) return null;
+  const receiptId = String(receipt.id || receipt.receiptNumber || '');
+  if (!receiptId) return null;
+
+  if (!state.journalEntries) state.journalEntries = [];
+  const alreadyPosted = state.journalEntries.some(e => 
+    (e.ReferenceType === 'Receipt_Delivery' || e.ReferenceType === 'Receipt_Revenue' || e.ReferenceType === 'DeliveryCredit') &&
+    (String(e.ReferenceID) === String(receipt.id) || String(e.ReferenceID) === String(receipt.receiptNumber))
+  );
+  if (alreadyPosted) {
+    return null;
+  }
+
+  const cost = Number(receipt.cost || 0);
+  const partsCost = Number(receipt.partsCost || 0);
+  const otherCost = Number(receipt.otherAccountAmount || 0);
+  const totalCost = cost + partsCost + otherCost;
+
+  if (totalCost <= 0) return null;
+
+  let depositPaid = 0;
+  let remainingDebt = 0;
+
+  if (forcedDeposit != null && forcedRemaining != null) {
+    depositPaid = Math.min(totalCost, Math.max(0, Number(forcedDeposit)));
+    remainingDebt = Math.max(0, Number(forcedRemaining));
+  } else {
+    const rPayments = (state.payments || []).filter(p => 
+      String(p.ReceiptID) === String(receipt.id) || 
+      (receipt.receiptNumber && String(p.ReceiptID) === String(receipt.receiptNumber))
+    );
+    if (rPayments.length > 0) {
+      depositPaid = rPayments
+        .filter(p => {
+          const n = String(p.Note || '');
+          return n.includes('مقدم') || (!n.includes('متبقي') && !n.includes('تسليم'));
+        })
+        .reduce((sum, p) => sum + Number(p.Amount || 0), 0);
+      depositPaid = Math.min(totalCost, depositPaid);
+    } else {
+      depositPaid = Math.min(totalCost, Math.max(0, Number(receipt.deposit || 0)));
+    }
+    remainingDebt = Math.max(0, totalCost - depositPaid);
+  }
+
+  const rNum = receipt.receiptNumber || receipt.id;
+  const custName = (receipt.customer && receipt.customer.name) ? receipt.customer.name : (receipt.CustomerName || 'عميل');
+
+  const lines = [];
+  if (depositPaid > 0) {
+    lines.push({
+      AccountCode: '2102',
+      AccountName: 'أمانات ومقدمات عملاء الصيانة',
+      Debit: depositPaid,
+      Credit: 0,
+      Notes: `تسوية الدفعة المقدمة لإيصال صيانة #${rNum} (${custName})`
+    });
+  }
+  if (remainingDebt > 0) {
+    lines.push({
+      AccountCode: '1103',
+      AccountName: 'العملاء والمدينون',
+      Debit: remainingDebt,
+      Credit: 0,
+      Notes: `مستحقات آجل تسليم جهاز إيصال #${rNum} (${custName})`
+    });
+  }
+  lines.push({
+    AccountCode: '4101',
+    AccountName: 'إيرادات خدمات صيانة وتصليح',
+    Debit: 0,
+    Credit: totalCost,
+    Notes: `إيراد صيانة جهاز إيصال #${rNum} (${custName})`
+  });
+
+  return recordAutoJournalEntry(
+    `إثبات إيراد تسليم جهاز إيصال #${rNum} - العميل: ${custName}`,
+    'Receipt_Delivery',
+    String(receipt.id),
+    lines
+  );
+}
+if (typeof window !== 'undefined') window.postReceiptDeliveryRevenue = postReceiptDeliveryRevenue;
+
 async function saveReceiptRemote(d){
   // Check if new parts need to be deducted
   const partsToDeduct = Array.isArray(d.partsList) && d.partsList.length > 0 ? d.partsList : [];
@@ -551,6 +687,15 @@ async function saveReceiptRemote(d){
   if(idx>-1) state.receipts[idx] = d; else state.receipts.push(d);
   setCache('receipts', state.receipts);
   recoverAndSyncAllCustomerPhones(false);
+
+  // Auto Journal Entry for Receipt Delivery Revenue (F2: recognize revenue once upon delivery)
+  if(d.status === 'تم التسليم' || d.status === 'delivered'){
+    try {
+      await postReceiptDeliveryRevenue(d);
+    } catch(errRev){
+      console.warn('Auto delivery revenue recording error:', errRev);
+    }
+  }
 
   // Auto-ensure customer exists in directory
   if(d.customer && d.customer.name && d.customer.name !== 'عميل' && d.customer.name !== 'زبون'){

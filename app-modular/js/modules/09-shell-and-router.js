@@ -29,6 +29,32 @@ async function init(){
   // If online and authenticated with server session, fetch fresh updates in background via unified bootstrap
   if(navigator.onLine && state.user && getSessionToken()){
     try {
+      // 🔒 Server Identity Verification: verify role and permissions against active server session
+      const me = await apiGet('getMe', { _force: true });
+      if(me && me.name){
+        const serverRole = String(me.role || '').toLowerCase();
+        const localRole = String(state.user.role || '').toLowerCase();
+        if(serverRole !== localRole || !state.user.name || state.user.name.toLowerCase() !== me.name.toLowerCase()){
+          console.warn('[init] Session role discrepancy detected between client and server. Enforcing server state.');
+          state.user.role = serverRole;
+          state.user.superuser = !!me.superuser;
+          state.user.Superuser = !!me.superuser;
+          if(me.sections) {
+            state.user.sections = Array.isArray(me.sections) ? me.sections : String(me.sections).split(',').map(s=>s.trim()).filter(Boolean);
+          }
+          normalizeUserSections(state.user);
+          try { sessionStorage.setItem('microerp_session', JSON.stringify(state.user)); } catch(e){}
+          render();
+        }
+      }
+    } catch(err) {
+      if(err && err.message && err.message.includes('جلسة العمل')){
+        logout();
+        return;
+      }
+    }
+
+    try {
       let bOk = await fetchBootstrapData();
       if(!bOk){
         // Retry once before falling back to individual requests
@@ -143,34 +169,9 @@ function canUserAccessSection(sec, user = state.user){
 function normalizeUserSections(u){
   if(!u) return;
   const allSections = ['maintenance', 'pos', 'invoices', 'cameras', 'cashdrawer', 'daily', 'finance', 'inventory', 'barcode', 'audit', 'users', 'settings'];
-  
-  // Always synchronize with Admin configured user record in local database
-  let localUsers = state.users;
-  if(!localUsers || !localUsers.length){
-    try {
-      const perm = localStorage.getItem('microerp_users_permanent');
-      if(perm) localUsers = JSON.parse(perm);
-    }catch(e){}
-  }
-  if(!localUsers || !localUsers.length){
-    localUsers = getCache('users', []);
-  }
 
-  const localU = (localUsers || []).find(rec => rec.Name && rec.Name.trim().toLowerCase() === (u.name||'').trim().toLowerCase());
-  if(localU){
-    if(localU.Role) u.role = localU.Role;
-    const isSuper = localU.Role === 'admin' || !!localU.Superuser || !!localU.superuser;
-    u.superuser = isSuper;
-    u.Superuser = isSuper;
-    if(localU.Role !== 'admin' && localU.Sections){
-      const confSecs = Array.isArray(localU.Sections) ? [...localU.Sections] : String(localU.Sections).split(',').map(s=>s.trim()).filter(Boolean);
-      if(confSecs.length > 0){
-        u.sections = confSecs;
-      }
-    }
-  }
-
-  if(u.role === 'admin'){
+  const role = String(u.role || '').toLowerCase();
+  if(role === 'admin' || !!u.superuser || !!u.Superuser){
     u.sections = allSections;
   } else {
     let secs = Array.isArray(u.sections) ? u.sections : String(u.sections||'').split(',').map(s=>s.trim()).filter(Boolean);
@@ -185,7 +186,6 @@ function normalizeUserSections(u){
 function render(){
   const app = document.getElementById('app');
   if(!state.user){ app.innerHTML = loginScreen(); attachLogin(); return; }
-  normalizeUserSections(state.user);
   if(!state.currentSection){
     return renderSectionPicker(app);
   }

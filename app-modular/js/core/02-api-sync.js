@@ -8,7 +8,6 @@ function getSessionToken() {
   try {
     return (typeof state !== 'undefined' && state && state.sessionToken)
       || sessionStorage.getItem('microerp_session_token')
-      || localStorage.getItem('microerp_session_token')
       || '';
   } catch(e) {
     return (typeof state !== 'undefined' && state && state.sessionToken) || '';

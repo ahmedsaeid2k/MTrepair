@@ -2304,7 +2304,7 @@ function openUserModal(editUser=null){
         state.user.superuser = isSuperuser;
         state.user.Superuser = isSuperuser;
         state.user.sections = selectedSections;
-        try{ localStorage.setItem('microerp_session', JSON.stringify(state.user)); }catch(e){}
+        try{ sessionStorage.setItem('microerp_session', JSON.stringify(state.user)); }catch(e){}
       }
 
       showToast(`تم حفظ وتخصيص صلاحيات المستخدم (${name}) بنجاح`, 'success');

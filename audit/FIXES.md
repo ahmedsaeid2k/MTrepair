@@ -25,11 +25,12 @@
 | **S3** | إغلاق ثغرة قيود اليومية وفرض التوازن والقائمة البيضاء سيرفرياً | `files(11)/GoogleAppsScript_Backend.gs.txt` | PASSED | منع القيود التلقائية من العميل، فرض `postAutoJournal` سيرفرياً بالتحقق من التوازن وقائمة `AUTOPOST_REFS`، وقصر `saveJournalEntry` على المدير والمحاسب فقط كقيود `Manual` متوازنة |
 | **S4** | تصحيح حد الطلبات وقفل محاولات الدخول السيرفري (Rate Limit & Anti-Brute-Force) | `files(11)/GoogleAppsScript_Backend.gs.txt` | PASSED | استخدام مفاتيح مشتقة بـ `hashKey` لمنع التلاعب بالتوكنات، تطبيق سقف 5 محاولات دخول فاشلة لكل مستخدم مع عداد عام، وتسجيل المحاولات الفاشلة أمنياً |
 | **S5** | تجزئة كلمات المرور بـ Salt + تكرار PBKDF2 وإخفاء كلمة المرور من الواجهة | `files(11)/GoogleAppsScript_Backend.gs.txt`, `app-modular/js/modules/17-accounting-finance.js`, `audit/MIGRATIONS.md` | PASSED | إضافة عمود `Salt`، تكرار 5000 لـ SHA-256، مقارنة ثابتة الزمن `safeEquals`، ترحيل تلقائي، واستبدال حقول كلمة المرور بشارات مؤمنة |
+| **S6** | منع تصعيد الصلاحيات من localStorage وتأمين الجلسات في sessionStorage | `09-shell-and-router.js`, `19-login.js`, `20-app-boot.js`, `02-api-sync.js`, `05-auth-and-audit.js`, `17-accounting-finance.js`, `Backend.gs.txt` | PASSED | حذف استدعاء `normalizeUserSections` من `render()` وإلغاء قراءة الدور من `localStorage`، حصر الجلسة والتوكن في `sessionStorage`، وإضافة تحقق سيرفري `getMe` عند بدء التشغيل |
 
 ---
 
 ## المراحل اللاحقة (تُحدَّث بعد كل بند):
-- **المرحلة 1: الأمان (P0) — S6 إلى S16**
+- **المرحلة 1: الأمان (P0) — S7 إلى S16**
 - **المرحلة 2: سلامة الأرقام المالية (P1) — F1 إلى F11**
 - **المرحلة 3: الوظائف الناقصة (P2) — U1 إلى U14**
 - **المرحلة 4: الجودة والصيانة (P3) — Q1 إلى Q5**

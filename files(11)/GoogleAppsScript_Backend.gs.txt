@@ -138,6 +138,7 @@ function createSession(userObj) {
   const sessionData = {
     name: userObj.Name,
     role: userObj.Role,
+    sections: userObj.Sections || '',
     superuser: !!userObj.Superuser,
     created: Date.now()
   };
@@ -377,6 +378,17 @@ function doGet(e) {
     const session = getSession(e.parameter.sessionToken);
     if (!session) {
       return jsonOut({ error: 'جلسة العمل غير صالحة أو منتهية، يرجى تسجيل الدخول مجدداً (Session Expired)', sessionExpired: true }, 401);
+    }
+
+    // 🔒 Current Authenticated Identity Endpoint
+    if (action === 'getMe') {
+      return jsonOut({
+        ok: true,
+        name: session.name,
+        role: session.role,
+        sections: session.sections || '',
+        superuser: !!session.superuser
+      });
     }
 
     // 🚀 Unified Bootstrap Endpoint: Reads all sheets in a single roundtrip (93% request reduction)

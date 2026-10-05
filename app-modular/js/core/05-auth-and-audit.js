@@ -90,7 +90,7 @@ async function saveUserRemote(usr){
     state.user.Superuser = !!usr.Superuser;
     state.user.sections = Array.isArray(usr.Sections) ? [...usr.Sections] : String(usr.Sections||'').split(',').map(s=>s.trim()).filter(Boolean);
     normalizeUserSections(state.user);
-    try { localStorage.setItem('microerp_session', JSON.stringify(state.user)); } catch(e){}
+    try { sessionStorage.setItem('microerp_session', JSON.stringify(state.user)); } catch(e){}
   }
 
   if(navigator.onLine){

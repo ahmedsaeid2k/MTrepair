@@ -277,24 +277,12 @@ function attachLogin(){
       let sections;
       const allSecs = ['maintenance', 'pos', 'invoices', 'cameras', 'cashdrawer', 'daily', 'finance', 'inventory', 'barcode', 'audit', 'users', 'settings'];
       
-      let localUsers = state.users;
-      if(!localUsers || !localUsers.length){
-        try {
-          const perm = localStorage.getItem('microerp_users_permanent');
-          if(perm) localUsers = JSON.parse(perm);
-        }catch(e){}
-      }
-      if(!localUsers || !localUsers.length){
-        localUsers = getCache('users', []);
-      }
-      const localU = (localUsers || []).find(u => u.Name && u.Name.trim().toLowerCase() === name.trim().toLowerCase());
-      const effectiveRole = (localU && localU.Role) ? localU.Role : res.role;
-      const isSuper = effectiveRole === 'admin' || (localU && (!!localU.Superuser || !!localU.superuser)) || !!res.superuser || !!res.Superuser;
+      // Use role and permissions strictly from authenticated server response (never local storage)
+      const effectiveRole = String(res.role || 'cashier').toLowerCase();
+      const isSuper = effectiveRole === 'admin' || !!res.superuser || !!res.Superuser;
 
       if(effectiveRole === 'admin'){
         sections = allSecs;
-      } else if(localU && localU.Sections && (Array.isArray(localU.Sections) ? localU.Sections.length : String(localU.Sections).trim())){
-        sections = Array.isArray(localU.Sections) ? [...localU.Sections] : String(localU.Sections).split(',').map(s=>s.trim()).filter(Boolean);
       } else if(res.sections){
         sections = Array.isArray(res.sections) ? [...res.sections] : String(res.sections).split(',').map(s=>s.trim()).filter(Boolean);
       } else {
@@ -303,19 +291,23 @@ function attachLogin(){
       sections = sections.filter(s => s !== 'settings' || effectiveRole === 'admin');
       if(!sections.length) sections = ['pos'];
 
-      state.user = {name: (localU && localU.Name) || res.name, role: effectiveRole, superuser: isSuper, Superuser: isSuper, sections};
+      state.user = {
+        name: res.name || name,
+        role: effectiveRole,
+        superuser: isSuper,
+        Superuser: isSuper,
+        sections: sections
+      };
       normalizeUserSections(state.user);
 
-      // Session Persistence (Remember Me)
-      const remember = rememberEl ? rememberEl.checked : true;
+      // Session Security: Store in sessionStorage ONLY (prevent persistent tampering via localStorage)
       try {
-        const sessionStr = JSON.stringify(state.user);
-        if(remember){
-          localStorage.setItem('microerp_session', sessionStr);
-          sessionStorage.removeItem('microerp_session');
-        } else {
-          sessionStorage.setItem('microerp_session', sessionStr);
-          localStorage.removeItem('microerp_session');
+        localStorage.removeItem('microerp_session');
+        localStorage.removeItem('microerp_session_token');
+        sessionStorage.setItem('microerp_session', JSON.stringify(state.user));
+        if(res.sessionToken){
+          sessionStorage.setItem('microerp_session_token', res.sessionToken);
+          state.sessionToken = res.sessionToken;
         }
       } catch(e){}
 

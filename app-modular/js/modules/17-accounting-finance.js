@@ -811,16 +811,15 @@ function getIncomeStatementData(startDate, endDate){
   (state.receipts || []).forEach(r => {
     const dt = cleanDate(r.date) || r.date;
     if(dt >= sDate && dt <= eDate){
-      const isCancelled = r.status === 'ملغي' || r.status === 'رفض العميل' || r.status === 'لا يمكن إصلاحه';
-      const cost = isCancelled ? 0 : Number(r.cost || 0);
+      const isCancelled = r.status === 'تعذرت الصيانة' || r.status === 'رفض العميل' || r.status === 'ملغي';
+      const labor = isCancelled ? 0 : (Number(r.cost || 0) + Number(r.otherAccountAmount || 0));
       const parts = isCancelled ? 0 : Number(r.partsCost || 0);
-      const other = isCancelled ? 0 : Number(r.otherAccountAmount || 0);
+      const partsCostReal = isCancelled ? 0 : Number(r.partsBuyCost != null ? r.partsBuyCost : (r.partsCost || 0));
       const refAmt = Number(r.refunded || 0);
       maintCount++;
-      const labor = Math.max(0, cost - parts) + other;
       maintLaborRev += labor;
       maintPartsRev += parts;
-      maintPartsCOGS += parts;
+      maintPartsCOGS += partsCostReal;
       maintRefunds += refAmt;
     }
   });

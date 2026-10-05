@@ -2045,8 +2045,8 @@ function openUserModal(editUser=null){
           <input id="uModalName" value="${editUser ? editUser.Name : ''}" placeholder="مثال: أحمد الكاشير" autofocus ${isEdit && editUser.Name==='admin' ? 'readonly style="background:var(--paper3);"' : ''}>
         </div>
         <div class="field">
-          <label>كلمة المرور *</label>
-          <input id="uModalPassword" value="${editUser ? editUser.Password : ''}" placeholder="كلمة المرور">
+          <label>${isEdit ? 'كلمة المرور الجديدة (اتركها فارغة للإبقاء على الحالية)' : 'كلمة المرور *'}</label>
+          <input id="uModalPassword" type="password" value="" placeholder="${isEdit ? 'اتركه فارغاً للإبقاء على الحالية' : 'أدخل كلمة المرور'}">
         </div>
       </div>
 
@@ -2266,7 +2266,7 @@ function openUserModal(editUser=null){
     const isSuperuser = role === 'admin' || (overlay.querySelector('#uModalSuperuser') && overlay.querySelector('#uModalSuperuser').checked);
 
     if(!name){ showToast('يرجى إدخال اسم المستخدم', 'error'); return; }
-    if(!password){ showToast('يرجى إدخال كلمة المرور', 'error'); return; }
+    if(!isEdit && !password){ showToast('يرجى إدخال كلمة المرور للمستخدم الجديد', 'error'); return; }
     
     // Strict RBAC: strip settings if not admin
     if(role !== 'admin'){
@@ -2397,7 +2397,7 @@ function renderUsersManagementPage(main){
               <th>اسم المستخدم</th>
               <th>المسمى / الدور</th>
               <th>صلاحية Superuser (الحذف المباشر)</th>
-              <th>كلمة المرور</th>
+              <th>أمان الحساب</th>
               <th>الشاشات والأقسام المسموح بها</th>
               <th>ملاحظات</th>
               <th>الإجراءات والتخصيص</th>
@@ -2433,10 +2433,9 @@ function renderUsersManagementPage(main){
                     `}
                   </td>
                   <td>
-                    <div style="display:flex;align-items:center;gap:6px;">
-                      <input type="password" value="${u.Password||''}" id="pass_${idx}" readonly style="width:90px;height:26px;padding:2px 6px;background:var(--paper3);border:1px solid var(--line);font-size:12px;" class="mono">
-                      <button class="btn btn-xs btn-ghost" data-togglepass="pass_${idx}" title="إظهار / إخفاء">${getSvgIcon('eye', 13)}</button>
-                    </div>
+                    <span class="status-badge st-done" style="font-size:11px;display:inline-flex;align-items:center;gap:4px;">
+                      ${getSvgIcon('lock', 12)} مُشفَّرة ومؤمَّنة
+                    </span>
                   </td>
                   <td>
                     <div style="display:flex;gap:4px;flex-wrap:wrap;max-width:360px;">
@@ -2461,14 +2460,6 @@ function renderUsersManagementPage(main){
       </div>
     </div>
   `;
-
-  // Toggle password view
-  main.querySelectorAll('[data-togglepass]').forEach(btn => {
-    btn.onclick = ()=>{
-      const inp = document.getElementById(btn.dataset.togglepass);
-      if(inp) inp.type = inp.type === 'password' ? 'text' : 'password';
-    };
-  });
 
   // Buttons
   document.getElementById('addNewUserBtn').onclick = ()=>openUserModal();

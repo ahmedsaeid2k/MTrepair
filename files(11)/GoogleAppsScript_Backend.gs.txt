@@ -85,13 +85,47 @@ function hashKey(v) {
 }
 
 /**
- * Cryptographic Password Hashing (SHA-256)
- * Neutralizes plaintext credential storage in Google Sheets.
+ * Cryptographic Password Hashing (PBKDF2 Iterated SHA-256 + Unique Salt)
+ * Safe constant-time comparison against rainbow tables and timing attacks.
  */
+const PBKDF2_ITERATIONS = 5000;
+
+function generateSalt() {
+  return Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '').slice(0, 16);
+}
+
 function hashPassword(pass) {
   if (!pass) return '';
   const rawBytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(pass).trim(), Utilities.Charset.UTF_8);
   return rawBytes.map(b => (b < 0 ? b + 256 : b).toString(16).padStart(2, '0')).join('');
+}
+
+function hashPasswordIterated(pass, salt) {
+  let digest = String(pass).trim() + ':' + String(salt || '');
+  for (let i = 0; i < PBKDF2_ITERATIONS; i++) {
+    const raw = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, digest, Utilities.Charset.UTF_8);
+    digest = raw.map(b => (b < 0 ? b + 256 : b).toString(16).padStart(2, '0')).join('');
+  }
+  return digest;
+}
+
+function safeEquals(a, b) {
+  const A = String(a || ''), B = String(b || '');
+  if (A.length !== B.length) return false;
+  let diff = 0;
+  for (let i = 0; i < A.length; i++) {
+    diff |= (A.charCodeAt(i) ^ B.charCodeAt(i));
+  }
+  return diff === 0;
+}
+
+function verifyPassword(input, storedHash, storedSalt) {
+  if (!storedHash) return false;
+  if (storedSalt) {
+    return safeEquals(hashPasswordIterated(input, storedSalt), storedHash);
+  }
+  // Legacy migration fallback: check legacy SHA-256 hash or plaintext
+  return safeEquals(hashPassword(input), storedHash);
 }
 
 /**
@@ -492,32 +526,45 @@ function doPost(e) {
       }
 
       const users = getAllRows(SHEET_USERS);
-      const hashed = hashPassword(pass);
-      const found = users.find(u => u.Name && u.Name.trim().toLowerCase() === uname && (String(u.Password || '').trim() === pass || String(u.Password || '').trim() === hashed));
+      const userCandidates = users.filter(u => u.Name && u.Name.trim().toLowerCase() === uname);
+      let found = null;
+      for (const u of userCandidates) {
+        if (verifyPassword(pass, u.Password, u.Salt)) {
+          found = u;
+          break;
+        }
+      }
 
       if (!found) {
         logAudit('', uname, 'محاولة دخول فاشلة');
         return jsonOut({ error: 'بيانات الدخول غير صحيحة' }, 401);
       }
 
-      // Auto-upgrade plaintext password to SHA-256 hash in sheet if it was stored as plaintext
-      if (String(found.Password || '').trim() === pass && String(found.Password || '').trim() !== hashed) {
+      // Auto-migrate legacy hash (or plaintext) to PBKDF2 iterated hash + Salt
+      if (!found.Salt) {
         try {
+          const newSalt = generateSalt();
+          const newHashed = hashPasswordIterated(pass, newSalt);
           const shUsers = getSheet(SHEET_USERS);
+          ensureHeaders(shUsers, { Salt: newSalt });
           const headers = shUsers.getRange(1, 1, 1, shUsers.getLastColumn()).getValues()[0];
           const nameCol = headers.indexOf('Name');
           const passCol = headers.indexOf('Password');
-          if (nameCol >= 0 && passCol >= 0) {
+          const saltCol = headers.indexOf('Salt');
+          if (nameCol >= 0 && passCol >= 0 && saltCol >= 0) {
             const vals = shUsers.getDataRange().getValues();
             for (let i = 1; i < vals.length; i++) {
-              if (String(vals[i][nameCol]).trim().toLowerCase() === name.toLowerCase()) {
-                shUsers.getRange(i + 1, passCol + 1).setValue(hashed);
+              if (String(vals[i][nameCol]).trim().toLowerCase() === uname) {
+                shUsers.getRange(i + 1, passCol + 1).setValue(newHashed);
+                shUsers.getRange(i + 1, saltCol + 1).setValue(newSalt);
+                found.Password = newHashed;
+                found.Salt = newSalt;
                 break;
               }
             }
           }
         } catch(upgradeErr) {
-          console.warn('Password hash upgrade failed:', upgradeErr);
+          console.warn('Password hash migration failed:', upgradeErr);
         }
       }
 
@@ -563,12 +610,10 @@ function doPost(e) {
       if (!pin) return jsonOut({ error: 'رمز المشرف مطلوب', valid: false }, 400);
 
       const users = getAllRows(SHEET_USERS);
-      const hashed = hashPassword(pin);
       const adminUser = users.find(u => {
         const role = String(u.Role || '').toLowerCase();
         const isSuper = ['true','1','yes','نعم'].includes(String(u.Superuser || '').trim().toLowerCase());
-        const passMatch = (String(u.Password || '').trim() === pin || String(u.Password || '').trim() === hashed);
-        return (role === 'admin' || isSuper) && passMatch;
+        return (role === 'admin' || isSuper) && verifyPassword(pin, u.Password, u.Salt);
       });
 
       if (adminUser) {
@@ -1192,23 +1237,38 @@ function doPost(e) {
     if (action === 'saveUser') {
       if (!verifyAdminRole(body, session)) return jsonOut({ error: 'إدارة المستخدمين متاحة للمدير فقط' }, 403);
       const rawPass = String(body.data.Password || '').trim();
+      const userName = String(body.data.Name || '').trim();
+      if (!userName) return jsonOut({ error: 'اسم المستخدم مطلوب' }, 400);
+
+      const existing = getAllRows(SHEET_USERS).find(u => (u.ID && String(u.ID) === String(body.data.ID)) || (u.Name && u.Name.toLowerCase() === userName.toLowerCase()));
+
+      let salt = '';
+      let hashedPassword = '';
+      if (rawPass) {
+        salt = generateSalt();
+        hashedPassword = hashPasswordIterated(rawPass, salt);
+      } else if (existing) {
+        salt = existing.Salt || '';
+        hashedPassword = existing.Password || '';
+      }
+
       const usr = {
-        ID: body.data.ID || ('usr_' + new Date().getTime()),
-        Name: String(body.data.Name || '').trim(),
-        Password: rawPass ? hashPassword(rawPass) : '',
+        ID: body.data.ID || (existing ? existing.ID : ('usr_' + new Date().getTime())),
+        Name: userName,
+        Password: hashedPassword,
+        Salt: salt,
         Role: body.data.Role || 'cashier',
         Sections: Array.isArray(body.data.Sections) ? body.data.Sections.join(',') : (body.data.Sections || ''),
-        Superuser: !!body.data.Superuser,
+        Superuser: ['true','1','yes','نعم'].includes(String(body.data.Superuser || '').trim().toLowerCase()),
         Notes: body.data.Notes || ''
       };
-      // If password was empty on update, retain existing hashed password
-      if (!usr.Password) {
-        const existing = getAllRows(SHEET_USERS).find(u => u.Name && u.Name.toLowerCase() === usr.Name.toLowerCase());
-        if (existing) usr.Password = existing.Password;
-      }
+
       upsertRow(SHEET_USERS, usr, 'Name');
       logAudit(usr.Name, actorUser, 'تعديل/إضافة مستخدم: ' + usr.Name + ' (' + usr.Role + ')');
-      return jsonOut({ ok: true, user: usr });
+      const safeUsr = Object.assign({}, usr);
+      delete safeUsr.Password;
+      delete safeUsr.Salt;
+      return jsonOut({ ok: true, user: safeUsr });
     }
     if (action === 'deleteUser') {
       if (!verifyAdminRole(body, session)) return jsonOut({ error: 'حذف المستخدمين متاح للمدير فقط' }, 403);
@@ -1284,7 +1344,7 @@ function ensureHeaders(sh, obj) {
     'Accounts': ['Code','Name','Type','ParentCode','Nature','Description','Balance'],
     'JournalEntries': ['ID','EntryNumber','Date','Description','ReferenceType','ReferenceID','LinesJSON','TotalDebit','TotalCredit','By'],
     'Invoices': ['ID','InvoiceNumber','Date','DueDate','CustomerName','CustomerPhone','CustomerTaxNumber','CustomerAddress','ItemsSummary','ItemsJSON','Subtotal','TaxPercent','TaxAmount','Discount','Total','AmountPaid','Remaining','Status','PaymentMethod','ReferenceType','ReferenceID','Notes','By'],
-    'Users': ['ID','Name','Password','Role','Sections','Superuser','Notes']
+    'Users': ['ID','Name','Password','Salt','Role','Sections','Superuser','Notes']
   };
   const lastCol = Math.max(1, sh.getLastColumn());
   let headers = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || '').trim());

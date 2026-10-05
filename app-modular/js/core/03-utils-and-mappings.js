@@ -1326,6 +1326,30 @@ async function saveQuotationRemote(q){
   else state.quotations.push(q);
   setCache('quotations', state.quotations);
 
+  // F7: Auto Journal Entry when project/quotation is executed and delivered
+  if(q.Status === 'تم التنفيذ والتسليم' || q.Status === 'مكتمل'){
+    const total = Number(q.Total || 0);
+    if(total > 0 && !(state.journalEntries || []).some(e => e.ReferenceType === 'Quotation_Delivery' && String(e.ReferenceID) === String(q.ID))){
+      const depositPaid = Math.min(total, Number(q.PaidAmount || 0));
+      const remainingDebt = Math.max(0, total - depositPaid);
+      const lines = [];
+      if(depositPaid > 0){
+        lines.push({ AccountCode: '2102', AccountName: 'أمانات ومقدمات عملاء الصيانة والمشاريع', Debit: depositPaid, Credit: 0, Notes: `تسوية دفعات مقدمة مشروع #${String(q.ID).slice(-8)}` });
+      }
+      if(remainingDebt > 0){
+        lines.push({ AccountCode: '1103', AccountName: 'العملاء والمدينون', Debit: remainingDebt, Credit: 0, Notes: `مستحقات آجل مشروع #${String(q.ID).slice(-8)} (${q.ClientName || ''})` });
+      }
+      lines.push({ AccountCode: '4101', AccountName: 'إيرادات مشاريع وتوريدات وتركيبات', Debit: 0, Credit: total, Notes: `إيراد تنفيذ مشروع #${String(q.ID).slice(-8)} (${q.ClientName || ''})` });
+
+      recordAutoJournalEntry(
+        `إثبات إيراد تسليم مشروع/عرض سعر (#${String(q.ID).slice(-8)} - ${q.ClientName || ''})`,
+        'Quotation_Delivery',
+        q.ID,
+        lines
+      ).catch(e => console.warn('Quotation delivery journal error:', e));
+    }
+  }
+
   try {
     const res = await apiPost('saveQuotation', {data:q});
     return { quotation: res.quotation || q };
@@ -1368,14 +1392,19 @@ async function saveQuotationPaymentRemote(quotationId, amount, note){
   });
   setCache('payments', state.payments);
 
-  // Auto Journal Entry
+  // F7: Auto Journal Entry for Quotation payment
+  // Pre-completion payments are customer deposits / advances (2102) - not direct revenue
+  const isDelivered = (q.Status === 'تم التنفيذ والتسليم' || q.Status === 'مكتمل');
+  const creditCode = isDelivered ? '1103' : '2102';
+  const creditName = isDelivered ? 'العملاء والمدينون' : 'أمانات ومقدمات عملاء الصيانة والمشاريع';
+
   recordAutoJournalEntry(
     `تحصيل دفعة مشروع/عرض سعر (#${String(quotationId).slice(-8)} - ${q.ClientName})`,
-    'Quotation',
-    quotationId,
+    'Quotation_Payment',
+    p.ID,
     [
       { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: numAmt, Credit: 0, Notes: p.Note },
-      { AccountCode: '4101', AccountName: 'إيرادات مشاريع وتوريدات وتركيبات', Debit: 0, Credit: numAmt, Notes: `عرض سعر #${String(quotationId).slice(-8)}` }
+      { AccountCode: creditCode, AccountName: creditName, Debit: 0, Credit: numAmt, Notes: `عرض سعر #${String(quotationId).slice(-8)}` }
     ]
   ).catch(e=>{});
 
@@ -1521,22 +1550,12 @@ async function savePurchaseRemote(p, itemsList = []){
     });
   }
 
-  const je = {
-    ID: 'je_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
-    EntryNumber: 'JE-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-4),
-    Date: p.Date,
-    Description: `فاتورة شراء وتوريد مخزون (${p.Supplier} - ${p.ItemsSummary})`,
-    ReferenceType: 'Purchase',
-    ReferenceID: p.ID,
-    LinesJSON: JSON.stringify(journalLines),
-    Lines: journalLines,
-    TotalDebit: p.Total,
-    TotalCredit: p.Total,
-    By: p.By
-  };
-  if(!state.journalEntries) state.journalEntries = [];
-  state.journalEntries.push(je);
-  setCache('journal', state.journalEntries);
+  const je = await recordAutoJournalEntry(
+    `فاتورة شراء وتوريد مخزون (${p.Supplier} - ${p.ItemsSummary})`,
+    'Purchase',
+    p.ID,
+    journalLines
+  ).catch(e => console.warn('Purchase journal error:', e));
 
   recordAuditLog('فاتورة شراء', 'المخزن', `تسجيل فاتورة شراء من المورد (${p.Supplier}) بقيمة ${p.Total} ج.م - الأصناف: ${p.ItemsSummary}`, p.ID);
 
@@ -1633,10 +1652,110 @@ async function saveInvoiceRemote(inv){
     }
   }
 
-  return apiPost('saveInvoice', {data: inv, user: inv.By});
+  // F7: Auto Journal Entry for Invoice
+  const totalAmt = Number(inv.Total != null ? inv.Total : (inv.NetTotal || 0));
+  const paidAmt = Math.min(totalAmt, Math.max(0, Number(inv.AmountPaid || 0)));
+  const unpaidDebt = Math.max(0, totalAmt - paidAmt);
+  let journalEntry = null;
+
+  if (totalAmt > 0 && !inv.skipAutoJournal) {
+    const pLow = String(inv.PaymentMethod || 'نقدي').toLowerCase();
+    const isBank = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('إنستاباي') || pLow.includes('محفظ') || pLow.includes('فودافون');
+    const debitAccCode = isBank ? '1102' : '1101';
+    const debitAccName = isBank ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)';
+    const invNum = inv.InvoiceNumber || inv.ID;
+    const custName = inv.CustomerName || 'عميل';
+
+    const lines = [];
+    if (paidAmt > 0) {
+      lines.push({
+        AccountCode: debitAccCode,
+        AccountName: debitAccName,
+        Debit: paidAmt,
+        Credit: 0,
+        Notes: `تحصيل فاتورة مبيعات #${invNum}`
+      });
+    }
+    if (unpaidDebt > 0) {
+      lines.push({
+        AccountCode: '1103',
+        AccountName: 'العملاء والمدينون',
+        Debit: unpaidDebt,
+        Credit: 0,
+        Notes: `آجل فاتورة مبيعات #${invNum} (${custName})`
+      });
+    }
+    lines.push({
+      AccountCode: '4102',
+      AccountName: 'إيرادات مبيعات بضائع وقطع غيار',
+      Debit: 0,
+      Credit: totalAmt,
+      Notes: `فاتورة مبيعات #${invNum} (${custName})`
+    });
+
+    journalEntry = await recordAutoJournalEntry(
+      `فاتورة مبيعات #${invNum} - العميل: ${custName}`,
+      'Invoice',
+      inv.ID,
+      lines
+    ).catch(e => console.warn('Invoice journal posting error:', e));
+  }
+
+  return apiPost('saveInvoice', {data: inv, journalEntry, user: inv.By});
 }
+
 async function deleteInvoiceRemote(id){
+  const inv = (state.invoices || []).find(x => String(x.ID) === String(id) || String(x.InvoiceNumber) === String(id));
   state.invoices = state.invoices.filter(x=>x.ID!==id);
   setCache('invoices', state.invoices);
-  return apiPost('deleteInvoice', {id, role: state.user.role});
+
+  // F7: Reverse invoice journal if exists
+  if (inv) {
+    const totalAmt = Number(inv.Total != null ? inv.Total : (inv.NetTotal || 0));
+    const paidAmt = Math.min(totalAmt, Math.max(0, Number(inv.AmountPaid || 0)));
+    const unpaidDebt = Math.max(0, totalAmt - paidAmt);
+    if (totalAmt > 0) {
+      const pLow = String(inv.PaymentMethod || 'نقدي').toLowerCase();
+      const isBank = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('إنستاباي') || pLow.includes('محفظ') || pLow.includes('فودافون');
+      const debitAccCode = isBank ? '1102' : '1101';
+      const debitAccName = isBank ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)';
+      const invNum = inv.InvoiceNumber || inv.ID;
+
+      const lines = [
+        {
+          AccountCode: '4102',
+          AccountName: 'إيرادات مبيعات بضائع وقطع غيار',
+          Debit: totalAmt,
+          Credit: 0,
+          Notes: `عكس إيراد فاتورة مبيعات ملغاة #${invNum}`
+        }
+      ];
+      if (paidAmt > 0) {
+        lines.push({
+          AccountCode: debitAccCode,
+          AccountName: debitAccName,
+          Debit: 0,
+          Credit: paidAmt,
+          Notes: `عكس تحصيل نقدية فاتورة مبيعات ملغاة #${invNum}`
+        });
+      }
+      if (unpaidDebt > 0) {
+        lines.push({
+          AccountCode: '1103',
+          AccountName: 'العملاء والمدينون',
+          Debit: 0,
+          Credit: unpaidDebt,
+          Notes: `عكس مديونية آجل فاتورة مبيعات ملغاة #${invNum}`
+        });
+      }
+      recordAutoJournalEntry(
+        `إلغاء فاتورة مبيعات #${invNum}`,
+        'Invoice_Void',
+        inv.ID,
+        lines
+      ).catch(e => {});
+    }
+  }
+
+  return apiPost('deleteInvoice', {id, role: state.user ? state.user.role : 'admin'});
 }

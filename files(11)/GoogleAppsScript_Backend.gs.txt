@@ -261,8 +261,9 @@ function requireActionRole(action, session) {
 
 const AUTOPOST_REFS = [
   'Sale', 'POS_Sale', 'POS_Return', 'Purchase', 'Receipt', 'Receipt_Parts',
-  'Receipt_Debt', 'Receipt_Reversal', 'Expense', 'Supplier_Payment', 'DeliveryCredit',
-  'Receipt_Payment', 'Receipt_Payment_Void', 'Receipt_Delivery', 'Receipt_Revenue', 'Receipt_Void'
+  'Receipt_Debt', 'Receipt_Reversal', 'Expense', 'Supplier_Payment', 'SupplierPayment', 'DeliveryCredit',
+  'Receipt_Payment', 'Receipt_Payment_Void', 'Receipt_Delivery', 'Receipt_Revenue', 'Receipt_Void',
+  'Invoice', 'Invoice_Void', 'Quotation_Payment', 'Quotation_Delivery', 'Quotation'
 ];
 
 function postAutoJournal(desc, refType, refId, lines, actorUser) {
@@ -1371,6 +1372,17 @@ function doPost(e) {
             Date: body.date, Amount: body.amount, Note: body.note || '', By: body.user
           };
           appendRow(SHEET_SUPPLIER_PAYMENTS, sp);
+
+          // Server-side double-entry journal entry for supplier payment settlement (F7)
+          try {
+            const payAmt = safeNumber(body.amount, 0);
+            const lines = [
+              { AccountCode: '2101', AccountName: 'الموردون والدائنون', Debit: payAmt, Credit: 0, Notes: 'سداد دفعة لمورد فاتورة شراء #' + body.purchaseId },
+              { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: 0, Credit: payAmt, Notes: 'سداد دفعة لمورد فاتورة شراء #' + body.purchaseId }
+            ];
+            postAutoJournal('سداد دفعة لمورد فاتورة شراء #' + body.purchaseId, 'Supplier_Payment', body.purchaseId, lines, actorUser);
+          } catch(e) {}
+
           logAudit(body.purchaseId, actorUser, 'سداد دفعة لمورد', 'Purchase', { before: curPaid, amount: body.amount, after: newPaid, supplierId: body.supplierId });
           return jsonOut({ ok: true, newPaid });
         }
@@ -1543,12 +1555,47 @@ function doPost(e) {
         By: body.user || 'نظام'
       };
       upsertRow(SHEET_INVOICES, inv, 'ID');
+
+      if (body.journalEntry) {
+        const je = body.journalEntry;
+        const refType = String(je.ReferenceType || 'Invoice');
+        const refId = String(je.ReferenceID || inv.ID || '');
+        const lines = je.LinesJSON || je.Lines || [];
+        postAutoJournal(je.Description || ('فاتورة مبيعات ' + inv.InvoiceNumber), refType, refId, lines, actorUser);
+      }
+
       logAudit(inv.ID, actorUser, 'حفظ/تعديل فاتورة ضريبية', 'Invoice', { invoiceNumber: inv.InvoiceNumber, customer: inv.CustomerName, total: inv.Total, paid: inv.AmountPaid, remaining: inv.Remaining });
       return jsonOut({ ok: true, invoice: inv });
     }
     if (action === 'deleteInvoice') {
       if (!verifyAdminRole(body, session)) return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
       deleteRow(SHEET_INVOICES, body.id, 'ID');
+
+      // Reverse invoice journal if exists
+      try {
+        const shJ = getSheet(SHEET_JOURNAL);
+        const headers = shJ.getRange(1, 1, 1, shJ.getLastColumn()).getValues()[0];
+        const refCol = headers.indexOf('ReferenceID');
+        const refTypeCol = headers.indexOf('ReferenceType');
+        const linesCol = headers.indexOf('LinesJSON');
+        const values = shJ.getDataRange().getValues();
+        for (let i = 1; i < values.length; i++) {
+          if (String(values[i][refCol]) === String(body.id) && String(values[i][refTypeCol]) === 'Invoice') {
+            const rawLines = values[i][linesCol];
+            const origLines = typeof rawLines === 'string' ? JSON.parse(rawLines || '[]') : (rawLines || []);
+            const revLines = origLines.map(l => ({
+              AccountCode: l.AccountCode,
+              AccountName: l.AccountName,
+              Debit: l.Credit,
+              Credit: l.Debit,
+              Notes: 'عكس قيد فاتورة ملغاة #' + body.id
+            }));
+            postAutoJournal('إلغاء قيد فاتورة مبيعات #' + body.id, 'Invoice_Void', body.id, revLines, actorUser);
+            break;
+          }
+        }
+      } catch(e) {}
+
       logAudit(body.id, body.user, 'حذف فاتورة: ' + body.id);
       return jsonOut({ ok: true });
     }

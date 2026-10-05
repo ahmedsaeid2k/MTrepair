@@ -304,6 +304,46 @@ function reconcileHistoricalJournalEntries(){
     }
   });
 
+  // 5. Reconcile Invoices (F7)
+  (state.invoices || []).forEach(inv => {
+    const refKey = `Invoice_${inv.ID}`;
+    if (!existingRefs.has(refKey)) {
+      const total = Number(inv.Total || 0);
+      const paid = Number(inv.AmountPaid != null ? inv.AmountPaid : (inv.Status === 'مدفوعة' ? total : 0));
+      if (total > 0) {
+        const pLow = String(inv.PaymentMethod || 'نقدي').toLowerCase();
+        const isBank = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('إنستاباي') || pLow.includes('محفظ') || pLow.includes('فودافون');
+        const debitCode = isBank ? '1102' : '1101';
+        const debitName = isBank ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)';
+        const lines = [];
+        if (paid > 0) {
+          lines.push({ AccountCode: debitCode, AccountName: debitName, Debit: paid, Credit: 0, Notes: `تحصيل فاتورة مبيعات #${inv.InvoiceNumber || inv.ID}` });
+        }
+        if (total > paid) {
+          lines.push({ AccountCode: '1103', AccountName: 'العملاء والمدينون', Debit: total - paid, Credit: 0, Notes: `آجل فاتورة مبيعات للعميل ${inv.CustomerName || ''}` });
+        }
+        lines.push({ AccountCode: '4102', AccountName: 'إيرادات مبيعات بضائع وقطع غيار', Debit: 0, Credit: total, Notes: `فاتورة مبيعات #${inv.InvoiceNumber || inv.ID}` });
+
+        const entry = {
+          ID: 'je_hist_inv_' + inv.ID,
+          EntryNumber: getNextJournalEntryNumber(),
+          Date: (inv.Date || new Date().toISOString()).slice(0, 10),
+          Description: `فاتورة مبيعات #${inv.InvoiceNumber || inv.ID} (${inv.CustomerName || 'عميل'})`,
+          ReferenceType: 'Invoice',
+          ReferenceID: inv.ID,
+          Lines: lines,
+          TotalDebit: total,
+          TotalCredit: total,
+          By: inv.By || 'نظام'
+        };
+        entry.LinesJSON = JSON.stringify(entry.Lines);
+        newEntries.push(entry);
+        state.journalEntries.push(entry);
+        existingRefs.add(refKey);
+      }
+    }
+  });
+
   if (newEntries.length > 0) {
     setCache('journal', state.journalEntries);
     console.log(`[reconcileHistoricalJournalEntries] Reconciled ${newEntries.length} entries for General Ledger.`);

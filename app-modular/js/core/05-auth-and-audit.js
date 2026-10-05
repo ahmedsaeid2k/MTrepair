@@ -138,6 +138,10 @@ function recordAuditLog(action, section, details, refId, status = 'success'){
   return log;
 }
 
+function pushLog(msg, section = 'general'){
+  return recordAuditLog('تسجيل نشاط', section, String(msg || ''));
+}
+
 function getPendingAuthCountBadge(){
   const count = (state.authRequests || []).filter(r => r.status === 'pending').length;
   if(!count) return '';

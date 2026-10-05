@@ -69,6 +69,16 @@ function addToSyncQueue(action, data){
   saveSyncQueue(q);
 }
 
+function enqueueOfflineTask(task, maybeData){
+  if(typeof task === 'string'){
+    addToSyncQueue(task, maybeData);
+  } else if(task && typeof task === 'object'){
+    const action = task.type || task.action || 'unknown';
+    const data = task.data || task.payload || task;
+    addToSyncQueue(action, data);
+  }
+}
+
 /* ============================================================
    Anti-DoS Client Concurrency Limiter & Batch Network Engine
    ============================================================ */

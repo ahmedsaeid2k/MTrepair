@@ -300,6 +300,26 @@ async function recordAutoJournalEntry(desc, refType, refId, lines){
   return saveJournalEntryRemote(entry);
 }
 
+async function autoPostJournalEntry(opts = {}) {
+  const desc = opts.description || opts.Description || 'قيد محاسبي تلقائي';
+  const refType = opts.referenceType || opts.ReferenceType || 'General';
+  const refId = opts.referenceId || opts.ReferenceID || '';
+  const entries = opts.entries || opts.lines || opts.Lines || [];
+  const lines = entries.map(e => ({
+    AccountCode: e.accountId || e.accountCode || e.Code || e.AccountCode || '',
+    AccountName: e.accountName || e.Name || e.AccountName || '',
+    Debit: Number(e.debit || e.Debit || 0),
+    Credit: Number(e.credit || e.Credit || 0)
+  }));
+  return recordAutoJournalEntry(desc, refType, refId, lines);
+}
+
+async function deleteJournalEntryRemote(id){
+  state.journalEntries = (state.journalEntries || []).filter(x => String(x.ID) !== String(id) && String(x.EntryNumber) !== String(id));
+  setCache('journal', state.journalEntries);
+  return apiPost('deleteJournalEntry', { id, role: (state.user ? state.user.role : 'admin') });
+}
+
 function getAccountStats(accountCode){
   const code = String(accountCode).trim();
   const acc = state.accounts.find(a=>String(a.Code)===code);

@@ -5953,6 +5953,17 @@ function downloadCSV(filename, headers, rows){
   showToast('تم تصدير ملف Excel بنجاح', 'success');
 }
 
+function exportToExcel(data, filename = 'export'){
+  if(!Array.isArray(data) || !data.length){
+    if(typeof showToast === 'function') showToast('لا توجد بيانات للتصدير', 'warning');
+    return;
+  }
+  const headers = Object.keys(data[0]);
+  const rows = data.map(item => headers.map(h => item[h] !== undefined ? item[h] : ''));
+  const safeFilename = (filename.endsWith('.csv') ? filename : (filename + '.csv'));
+  downloadCSV(safeFilename, headers, rows);
+}
+
 function exportInvoicesToExcel(invoices){
   if(!invoices || !invoices.length){ showToast('لا توجد فواتير للتصدير', 'error'); return; }
   const headers = ['رقم الفاتورة','التاريخ','تاريخ الاستحقاق','اسم العميل','الهاتف','الرقم الضريبي','المرجع','الإجمالي قبل الضريبة','الضريبة','الخصم','الإجمالي النهائي','المدفوع','المتبقي','الحالة','طريقة الدفع','محرر الفاتورة'];

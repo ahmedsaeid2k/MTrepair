@@ -559,6 +559,18 @@ function openCommandPalette(initialQuery=''){
   performSearch(initialQuery);
 }
 
+function openDailyEntryModal(defaultType = 'expense'){
+  if(typeof openRecordTransactionModal === 'function'){
+    return openRecordTransactionModal(defaultType);
+  }
+}
+
+function openItemModal(editItem = null, cloneMode = false, defaultCategory = 'صيانة'){
+  if(typeof openInventoryItemModal === 'function'){
+    return openInventoryItemModal(editItem, cloneMode, defaultCategory);
+  }
+}
+
 // Global Keyboard Shortcut listener (Cmd+K / Ctrl+K / F6 / F7)
 window.addEventListener('keydown', (e)=>{
   if((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K' || e.key === 'ك')){

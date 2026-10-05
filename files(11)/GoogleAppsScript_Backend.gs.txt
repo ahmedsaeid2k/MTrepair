@@ -261,7 +261,7 @@ function requireActionRole(action, session) {
 
 const AUTOPOST_REFS = [
   'Sale', 'POS_Sale', 'POS_Return', 'Purchase', 'Receipt', 'Receipt_Parts',
-  'Receipt_Debt', 'Receipt_Reversal', 'Expense', 'Supplier_Payment'
+  'Receipt_Debt', 'Receipt_Reversal', 'Expense', 'Supplier_Payment', 'DeliveryCredit'
 ];
 
 function postAutoJournal(desc, refType, refId, lines, actorUser) {
@@ -1508,6 +1508,12 @@ function doPost(e) {
       appendRow(SHEET_JOURNAL, entry);
       logAudit(entry.ID, actorUser, 'حفظ قيد محاسبي يدوي: ' + entry.Description, 'Journal', { totalDebit: entry.TotalDebit, totalCredit: entry.TotalCredit, linesCount: lines.length });
       return jsonOut({ ok: true, entry: entry });
+    }
+    if (action === 'deleteJournalEntry') {
+      if (!verifyAdminRole(body, session)) return jsonOut({ error: 'حذف قيود اليومية متاح للمدير فقط' }, 403);
+      deleteRow(SHEET_JOURNAL, String(body.id), 'ID');
+      logAudit(body.id, actorUser, 'حذف قيد يومية: ' + body.id, 'JournalEntry');
+      return jsonOut({ ok: true });
     }
     if (action === 'saveInvoice') {
       const inv = {

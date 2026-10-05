@@ -1184,6 +1184,9 @@ async function deleteInventoryItemRemote(id){
   setCache('inventory', state.inventory);
   return apiPost('deleteInventoryItem', {id, role: state.user.role});
 }
+async function deleteItemRemote(id){
+  return deleteInventoryItemRemote(id);
+}
 async function adjustInventoryQtyRemote(id, delta){
   const it = state.inventory.find(x=>x.ID===id);
   if(it) it.Quantity = Number(it.Quantity||0) + Number(delta);

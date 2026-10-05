@@ -179,6 +179,48 @@ function verifyAdminRole(body, session) {
   return (String(session.role || '').toLowerCase() === 'admin' || !!session.superuser);
 }
 
+const ACTION_ROLES = {
+  saveReceipt:        ['admin','technician','cashier'],
+  deleteReceipt:      ['admin'],
+  savePayment:        ['admin','cashier','accountant'],
+  deletePayment:      ['admin'],
+  settleSaleDebt:     ['admin','cashier','accountant'],
+  saveSale:           ['admin','cashier'],
+  saveReturn:         ['admin','cashier','accountant'],
+  saveCustomer:       ['admin','cashier','accountant','technician'],
+  saveTechnician:     ['admin'],
+  saveSetting:        ['admin'],
+  saveInventoryItem:  ['admin','accountant','technician'],
+  deleteInventoryItem:['admin'],
+  adjustInventoryQty: ['admin','accountant'],
+  savePurchase:       ['admin','accountant'],
+  settlePurchaseDebt: ['admin','accountant'],
+  saveSupplier:       ['admin','accountant'],
+  saveSerial:         ['admin','technician','accountant'],
+  markSerialSold:     ['admin','cashier','accountant'],
+  saveExpense:        ['admin','accountant'],
+  deleteExpense:      ['admin'],
+  saveAccount:        ['admin'],
+  deleteAccount:      ['admin'],
+  saveInvoice:        ['admin','cashier','accountant'],
+  deleteInvoice:      ['admin'],
+  saveJournalEntry:   ['admin','accountant'],
+  deleteJournalEntry: ['admin'],
+  saveQuotation:      ['admin','cashier','accountant','technician'],
+  saveService:        ['admin'],
+  saveUser:           ['admin'],
+  deleteUser:         ['admin'],
+  saveAuditLog:       ['admin','accountant','cashier','technician'],
+  verifySupervisorPin:['admin','accountant','cashier','technician']
+};
+
+function requireActionRole(action, session) {
+  const allowed = ACTION_ROLES[action];
+  if (!allowed) return false;                 // fail-closed للأفعال غير المعروفة
+  const role = String(session.role || '').toLowerCase();
+  return allowed.includes(role) || !!session.superuser;
+}
+
 function renderAppHtml() {
   const candidateNames = ['Index', 'index', 'Index.html', 'index.html', 'ميكروERP', 'app'];
   for (let i = 0; i < candidateNames.length; i++) {
@@ -436,6 +478,12 @@ function doPost(e) {
     // Secure Identity: Server-authenticated user replaces any client-supplied body.user
     const actorUser = session.name;
     body.user = actorUser;
+
+    // 🔒 Role-Based Authorization Guard for all actions
+    if (!requireActionRole(action, session)) {
+      logAudit('', actorUser, 'محاولة وصول مرفوضة للإجراء: ' + action);
+      return jsonOut({ error: 'غير مصرح لك بتنفيذ هذا الإجراء (' + action + ')' }, 403);
+    }
 
     // 🔒 Verify Supervisor / Admin PIN or Password for sensitive approvals
     if (action === 'verifySupervisorPin') {

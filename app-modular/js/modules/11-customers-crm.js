@@ -884,7 +884,7 @@ function getStatusCustomMessage(rawR, status){
   const devBrand = r.device ? (r.device.brand==='أخرى' ? r.device.brandOther : r.device.brand) : '';
   const devModel = (r.device && r.device.model) || '';
   const device = `${devCat} - ${devBrand} ${devModel}`.trim();
-  const trackUrl = `${window.location.origin}${window.location.pathname}?track=${encodeURIComponent(r.receiptNumber||'')}`;
+  const trackUrl = getReceiptTrackingUrl(r);
   const faultsStr = (Array.isArray(r.faults) ? r.faults.join('، ') : String(r.faults || '')) || r.faultNotes || '-';
 
   let key = 'check';
@@ -1182,7 +1182,7 @@ function openWhatsappStatusNotificationModal(rawR, statusOrKey, onSent){
 
   // Preview Tracking
   overlay.querySelector('#openTrackPreviewBtn').onclick = () => {
-    const trackUrl = `${window.location.origin}${window.location.pathname}?track=${encodeURIComponent(r.receiptNumber||'')}`;
+    const trackUrl = getReceiptTrackingUrl(r);
     window.open(trackUrl, '_blank', 'noopener');
   };
 
@@ -1608,7 +1608,7 @@ function buildCostEstimateWhatsappText(rawR, vals){
   const devBrand = r.device ? (r.device.brand==='أخرى' ? r.device.brandOther : r.device.brand) : '';
   const devModel = (r.device && r.device.model) || '';
   const device = `${devCat} - ${devBrand} ${devModel}`.trim();
-  const trackUrl = `${window.location.origin}${window.location.pathname}?track=${encodeURIComponent(r.receiptNumber||'')}`;
+  const trackUrl = getReceiptTrackingUrl(r);
   const shop = (state.settings && state.settings.shopName) || 'مركز الصيانة';
   const shopPhone = (state.settings && state.settings.shopPhone) || '';
   const shopAddress = (state.settings && state.settings.shopAddress) || '';
@@ -4397,7 +4397,7 @@ function openReceiptPrint(rawR, kind){
   mount.id = 'printMount';
 
   const titles = {receipt:'إيصال استلام جهاز للصيانة', invoice:'فاتورة صيانة نهائية', workorder:'أمر شغل داخلي للفني'};
-  const trackUrl = `${window.location.origin}${window.location.pathname}?track=${encodeURIComponent(r.receiptNumber)}`;
+  const trackUrl = getReceiptTrackingUrl(r);
   const qrSvgHtml = QRCodeGenerator.toSvg(trackUrl, 30);
 
   function buildHalfCopy(copyRole, barcodeId){
@@ -4844,7 +4844,7 @@ function generateReceiptStickerHTML(r, dim, svgId, customOpts){
   const remCost = Number(r.cost || 0) + Number(r.partsCost || 0) + otherAmt - Number(r.deposit || 0) + Number(r.refunded || 0);
   const costStr = remCost > 0 ? `${remCost} ج.م` : (r.cost ? `${r.cost} ج.م` : '');
 
-  const trackUrl = `${window.location.origin}${window.location.pathname}?track=${encodeURIComponent(r.receiptNumber || '')}`;
+  const trackUrl = getReceiptTrackingUrl(r);
   const borderCss = opts.showBorder ? 'border:1px dashed #000;' : '';
 
   // ── Layout 1: 40x10 mm (عرض 4 سم × ارتفاع 1 سم - شريط فائق النحافة) ──

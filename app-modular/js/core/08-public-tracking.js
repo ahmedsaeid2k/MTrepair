@@ -1,10 +1,10 @@
 /* ---------------- Check URL for Public Customer Tracking ---------------- */
 function checkCustomerTrackingURL(){
   const params = new URLSearchParams(window.location.search);
-  const hasTrackParam = params.has('track') || params.has('r');
-  const trackNum = hasTrackParam ? (params.get('track') != null ? params.get('track') : params.get('r')) : null;
+  const hasTrackParam = params.has('t') || params.has('token') || params.has('track') || params.has('r');
+  const trackNum = params.get('t') || params.get('token') || params.get('track') || params.get('r');
   const hash = window.location.hash || '';
-  const hashTrackMatch = hash.match(/^#(?:track|r)(?:\/(.*))?$/i);
+  const hashTrackMatch = hash.match(/^#(?:track|t|r)(?:\/(.*))?$/i);
   const hashNum = hashTrackMatch ? (hashTrackMatch[1] ? decodeURIComponent(hashTrackMatch[1]).trim() : '') : null;
 
   if(hasTrackParam || hashNum != null){
@@ -17,7 +17,7 @@ function checkCustomerTrackingURL(){
 // Support browser back/forward and hash navigation for live tracking
 window.addEventListener('hashchange', () => {
   const hash = window.location.hash || '';
-  const hashTrackMatch = hash.match(/^#(?:track|r)(?:\/(.*))?$/i);
+  const hashTrackMatch = hash.match(/^#(?:track|t|r)(?:\/(.*))?$/i);
   if(hashTrackMatch){
     const num = hashTrackMatch[1] ? decodeURIComponent(hashTrackMatch[1]).trim() : '';
     renderPublicTrackingPortal(num);
@@ -70,18 +70,18 @@ async function renderPublicTrackingPortal(receiptNum = ''){
             <div style="display:inline-flex;align-items:center;justify-content:center;width:56px;height:56px;border-radius:50%;background:var(--primary-subtle);color:var(--primary);margin-bottom:12px;">${getSvgIcon('laptop', 28)}</div>
             <h3 style="margin:0 0 6px 0;font-size:16px;color:var(--ink);">تابع حالة صيانة جهازك مباشرة</h3>
             <p style="font-size:12.5px;color:var(--ink-secondary);max-width:440px;margin:0 auto 20px;line-height:1.6;">
-              أدخل رقم إيصال الصيانة أو رقم هاتفك المسجل لمعرفة تفاصيل الفحص وتكلفة الصيانة وموعد الاستلام اللحظي.
+              أدخل رمز التتبع الخاص بجهازك أو رقم الإيصال المعتمد لمعرفة تفاصيل الفحص وتكلفة الصيانة وموعد الاستلام.
             </p>
 
             <form id="trackingSearchForm" style="display:flex;gap:8px;max-width:480px;margin:0 auto;flex-wrap:wrap;" onsubmit="return false;">
-              <input type="text" id="trackSearchInput" class="input" placeholder="رقم الإيصال (مثال: MT-2026-0001) أو رقم الهاتف..." style="flex:1;min-width:220px;padding:10px 14px;font-size:13px;border-radius:var(--radius-sm);border:1.5px solid var(--line-strong);" autofocus>
+              <input type="text" id="trackSearchInput" class="input" placeholder="رمز التتبع أو رقم الإيصال (مثال: MT-2026-0001)..." style="flex:1;min-width:220px;padding:10px 14px;font-size:13px;border-radius:var(--radius-sm);border:1.5px solid var(--line-strong);" autofocus>
               <button type="submit" id="trackSearchBtn" class="btn btn-primary" style="padding:10px 20px;font-weight:800;border-radius:var(--radius-sm);font-size:13px;display:inline-flex;align-items:center;gap:6px;">${getSvgIcon('search', 14)} تتبع الجهاز</button>
             </form>
           </div>
 
           <div style="background:var(--paper3);border-radius:var(--radius-sm);padding:14px;border:1px dashed var(--line);margin:16px 0;font-size:12px;line-height:1.7;color:var(--ink-secondary);">
-            <b style="color:var(--ink);display:inline-flex;align-items:center;gap:6px;">${getSvgIcon('info', 14)} أين تجد رقم الإيصال؟</b><br>
-            • في الجزء العلوي من إيصال الاستلام الورقي المختوم المسلم لحضرتكم.<br>
+            <b style="color:var(--ink);display:inline-flex;align-items:center;gap:6px;">${getSvgIcon('info', 14)} أين تجد رمز التتبع ورقم الإيصال؟</b><br>
+            • في رابط المتابعة المباشر أو رمز الاستجابة السريع (QR) المطبوع على الإيصال الورقي.<br>
             • في رسالة الواتساب الترحيبية المرسلة من المركز عند إيداع الجهاز.
           </div>
 
@@ -126,7 +126,7 @@ async function renderPublicTrackingPortal(receiptNum = ''){
   // 1. Query remote API securely for the requested receipt (no local DB dumping)
   if(navigator.onLine){
     try{
-      const fetchPromise = apiGet('trackReceipt', { receiptNumber: cleanQuery });
+      const fetchPromise = apiGet('trackReceipt', { t: cleanQuery });
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 6000));
       const res = await Promise.race([fetchPromise, timeoutPromise]);
       if(res && res.found && res.receipt){
@@ -137,12 +137,15 @@ async function renderPublicTrackingPortal(receiptNum = ''){
     }
   }
 
-  // Fallback only if offline and user searched for exact receiptNumber match
+  // Fallback only if offline and user searched for exact TrackToken or ReceiptNumber match
   if(!r && !navigator.onLine){
     const localReceipts = getCache('receipts', []) || [];
-    const matchNum = localReceipts.find(x => String(x.receiptNumber || '').trim().toLowerCase() === cleanQuery.toLowerCase());
-    if(matchNum){
-      const safeMatch = (typeof normalizeReceipt === 'function') ? normalizeReceipt(matchNum) : { ...matchNum };
+    const match = localReceipts.find(x => 
+      (x.trackToken && String(x.trackToken).trim().toLowerCase() === cleanQuery.toLowerCase()) ||
+      (x.receiptNumber && String(x.receiptNumber).trim().toLowerCase() === cleanQuery.toLowerCase())
+    );
+    if(match){
+      const safeMatch = (typeof normalizeReceipt === 'function') ? normalizeReceipt(match) : { ...match };
       // Strip sensitive internal fields
       delete safeMatch.password;
       if(safeMatch.device) delete safeMatch.device.password;
@@ -204,16 +207,16 @@ async function renderPublicTrackingPortal(receiptNum = ''){
           <div style="display:inline-flex;align-items:center;justify-content:center;width:56px;height:56px;border-radius:50%;background:rgba(239,68,68,0.1);color:var(--red);margin-bottom:12px;">${getSvgIcon('alert', 28)}</div>
           <h2 style="margin:0 0 6px 0;font-size:17px;color:var(--ink);">لم نتمكن من العثور على الإيصال</h2>
           <p style="font-size:12.5px;color:var(--ink-secondary);max-width:440px;margin:0 auto 18px;line-height:1.6;">
-            تأكد من كتابة رقم الإيصال بدقة (مثال: <b class="mono">MT-2026-0001</b>) أو رقم الهاتف المسجل عند تسليم الجهاز.
+            تأكد من كتابة رمز التتبع المباشر من رسالة الواتساب، أو رقم الإيصال المعتمد (مثال: <b class="mono">MT-2026-0001</b>).
           </p>
 
           <form id="trackingNotFoundForm" style="display:flex;gap:8px;max-width:420px;margin:0 auto 20px;flex-wrap:wrap;" onsubmit="return false;">
-            <input type="text" id="trackNotFoundInput" value="${escapeHtml(cleanQuery)}" class="input" placeholder="رقم الإيصال أو الهاتف..." style="flex:1;min-width:200px;padding:9px 12px;font-size:13px;border-radius:var(--radius-sm);border:1.5px solid var(--line-strong);">
+            <input type="text" id="trackNotFoundInput" value="${escapeHtml(cleanQuery)}" class="input" placeholder="رمز التتبع أو رقم الإيصال..." style="flex:1;min-width:200px;padding:9px 12px;font-size:13px;border-radius:var(--radius-sm);border:1.5px solid var(--line-strong);">
             <button type="submit" class="btn btn-primary" style="padding:9px 16px;font-weight:800;border-radius:var(--radius-sm);display:inline-flex;align-items:center;gap:6px;">${getSvgIcon('search', 14)} إعادة البحث</button>
           </form>
 
           <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:16px;">
-            <a href="https://wa.me/${waPhone}?text=${encodeURIComponent('السلام عليكم، لم أجد إيصال الصيانة رقم: ' + cleanQuery + '، أرجو المساعدة')}" target="_blank" class="btn btn-whatsapp btn-sm">${WA_ICON} مساعدة عبر واتساب</a>
+            <a href="https://wa.me/${waPhone}?text=${encodeURIComponent('السلام عليكم، لم أجد إيصال الصيانة: ' + cleanQuery + '، أرجو المساعدة')}" target="_blank" class="btn btn-whatsapp btn-sm">${WA_ICON} مساعدة عبر واتساب</a>
             <a href="${window.location.pathname}" class="btn btn-ghost btn-sm">${getSvgIcon('lock', 13)} دخول الموظفين</a>
           </div>
         </div>
@@ -250,11 +253,11 @@ async function renderPublicTrackingPortal(receiptNum = ''){
   const cost = Number(r.cost || 0);
   const partsCost = Number(r.partsCost || 0);
   const otherAmount = Number(r.otherAccountAmount || 0);
-  const totalCost = cost + partsCost + otherAmount;
+  const totalCost = Number(r.totalCost != null ? r.totalCost : (cost + partsCost + otherAmount));
   const deposit = Number(r.deposit || 0);
   const refunded = Number(r.refunded || 0);
-  const remaining = Math.max(0, totalCost - deposit + refunded);
-  const isPaid = (totalCost > 0 && remaining <= 0) || !!r.paid;
+  const remaining = Number(r.remaining != null ? r.remaining : Math.max(0, totalCost - deposit + refunded));
+  const isPaid = r.isPaid != null ? !!r.isPaid : ((totalCost > 0 && remaining <= 0) || !!r.paid);
 
   const status = r.status || 'قيد الفحص';
   const isDelivered = status === 'تم التسليم';

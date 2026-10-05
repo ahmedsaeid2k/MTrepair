@@ -878,4 +878,16 @@ function debounce(func, wait = 250){
   };
 }
 
+/**
+ * يُنشئ رابط تتبع آمن للإيصال باستخدام TrackToken العشوائي أو رقم الإيصال
+ * @param {object} r - كائن الإيصال
+ * @returns {string} رابط التتبع العام
+ */
+function getReceiptTrackingUrl(r){
+  if(!r) return '';
+  const token = r.trackToken || r.TrackToken || r.receiptNumber || r.ReceiptNumber || '';
+  const base = (typeof window !== 'undefined' && window.location) ? `${window.location.origin}${window.location.pathname}` : '';
+  return `${base}?t=${encodeURIComponent(token)}`;
+}
+
 const WA_ICON = `<svg class="wa-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12c0 1.85.5 3.58 1.35 5.07L2 22l5.07-1.35C8.55 21.5 10.27 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm0 18c-1.5 0-2.9-.41-4.1-1.13l-.29-.17-3.02.8.8-3.02-.17-.29A7.94 7.94 0 0 1 4 12c0-4.41 3.59-8 8-8s8 3.59 8 8-3.59 8-8 8z"/></svg>`;

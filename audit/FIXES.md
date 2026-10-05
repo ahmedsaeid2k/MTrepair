@@ -28,6 +28,7 @@
 | **S6** | منع تصعيد الصلاحيات من localStorage وتأمين الجلسات في sessionStorage | `09-shell-and-router.js`, `19-login.js`, `20-app-boot.js`, `02-api-sync.js`, `05-auth-and-audit.js`, `17-accounting-finance.js`, `Backend.gs.txt` | PASSED | حذف استدعاء `normalizeUserSections` من `render()` وإلغاء قراءة الدور من `localStorage`، حصر الجلسة والتوكن في `sessionStorage`، وإضافة تحقق سيرفري `getMe` عند بدء التشغيل |
 | **S7** | منع الدخول في وضع عدم الاتصال بالاسم فقط واشتراط المصادقة الحقيقية | `app-modular/js/core/05-auth-and-audit.js` | PASSED | إلغاء مسار الدخول الأوفلاين الشكلي بدون فحص كلمة المرور واشتراط اتصال الإنترنت للتوثيق المعتمد |
 | **S8** | تطهير كل مواضع حقن النصوص البرمجية (XSS) واستبدال الأحداث المضمنة | `06-config-defaults.js`, `08-public-tracking.js`, `09-shell-and-router.js`, `10-receipts-maintenance.js`, `11-customers-crm.js`, `12-invoices-quotes.js`, `13-treasury-expenses.js`, `14-inventory-warehouse.js` | PASSED | استخدام `escapeHtml`، `safeImageUrl`، `escapeJsString`، وتحويل `onclick` المضمنة الديناميكية إلى سمات `data-*` ومستمعات أحداث آمنة |
+| **S9** | تحصين بوابة التتبع العامة برموز عشوائية (TrackToken) وحجب التفاصيل المالية | `GoogleAppsScript_Backend.gs.txt`, `03-utils-and-mappings.js`, `06-config-defaults.js`, `08-public-tracking.js`, `11-customers-crm.js`, `audit/MIGRATIONS.md` | PASSED | إضافة عمود `TrackToken` عشوائي 20 حرفاً، حصر البحث على الرمز لمنع الاستخراج الشامل، حجب تكاليف الصيانة وهوامش الربح الداخلية وتعتيم اسم العميل |
 
 ---
 

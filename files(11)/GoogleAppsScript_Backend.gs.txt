@@ -344,31 +344,80 @@ function doGet(e) {
   try {
     // ✅ PUBLIC endpoint — no auth required (customer public tracking portal)
     if (action === 'trackReceipt') {
-      const qNum = String(e.parameter.receiptNumber || e.parameter.r || '').trim();
-      if (!qNum) return jsonOut({ error: 'رقم الإيصال مطلوب' }, 400);
-      // Optimized: Use TextFinder for O(1) lookup instead of loading entire sheet
+      const qToken = String(e.parameter.t || e.parameter.token || e.parameter.receiptNumber || e.parameter.r || '').trim();
+      if (!qToken) return jsonOut({ error: 'رمز التتبع مطلوب' }, 400);
+
       const sh = getSheet(SHEET_RECEIPTS);
-      const finder = sh.createTextFinder(qNum).matchEntireCell(true);
-      const cell = finder.findNext();
-      if (!cell) return jsonOut({ found: false }, 404);
-      const rowNum = cell.getRow();
-      const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
-      const rowData = sh.getRange(rowNum, 1, 1, headers.length).getValues()[0];
+      const headers = sh.getRange(1, 1, 1, Math.max(1, sh.getLastColumn())).getValues()[0].map(h => String(h || '').trim());
+      const tokenCol = headers.indexOf('TrackToken');
+      const rNumCol = headers.indexOf('ReceiptNumber');
+
+      let matchedRow = null;
+      const values = sh.getDataRange().getValues();
+
+      // 1. Primary lookup: Match exact 20-char TrackToken
+      if (tokenCol !== -1) {
+        for (let i = 1; i < values.length; i++) {
+          if (String(values[i][tokenCol] || '').trim() === qToken) {
+            matchedRow = values[i];
+            break;
+          }
+        }
+      }
+
+      // 2. Strict Fallback for legacy receipts not yet backfilled with TrackToken
+      // Only match strictly formatted receipt numbers (e.g. MT-2026-0001)
+      if (!matchedRow && rNumCol !== -1 && /^MT-\d{4}-\d+$/i.test(qToken)) {
+        for (let i = 1; i < values.length; i++) {
+          if (String(values[i][rNumCol] || '').trim().toUpperCase() === qToken.toUpperCase()) {
+            matchedRow = values[i];
+            // Auto backfill TrackToken if column exists
+            if (tokenCol !== -1 && !values[i][tokenCol]) {
+              const newToken = (Utilities.getUuid() + Utilities.getUuid()).replace(/[^a-zA-Z0-9]/g, '').slice(0, 20);
+              sh.getRange(i + 1, tokenCol + 1).setValue(newToken);
+            }
+            break;
+          }
+        }
+      }
+
+      if (!matchedRow) return jsonOut({ found: false }, 404);
+
       const r = {};
-      headers.forEach((h, i) => r[h] = rowData[i]);
+      headers.forEach((h, i) => r[h] = matchedRow[i]);
+
+      // Calculate customer-facing totals without exposing internal costs, partsCost, or wholesale margins
+      const customerTotal = Number(r.Cost || 0);
+      const deposit = Number(r.Deposit || 0);
+      const refunded = Number(r.Refunded || 0);
+      const remainingDue = Math.max(0, customerTotal - deposit + refunded);
+      const isPaid = (customerTotal > 0 && remainingDue <= 0) || String(r.Paid || '').toUpperCase() === 'TRUE';
+
+      // Mask customer name (e.g. 'محمد ***')
+      const rawName = String(r.CustomerName || '').trim();
+      const maskedCustName = rawName ? (rawName.split(' ')[0] + ' ***') : 'عميل كريم';
+
       return jsonOut({
         found: true,
         receipt: {
-          id: r.ID,
           receiptNumber: r.ReceiptNumber,
+          trackToken: r.TrackToken || '',
           date: r.Date,
-          customer: { name: r.CustomerName || '' },
-          device: { category: r.Category || '', brand: r.Brand || '', brandOther: '', model: r.Model || '' },
+          customer: { name: maskedCustName },
+          device: {
+            category: r.Category || '',
+            brand: r.Brand || '',
+            brandOther: '',
+            model: r.Model || '',
+            accessories: r.Accessories || 'بدون ملحقات'
+          },
           faults: (r.Faults ? String(r.Faults).split('،') : []),
+          faultNotes: r.FaultNotes || '',
           status: r.Status || 'قيد الفحص',
-          cost: Number(r.Cost || 0),
-          deposit: Number(r.Deposit || 0),
-          refunded: Number(r.Refunded || 0),
+          totalCost: customerTotal,
+          deposit: deposit,
+          remaining: remainingDue,
+          isPaid: isPaid,
           deliveryDate: r.DeliveryDate || ''
         }
       });
@@ -638,6 +687,27 @@ function doPost(e) {
     }
 
     if (action === 'saveReceipt') {
+      if (body.data) {
+        if (!body.data.TrackToken) {
+          let existingToken = '';
+          if (body.data.ID) {
+            const shRec = getSheet(SHEET_RECEIPTS);
+            const rHeaders = shRec.getRange(1, 1, 1, Math.max(1, shRec.getLastColumn())).getValues()[0].map(h => String(h || '').trim());
+            const idCol = rHeaders.indexOf('ID');
+            const tokCol = rHeaders.indexOf('TrackToken');
+            if (idCol !== -1 && tokCol !== -1) {
+              const rVals = shRec.getDataRange().getValues();
+              for (let i = 1; i < rVals.length; i++) {
+                if (String(rVals[i][idCol]) === String(body.data.ID)) {
+                  existingToken = String(rVals[i][tokCol] || '').trim();
+                  break;
+                }
+              }
+            }
+          }
+          body.data.TrackToken = existingToken || (Utilities.getUuid() + Utilities.getUuid()).replace(/[^a-zA-Z0-9]/g, '').slice(0, 20);
+        }
+      }
       upsertRow(SHEET_RECEIPTS, body.data, 'ID');
       logAudit(body.data.ID, body.user, 'حفظ/تعديل إيصال');
 
@@ -1338,7 +1408,7 @@ function getAllRows(sheetName) {
 function ensureHeaders(sh, obj) {
   // Whitelist of allowed column names per sheet to prevent schema pollution attacks
   const ALLOWED_HEADERS = {
-    'Receipts': ['ID','ReceiptNumber','Date','CustomerTitle','CustomerName','CustomerPhone','CustomerEmail','Category','Brand','Model','Accessories','Faults','FaultNotes','Technician','Cost','Deposit','Refunded','PartsCost','PartsUsed','DeliveryDate','Status','Paid','Bonus','CreatedBy','UpdatedBy','UpdatedAt'],
+    'Receipts': ['ID','ReceiptNumber','TrackToken','Date','CustomerTitle','CustomerName','CustomerPhone','CustomerEmail','Category','Brand','Model','Accessories','Faults','FaultNotes','Technician','Cost','Deposit','Refunded','PartsCost','PartsUsed','DeliveryDate','Status','Paid','Bonus','CreatedBy','UpdatedBy','UpdatedAt'],
     'Customers': ['Name','Phone','Email','Address','TaxNumber','Debt','Notes'],
     'Technicians': ['Name'],
     'Settings': ['Key','Value'],

@@ -619,7 +619,7 @@ function receiptToRow(d){
   const timeStr = d.time || formatReceiptTime(d) || '';
 
   return {
-    ID: d.id, ReceiptNumber: d.receiptNumber, Date: d.date, Time: timeStr,
+    ID: d.id, ReceiptNumber: d.receiptNumber, TrackToken: d.trackToken || d.TrackToken || '', Date: d.date, Time: timeStr,
     ReceivedAt: d.receivedAt || d.createdAt || '',
     CustomerTitle: cTitle, CustomerName: cName, CustomerPhone: cPhone, CustomerEmail: cEmail,
     Category: d.device.category, Brand: d.device.brand==='أخرى' ? d.device.brandOther : d.device.brand,
@@ -708,6 +708,7 @@ function rowToReceipt(row){
     otherAccountDesc: row.OtherAccountDesc || row.otherAccountDesc || '',
     otherAccountAmount: Number(row.OtherAccountAmount != null ? row.OtherAccountAmount : (row.otherAccountAmount || 0)),
     deliveryDate: row.DeliveryDate || row.deliveryDate || '',
+    trackToken: row.TrackToken || row.trackToken || '',
     status: row.Status || row.status || 'قيد الفحص',
     paid: String(row.Paid).toUpperCase() === 'TRUE' || row.paid === true,
     bonus: row.Bonus || row.bonus || '',
@@ -756,6 +757,10 @@ function normalizeReceipt(r){
     r.receiptNumber = r.ReceiptNumber || r['رقم الإيصال'] || r['رقم الايصال'] || ('MT-' + (r.id || Date.now()));
   }
   r.receiptNumber = String(r.receiptNumber);
+
+  // Normalize TrackToken
+  r.trackToken = String(r.trackToken || r.TrackToken || '');
+  r.TrackToken = r.trackToken;
 
   // Normalize Date & Time
   r.date = r.date || r.Date || '';

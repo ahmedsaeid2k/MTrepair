@@ -94,6 +94,16 @@ function generateSalt() {
   return Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '').slice(0, 16);
 }
 
+/**
+ * Strict Boolean Parser
+ * Handles boolean primitives and truthy Arabic/English strings ('true', '1', 'yes', 'نعم').
+ */
+function parseBool(val) {
+  if (typeof val === 'boolean') return val;
+  if (!val) return false;
+  return ['true', '1', 'yes', 'نعم'].includes(String(val).trim().toLowerCase());
+}
+
 function hashPassword(pass) {
   if (!pass) return '';
   const rawBytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(pass).trim(), Utilities.Charset.UTF_8);
@@ -139,7 +149,7 @@ function createSession(userObj) {
     name: userObj.Name,
     role: userObj.Role,
     sections: userObj.Sections || '',
-    superuser: !!userObj.Superuser,
+    superuser: parseBool(userObj.Superuser),
     created: Date.now()
   };
   const jsonStr = JSON.stringify(sessionData);
@@ -323,7 +333,7 @@ function renderAppHtml() {
       return HtmlService.createHtmlOutputFromFile(candidateNames[i])
         .setTitle('ميكروERP')
         .addMetaTag('viewport', 'width=device-width, initial-scale=1')
-        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
     } catch (err) {}
   }
   return HtmlService.createHtmlOutput('<div dir="rtl" style="font-family:sans-serif;padding:30px;text-align:center;"><h2>⚠️ تنبيه من النظام</h2><p style="font-size:16px;">لم يتم العثور على ملف الواجهة HTML في مشروع Apps Script.</p><p style="color:#666;">تأكد من وجود ملف HTML في القائمة الجانبية باسم <b>Index</b> (أو <b>index</b>) ولصق كود الواجهة بداخله ثم عمل <b>Deploy > New deployment</b>.</p></div>')
@@ -394,7 +404,7 @@ function executeReadAction(action, session, params) {
       Name: u.Name,
       Role: u.Role,
       Sections: u.Sections || '',
-      Superuser: !!u.Superuser
+      Superuser: parseBool(u.Superuser)
     }));
     const returns = getAllRows(SHEET_RETURNS);
     const serials = getAllRows(SHEET_SERIALS);
@@ -432,7 +442,7 @@ function executeReadAction(action, session, params) {
       Name: u.Name,
       Role: u.Role,
       Sections: u.Sections || '',
-      Superuser: !!u.Superuser
+      Superuser: parseBool(u.Superuser)
     }));
     return jsonOut(users);
   }
@@ -699,7 +709,7 @@ function doPost(e) {
         name: found.Name,
         role: found.Role,
         sections: found.Sections || '',
-        superuser: !!found.Superuser
+        superuser: parseBool(found.Superuser)
       });
     }
 
@@ -737,7 +747,7 @@ function doPost(e) {
       const users = getAllRows(SHEET_USERS);
       const adminUser = users.find(u => {
         const role = String(u.Role || '').toLowerCase();
-        const isSuper = ['true','1','yes','نعم'].includes(String(u.Superuser || '').trim().toLowerCase());
+        const isSuper = parseBool(u.Superuser);
         return (role === 'admin' || isSuper) && verifyPassword(pin, u.Password, u.Salt);
       });
 
@@ -1560,7 +1570,7 @@ function doPost(e) {
         Salt: salt,
         Role: body.data.Role || 'cashier',
         Sections: Array.isArray(body.data.Sections) ? body.data.Sections.join(',') : (body.data.Sections || ''),
-        Superuser: ['true','1','yes','نعم'].includes(String(body.data.Superuser || '').trim().toLowerCase()),
+        Superuser: parseBool(body.data.Superuser),
         Notes: body.data.Notes || ''
       };
 
@@ -1573,9 +1583,20 @@ function doPost(e) {
     }
     if (action === 'deleteUser') {
       if (!verifyAdminRole(body, session)) return jsonOut({ error: 'حذف المستخدمين متاح للمدير فقط' }, 403);
-      deleteRow(SHEET_USERS, String(body.id || body.name), 'Name');
-      logAudit(body.id || body.name, body.user, 'حذف مستخدم: ' + (body.id || body.name));
-      return jsonOut({ ok: true });
+      const target = String(body.id || body.name || '').trim();
+      if (!target) return jsonOut({ error: 'معرف أو اسم المستخدم مطلوب' }, 400);
+      const users = getAllRows(SHEET_USERS);
+      const match = users.find(u => (u.ID && String(u.ID) === target) || (u.Name && String(u.Name).trim().toLowerCase() === target.toLowerCase()));
+      if (match) {
+        if (match.ID) {
+          deleteRow(SHEET_USERS, String(match.ID), 'ID');
+        } else {
+          deleteRow(SHEET_USERS, String(match.Name), 'Name');
+        }
+        logAudit(target, actorUser, 'حذف مستخدم: ' + (match.Name || target));
+        return jsonOut({ ok: true });
+      }
+      return jsonOut({ error: 'المستخدم غير موجود' }, 404);
     }
     if (action === 'saveAuditLog') {
       // Security audit trail from client — restricted to whitelisted actions only, no free-form text injection
@@ -1767,6 +1788,11 @@ function logAudit(refId, user, action, refType, detailsJson) {
 }
 
 function jsonOut(obj, statusCode) {
+  if (obj && typeof obj === 'object') {
+    if (statusCode && !obj.statusCode) {
+      obj.statusCode = statusCode;
+    }
+  }
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 

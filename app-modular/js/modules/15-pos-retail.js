@@ -2016,8 +2016,10 @@ function openPosReturnModal(sale){
         // Sync return to remote Google Apps Script backend
         apiPost('saveReturn', {
           saleId: sale.ID,
+          clientRef: `ret_${sale.ID}_${Date.now()}`,
           date: returnDetails.returnDate,
           itemsSummary: returnedItems.map(x => `${x.qty}x ${x.name}`).join('، '),
+          items: returnedItems,
           refundAmount: totalRefund,
           refundMethod: refundMethod,
           returnDetails: returnDetails,

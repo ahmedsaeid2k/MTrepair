@@ -1005,56 +1005,199 @@ function doPost(e) {
       return jsonOut({ ok: true, sale });
     }
     if (action === 'settleSaleDebt') {
+      const saleId = String(body.saleId || '');
+      if (!saleId) return jsonOut({ error: 'معرف فاتورة البيع مطلوب' }, 400);
+
+      const amount = safeNumber(body.amount, 0);
+      if (amount <= 0) return jsonOut({ error: 'المبلغ يجب أن يكون أكبر من صفر' }, 400);
+
+      // Idempotency check via clientRef
+      if (body.clientRef) {
+        const idempKey = 'idemp_settleSaleDebt_' + hashKey(String(body.clientRef));
+        const cache = CacheService.getScriptCache();
+        if (cache.get(idempKey)) {
+          return jsonOut({ error: 'طلب سداد مكرر (clientRef مستخدم من قبل)' }, 400);
+        }
+        cache.put(idempKey, '1', 600);
+      }
+
       const sh = getSheet(SHEET_SALES);
       const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
       const idCol = headers.indexOf('ID');
       const paidCol = headers.indexOf('AmountPaid');
+      const totalCol = headers.indexOf('Total');
       const values = sh.getDataRange().getValues();
+
       for (let i = 1; i < values.length; i++) {
-        if (String(values[i][idCol]) === String(body.saleId)) {
-          const newPaid = safeNumber(values[i][paidCol], 0) + safeNumber(body.amount, 0);
+        if (String(values[i][idCol]) === saleId) {
+          const curPaid = safeNumber(values[i][paidCol], 0);
+          const total = safeNumber(values[i][totalCol], 0);
+          if (curPaid + amount > total + 0.005) {
+            return jsonOut({ error: 'المبلغ يتجاوز المتبقي على الفاتورة' }, 400);
+          }
+          const newPaid = Math.round((curPaid + amount) * 100) / 100;
           sh.getRange(i + 1, paidCol + 1).setValue(newPaid);
+
+          // Server-side double-entry journal entry for debt settlement
+          try {
+            const lines = [
+              { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية بالدرج)', Debit: amount, Credit: 0, Notes: 'سداد دفعة آجل فاتورة #' + saleId },
+              { AccountCode: '1103', AccountName: 'حساب العميل (مدينون آجل)', Debit: 0, Credit: amount, Notes: 'سداد دفعة آجل فاتورة #' + saleId }
+            ];
+            postAutoJournal('سداد دين فاتورة مبيعات #' + saleId, 'Sale', saleId, lines, body.user || 'نظام');
+          } catch(e) {}
+
+          logAudit(saleId, body.user || 'كاشير', 'سداد دين بيع', 'Sale', { before: curPaid, amount: amount, after: newPaid });
           return jsonOut({ ok: true, newPaid });
         }
       }
       return jsonOut({ error: 'عملية البيع غير موجودة' }, 404);
     }
     if (action === 'saveReturn') {
+      const saleId = String(body.saleId || '');
+      if (!saleId) return jsonOut({ error: 'معرف فاتورة البيع مطلوب' }, 400);
+
+      const refundAmount = Number(body.refundAmount || 0);
+      if (refundAmount <= 0) return jsonOut({ error: 'مبلغ المرتجع يجب أن يكون أكبر من صفر' }, 400);
+
+      // Verify original sale exists and get total
+      const shSales = getSheet(SHEET_SALES);
+      const salesHeaders = shSales.getRange(1, 1, 1, shSales.getLastColumn()).getValues()[0];
+      const saleIdCol = salesHeaders.indexOf('ID');
+      const saleTotalCol = salesHeaders.indexOf('Total');
+      let isRetCol = salesHeaders.indexOf('IsReturned');
+      let retDetCol = salesHeaders.indexOf('ReturnDetails');
+      const salesValues = shSales.getDataRange().getValues();
+
+      let targetSaleRow = -1;
+      let saleTotal = 0;
+      for (let i = 1; i < salesValues.length; i++) {
+        if (String(salesValues[i][saleIdCol]) === saleId) {
+          targetSaleRow = i + 1;
+          saleTotal = safeNumber(salesValues[i][saleTotalCol], 0);
+          break;
+        }
+      }
+      if (targetSaleRow === -1) {
+        return jsonOut({ error: 'فاتورة البيع الأصلية غير موجودة' }, 404);
+      }
+
+      // Check idempotency via clientRef and past returns
+      const shReturns = getSheet(SHEET_RETURNS);
+      const retHeaders = shReturns.getRange(1, 1, 1, Math.max(1, shReturns.getLastColumn())).getValues()[0];
+      const retSaleIdCol = retHeaders.indexOf('SaleID');
+      const retRefundCol = retHeaders.indexOf('RefundAmount');
+      const retClientRefCol = retHeaders.indexOf('ClientRef');
+      const retValues = shReturns.getLastRow() > 1 ? shReturns.getDataRange().getValues() : [];
+
+      let priorRefunds = 0;
+      for (let r = 1; r < retValues.length; r++) {
+        const row = retValues[r];
+        if (body.clientRef && retClientRefCol >= 0 && String(row[retClientRefCol]) === String(body.clientRef)) {
+          return jsonOut({ error: 'طلب مرتجع مكرر (clientRef مستخدم من قبل)' }, 400);
+        }
+        if (retSaleIdCol >= 0 && String(row[retSaleIdCol]) === saleId) {
+          priorRefunds += safeNumber(row[retRefundCol], 0);
+        }
+      }
+
+      if (body.clientRef) {
+        const idempKey = 'idemp_saveReturn_' + hashKey(String(body.clientRef));
+        const cache = CacheService.getScriptCache();
+        if (cache.get(idempKey)) {
+          return jsonOut({ error: 'طلب مرتجع مكرر (clientRef مستخدم من قبل)' }, 400);
+        }
+        cache.put(idempKey, '1', 600);
+      }
+
+      if (priorRefunds + refundAmount > saleTotal + 0.005) {
+        return jsonOut({ error: 'إجمالي المرتجعات يتجاوز إجمالي الفاتورة الأصلية' }, 400);
+      }
+
       const ret = {
         ID: 'ret_' + new Date().getTime(),
-        SaleID: body.saleId,
+        SaleID: saleId,
+        ClientRef: body.clientRef || '',
         Date: body.date || new Date().toISOString().slice(0, 10),
         ItemsSummary: body.itemsSummary || '',
-        RefundAmount: Number(body.refundAmount || 0),
+        RefundAmount: refundAmount,
         RefundMethod: body.refundMethod || 'نقدي',
         By: body.user || 'كاشير'
       };
       appendRow(SHEET_RETURNS, ret);
 
-      // Also mark the original sale as returned in the Sales sheet
+      // Mark original sale as returned in Sales sheet
       try {
-        const shSales = getSheet(SHEET_SALES);
-        const headers = shSales.getRange(1, 1, 1, shSales.getLastColumn()).getValues()[0];
-        let isRetCol = headers.indexOf('IsReturned');
-        if(isRetCol === -1){
+        if (isRetCol === -1 || retDetCol === -1) {
           ensureHeaders(shSales, { IsReturned: '', ReturnDetails: '' });
-          isRetCol = shSales.getRange(1, 1, 1, shSales.getLastColumn()).getValues()[0].indexOf('IsReturned');
+          const updatedHeaders = shSales.getRange(1, 1, 1, shSales.getLastColumn()).getValues()[0];
+          isRetCol = updatedHeaders.indexOf('IsReturned');
+          retDetCol = updatedHeaders.indexOf('ReturnDetails');
         }
-        const retDetCol = shSales.getRange(1, 1, 1, shSales.getLastColumn()).getValues()[0].indexOf('ReturnDetails');
-        const idCol = headers.indexOf('ID');
-        if(idCol >= 0 && isRetCol >= 0){
-          const values = shSales.getDataRange().getValues();
-          for(let i = 1; i < values.length; i++){
-            if(String(values[i][idCol]) === String(body.saleId)){
-              shSales.getRange(i + 1, isRetCol + 1).setValue(true);
-              if(retDetCol >= 0 && body.returnDetails){
-                shSales.getRange(i + 1, retDetCol + 1).setValue(JSON.stringify(body.returnDetails));
-              }
+        if (isRetCol >= 0) {
+          shSales.getRange(targetSaleRow, isRetCol + 1).setValue(true);
+        }
+        if (retDetCol >= 0 && body.returnDetails) {
+          shSales.getRange(targetSaleRow, retDetCol + 1).setValue(JSON.stringify(body.returnDetails));
+        }
+      } catch(e) {}
+
+      // Server-side inventory restock
+      const returnedItems = Array.isArray(body.items) ? body.items :
+        (body.returnDetails && Array.isArray(body.returnDetails.returnedItems) ? body.returnDetails.returnedItems : []);
+      if (returnedItems.length > 0) validateArraySize(returnedItems, 50, 'أصناف المرتجع');
+
+      let restockedCOGS = 0;
+      if (returnedItems.length > 0) {
+        const shInv = getSheet(SHEET_INVENTORY);
+        const invHeaders = shInv.getRange(1, 1, 1, shInv.getLastColumn()).getValues()[0];
+        const invIdCol = invHeaders.indexOf('ID');
+        const invQtyCol = invHeaders.indexOf('Quantity');
+        const invCostCol = invHeaders.indexOf('PurchasePrice');
+        const invValues = shInv.getDataRange().getValues();
+
+        for (const it of returnedItems) {
+          if (!it || !it.itemId || String(it.itemId).startsWith('srv_') || it.restocked === false) continue;
+          const returnQty = safeNumber(it.qty, 1);
+          for (let rowIdx = 1; rowIdx < invValues.length; rowIdx++) {
+            if (String(invValues[rowIdx][invIdCol]) === String(it.itemId)) {
+              const curQty = safeNumber(invValues[rowIdx][invQtyCol], 0);
+              const newQty = curQty + returnQty;
+              invValues[rowIdx][invQtyCol] = newQty;
+              shInv.getRange(rowIdx + 1, invQtyCol + 1).setValue(newQty);
+
+              const unitCost = safeNumber(invValues[rowIdx][invCostCol], 0);
+              restockedCOGS += unitCost * returnQty;
               break;
             }
           }
         }
+      }
+
+      // Server-side dual reversal journal entry
+      try {
+        const refundMethod = String(body.refundMethod || 'نقدي').toLowerCase();
+        const isBank = (refundMethod.includes('فيزا') || refundMethod.includes('visa') || refundMethod.includes('card') || refundMethod.includes('instapay') || refundMethod.includes('محفظ') || refundMethod.includes('wallet'));
+        const isCredit = (refundMethod.includes('آجل') || refundMethod.includes('اجل') || refundMethod.includes('حساب'));
+        const creditAccCode = isBank ? '1102' : (isCredit ? '1103' : '1101');
+        const creditAccName = isBank ? 'البنك وحسابات الدفع الإلكتروني' : (isCredit ? 'حساب العميل (مدينون آجل)' : 'الخزينة الرئيسية (النقدية بالدرج)');
+
+        const retJournalLines = [
+          { AccountCode: '4102', AccountName: 'مردودات ومسموحات مبيعات الأجهزة والإكسسوار', Debit: refundAmount, Credit: 0, Notes: 'مرتجع مبيعات فاتورة #' + saleId },
+          { AccountCode: creditAccCode, AccountName: creditAccName, Debit: 0, Credit: refundAmount, Notes: 'رد واسترداد بنفس وسيلة الدفع الأصلية (' + (body.refundMethod || 'نقدي') + ')' }
+        ];
+
+        if (restockedCOGS > 0) {
+          retJournalLines.push(
+            { AccountCode: '1104', AccountName: 'مخزون البضائع وقطع الغيار', Debit: Math.round(restockedCOGS * 100) / 100, Credit: 0, Notes: 'إعادة إدخال مخزون أصناف مرتجعة (فاتورة #' + saleId.slice(-8) + ')' },
+            { AccountCode: '5102', AccountName: 'تكلفة البضاعة المباعة (POS)', Debit: 0, Credit: Math.round(restockedCOGS * 100) / 100, Notes: 'عكس تكلفة بضاعة مباعة لمرتجع' }
+          );
+        }
+
+        postAutoJournal('مرتجع مبيعات POS فاتورة #' + saleId.slice(-8), 'POS_Return', saleId, retJournalLines, body.user || 'كاشير');
       } catch(e) {}
+
+      logAudit(saleId, body.user || 'كاشير', 'مرتجع بيع', 'Sale', { refundAmount: refundAmount, items: body.itemsSummary });
 
       return jsonOut({ ok: true, ret });
     }
@@ -1415,7 +1558,7 @@ function ensureHeaders(sh, obj) {
     'Payments': ['ID','ReceiptID','Date','Amount','Note','By','PaymentMethod'],
     'Inventory': ['ID','Name','Category','SubCategory','SKU','Barcode','ShelfLocation','Quantity','MinStock','Unit','PurchasePrice','SellPrice','WholesalePrice','WarrantyMonths','CompatibleModels','ImageURL'],
     'Sales': ['ID','Date','ItemsSummary','ItemsJSON','Total','PaymentMethod','AmountPaid','CustomerName','CustomerPhone','By','IsReturned','ReturnDetails'],
-    'Returns': ['ID','SaleID','Date','ItemsSummary','RefundAmount','RefundMethod','By'],
+    'Returns': ['ID','SaleID','ClientRef','Date','ItemsSummary','RefundAmount','RefundMethod','By'],
     'Quotations': ['ID','Date','ClientName','ClientPhone','ItemsSummary','LaborCost','Total','Status','By'],
     'Services': ['Name','DefaultPrice','Notes'],
     'Purchases': ['ID','Date','Supplier','SupplierID','ItemsSummary','Total','AmountPaid','PaymentMethod','WarrantyMonths','By'],

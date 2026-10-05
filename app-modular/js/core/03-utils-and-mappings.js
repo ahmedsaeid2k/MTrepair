@@ -1131,10 +1131,15 @@ async function savePaymentRemote(receiptId, amount, note, paymentMethod){
   }
   _recentPaymentGuards.set(guardKey, now);
 
+  const nowDate = new Date();
   const payment = {
     ID: 'p_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
-    ReceiptID: receiptId, Date: new Date().toISOString().slice(0,10),
-    Amount: numAmt, Note: note || '', By: state.user ? state.user.name : 'نظام',
+    ReceiptID: receiptId,
+    Date: nowDate.toISOString().slice(0,10),
+    Time: nowDate.toTimeString().slice(0, 8),
+    Amount: numAmt,
+    Note: note || '',
+    By: state.user ? state.user.name : 'نظام',
     PaymentMethod: payMethod,
     ShiftID: state.activeShift ? state.activeShift.id : ''
   };
@@ -1171,7 +1176,7 @@ async function savePaymentRemote(receiptId, amount, note, paymentMethod){
       {AccountCode: creditAccCode, AccountName: creditAccName, Debit: 0, Credit: numAmt, Notes: isDeliveredPayment ? `سداد مديونية إيصال #${rNumPayment}` : `دفعة مقدمة إيصال #${rNumPayment}`}
     ]
   ).catch(e=>{});
-  return apiPost('savePayment', {id: payment.ID, receiptId, amount: payment.Amount, note: payment.Note, paymentMethod: payMethod, date: payment.Date, user: payment.By});
+  return apiPost('savePayment', {id: payment.ID, receiptId, amount: payment.Amount, note: payment.Note, paymentMethod: payMethod, date: payment.Date, time: payment.Time, shiftId: payment.ShiftID, user: payment.By});
 }
 
 async function deletePaymentRemote(paymentId){
@@ -1291,13 +1296,27 @@ async function loadSales(){
   setCache('sales', rows);
   return rows;
 }
-async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, customerPhone, paymentMethod, amountPaid, itemsList = [], taxAmount = 0){
+async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, customerPhone, paymentMethod, amountPaid, itemsList = [], taxAmount = 0, changeDue = null){
+  const now = new Date();
+  const dateStr = now.toISOString().slice(0,10);
+  const timeStr = now.toTimeString().slice(0, 8);
+  const finalPaid = amountPaid != null ? Number(amountPaid) : Number(total || 0);
+  const finalChangeDue = changeDue != null ? Number(changeDue) : Math.max(0, round2(finalPaid - Number(total || 0)));
+
   const sale = {
-    ID: 'sale_' + Date.now(), Date: new Date().toISOString().slice(0,10),
-    ItemsSummary: itemsSummary, ItemsJSON: itemsJson||'', Total: Number(total||0),
+    ID: 'sale_' + Date.now(),
+    Date: dateStr,
+    Time: timeStr,
+    ItemsSummary: itemsSummary,
+    ItemsJSON: itemsJson||'',
+    Total: Number(total||0),
     TaxAmount: Math.max(0, Number(taxAmount||0)),
-    PaymentMethod: paymentMethod||'نقدي', AmountPaid: amountPaid!=null?Number(amountPaid):Number(total||0),
-    CustomerName: customerName||'', CustomerPhone: customerPhone||'', By: state.user ? state.user.name : 'نظام',
+    PaymentMethod: paymentMethod||'نقدي',
+    AmountPaid: finalPaid,
+    ChangeDue: finalChangeDue,
+    CustomerName: customerName||'',
+    CustomerPhone: customerPhone||'',
+    By: state.user ? state.user.name : 'نظام',
     ShiftID: state.activeShift ? state.activeShift.id : ''
   };
   state.sales.push(sale);
@@ -1401,7 +1420,10 @@ async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, cust
     customerName,
     customerPhone,
     paymentMethod,
-    amountPaid,
+    amountPaid: sale.AmountPaid,
+    changeDue: sale.ChangeDue,
+    shiftId: sale.ShiftID,
+    time: sale.Time,
     date: sale.Date,
     user: sale.By,
     items: itemsList.map(c => ({ itemId: c.itemId || c.id, qty: c.qty, price: c.price, purchasePrice: c.purchasePrice })),
@@ -1514,6 +1536,7 @@ async function saveQuotationPaymentRemote(quotationId, amount, note){
 async function saveExpenseRemote(exp){
   if(!exp.ID) exp.ID = 'exp_' + Date.now();
   if(!exp.Date) exp.Date = new Date().toISOString().slice(0,10);
+  if(!exp.Time) exp.Time = new Date().toTimeString().slice(0, 8);
   exp.By = state.user ? state.user.name : 'نظام';
   if(!exp.ShiftID && state.activeShift) exp.ShiftID = state.activeShift.id;
   const idx = state.expenses.findIndex(x=>x.ID===exp.ID);

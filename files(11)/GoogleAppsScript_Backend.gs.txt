@@ -273,7 +273,8 @@ const AUTOPOST_REFS = [
   'Sale', 'POS_Sale', 'POS_Return', 'Purchase', 'Receipt', 'Receipt_Parts',
   'Receipt_Debt', 'Receipt_Reversal', 'Expense', 'Supplier_Payment', 'SupplierPayment', 'DeliveryCredit',
   'Receipt_Payment', 'Receipt_Payment_Void', 'Receipt_Delivery', 'Receipt_Revenue', 'Receipt_Void',
-  'Invoice', 'Invoice_Void', 'Quotation_Payment', 'Quotation_Delivery', 'Quotation'
+  'Invoice', 'Invoice_Void', 'Quotation_Payment', 'Quotation_Delivery', 'Quotation',
+  'CashIn', 'CashOut', 'Shift_Open', 'Shift_Close', 'Shift_Variance'
 ];
 
 function postAutoJournal(desc, refType, refId, lines, actorUser) {
@@ -957,8 +958,13 @@ function doPost(e) {
 
       const payment = {
         ID: pId,
-        ReceiptID: body.receiptId, Date: body.date, Amount: body.amount,
-        Note: body.note || '', By: body.user,
+        ReceiptID: body.receiptId,
+        Date: body.date,
+        Time: body.time || body.Time || '',
+        ShiftID: body.shiftId || body.ShiftID || '',
+        Amount: body.amount,
+        Note: body.note || '',
+        By: body.user,
         PaymentMethod: body.paymentMethod || 'نقدي (كاش)'
       };
       appendRow(SHEET_PAYMENTS, payment);
@@ -1048,12 +1054,15 @@ function doPost(e) {
       const sale = {
         ID: body.id || ('sale_' + new Date().getTime()),
         Date: body.date || new Date().toISOString().slice(0, 10),
+        Time: body.time || body.Time || '',
+        ShiftID: body.shiftId || body.ShiftID || '',
         ItemsSummary: body.itemsSummary,
         ItemsJSON: body.itemsJson || '',
         Total: Number(body.total || 0),
         TaxAmount: Number(body.taxAmount || 0),
         PaymentMethod: body.paymentMethod || 'نقدي',
         AmountPaid: body.amountPaid != null ? Number(body.amountPaid) : Number(body.total || 0),
+        ChangeDue: Number(body.changeDue != null ? body.changeDue : (Number(body.amountPaid || 0) > Number(body.total || 0) ? Number(body.amountPaid || 0) - Number(body.total || 0) : 0)),
         CustomerName: body.customerName || '',
         CustomerPhone: body.customerPhone || '',
         By: body.user || 'نظام'
@@ -1442,6 +1451,8 @@ function doPost(e) {
       const exp = {
         ID: body.data.ID || ('exp_' + new Date().getTime()),
         Date: body.data.Date || new Date().toISOString().slice(0,10),
+        Time: body.data.Time || body.data.time || '',
+        ShiftID: body.data.ShiftID || body.data.shiftId || '',
         Category: body.data.Category || 'عام',
         Title: body.data.Title,
         Amount: body.data.Amount,
@@ -1725,9 +1736,9 @@ function ensureHeaders(sh, obj) {
     'Customers': ['Name','Phone','Email','Address','TaxNumber','Debt','Notes'],
     'Technicians': ['Name'],
     'Settings': ['Key','Value'],
-    'Payments': ['ID','ReceiptID','Date','Amount','Note','By','PaymentMethod'],
+    'Payments': ['ID','ReceiptID','Date','Time','ShiftID','Amount','Note','By','PaymentMethod'],
     'Inventory': ['ID','Name','Category','SubCategory','SKU','Barcode','ShelfLocation','Quantity','MinStock','Unit','PurchasePrice','SellPrice','WholesalePrice','WarrantyMonths','CompatibleModels','ImageURL'],
-    'Sales': ['ID','Date','ItemsSummary','ItemsJSON','Total','TaxAmount','PaymentMethod','AmountPaid','CustomerName','CustomerPhone','By','IsReturned','ReturnDetails'],
+    'Sales': ['ID','Date','Time','ShiftID','ItemsSummary','ItemsJSON','Total','TaxAmount','PaymentMethod','AmountPaid','ChangeDue','CustomerName','CustomerPhone','By','IsReturned','ReturnDetails'],
     'Returns': ['ID','SaleID','ClientRef','Date','ItemsSummary','RefundAmount','RefundMethod','By'],
     'Quotations': ['ID','Date','ClientName','ClientPhone','ItemsSummary','LaborCost','Total','Status','By'],
     'Services': ['Name','DefaultPrice','Notes'],
@@ -1735,7 +1746,7 @@ function ensureHeaders(sh, obj) {
     'Suppliers': ['ID','Name','Phone','Notes','Debt'],
     'Serials': ['ID','ItemID','ItemName','Serial','PurchaseID','SupplierID','WarrantyMonths','Status','SoldRef','SoldDate'],
     'SupplierPayments': ['ID','SupplierID','PurchaseID','Date','Amount','Note','By'],
-    'Expenses': ['ID','Date','Category','Title','Amount','Type','PaymentMethod','Supplier','Reference','AccountCode','Notes','By'],
+    'Expenses': ['ID','Date','Time','ShiftID','Category','Title','Amount','Type','PaymentMethod','Supplier','Reference','AccountCode','Notes','By'],
     'Accounts': ['Code','Name','Type','ParentCode','Nature','Description','Balance'],
     'JournalEntries': ['ID','EntryNumber','Date','Description','ReferenceType','ReferenceID','LinesJSON','TotalDebit','TotalCredit','By'],
     'Invoices': ['ID','InvoiceNumber','Date','DueDate','CustomerName','CustomerPhone','CustomerTaxNumber','CustomerAddress','ItemsSummary','ItemsJSON','Subtotal','TaxPercent','TaxAmount','IsTaxInclusive','Discount','Total','AmountPaid','Remaining','Status','PaymentMethod','ReferenceType','ReferenceID','Notes','By'],

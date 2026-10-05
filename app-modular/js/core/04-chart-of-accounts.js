@@ -19,6 +19,7 @@ const DEFAULT_ACCOUNTS = [
   {Code:'2102', Name:'أمانات ومقدمات عملاء الصيانة', Type:'الخصوم', ParentCode:'21', Nature:'دائن', Description:'الدفعات المقدمة المستلمة قبل التسليم', Balance:0},
   {Code:'2103', Name:'مصروفات مستحقة', Type:'الخصوم', ParentCode:'21', Nature:'دائن', Description:'مستحقات لم تسدد بعد', Balance:0},
   {Code:'2104', Name:'ضريبة القيمة المضافة المستحقة (مخرجات)', Type:'الخصوم', ParentCode:'21', Nature:'دائن', Description:'الضريبة المحصلة من العملاء على المبيعات والفواتير', Balance:0},
+  {Code:'2105', Name:'عهدة وأمانات مسؤولي الورديات', Type:'الخصوم', ParentCode:'21', Nature:'دائن', Description:'عهدة البداية وأمانات الكاشير للورديات', Balance:0},
 
   // 3 - حقوق الملكية
   {Code:'3', Name:'حقوق الملكية', Type:'حقوق الملكية', ParentCode:'', Nature:'دائن', Description:'حقوق أصحاب المنشأة', Balance:0},

@@ -1021,6 +1021,15 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
 
   // Complete Sale Logic
   async function processSale(isTaxInvoice){
+    if(!state.activeShift){
+      showToast('لا يمكن إتمام البيع دون فتح وردية نشطة. يرجى فتح الوردية أولاً.', 'error');
+      if(typeof openStartShiftModal === 'function'){
+        openStartShiftModal(() => {
+          if(typeof renderPosSell === 'function') renderPosSell(main);
+        });
+      }
+      return;
+    }
     if(!cart.length){ showToast('السلة فارغة', 'error'); return; }
 
     // Pre-flight inventory stock check
@@ -1091,7 +1100,7 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
       
       const paidAmount = ps.amountPaid !== '' ? Number(ps.amountPaid) : grandTotal;
       const fullCustName = customerTitle ? `${customerTitle} / ${customerName}` : customerName;
-      const saleRes = await saveSaleRemote(itemsSummary, itemsJson, grandTotal, fullCustName, customerPhone, payMethodName, paidAmount, cartSnapshot, taxAmount);
+      const saleRes = await saveSaleRemote(itemsSummary, itemsJson, grandTotal, fullCustName, customerPhone, payMethodName, paidAmount, cartSnapshot, taxAmount, changeDue);
       
       showToast('تمت عملية البيع بنجاح', 'success');
 

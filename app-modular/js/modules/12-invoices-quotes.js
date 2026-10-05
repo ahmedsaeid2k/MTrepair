@@ -681,6 +681,20 @@ function startNewShift(openingFloat = 0, notes = ''){
   state.activeShift = shift;
   setCache('activeShift', state.activeShift);
   recordAuditLog('فتح وردية جديدة', 'الخزينة والورديات', `فتح الوردية #${shiftNumber} برصيد افتتاحي: ${openingFloat} ج.م للكاشير: ${shift.cashierName}`, shift.id);
+
+  // Journal Entry: Custody of drawer float (Debit 1101 Cash Drawer, Credit 2105 Shift Custody) [F6]
+  if (Number(shift.openingFloat) > 0 && typeof recordAutoJournalEntry === 'function') {
+    recordAutoJournalEntry(
+      `رصيد افتتاحي عهدة وردية #${shiftNumber} - الكاشير: ${shift.cashierName}`,
+      'Shift_Open',
+      shift.id,
+      [
+        { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: Number(shift.openingFloat), Credit: 0, Description: `عهدة درج الكاشير وردية #${shiftNumber}` },
+        { AccountCode: '2105', AccountName: 'عهدة وأمانات مسؤولي الورديات', Debit: 0, Credit: Number(shift.openingFloat), Description: `عهدة وأمانات مسؤولي الورديات وردية #${shiftNumber}` }
+      ]
+    ).catch(e => console.error('Shift_Open JE error:', e));
+  }
+
   showToast(`تم فتح وردية جديدة رقم #${shiftNumber} بنجاح`, 'success');
   return shift;
 }
@@ -727,16 +741,15 @@ function calculateShiftStats(shift){
 
   shiftSales.forEach(s => {
     const tot = Number(s.Total || 0);
-    const paid = Number(s.AmountPaid != null ? s.AmountPaid : tot);
+    const rawPaid = Number(s.AmountPaid != null ? s.AmountPaid : tot);
+    const change = Number(s.ChangeDue != null ? s.ChangeDue : (rawPaid > tot ? rawPaid - tot : 0));
+    // Cash actually collected and retained into drawer (deducting returned change) [F6]
+    const paid = Math.max(0, rawPaid - change);
     const method = String(s.PaymentMethod || 'نقدي').toLowerCase();
 
     if(s.IsReturned){
       returnsCount++;
       returnsTotal += tot;
-      if(method.includes('نقدي') || method.includes('كاش') || method.includes('cash')){
-        returnsCash += paid;
-      }
-      return;
     }
 
     posTotalRevenue += tot;
@@ -795,7 +808,12 @@ function calculateShiftStats(shift){
     const isCash = method.includes('نقدي') || method.includes('كاش') || method.includes('cash');
     if(!isCash && ex.Type !== 'in' && ex.Type !== 'out') return;
 
-    if(ex.Type === 'in'){
+    const isRet = ex.Category === 'مرتجع مبيعات POS' || String(ex.Reference||'').startsWith('RET-');
+    if(isRet){
+      if(isCash) returnsCash += amt;
+      returnsCount++;
+      returnsTotal += amt;
+    } else if(ex.Type === 'in'){
       manualDrawerIn += amt;
     } else if(ex.Type === 'out'){
       manualDrawerOut += amt;
@@ -805,6 +823,21 @@ function calculateShiftStats(shift){
       expensesCash += amt;
     }
   });
+
+  // Fallback for returns if legacy data did not log return expense
+  if(returnsCount === 0){
+    shiftSales.forEach(s => {
+      if(s.IsReturned){
+        const tot = Number(s.Total || 0);
+        const method = String(s.PaymentMethod || 'نقدي').toLowerCase();
+        returnsCount++;
+        returnsTotal += tot;
+        if(method.includes('نقدي') || method.includes('كاش') || method.includes('cash')){
+          returnsCash += tot;
+        }
+      }
+    });
+  }
 
   const openingFloat = Number(shift.openingFloat || 0);
   const totalCashIn = posCash + maintCash + manualDrawerIn;
@@ -862,6 +895,50 @@ function closeActiveShift(actualCountedCash, closingNotes = '', printFormat = 't
   shift.discrepancy = shift.actualCash - stats.expectedCash;
   shift.closingNotes = closingNotes || '';
   shift.stats = stats;
+
+  // Post closing journal entries [F6]
+  if (typeof recordAutoJournalEntry === 'function') {
+    // 1. Settle opening float if it existed (Release cashier custody)
+    if (Number(shift.openingFloat) > 0) {
+      recordAutoJournalEntry(
+        `إخلاء وتسوية عهدة افتتاح وردية #${shift.shiftNumber} - الكاشير: ${shift.cashierName}`,
+        'Shift_Close',
+        shift.id,
+        [
+          { AccountCode: '2105', AccountName: 'عهدة وأمانات مسؤولي الورديات', Debit: Number(shift.openingFloat), Credit: 0, Description: `تسوية عهدة كاشير وردية #${shift.shiftNumber}` },
+          { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: 0, Credit: Number(shift.openingFloat), Description: `استرداد عهدة كاشير وردية #${shift.shiftNumber}` }
+        ]
+      ).catch(e => console.error('Shift_Close JE error:', e));
+    }
+
+    // 2. Discrepancy accounting (variance)
+    const discrepancy = Number(shift.discrepancy || 0);
+    if (discrepancy < -0.009) {
+      // Shortage (عجز الدرج) -> Expense 5208, Cash Cr 1101
+      const shortageAmt = Math.abs(discrepancy);
+      recordAutoJournalEntry(
+        `إثبات عجز درج نقدية وردية #${shift.shiftNumber} (${shift.cashierName})`,
+        'Shift_Variance',
+        shift.id,
+        [
+          { AccountCode: '5208', AccountName: 'مصروفات تشغيلية أخرى وفروق الدرج', Debit: shortageAmt, Credit: 0, Description: `عجز درج وردية #${shift.shiftNumber}: ${shortageAmt} ج.م` },
+          { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: 0, Credit: shortageAmt, Description: `تسوية نقص نقدية الدرج وردية #${shift.shiftNumber}` }
+        ]
+      ).catch(e => console.error('Shift_Variance Shortage JE error:', e));
+    } else if (discrepancy > 0.009) {
+      // Surplus (زيادة الدرج) -> Cash Dr 1101, Other Revenue Cr 42
+      const surplusAmt = discrepancy;
+      recordAutoJournalEntry(
+        `إثبات زيادة نقدية غير معلومة بدرج وردية #${shift.shiftNumber} (${shift.cashierName})`,
+        'Shift_Variance',
+        shift.id,
+        [
+          { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: surplusAmt, Credit: 0, Description: `زيادة نقدية محصلة بدرج وردية #${shift.shiftNumber}` },
+          { AccountCode: '42', AccountName: 'إيرادات أخرى متنوعة', Debit: 0, Credit: surplusAmt, Description: `فائض نقدية غير معرّف وردية #${shift.shiftNumber}` }
+        ]
+      ).catch(e => console.error('Shift_Variance Surplus JE error:', e));
+    }
+  }
 
   if(!state.shifts) state.shifts = [];
   state.shifts.unshift(shift);

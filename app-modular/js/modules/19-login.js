@@ -65,7 +65,7 @@ function loginScreen(){
             <span>${getSvgIcon('user', 14)}</span>
             <span>اسم المستخدم</span>
           </label>
-          <input id="loginName" placeholder="ادخل اسم المستخدم (مثال: admin)" autofocus autocomplete="username" style="padding:10px 12px;font-size:13.5px;border-radius:var(--radius-sm);">
+          <input id="loginName" placeholder="ادخل اسم المستخدم" autofocus autocomplete="username" style="padding:10px 12px;font-size:13.5px;border-radius:var(--radius-sm);">
         </div>
 
         <div class="field" style="margin:0;">
@@ -101,11 +101,6 @@ function loginScreen(){
 
       <!-- Animated Error Banner -->
       <div class="login-err-banner" id="loginErr"></div>
-
-      <div style="margin-top:16px;padding:9px 12px;background:var(--paper2);border:1px solid var(--line);border-radius:var(--radius-sm);display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:var(--ink-secondary);">
-        <span>حساب المدير: <b style="color:var(--ink);">admin</b></span>
-        <span>كلمة المرور: <b style="color:var(--ink);">admin</b></span>
-      </div>
 
       <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--ink-secondary);">
         <span>حماية مشددة ضد التخمين</span>

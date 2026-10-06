@@ -186,6 +186,12 @@ async function fetchBootstrapData(){
       if(Array.isArray(res.returns)) { state.returns = res.returns; setCache('returns', state.returns); }
       if(Array.isArray(res.serials)) { state.serials = res.serials; setCache('serials', state.serials); }
       if(Array.isArray(res.supplierPayments)) { state.supplierPayments = res.supplierPayments; setCache('supplierPayments', state.supplierPayments); }
+      if(Array.isArray(res.cctvSites)) { state.cctvSites = res.cctvSites; setCache('cctv_sites', state.cctvSites); }
+      if(Array.isArray(res.cctvProjects)) { state.cctvProjects = res.cctvProjects; setCache('cctv_projects', state.cctvProjects); }
+      if(Array.isArray(res.cctvDevices)) { state.cctvDevices = res.cctvDevices; setCache('cctv_devices', state.cctvDevices); }
+      if(Array.isArray(res.cctvVisits)) { state.cctvVisits = res.cctvVisits; setCache('cctv_visits', state.cctvVisits); }
+      if(Array.isArray(res.cctvContracts)) { state.cctvContracts = res.cctvContracts; setCache('cctv_contracts', state.cctvContracts); }
+      if(Array.isArray(res.cctvMilestones)) { state.cctvMilestones = res.cctvMilestones; setCache('cctv_milestones', state.cctvMilestones); }
       return true;
     }
   } catch(e) {

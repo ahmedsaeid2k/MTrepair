@@ -64,6 +64,7 @@ const jsFiles = [
   'js/modules/17-accounting-finance.js',
   'js/modules/18-settings-admin.js',
   'js/modules/19-login.js',
+  'js/modules/21-cctv-projects.js',
   'js/modules/20-app-boot.js'
 ];
 

@@ -710,6 +710,17 @@ function getAccountStats(accountCode){
   };
 }
 
+function getAccountName(code, fallback = ''){
+  const clean = String(code || '').trim();
+  const accList = (typeof state !== 'undefined' && state && state.accounts) ? state.accounts : (typeof DEFAULT_ACCOUNTS !== 'undefined' ? DEFAULT_ACCOUNTS : []);
+  const acc = accList.find(a => String(a.Code).trim() === clean);
+  if(acc && acc.Name) return acc.Name;
+  const def = (typeof DEFAULT_ACCOUNTS !== 'undefined') ? DEFAULT_ACCOUNTS.find(a => String(a.Code).trim() === clean) : null;
+  if(def && def.Name) return def.Name;
+  return fallback || (clean ? `حساب ${clean}` : '');
+}
+window.getAccountName = getAccountName;
+
 /* ---------------- F8: Customer and Supplier Live Balance Engines ---------------- */
 function getCustomerLiveBalance(custName, custPhone){
   if(!custName && !custPhone) return 0;

@@ -32,6 +32,12 @@
         - Services     (أعمدة: Name | DefaultPrice | Notes) — كاتالوج الخدمات (تركيب كاميرات، شبكات...)
         - Purchases    (أعمدة: ID | Date | Supplier | SupplierID | ItemsSummary | Total | AmountPaid | WarrantyMonths | By)
         - Invoices     (أعمدة: ID | InvoiceNumber | Date | DueDate | CustomerName | CustomerPhone | CustomerTaxNumber | CustomerAddress | ItemsSummary | ItemsJSON | Subtotal | TaxPercent | TaxAmount | Discount | Total | AmountPaid | Remaining | Status | PaymentMethod | ReferenceType | ReferenceID | Notes | By)
+        - Sites        (أعمدة: ID | CustomerName | CustomerPhone | SiteName | Address | City | Coordinates | SiteContact | Notes | CreatedBy | CreatedAt)
+        - Projects     (أعمدة: ID | SiteID | Title | Type | Status | StartDate | TargetDate | DeliveredDate | ContractValue | PaymentTerms | Engineer | Notes | QuotationID | InvoiceID)
+        - ProjectDevices (أعمدة: ID | ProjectID | Category | ItemID | Serial | Brand | Model | Channel | Location | LensType | Resolution | InstallDate | WarrantyMonths | WarrantyEnd | Status)
+        - ServiceVisits (أعمدة: ID | ProjectID | SiteID | ScheduledDate | VisitType | Technician | Status | CheckInAt | CheckOutAt | Findings | ActionsTaken | PartsUsed | NextVisitDate | CustomerSignature | PhotosJSON)
+        - MaintenanceContracts (أعمدة: ID | SiteID | ProjectID | StartDate | EndDate | VisitFrequency | AnnualValue | VisitsIncluded | VisitsUsed | Status | AutoRenew)
+        - ProjectMilestones (أعمدة: ID | ProjectID | Title | Percent | Amount | DueCondition | InvoiceID | Status)
    6) من "Deploy" > "New deployment" > اختر النوع Web app.
       - Execute as: Me
       - Who has access: Anyone (أو Anyone with the link)
@@ -57,6 +63,12 @@ const SHEET_EXPENSES = 'Expenses';
 const SHEET_ACCOUNTS = 'Accounts';
 const SHEET_JOURNAL = 'JournalEntries';
 const SHEET_INVOICES = 'Invoices';
+const SHEET_SITES = 'Sites';
+const SHEET_PROJECTS = 'Projects';
+const SHEET_PROJECT_DEVICES = 'ProjectDevices';
+const SHEET_SERVICE_VISITS = 'ServiceVisits';
+const SHEET_MAINTENANCE_CONTRACTS = 'MaintenanceContracts';
+const SHEET_PROJECT_MILESTONES = 'ProjectMilestones';
 /* أضف ورقة عمل جديدة باسم Invoices لإدارة الفواتير الضريبية والرسمية:
       أعمدة: ID | InvoiceNumber | Date | DueDate | CustomerName | CustomerPhone | CustomerTaxNumber | CustomerAddress |
               ItemsSummary | ItemsJSON | Subtotal | TaxPercent | TaxAmount | Discount | Total |
@@ -259,7 +271,19 @@ const ACTION_ROLES = {
   deleteUser:         ['admin'],
   saveAuditLog:       ['admin','accountant','cashier','technician'],
   getAuditLog:        ['admin'],
-  verifySupervisorPin:['admin','accountant','cashier','technician']
+  verifySupervisorPin:['admin','accountant','cashier','technician'],
+  saveSite:                   ['admin','cashier','accountant','technician'],
+  deleteSite:                 ['admin'],
+  saveProject:                ['admin','accountant','technician'],
+  deleteProject:              ['admin'],
+  saveProjectDevice:          ['admin','technician','accountant'],
+  deleteProjectDevice:        ['admin'],
+  saveServiceVisit:           ['admin','technician'],
+  deleteServiceVisit:         ['admin'],
+  saveMaintenanceContract:    ['admin','accountant'],
+  deleteMaintenanceContract:  ['admin'],
+  saveProjectMilestone:       ['admin','accountant'],
+  deleteProjectMilestone:     ['admin']
 };
 
 function requireActionRole(action, session) {
@@ -274,6 +298,7 @@ const AUTOPOST_REFS = [
   'Receipt_Debt', 'Receipt_Reversal', 'Expense', 'Supplier_Payment', 'SupplierPayment', 'DeliveryCredit',
   'Receipt_Payment', 'Receipt_Payment_Void', 'Receipt_Delivery', 'Receipt_Revenue', 'Receipt_Void',
   'Invoice', 'Invoice_Void', 'Invoice_Adjustment', 'Quotation_Payment', 'Quotation_Delivery', 'Quotation',
+  'Project_Milestone', 'Project_Delivery', 'CCTV_Project',
   'CashIn', 'CashOut', 'Shift_Open', 'Shift_Close', 'Shift_Variance', 'Opening_Balance'
 ];
 
@@ -422,6 +447,12 @@ function executeReadAction(action, session, params) {
     const returns = getAllRows(SHEET_RETURNS);
     const serials = getAllRows(SHEET_SERIALS);
     const supplierPayments = getAllRows(SHEET_SUPPLIER_PAYMENTS);
+    const cctvSites = getAllRows(SHEET_SITES);
+    const cctvProjects = getAllRows(SHEET_PROJECTS);
+    const cctvDevices = getAllRows(SHEET_PROJECT_DEVICES);
+    const cctvVisits = getAllRows(SHEET_SERVICE_VISITS);
+    const cctvContracts = getAllRows(SHEET_MAINTENANCE_CONTRACTS);
+    const cctvMilestones = getAllRows(SHEET_PROJECT_MILESTONES);
 
     return jsonOut({
       ok: true,
@@ -444,7 +475,13 @@ function executeReadAction(action, session, params) {
       invoices,
       returns,
       serials,
-      supplierPayments
+      supplierPayments,
+      cctvSites,
+      cctvProjects,
+      cctvDevices,
+      cctvVisits,
+      cctvContracts,
+      cctvMilestones
     });
   }
 
@@ -500,6 +537,12 @@ function executeReadAction(action, session, params) {
   if (action === 'getAccounts') return jsonOut(getAllRows(SHEET_ACCOUNTS));
   if (action === 'getJournalEntries') return jsonOut(getAllRows(SHEET_JOURNAL));
   if (action === 'getInvoices') return jsonOut(getAllRows(SHEET_INVOICES));
+  if (action === 'getSites') return jsonOut(getAllRows(SHEET_SITES));
+  if (action === 'getProjects') return jsonOut(getAllRows(SHEET_PROJECTS));
+  if (action === 'getProjectDevices') return jsonOut(getAllRows(SHEET_PROJECT_DEVICES));
+  if (action === 'getServiceVisits') return jsonOut(getAllRows(SHEET_SERVICE_VISITS));
+  if (action === 'getMaintenanceContracts') return jsonOut(getAllRows(SHEET_MAINTENANCE_CONTRACTS));
+  if (action === 'getProjectMilestones') return jsonOut(getAllRows(SHEET_PROJECT_MILESTONES));
 
   return null;
 }
@@ -1748,6 +1791,80 @@ function doPost(e) {
       logAudit(String(logData.RefID || logData.refId || ''), actorUser, safeAction, 'ClientSecurity', logData.details || null);
       return jsonOut({ ok: true });
     }
+    if (action === 'saveSite') {
+      const site = body.data || {};
+      if (!site.ID) site.ID = 'site_' + Date.now();
+      if (!site.CreatedAt) site.CreatedAt = new Date().toISOString().slice(0, 10);
+      site.CreatedBy = site.CreatedBy || actorUser;
+      upsertRow(SHEET_SITES, site, 'ID');
+      logAudit(site.ID, actorUser, 'حفظ/تعديل موقع مشروع: ' + (site.SiteName || site.ID));
+      return jsonOut({ ok: true, site });
+    }
+    if (action === 'deleteSite') {
+      const id = String(body.id || '');
+      deleteRow(SHEET_SITES, id, 'ID');
+      logAudit(id, actorUser, 'حذف موقع مشروع: ' + id);
+      return jsonOut({ ok: true });
+    }
+    if (action === 'saveProject') {
+      const proj = body.data || {};
+      if (!proj.ID) proj.ID = 'proj_' + Date.now();
+      upsertRow(SHEET_PROJECTS, proj, 'ID');
+      logAudit(proj.ID, actorUser, 'حفظ/تعديل مشروع كاميرات: ' + (proj.Title || proj.ID));
+      return jsonOut({ ok: true, project: proj });
+    }
+    if (action === 'deleteProject') {
+      const id = String(body.id || '');
+      deleteRow(SHEET_PROJECTS, id, 'ID');
+      logAudit(id, actorUser, 'حذف مشروع كاميرات: ' + id);
+      return jsonOut({ ok: true });
+    }
+    if (action === 'saveProjectDevice') {
+      const dev = body.data || {};
+      if (!dev.ID) dev.ID = 'pdev_' + Date.now();
+      upsertRow(SHEET_PROJECT_DEVICES, dev, 'ID');
+      return jsonOut({ ok: true, device: dev });
+    }
+    if (action === 'deleteProjectDevice') {
+      const id = String(body.id || '');
+      deleteRow(SHEET_PROJECT_DEVICES, id, 'ID');
+      return jsonOut({ ok: true });
+    }
+    if (action === 'saveServiceVisit') {
+      const visit = body.data || {};
+      if (!visit.ID) visit.ID = 'vis_' + Date.now();
+      upsertRow(SHEET_SERVICE_VISITS, visit, 'ID');
+      logAudit(visit.ID, actorUser, 'حفظ/تحديث زيارة صيانة وتركيب');
+      return jsonOut({ ok: true, visit });
+    }
+    if (action === 'deleteServiceVisit') {
+      const id = String(body.id || '');
+      deleteRow(SHEET_SERVICE_VISITS, id, 'ID');
+      return jsonOut({ ok: true });
+    }
+    if (action === 'saveMaintenanceContract') {
+      const contract = body.data || {};
+      if (!contract.ID) contract.ID = 'mc_' + Date.now();
+      upsertRow(SHEET_MAINTENANCE_CONTRACTS, contract, 'ID');
+      logAudit(contract.ID, actorUser, 'حفظ/تحديث عقد صيانة دورية');
+      return jsonOut({ ok: true, contract });
+    }
+    if (action === 'deleteMaintenanceContract') {
+      const id = String(body.id || '');
+      deleteRow(SHEET_MAINTENANCE_CONTRACTS, id, 'ID');
+      return jsonOut({ ok: true });
+    }
+    if (action === 'saveProjectMilestone') {
+      const ms = body.data || {};
+      if (!ms.ID) ms.ID = 'ms_' + Date.now();
+      upsertRow(SHEET_PROJECT_MILESTONES, ms, 'ID');
+      return jsonOut({ ok: true, milestone: ms });
+    }
+    if (action === 'deleteProjectMilestone') {
+      const id = String(body.id || '');
+      deleteRow(SHEET_PROJECT_MILESTONES, id, 'ID');
+      return jsonOut({ ok: true });
+    }
     return jsonOut({ error: 'إجراء غير معروف' }, 400);
   } catch (err) {
     return jsonOut({ error: err.message }, 500);
@@ -1811,7 +1928,13 @@ function ensureHeaders(sh, obj) {
     'JournalEntries': ['ID','EntryNumber','Date','Description','ReferenceType','ReferenceID','LinesJSON','TotalDebit','TotalCredit','By'],
     'Invoices': ['ID','InvoiceNumber','Type','Date','DueDate','CustomerName','CustomerPhone','CustomerTaxNumber','CustomerAddress','ItemsSummary','ItemsJSON','Subtotal','TaxPercent','TaxAmount','IsTaxInclusive','Discount','Total','AmountPaid','Remaining','Status','PaymentMethod','ReferenceType','ReferenceID','Notes','By'],
     'Users': ['ID','Name','Password','Salt','Role','Sections','Superuser','Notes'],
-    'AuditLog': ['Timestamp','User','Action','ReceiptID','RefType','Details','RowHash']
+    'AuditLog': ['Timestamp','User','Action','ReceiptID','RefType','Details','RowHash'],
+    'Sites': ['ID','CustomerName','CustomerPhone','SiteName','Address','City','Coordinates','SiteContact','Notes','CreatedBy','CreatedAt'],
+    'Projects': ['ID','SiteID','Title','Type','Status','StartDate','TargetDate','DeliveredDate','ContractValue','PaymentTerms','Engineer','Notes','QuotationID','InvoiceID'],
+    'ProjectDevices': ['ID','ProjectID','Category','ItemID','Serial','Brand','Model','Channel','Location','LensType','Resolution','InstallDate','WarrantyMonths','WarrantyEnd','Status'],
+    'ServiceVisits': ['ID','ProjectID','SiteID','ScheduledDate','VisitType','Technician','Status','CheckInAt','CheckOutAt','Findings','ActionsTaken','PartsUsed','NextVisitDate','CustomerSignature','PhotosJSON'],
+    'MaintenanceContracts': ['ID','SiteID','ProjectID','StartDate','EndDate','VisitFrequency','AnnualValue','VisitsIncluded','VisitsUsed','Status','AutoRenew'],
+    'ProjectMilestones': ['ID','ProjectID','Title','Percent','Amount','DueCondition','InvoiceID','Status']
   };
   const lastCol = Math.max(1, sh.getLastColumn());
   let headers = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || '').trim());

@@ -275,7 +275,7 @@ function attachLogin(){
       } catch(e){}
 
       let sections;
-      const allSecs = ['maintenance', 'pos', 'invoices', 'cameras', 'cashdrawer', 'daily', 'finance', 'inventory', 'barcode', 'audit', 'users', 'settings'];
+      const allSecs = ['maintenance', 'pos', 'invoices', 'cameras', 'cameras_projects', 'cameras_visits', 'cameras_contracts', 'cashdrawer', 'daily', 'finance', 'inventory', 'barcode', 'audit', 'users', 'settings'];
       
       // Use role and permissions strictly from authenticated server response (never local storage)
       const effectiveRole = String(res.role || 'cashier').toLowerCase();

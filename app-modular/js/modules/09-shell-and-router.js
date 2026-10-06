@@ -163,12 +163,15 @@ function canUserAccessSection(sec, user = state.user){
   if(user.role === 'admin') return true;
   if(sec === 'users' || sec === 'audit') return !!user.superuser || !!user.Superuser;
   const secs = Array.isArray(user.sections) ? user.sections : String(user.sections||'').split(',').map(s=>s.trim()).filter(Boolean);
+  if(sec === 'cameras_projects' || sec === 'cameras_visits' || sec === 'cameras_contracts'){
+    if(secs.includes('cameras')) return true;
+  }
   return secs.includes(sec);
 }
 
 function normalizeUserSections(u){
   if(!u) return;
-  const allSections = ['maintenance', 'pos', 'invoices', 'cameras', 'cashdrawer', 'daily', 'finance', 'inventory', 'barcode', 'audit', 'users', 'settings'];
+  const allSections = ['maintenance', 'pos', 'invoices', 'cameras', 'cameras_projects', 'cameras_visits', 'cameras_contracts', 'cashdrawer', 'daily', 'finance', 'inventory', 'barcode', 'audit', 'users', 'settings'];
 
   const role = String(u.role || '').toLowerCase();
   if(role === 'admin' || !!u.superuser || !!u.Superuser){

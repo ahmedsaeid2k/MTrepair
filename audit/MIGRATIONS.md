@@ -23,10 +23,28 @@
 | 2026-10-05 | المرحلة 2 | F6 | `Expenses` | `Time`, `ShiftID` | تسجيل توقيت المصروفات والمسحوبات ومعرف الوردية لحساب التدفقات |
 | 2026-10-05 | المرحلة 2 | F6 | `Accounts` | كود `2105` | إضافة حساب عهدة وأمانات مسؤولي الورديات بدليل الحسابات |
 | 2026-10-06 | المرحلة 2 | F11 | `Payments` | `ClientRef` | إضافة معرف فريد UUID لمعاملات سداد الصيانة لمنع التكرار وضمان عدم الازدواجية بالسيرفر |
+| 2026-10-06 | المرحلة 3 | U1 | `Sites`, `Projects`, `ProjectDevices`, `ServiceVisits`, `MaintenanceContracts`, `ProjectMilestones` | أعمدة الجداول الجديدة بالكامل | إنشاء جداول إدارة مشاريع الكاميرات، المواقع، خريطة قنوات DVR/NVR، زيارات الصيانة، عقود الصيانة الدورية، ودفعات الإنجاز |
 
 ---
 
 ## تفاصيل الترحيلات
+
+### الترحيل 7 [U1] — جداول ومخططات مشاريع كاميرات المراقبة وعقود الصيانة الدورية
+- **التاريخ:** 2026-10-06
+- **الهدف:** توفير بنية تحتية متكاملة لإدارة مواقع ومشاريع كاميرات المراقبة، ربط الكاميرات بقنوات أجهزة التسجيل (DVR/NVR)، توثيق الزيارات الميدانية مع توقيع العميل إلكترونياً، تتبع ضمانات الأجهزة وعقود الصيانة الدورية، وتوجيه إيرادات المشاريع لمحفظة 4103.
+- **الجداول الجديدة المعتمدة في `ALLOWED_HEADERS`:**
+  - `Sites`: `['ID', 'CustomerID', 'CustomerName', 'SiteName', 'Address', 'GPS', 'ContactPerson', 'ContactPhone', 'Notes', 'CreatedAt']`
+  - `Projects`: `['ID', 'SiteID', 'CustomerID', 'CustomerName', 'ProjectName', 'Status', 'StartDate', 'EndDate', 'TotalCost', 'InvoicedTotal', 'PaidTotal', 'WarrantyEnd', 'ScopeOfWork', 'Notes', 'CreatedAt']`
+  - `ProjectDevices`: `['ID', 'ProjectID', 'SiteID', 'DeviceType', 'Brand', 'Model', 'SerialNumber', 'ChannelNo', 'Location', 'Resolution', 'Lens', 'InstallDate', 'WarrantyMonths', 'WarrantyEnd', 'Notes']`
+  - `ServiceVisits`: `['ID', 'ProjectID', 'SiteID', 'CustomerName', 'VisitDate', 'VisitType', 'Technician', 'CheckIn', 'CheckOut', 'Findings', 'ActionsTaken', 'PartsUsedJSON', 'SignatureData', 'NextVisitDate', 'Status', 'Notes']`
+  - `MaintenanceContracts`: `['ID', 'SiteID', 'CustomerID', 'CustomerName', 'ContractNumber', 'StartDate', 'EndDate', 'Frequency', 'VisitsIncluded', 'VisitsUsed', 'TotalValue', 'Status', 'Notes']`
+  - `ProjectMilestones`: `['ID', 'ProjectID', 'MilestoneName', 'Percentage', 'Amount', 'DueDate', 'Status', 'InvoiceID', 'Notes']`
+- **إجراءات الخادم (`ACTION_ROLES`):**
+  - إضافة `saveSite`, `deleteSite`, `saveProject`, `deleteProject`, `saveProjectDevice`, `deleteProjectDevice`, `saveServiceVisit`, `deleteServiceVisit`, `saveMaintenanceContract`, `deleteMaintenanceContract`, `saveProjectMilestone`, `deleteProjectMilestone`.
+- **التوجيه المحاسبي:**
+  - اعتماد مراجع القيود الآلية `Project_Milestone`, `Project_Delivery`, `CCTV_Project` في `AUTOPOST_REFS`.
+  - توجيه إيرادات الكاميرات والمشاريع إلى حساب `4103` ("إيرادات تركيب كاميرات وأنظمة") بدلاً من تداخله مع مصنعية الصيانة `4101` أو مبيعات البضائع `4102`.
+- **آلية الترحيل:** تقوم دالة `ensureHeaders` في خادم Google Apps Script برصد أي صفوف مرسلة لهذه الجداول وتوسيع أعمدة الشيتات تلقائياً.
 
 ### الترحيل 6 [F6] — أعمدة وحسابات مطابقة الدرج والورديات (Cash Drawer & Shift Reconciliations / Z-Report)
 - **التاريخ:** 2026-10-05

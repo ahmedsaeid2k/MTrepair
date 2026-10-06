@@ -1612,7 +1612,11 @@ async function saveQuotationRemote(q){
       if(remainingDebt > 0){
         lines.push({ AccountCode: '1103', AccountName: 'العملاء والمدينون', Debit: remainingDebt, Credit: 0, Notes: `مستحقات آجل مشروع #${String(q.ID).slice(-8)} (${q.ClientName || ''})` });
       }
-      lines.push({ AccountCode: '4101', AccountName: 'إيرادات مشاريع وتوريدات وتركيبات', Debit: 0, Credit: total, Notes: `إيراد تنفيذ مشروع #${String(q.ID).slice(-8)} (${q.ClientName || ''})` });
+      const revAccCode = q.AccountCode || '4103';
+      const revAccName = (typeof getAccountName === 'function') 
+        ? getAccountName(revAccCode, 'إيرادات تركيب كاميرات وأنظمة') 
+        : 'إيرادات تركيب كاميرات وأنظمة';
+      lines.push({ AccountCode: revAccCode, AccountName: revAccName, Debit: 0, Credit: total, Notes: `إيراد تنفيذ مشروع/عرض سعر #${String(q.ID).slice(-8)} (${q.ClientName || ''})` });
 
       recordAutoJournalEntry(
         `إثبات إيراد تسليم مشروع/عرض سعر (#${String(q.ID).slice(-8)} - ${q.ClientName || ''})`,
@@ -1984,12 +1988,23 @@ async function saveInvoiceRemote(inv){
     const taxAmt = Math.max(0, Number(inv.TaxAmount || 0));
     const netRevenue = Math.max(0, Math.round((totalAmt - taxAmt) * 100) / 100);
 
+    const isCctvOrProject = inv.AccountCode === '4103' || 
+                            inv.ReferenceType === 'مشروع كاميرات' || 
+                            inv.ReferenceType === 'عرض سعر' || 
+                            inv.ReferenceType === 'عقد صيانة' ||
+                            inv.ReferenceType === 'مرحلة مشروع' ||
+                            inv.ReferenceType === 'ProjectMilestone';
+    const revCode = isCctvOrProject ? '4103' : (inv.AccountCode || '4102');
+    const revName = (typeof getAccountName === 'function') 
+      ? getAccountName(revCode, isCctvOrProject ? 'إيرادات تركيب كاميرات وأنظمة' : 'إيرادات مبيعات بضائع وقطع غيار')
+      : (isCctvOrProject ? 'إيرادات تركيب كاميرات وأنظمة' : 'إيرادات مبيعات بضائع وقطع غيار');
+
     lines.push({
-      AccountCode: '4102',
-      AccountName: 'إيرادات مبيعات بضائع وقطع غيار',
+      AccountCode: revCode,
+      AccountName: revName,
       Debit: 0,
       Credit: netRevenue,
-      Notes: `صافي إيراد فاتورة مبيعات #${invNum} (${custName})`
+      Notes: `صافي إيراد فاتورة ${isCctvOrProject ? 'مشاريع وأنظمة' : 'مبيعات'} #${invNum} (${custName})`
     });
     if (taxAmt > 0) {
       lines.push({

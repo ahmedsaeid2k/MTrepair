@@ -1290,6 +1290,7 @@ function doPost(e) {
         ShiftID: body.shiftId || body.ShiftID || '',
         ItemsSummary: body.itemsSummary,
         ItemsJSON: body.itemsJson || '',
+        SplitsJSON: body.splitsJson || (body.splits ? JSON.stringify(body.splits) : ''),
         Total: Number(body.total || 0),
         TaxAmount: Number(body.taxAmount || 0),
         PaymentMethod: body.paymentMethod || 'نقدي',
@@ -1304,6 +1305,7 @@ function doPost(e) {
       // Atomic inventory deduction for items in cart
       if (Array.isArray(body.items)) validateArraySize(body.items, 50, 'أصناف البيع');
       if (Array.isArray(body.items) && body.items.length > 0) {
+        const allowNegative = !!body.allowNegativeStock;
         const shInv = getSheet(SHEET_INVENTORY);
         const headers = shInv.getRange(1, 1, 1, shInv.getLastColumn()).getValues()[0];
         const idCol = headers.indexOf('ID');
@@ -1316,13 +1318,35 @@ function doPost(e) {
             if (String(values[i][idCol]) === String(item.itemId)) {
               const currentQty = Number(values[i][qtyCol] || 0);
               const deductQty = Number(item.qty || 0);
-              const newQty = Math.max(0, currentQty - deductQty);
+              const newQty = allowNegative ? (currentQty - deductQty) : Math.max(0, currentQty - deductQty);
               values[i][qtyCol] = newQty;
               shInv.getRange(i + 1, qtyCol + 1).setValue(newQty);
               break;
             }
           }
         }
+      }
+
+      // Update customer ledger debt if remaining balance is unpaid [U11]
+      const remainingDebt = Math.max(0, sale.Total - sale.AmountPaid);
+      if (remainingDebt > 0.005 && sale.CustomerName && sale.CustomerName !== 'عميل زائر') {
+        try {
+          const shCust = getSheet(SHEET_CUSTOMERS);
+          const custHeaders = shCust.getRange(1, 1, 1, shCust.getLastColumn()).getValues()[0];
+          const cNameCol = custHeaders.indexOf('Name');
+          const cDebtCol = custHeaders.indexOf('Debt');
+          if (cNameCol >= 0 && cDebtCol >= 0) {
+            const custVals = shCust.getDataRange().getValues();
+            for (let ci = 1; ci < custVals.length; ci++) {
+              if (String(custVals[ci][cNameCol]).trim().toLowerCase() === String(sale.CustomerName).trim().toLowerCase()) {
+                const curDebt = safeNumber(custVals[ci][cDebtCol], 0);
+                const newDebt = Math.round((curDebt + remainingDebt) * 100) / 100;
+                shCust.getRange(ci + 1, cDebtCol + 1).setValue(newDebt);
+                break;
+              }
+            }
+          }
+        } catch(e) {}
       }
 
       // Record auto journal entry if attached (validated server-side)
@@ -1370,6 +1394,29 @@ function doPost(e) {
           }
           const newPaid = Math.round((curPaid + amount) * 100) / 100;
           sh.getRange(i + 1, paidCol + 1).setValue(newPaid);
+
+          // Decrement customer ledger debt [U11]
+          const cNameCol = headers.indexOf('CustomerName');
+          const saleCustName = cNameCol >= 0 ? String(values[i][cNameCol] || '').trim() : '';
+          if (saleCustName && saleCustName !== 'عميل زائر') {
+            try {
+              const shCust = getSheet(SHEET_CUSTOMERS);
+              const custHeaders = shCust.getRange(1, 1, 1, shCust.getLastColumn()).getValues()[0];
+              const cshNameCol = custHeaders.indexOf('Name');
+              const cshDebtCol = custHeaders.indexOf('Debt');
+              if (cshNameCol >= 0 && cshDebtCol >= 0) {
+                const custVals = shCust.getDataRange().getValues();
+                for (let ci = 1; ci < custVals.length; ci++) {
+                  if (String(custVals[ci][cshNameCol]).trim().toLowerCase() === saleCustName.toLowerCase()) {
+                    const curDebt = safeNumber(custVals[ci][cshDebtCol], 0);
+                    const newDebt = Math.max(0, Math.round((curDebt - amount) * 100) / 100);
+                    shCust.getRange(ci + 1, cshDebtCol + 1).setValue(newDebt);
+                    break;
+                  }
+                }
+              }
+            } catch(e) {}
+          }
 
           // Server-side double-entry journal entry for debt settlement
           try {
@@ -2174,7 +2221,7 @@ function ensureHeaders(sh, obj) {
     'Settings': ['Key','Value'],
     'Payments': ['ID','ReceiptID','ClientRef','Date','Time','ShiftID','Amount','Note','By','PaymentMethod'],
     'Inventory': ['ID','Name','Category','SubCategory','SKU','Barcode','ShelfLocation','Quantity','MinStock','Unit','PurchasePrice','SellPrice','WholesalePrice','WarrantyMonths','CompatibleModels','ImageURL'],
-    'Sales': ['ID','Date','Time','ShiftID','ItemsSummary','ItemsJSON','Total','TaxAmount','PaymentMethod','AmountPaid','ChangeDue','CustomerName','CustomerPhone','By','IsReturned','IsPartiallyReturned','ReturnDetails'],
+    'Sales': ['ID','Date','Time','ShiftID','ItemsSummary','ItemsJSON','SplitsJSON','Total','TaxAmount','PaymentMethod','AmountPaid','ChangeDue','CustomerName','CustomerPhone','By','IsReturned','IsPartiallyReturned','ReturnDetails'],
     'Returns': ['ID','SaleID','ClientRef','CreditNoteNumber','Date','ItemsSummary','RefundAmount','RefundMethod','By'],
     'Quotations': ['ID','Date','ClientName','ClientPhone','ItemsSummary','LaborCost','Total','Status','By'],
     'Services': ['Name','DefaultPrice','Notes'],

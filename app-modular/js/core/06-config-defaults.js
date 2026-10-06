@@ -151,6 +151,7 @@ const DEFAULT_POS_SETTINGS = {
     { id: 'vodafone', name: 'فودافون كاش ومحافظ', iconName: 'phone', enabled: true },
     { id: 'card', name: 'فيزا وبطاقات بنكية', iconName: 'creditCard', enabled: true },
     { id: 'instapay', name: 'إنستاباي InstaPay', iconName: 'refresh', enabled: true },
+    { id: 'split', name: 'دفع مركب (نقدي + شبكة)', iconName: 'refresh', enabled: true },
     { id: 'credit', name: 'آجل / على الحساب', iconName: 'fileText', enabled: true }
   ],
   quickServices: [
@@ -489,7 +490,18 @@ function getKnownWindowsPrinters(){
 async function detectWindowsPrinters(verbose = false){
   let detected = [];
   try {
-    if(typeof window.queryLocalPrinters === 'function'){
+    if(typeof window !== 'undefined' && window.electronAPI && typeof window.electronAPI.getPrinters === 'function'){
+      const printers = await window.electronAPI.getPrinters();
+      if(Array.isArray(printers) && printers.length > 0){
+        detected = printers.map(p => {
+          const pName = p.name || p.displayName || p.deviceName || String(p);
+          const lower = pName.toLowerCase();
+          const category = (lower.includes('barcode') || lower.includes('label') || lower.includes('365') || lower.includes('370') || lower.includes('zebra') || lower.includes('tsc')) ? 'barcode' :
+                           ((lower.includes('pos') || lower.includes('receipt') || lower.includes('808') || lower.includes('80c') || lower.includes('58') || lower.includes('xprinter')) ? 'receipt' : 'laser');
+          return { name: pName, category };
+        });
+      }
+    } else if(typeof window.queryLocalPrinters === 'function'){
       const printers = await window.queryLocalPrinters();
       if(Array.isArray(printers) && printers.length > 0){
         detected = printers.map(p => {
@@ -540,6 +552,7 @@ const DEFAULT_PRINTERS_SETTINGS = {
     paperSize: '80mm',
     fontScale: 'compact', // 'compact' (مدمج نصف الحجم موفر للورق - موصى به), 'normal', 'large'
     autoPrint: true,
+    silentPrint: true, // طباعة حرارية صامتة ومباشرة بدون نوافذ منبثقة
     cutterFeedMm: 4,
     showLogo: true,
     showCashier: true,

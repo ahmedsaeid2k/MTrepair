@@ -355,6 +355,14 @@ function renderPosSell(main){
   const currentPaid = ps.amountPaid !== '' ? Number(ps.amountPaid) : grandTotal;
   const changeDue = Math.max(0, currentPaid - grandTotal);
 
+  let splitCashVal = ps.splitCash != null ? Number(ps.splitCash) : round2(grandTotal / 2);
+  let splitCardVal = ps.splitCard != null ? Number(ps.splitCard) : round2(grandTotal - splitCashVal);
+  if (ps.splitCash == null && ps.splitCard == null) {
+    ps.splitCash = splitCashVal;
+    ps.splitCard = splitCardVal;
+  }
+  const splitDiff = round2((splitCashVal + splitCardVal) - grandTotal);
+
   // Discount & Pricing Controls [F10]
   const maxPct = Number(posSettings.maxDiscountPercent != null ? posSettings.maxDiscountPercent : 10);
   const maxAmt = Number(posSettings.maxDiscountAmount || 0);
@@ -504,7 +512,10 @@ function renderPosSell(main){
             </select>
           </div>
           <div class="field" style="margin:0;">
-            <input id="posCustName" placeholder="اسم العميل" value="${escapeHtml(ps.customerName||'عميل زائر')}" style="padding:4px 8px;font-size:11.5px;">
+            <input id="posCustName" placeholder="اسم العميل" value="${escapeHtml(ps.customerName||'عميل زائر')}" style="padding:4px 8px;font-size:11.5px;" list="posRegisteredCustDatalist">
+            <datalist id="posRegisteredCustDatalist">
+              ${(state.customers || []).map(c => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.phone ? c.name + ' (' + c.phone + ')' : c.name)}</option>`).join('')}
+            </datalist>
           </div>
           <div class="field" style="margin:0;">
             <input id="posCustPhone" placeholder="رقم الهاتف" value="${escapeHtml(ps.customerPhone||'')}" style="padding:4px 8px;font-size:11.5px;" class="mono">
@@ -609,27 +620,65 @@ function renderPosSell(main){
           </div>
         </div>
 
-        <!-- Cash Calculator (Amount Paid & Change) -->
-        <div class="pos-change-box">
-          <div style="flex:1;">
-            <div style="font-size:10.5px;color:var(--ink-secondary);margin-bottom:1px;">المبلغ المدفوع (ج.م):</div>
-            <input type="number" id="posAmountPaidInput" value="${ps.amountPaid!==''?ps.amountPaid:grandTotal}" class="mono font-bold" style="width:85px;padding:3px 6px;font-size:12.5px;">
-          </div>
-          <div style="text-align:left;">
-            <div style="font-size:10.5px;color:var(--ink-secondary);margin-bottom:1px;">الباقي للعميل:</div>
-            <div class="mono font-bold" style="font-size:15px;color:${changeDue>0?'var(--green-text)':'var(--ink)'};">
-              ${changeDue.toLocaleString()} ج.م
+        <!-- Cash Calculator or Split Payment Box -->
+        ${ps.paymentMethod === 'split' ? `
+          <div class="pos-split-box" style="background:var(--surface-sunken, #f8fafc);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:8px;">
+            <div style="font-size:11px;font-weight:800;color:var(--primary);margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
+              <span>تفصيل الدفع المركب (نقدي + شبكة):</span>
+              <span class="mono font-bold" style="font-size:11px;">إجمالي: ${grandTotal.toLocaleString()} ج.م</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px;">
+              <div>
+                <label style="font-size:10px;font-weight:700;display:block;margin-bottom:2px;">المدفوع نقداً (كاش):</label>
+                <input type="number" id="posSplitCashInput" value="${splitCashVal}" class="mono font-bold" style="width:100%;padding:4px 6px;font-size:12px;">
+              </div>
+              <div>
+                <label style="font-size:10px;font-weight:700;display:block;margin-bottom:2px;">المدفوع إلكترونياً (شبكة):</label>
+                <input type="number" id="posSplitCardInput" value="${splitCardVal}" class="mono font-bold" style="width:100%;padding:4px 6px;font-size:12px;">
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
+              <label style="font-size:10px;font-weight:700;white-space:nowrap;">نوع الدفع الإلكتروني:</label>
+              <select id="posSplitCardTypeSelect" style="flex:1;padding:3px 6px;font-size:11px;">
+                <option value="card" ${ps.splitCardType==='card'?'selected':''}>فيزا وبطاقات بنكية</option>
+                <option value="vodafone" ${ps.splitCardType==='vodafone'?'selected':''}>فودافون كاش ومحافظ</option>
+                <option value="instapay" ${ps.splitCardType==='instapay'?'selected':''}>إنستاباي InstaPay</option>
+              </select>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;border-top:1px dashed var(--line);padding-top:4px;margin-top:4px;">
+              <span>مجموع المدفوع: <b class="mono">${(splitCashVal + splitCardVal).toLocaleString()} ج.م</b></span>
+              ${splitDiff < -0.005 ? `
+                <span style="color:var(--orange-text);font-weight:700;">المتبقي آجل: <b class="mono">${Math.abs(splitDiff).toLocaleString()} ج.م</b></span>
+              ` : (splitDiff > 0.005 ? `
+                <span style="color:var(--green-text);font-weight:700;">الباقي للعميل: <b class="mono">${splitDiff.toLocaleString()} ج.م</b></span>
+              ` : `
+                <span style="color:var(--green-text);font-weight:700;">مدفوع بالكامل متوازن ✓</span>
+              `)}
             </div>
           </div>
-        </div>
+        ` : `
+          <!-- Cash Calculator (Amount Paid & Change) -->
+          <div class="pos-change-box">
+            <div style="flex:1;">
+              <div style="font-size:10.5px;color:var(--ink-secondary);margin-bottom:1px;">المبلغ المدفوع (ج.م):</div>
+              <input type="number" id="posAmountPaidInput" value="${ps.amountPaid!==''?ps.amountPaid:grandTotal}" class="mono font-bold" style="width:85px;padding:3px 6px;font-size:12.5px;">
+            </div>
+            <div style="text-align:left;">
+              <div style="font-size:10.5px;color:var(--ink-secondary);margin-bottom:1px;">الباقي للعميل:</div>
+              <div class="mono font-bold" style="font-size:15px;color:${changeDue>0?'var(--green-text)':'var(--ink)'};">
+                ${changeDue.toLocaleString()} ج.م
+              </div>
+            </div>
+          </div>
 
-        <!-- Quick Cash Rounding Presets -->
-        <div class="pos-presets-row">
-          <button class="btn btn-ghost btn-xs pos-cash-preset-chip" data-cashamt="${grandTotal}" style="padding:1px 6px;font-size:10px;">تمام (${grandTotal})</button>
-          ${[50, 100, 200, 500, 1000].filter(c => c >= grandTotal && c !== grandTotal).slice(0, 3).map(amt => `
-            <button class="btn btn-ghost btn-xs pos-cash-preset-chip" data-cashamt="${amt}" style="padding:1px 6px;font-size:10px;">${amt} ج.م</button>
-          `).join('')}
-        </div>
+          <!-- Quick Cash Rounding Presets -->
+          <div class="pos-presets-row">
+            <button class="btn btn-ghost btn-xs pos-cash-preset-chip" data-cashamt="${grandTotal}" style="padding:1px 6px;font-size:10px;">تمام (${grandTotal})</button>
+            ${[50, 100, 200, 500, 1000].filter(c => c >= grandTotal && c !== grandTotal).slice(0, 3).map(amt => `
+              <button class="btn btn-ghost btn-xs pos-cash-preset-chip" data-cashamt="${amt}" style="padding:1px 6px;font-size:10px;">${amt} ج.م</button>
+            `).join('')}
+          </div>
+        `}
 
         <!-- Final Checkout Buttons -->
         <div class="pos-checkout-actions">
@@ -918,14 +967,29 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
   const cTitleSel = document.getElementById('posCustTitle');
   if(cTitleSel) cTitleSel.onchange = (e)=>{ ps.customerTitle = extractCustomerTitle(e.target.value); };
   const cNameInp = document.getElementById('posCustName');
-  if(cNameInp) cNameInp.oninput = (e)=>{
-    ps.customerName = e.target.value;
-    const parsed = parseCustomerTitleAndName(e.target.value);
-    if(parsed.title && (!ps.customerTitle || ps.customerTitle === '')){
-      ps.customerTitle = parsed.title;
-      if(cTitleSel) cTitleSel.value = parsed.title;
-    }
-  };
+  if(cNameInp) {
+    const handleCustSelect = (val)=>{
+      ps.customerName = val;
+      const parsed = parseCustomerTitleAndName(val);
+      if(parsed.title && (!ps.customerTitle || ps.customerTitle === '')){
+        ps.customerTitle = parsed.title;
+        if(cTitleSel) cTitleSel.value = parsed.title;
+      }
+      const matchedCust = (state.customers||[]).find(c => (c.name||'').trim().toLowerCase() === val.trim().toLowerCase());
+      if(matchedCust){
+        if(matchedCust.phone && !ps.customerPhone){
+          ps.customerPhone = matchedCust.phone;
+          if(cPhoneInp) cPhoneInp.value = matchedCust.phone;
+        }
+        if(matchedCust.title && !ps.customerTitle){
+          ps.customerTitle = matchedCust.title;
+          if(cTitleSel) cTitleSel.value = matchedCust.title;
+        }
+      }
+    };
+    cNameInp.oninput = (e)=>handleCustSelect(e.target.value);
+    cNameInp.onchange = (e)=>handleCustSelect(e.target.value);
+  }
   const cPhoneInp = document.getElementById('posCustPhone');
   if(cPhoneInp) cPhoneInp.oninput = (e)=>{ ps.customerPhone = e.target.value; };
 
@@ -985,6 +1049,29 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
       renderPosSell(main);
     };
   });
+
+  // Split Payment Inputs [U11]
+  const splitCashInp = document.getElementById('posSplitCashInput');
+  if(splitCashInp){
+    splitCashInp.oninput = (e)=>{
+      ps.splitCash = e.target.value === '' ? 0 : Number(e.target.value);
+      renderPosSell(main);
+    };
+  }
+  const splitCardInp = document.getElementById('posSplitCardInput');
+  if(splitCardInp){
+    splitCardInp.oninput = (e)=>{
+      ps.splitCard = e.target.value === '' ? 0 : Number(e.target.value);
+      renderPosSell(main);
+    };
+  }
+  const splitCardTypeSel = document.getElementById('posSplitCardTypeSelect');
+  if(splitCardTypeSel){
+    splitCardTypeSel.onchange = (e)=>{
+      ps.splitCardType = e.target.value;
+      renderPosSell(main);
+    };
+  }
 
   // Top Buttons
   const clearTopBtn = document.getElementById('posClearCartTopBtn');
@@ -1056,12 +1143,15 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
     }
     if(!cart.length){ showToast('السلة فارغة', 'error'); return; }
 
-    // Pre-flight inventory stock check
+    const posSettings = getPosSettings();
+    const allowNegative = !!(posSettings.allowNegativeStock || (state.settings && state.settings.allowNegativeStock));
+
+    // Pre-flight inventory stock check [U11]
     for(const c of cart){
       if(c.itemId && !String(c.itemId).startsWith('srv_')){
         const it = (state.inventory||[]).find(x => String(x.ID||x.id) === String(c.itemId));
         const stock = it ? Number(it.Quantity || 0) : 0;
-        if(Number(c.qty || 1) > stock){
+        if(!allowNegative && Number(c.qty || 1) > stock){
           showToast(`عفواً، الكمية المطلوبة من (${c.name}) غير متوفرة. الرصيد الحالي: ${stock}`, 'error');
           return;
         }
@@ -1071,8 +1161,63 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
     const customerTitle = (ps.customerTitle || '').trim();
     const customerName = (ps.customerName || 'عميل زائر').trim();
     const customerPhone = (ps.customerPhone || '').trim();
-    const payMethodObj = (posSettings.paymentMethods||[]).find(p => p.id === ps.paymentMethod) || { name: 'نقدي' };
-    const payMethodName = payMethodObj.name || 'نقدي';
+
+    // Payment calculations and Split Payment handling [U11]
+    let paidAmount = 0;
+    let finalChangeDue = 0;
+    let splits = [];
+    let payMethodName = '';
+
+    if (ps.paymentMethod === 'split') {
+      const splitCash = Number(ps.splitCash != null ? ps.splitCash : 0);
+      const splitCard = Number(ps.splitCard != null ? ps.splitCard : 0);
+      const totalSplitPaid = splitCash + splitCard;
+      const cardType = ps.splitCardType || 'card';
+      const cardName = cardType === 'vodafone' ? 'فودافون كاش ومحافظ' : (cardType === 'instapay' ? 'إنستاباي InstaPay' : 'فيزا وبطاقات بنكية');
+
+      payMethodName = 'دفع مركب (نقدي + شبكة)';
+      paidAmount = totalSplitPaid;
+      if (totalSplitPaid > grandTotal) {
+        finalChangeDue = round2(totalSplitPaid - grandTotal);
+      }
+
+      if (splitCash > 0) splits.push({ methodId: 'cash', methodName: 'نقدي', amount: splitCash });
+      if (splitCard > 0) splits.push({ methodId: cardType, methodName: cardName, amount: splitCard });
+
+      const diff = round2(totalSplitPaid - grandTotal);
+      if (diff < -0.005) {
+        const remainingDebt = Math.abs(diff);
+        splits.push({ methodId: 'credit', methodName: 'آجل / على الحساب', amount: remainingDebt });
+      }
+    } else {
+      const payMethodObj = (posSettings.paymentMethods||[]).find(p => p.id === ps.paymentMethod) || { name: 'نقدي' };
+      payMethodName = payMethodObj.name || 'نقدي';
+      if (ps.paymentMethod === 'credit') {
+        paidAmount = 0;
+        finalChangeDue = 0;
+        splits.push({ methodId: 'credit', methodName: 'آجل / على الحساب', amount: grandTotal });
+      } else {
+        paidAmount = ps.amountPaid !== '' ? Number(ps.amountPaid) : grandTotal;
+        finalChangeDue = Math.max(0, round2(paidAmount - grandTotal));
+        const actualAppliedPaid = Math.min(grandTotal, paidAmount);
+        splits.push({ methodId: ps.paymentMethod, methodName: payMethodName, amount: actualAppliedPaid });
+        if (actualAppliedPaid < grandTotal - 0.005) {
+          splits.push({ methodId: 'credit', methodName: 'آجل / على الحساب', amount: round2(grandTotal - actualAppliedPaid) });
+        }
+      }
+    }
+
+    // Require registered customer for credit sales [U11]
+    const remainingDebt = Math.max(0, round2(grandTotal - paidAmount));
+    const isCreditSale = ps.paymentMethod === 'credit' || remainingDebt > 0.005;
+
+    if (isCreditSale) {
+      const isRegistered = customerName && customerName !== 'عميل زائر' && (state.customers || []).some(c => (c.name || '').trim().toLowerCase() === customerName.toLowerCase());
+      if (!isRegistered) {
+        showToast('البيع الآجل يتطلب اختيار عميل مسجَّل حتى يمكن تحصيل الدين', 'error');
+        return;
+      }
+    }
 
     const btn = document.getElementById(isTaxInvoice ? 'completeSaleWithTaxInvBtn' : 'completeSaleBtn');
     if(btn){ btn.disabled = true; btn.textContent = 'جارٍ تسجيل العملية...'; }
@@ -1142,11 +1287,18 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
         }
       }
 
-      // Update local inventory quantities immediately
+      // Update local inventory quantities immediately (respecting allowNegativeStock) [U11]
       for(const c of cartSnapshot){
         if(c.itemId && !String(c.itemId).startsWith('srv_')){
           const it = (state.inventory||[]).find(x => x.ID === c.itemId);
-          if(it) it.Quantity = Math.max(0, Number(it.Quantity||0) - Number(c.qty||1));
+          if(it) {
+            const currentQ = Number(it.Quantity || 0);
+            const deductQ = Number(c.qty || 1);
+            it.Quantity = allowNegative ? (currentQ - deductQ) : Math.max(0, currentQ - deductQ);
+            if (allowNegative && (currentQ - deductQ < 0)) {
+              recordAuditLog('تجاوز رصيد مخزون سالب', 'المبيعات', `تم بيع صنف (${it.Name}) برصيد سالب. الرصيد بعد البيع: ${it.Quantity}`, customerName);
+            }
+          }
         }
       }
       setCache('inventory', state.inventory);
@@ -1165,9 +1317,8 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
         purchasePrice: c.purchasePrice
       })));
       
-      const paidAmount = ps.amountPaid !== '' ? Number(ps.amountPaid) : grandTotal;
       const fullCustName = customerTitle ? `${customerTitle} / ${customerName}` : customerName;
-      const saleRes = await saveSaleRemote(itemsSummary, itemsJson, grandTotal, fullCustName, customerPhone, payMethodName, paidAmount, cartSnapshot, taxAmount, changeDue);
+      const saleRes = await saveSaleRemote(itemsSummary, itemsJson, grandTotal, fullCustName, customerPhone, payMethodName, paidAmount, cartSnapshot, taxAmount, finalChangeDue, splits, allowNegative);
       
       showToast('تمت عملية البيع بنجاح', 'success');
 
@@ -1183,12 +1334,15 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
         PaymentMethod: payMethodName,
         CustomerTitle: customerTitle,
         CustomerName: customerName,
-        CustomerPhone: customerPhone
+        CustomerPhone: customerPhone,
+        SplitsJSON: splits.length > 0 ? JSON.stringify(splits) : ''
       };
 
       // Reset Cart and State
       state.cart = [];
       state.posState.amountPaid = '';
+      state.posState.splitCash = null;
+      state.posState.splitCard = null;
       state.posState.discountValue = 0;
       state.posState.searchQuery = '';
       renderPosSell(main);
@@ -1197,7 +1351,7 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
         convertSaleToInvoice(saleData.ID);
       } else {
         if(posSettings.autoPrintReceipt !== false){
-          openSalePrint(saleData, cartSnapshot, { subtotal, discountAmount, taxAmount, grandTotal, paidAmount, changeDue, payMethodName });
+          openSalePrint(saleData, cartSnapshot, { subtotal, discountAmount, taxAmount, grandTotal, paidAmount, changeDue: finalChangeDue, payMethodName, splits });
         }
       }
     } catch(e) {
@@ -1217,17 +1371,24 @@ async function addItemToCart(itemId, qty, main){
   const item = (state.inventory||[]).find(x => String(x.ID||x.id) === String(itemId));
   if(!item) return;
 
+  const posSettings = getPosSettings();
+  const allowNegative = !!(posSettings.allowNegativeStock || (state.settings && state.settings.allowNegativeStock));
   const currentStock = Number(item.Quantity || 0);
-  if(currentStock <= 0){
+
+  if(!allowNegative && currentStock <= 0){
     showToast(`عفواً، صنف (${item.Name || item.name}) غير متوفر بالمخزن`, 'error');
     return;
   }
 
   const existing = state.cart.find(c => String(c.itemId) === String(itemId));
   const currentCartQty = existing ? Number(existing.qty || 0) : 0;
-  if(currentCartQty + qty > currentStock){
+  if(!allowNegative && currentCartQty + qty > currentStock){
     showToast(`الكمية المطلوبة تتجاوز الرصيد المتوفر (${currentStock})`, 'error');
     return;
+  }
+
+  if(allowNegative && currentStock <= 0){
+    showToast(`تنبيه: بيع صنف برصيد نافد/سالب مسموح (${item.Name || item.name})`, 'warning', 2500);
   }
 
   if(existing){
@@ -1486,6 +1647,17 @@ function openSalePrint(sale, cartItems, meta={}){
           <span>طريقة الدفع:</span>
           <span><b>${escapeHtml(payMethod)}</b></span>
         </div>
+        ${(Array.isArray(meta.splits) && meta.splits.length > 1) ? `
+          <div style="font-size:${szSub};margin:2px 0;padding:2px 4px;background:#f5f5f5;border-radius:3px;border:1px dashed #ccc;">
+            <div style="font-weight:900;margin-bottom:1px;font-size:10px;">تفاصيل الدفع:</div>
+            ${meta.splits.map(s => `
+              <div style="display:flex;justify-content:space-between;font-size:9.5px;">
+                <span>• ${escapeHtml(s.methodName || s.methodId)}:</span>
+                <span class="mono font-bold">${Number(s.amount || 0).toLocaleString()} ج.م</span>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
         <div style="display:flex;justify-content:space-between;margin-bottom:1.5px;font-size:${szSub};">
           <span>المبلغ المدفوع:</span>
           <span class="mono font-bold">${paidAmt.toLocaleString()} ج.م</span>
@@ -1545,10 +1717,33 @@ function openSalePrint(sale, cartItems, meta={}){
   };
   window.addEventListener('afterprint', cleanupReceipt);
 
-  setTimeout(()=>{
-    window.print();
-    setTimeout(cleanupReceipt, 800);
-  }, 120);
+  const shouldSilent = rPrn.silentPrint !== false && typeof window !== 'undefined' && window.electronAPI && typeof window.electronAPI.printSilent === 'function';
+
+  if (shouldSilent) {
+    setTimeout(async () => {
+      try {
+        const prnName = rPrn.name || rPrn.printerName || '';
+        const res = await window.electronAPI.printSilent({
+          deviceName: prnName,
+          copies: Number(rPrn.copies || 1)
+        });
+        if (res && !res.success) {
+          console.warn('[openSalePrint] printSilent failed, falling back to window.print():', res.error);
+          window.print();
+        }
+      } catch(e) {
+        console.warn('[openSalePrint] printSilent error, falling back to window.print():', e);
+        window.print();
+      } finally {
+        setTimeout(cleanupReceipt, 600);
+      }
+    }, 120);
+  } else {
+    setTimeout(()=>{
+      window.print();
+      setTimeout(cleanupReceipt, 800);
+    }, 120);
+  }
 }
 
 function convertSaleToInvoice(saleId){

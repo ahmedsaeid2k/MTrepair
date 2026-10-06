@@ -180,6 +180,13 @@
   - إضافة حساب `3104` باسم "أرصدة افتتاحية معلقة وتسوية البداية" إلى شجرة الحسابات الافتراضية `DEFAULT_ACCOUNTS` تحت حقوق الملكية (`31`).
   - تصفير عمود `Balance` المباشر في الحسابات عند ترحيل القيد الافتتاحي لمنع الازدواج وتوحيد مرجعية الدفتر العام.
 
+### الترحيل 13 [U11] — إضافة عمود `SplitsJSON` لورقة `Sales` لدعم الدفع المركب
+- **التاريخ:** 2026-10-06
+- **الهدف:** تمكين حفظ تفاصيل الدفع المركب (نقدي + شبكة / بطاقات إلكترونية / آجل) في ورقة المبيعات وترحيل قيود محاسبية متعددة الأطراف متوازنة لكل وسيلة دفع، مع تحديث رصيد مديونية العميل.
+- **التغيير في `ALLOWED_HEADERS['Sales']`:**
+  - القديم: `['ID','Date','Time','ShiftID','ItemsSummary','ItemsJSON','Total','TaxAmount','PaymentMethod','AmountPaid','ChangeDue','CustomerName','CustomerPhone','By','IsReturned','IsPartiallyReturned','ReturnDetails']`
+  - الجديد: `['ID','Date','Time','ShiftID','ItemsSummary','ItemsJSON','SplitsJSON','Total','TaxAmount','PaymentMethod','AmountPaid','ChangeDue','CustomerName','CustomerPhone','By','IsReturned','IsPartiallyReturned','ReturnDetails']`
+- **آلية الترحيل:** تقوم دالة `ensureHeaders` بإضافة عمود `SplitsJSON` تلقائياً لورقة `Sales` عند أول عملية بيع، مع الحفاظ على التوافق الكامل مع العمليات الفردية السابقة.
 ### الترحيل 0 — خط الأساس (Baseline)
 - **التاريخ:** 2026-10-05
 - **الهدف:** توثيق المخطط الحالي قبل أي تعديلات.

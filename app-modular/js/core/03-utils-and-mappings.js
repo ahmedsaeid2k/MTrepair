@@ -1539,12 +1539,13 @@ async function loadSales(){
   setCache('sales', rows);
   return rows;
 }
-async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, customerPhone, paymentMethod, amountPaid, itemsList = [], taxAmount = 0, changeDue = null){
+async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, customerPhone, paymentMethod, amountPaid, itemsList = [], taxAmount = 0, changeDue = null, splits = [], allowNegativeStock = false){
   const now = new Date();
   const dateStr = (typeof localDateStr === 'function') ? localDateStr() : now.toISOString().slice(0,10);
   const timeStr = (typeof localTimeStr === 'function') ? localTimeStr() : now.toTimeString().slice(0, 8);
   const finalPaid = amountPaid != null ? Number(amountPaid) : Number(total || 0);
   const finalChangeDue = changeDue != null ? Number(changeDue) : Math.max(0, round2(finalPaid - Number(total || 0)));
+  const splitsJson = (Array.isArray(splits) && splits.length > 0) ? JSON.stringify(splits) : '';
 
   const sale = {
     ID: 'sale_' + Date.now(),
@@ -1552,6 +1553,7 @@ async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, cust
     Time: timeStr,
     ItemsSummary: itemsSummary,
     ItemsJSON: itemsJson||'',
+    SplitsJSON: splitsJson,
     Total: Number(total||0),
     TaxAmount: Math.max(0, Number(taxAmount||0)),
     PaymentMethod: paymentMethod||'نقدي',
@@ -1606,48 +1608,76 @@ async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, cust
     recordAuditLog('تحذير تكلفة المخزون', 'المخزن', `أصناف مباعة بدون سعر تكلفة مسجل: (${zeroCostItems.join('، ')}) في فاتورة #${sale.ID} - يرجى مراجعة وتحديث أسعار التكلفة بالمخزن`, sale.ID);
   }
 
-  // Payment account routing
-  const pLow = String(paymentMethod || '').toLowerCase();
-  const isBankOrWallet = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('إنستاباي') || pLow.includes('instapay') || pLow.includes('محفظ') || pLow.includes('فودافون') || pLow.includes('vodafone');
-  const isCredit = pLow.includes('آجل') || pLow.includes('اجل');
-  const debitAccCode = isCredit ? '1103' : (isBankOrWallet ? '1102' : '1101');
-  const debitAccName = isCredit ? 'العملاء والمدينون' : (isBankOrWallet ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)');
-
   // F3: Dual Journal Entry: 1) Cash & Net Revenue + VAT  2) COGS & Inventory Asset
   const taxAmt = Math.max(0, Number(taxAmount || 0));
   const netRevenue = Math.max(0, Math.round((Number(total) - taxAmt) * 100) / 100);
-
-  // Clamped Paid vs Credit routing [F11-b]
   const numTotal = Number(total || 0);
   const paidClamped = Math.min(numTotal, Math.max(0, round2(finalPaid - finalChangeDue)));
   const remainingCredit = Math.max(0, round2(numTotal - paidClamped));
 
-  const journalLines = [];
-  if (paidClamped > 0 && !isCredit) {
-    journalLines.push({
-      AccountCode: debitAccCode,
-      AccountName: debitAccName,
-      Debit: paidClamped,
-      Credit: 0,
-      Notes: `مقبوضات مبيعات [${paymentMethod || 'نقدي'}]`
-    });
+  // Update customer debt if credit remains [U11]
+  if (remainingCredit > 0.005 && customerName && customerName !== 'عميل زائر') {
+    const cust = (state.customers || []).find(c => (c.name || '').trim().toLowerCase() === customerName.trim().toLowerCase());
+    if (cust) {
+      cust.Debt = round2(Number(cust.Debt || 0) + remainingCredit);
+      setCache('customers', state.customers);
+    }
   }
-  if (isCredit) {
-    journalLines.push({
-      AccountCode: '1103',
-      AccountName: 'العملاء والمدينون',
-      Debit: numTotal,
-      Credit: 0,
-      Notes: `آجل مبيعات POS للعميل (${customerName || 'عميل'})`
+
+  const journalLines = [];
+
+  if (Array.isArray(splits) && splits.length > 0) {
+    // Multi-payment split routing [U11]
+    splits.forEach(s => {
+      const sAmt = Number(s.amount || 0);
+      if (sAmt <= 0) return;
+      const mId = String(s.methodId || '').toLowerCase();
+      const isCr = mId === 'credit' || mId.includes('آجل') || mId.includes('اجل');
+      const isBk = mId === 'card' || mId === 'vodafone' || mId === 'instapay' || mId.includes('فيزا') || mId.includes('محفظ') || mId.includes('بنك');
+      const accCode = isCr ? '1103' : (isBk ? '1102' : '1101');
+      const accName = isCr ? 'العملاء والمدينون' : (isBk ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)');
+      journalLines.push({
+        AccountCode: accCode,
+        AccountName: accName,
+        Debit: sAmt,
+        Credit: 0,
+        Notes: `مقبوضات مبيعات [${s.methodName || s.methodId || 'نقدي'}]`
+      });
     });
-  } else if (remainingCredit > 0) {
-    journalLines.push({
-      AccountCode: '1103',
-      AccountName: 'العملاء والمدينون',
-      Debit: remainingCredit,
-      Credit: 0,
-      Notes: `متبقي آجل مبيعات POS للعميل (${customerName || 'عميل'})`
-    });
+  } else {
+    // Single payment method routing
+    const pLow = String(paymentMethod || '').toLowerCase();
+    const isBankOrWallet = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('إنستاباي') || pLow.includes('instapay') || pLow.includes('محفظ') || pLow.includes('فودافون') || pLow.includes('vodafone');
+    const isCredit = pLow.includes('آجل') || pLow.includes('اجل');
+    const debitAccCode = isCredit ? '1103' : (isBankOrWallet ? '1102' : '1101');
+    const debitAccName = isCredit ? 'العملاء والمدينون' : (isBankOrWallet ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)');
+
+    if (paidClamped > 0 && !isCredit) {
+      journalLines.push({
+        AccountCode: debitAccCode,
+        AccountName: debitAccName,
+        Debit: paidClamped,
+        Credit: 0,
+        Notes: `مقبوضات مبيعات [${paymentMethod || 'نقدي'}]`
+      });
+    }
+    if (isCredit) {
+      journalLines.push({
+        AccountCode: '1103',
+        AccountName: 'العملاء والمدينون',
+        Debit: numTotal,
+        Credit: 0,
+        Notes: `آجل مبيعات POS للعميل (${customerName || 'عميل'})`
+      });
+    } else if (remainingCredit > 0) {
+      journalLines.push({
+        AccountCode: '1103',
+        AccountName: 'العملاء والمدينون',
+        Debit: remainingCredit,
+        Credit: 0,
+        Notes: `متبقي آجل مبيعات POS للعميل (${customerName || 'عميل'})`
+      });
+    }
   }
 
   journalLines.push({
@@ -1695,6 +1725,9 @@ async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, cust
     id: sale.ID,
     itemsSummary,
     itemsJson,
+    splits,
+    splitsJson: sale.SplitsJSON,
+    allowNegativeStock: !!allowNegativeStock,
     total,
     taxAmount: sale.TaxAmount,
     customerName,

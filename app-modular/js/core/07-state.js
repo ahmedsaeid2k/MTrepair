@@ -257,3 +257,21 @@ function nextInvoiceNumber(){
   return prefix + String(maxSeq + 1).padStart(4, '0');
 }
 
+function nextCreditNoteNumber(){
+  const list = state.invoices || [];
+  const y = new Date().getFullYear();
+  const prefix = 'CN-' + y + '-';
+  let maxSeq = 0;
+  for(const inv of list){
+    const num = String(inv.InvoiceNumber || inv.invoiceNumber || inv.Number || inv.number || '');
+    if(num.startsWith(prefix)){
+      const part = parseInt(num.slice(prefix.length), 10);
+      if(!isNaN(part) && part > maxSeq){
+        maxSeq = part;
+      }
+    }
+  }
+  return prefix + String(maxSeq + 1).padStart(4, '0');
+}
+
+

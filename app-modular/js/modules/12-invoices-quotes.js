@@ -374,24 +374,64 @@ function getUnifiedDailyTransactions(){
   // 5. Maintenance Refunds (Outflow)
   (state.receipts || []).forEach(r => {
     if(Number(r.refunded || 0) > 0){
+      const custName = r.customer ? (r.customer.name || '') : (r.CustomerName || '');
+      const rRefunds = (Array.isArray(r.refunds) && r.refunds.length > 0) ? r.refunds : [{
+        amount: Number(r.refunded),
+        method: r.refundMethod || 'نقدي (كاش)',
+        reason: r.refundReason || 'مبالغ مستردة',
+        date: cleanDate(r.refundDate || r.updatedAt || r.date) || new Date().toISOString().slice(0,10),
+        time: r.refundTime || '',
+        by: r.updatedBy || r.createdBy || 'نظام'
+      }];
+
+      rRefunds.forEach((ref, idx) => {
+        transactions.push({
+          id: 'ref_' + (r.id || r.receiptNumber) + '_' + idx,
+          date: cleanDate(ref.date) || cleanDate(r.updatedAt || r.date) || new Date().toISOString().slice(0,10),
+          rawTime: ref.time || '',
+          type: 'out',
+          sourceType: 'refund',
+          sourceIcon: getSvgIcon('arrowLeft', 13),
+          accountCode: '4101',
+          accountName: 'مردودات خدمات صيانة وتصليح',
+          accountTag: '4101 • استرداد صيانة',
+          category: 'استرداد صيانة',
+          title: `استرداد مبالغ صيانة للعميل: ${custName}`,
+          reference: `إيصال #${r.receiptNumber || r.id}`,
+          in: 0,
+          out: Number(ref.amount || 0),
+          by: ref.by || r.updatedBy || r.createdBy || 'نظام',
+          method: ref.method || 'نقدي (كاش)',
+          notes: ref.reason || 'مبالغ مستردة',
+          canDelete: false
+        });
+      });
+    }
+  });
+
+  // 5b. POS Sales Returns (Outflow) from state.returns [F9]
+  (state.returns || []).forEach(ret => {
+    const amt = Number(ret.RefundAmount || 0);
+    if(amt > 0){
+      const rMethod = ret.RefundMethod || 'نقدي';
       transactions.push({
-        id: 'ref_' + r.id,
-        date: cleanDate(r.updatedAt || r.date) || new Date().toISOString().slice(0,10),
-        rawTime: '',
+        id: 'ret_' + (ret.ID || ret.SaleID),
+        date: cleanDate(ret.Date) || new Date().toISOString().slice(0,10),
+        rawTime: ret.Time || '',
         type: 'out',
-        sourceType: 'refund',
+        sourceType: 'pos_return',
         sourceIcon: getSvgIcon('arrowLeft', 13),
-        accountCode: '4101',
-        accountName: 'مردودات خدمات صيانة وتصليح',
-        accountTag: '4101 • استرداد صيانة',
-        category: 'استرداد صيانة',
-        title: `استرداد مبالغ صيانة للعميل: ${r.customer.name}`,
-        reference: `إيصال #${r.receiptNumber}`,
+        accountCode: '4102',
+        accountName: 'مردودات ومسموحات مبيعات الأجهزة والإكسسوار',
+        accountTag: '4102 • مرتجع مبيعات',
+        category: 'مرتجع مبيعات POS',
+        title: `مرتجع مبيعات POS: ${ret.CustomerName || 'عميل زائر'} (${ret.ItemsSummary || ''})`,
+        reference: ret.CreditNoteNumber || `RET-${String(ret.SaleID||'').slice(-8)}`,
         in: 0,
-        out: Number(r.refunded),
-        by: r.updatedBy || r.createdBy || 'نظام',
-        method: 'نقدي (كاش)',
-        notes: 'مبالغ مستردة',
+        out: amt,
+        by: ret.By || 'كاشير',
+        method: rMethod,
+        notes: `إشعار دائن ${ret.CreditNoteNumber || ''} - استرداد عبر ${rMethod}`,
         canDelete: false
       });
     }
@@ -404,6 +444,16 @@ function getUnifiedDailyTransactions(){
     const isPetty = ex.Type === 'petty' || ex.Category === 'بوفيه ونثريات' || ex.Category === 'نثريات';
     const isSupplierPay = ex.Category === 'سداد موردين ومشتريات' || ex.Category === 'سداد موردين' || !!ex.Supplier;
     const isPosReturn = ex.Category === 'مرتجع مبيعات POS' || ex.AccountCode === '4102-RET';
+
+    if(isPosReturn){
+      // S10/F9: Dedup against state.returns
+      const refStr = String(ex.Reference || '');
+      const isAlreadyInReturns = (state.returns || []).some(r => {
+        return (r.CreditNoteNumber && refStr.includes(r.CreditNoteNumber)) ||
+               (r.SaleID && refStr.includes(String(r.SaleID).slice(-8)));
+      });
+      if(isAlreadyInReturns) return;
+    }
 
     let tType = 'out';
     let sIcon = getSvgIcon('dollar', 13);
@@ -795,7 +845,45 @@ function calculateShiftStats(shift){
     }
   });
 
-  // 3. Expenses & Manual Drawer Movements in shift
+  // 3a. POS Returns in shift (from state.returns) [F9]
+  const shiftReturns = (state.returns || []).filter(ret => {
+    if(ret.ShiftID && ret.ShiftID === shift.id) return true;
+    return isTimeMatch(ret.Date, ret.Time);
+  });
+  shiftReturns.forEach(ret => {
+    const amt = Number(ret.RefundAmount || 0);
+    const method = String(ret.RefundMethod || 'نقدي').toLowerCase();
+    const isCash = method.includes('نقدي') || method.includes('كاش') || method.includes('cash');
+    if(isCash) returnsCash += amt;
+    returnsCount++;
+    returnsTotal += amt;
+  });
+
+  // 3b. Maintenance Refunds in shift [F9]
+  let maintRefundsCash = 0, maintRefundsTotal = 0, maintRefundsCount = 0;
+  (state.receipts || []).forEach(r => {
+    const rRefunds = (Array.isArray(r.refunds) && r.refunds.length > 0) ? r.refunds : (Number(r.refunded || 0) > 0 ? [{
+      amount: Number(r.refunded),
+      method: r.refundMethod || 'نقدي (كاش)',
+      date: cleanDate(r.refundDate || r.updatedAt || r.date),
+      time: r.refundTime || '',
+      shiftId: r.refundShiftId || ''
+    }] : []);
+
+    rRefunds.forEach(ref => {
+      const inShift = (ref.shiftId && ref.shiftId === shift.id) || isTimeMatch(ref.date, ref.time);
+      if(inShift){
+        const amt = Number(ref.amount || 0);
+        const method = String(ref.method || 'نقدي').toLowerCase();
+        const isCash = method.includes('نقدي') || method.includes('كاش') || method.includes('cash');
+        if(isCash) maintRefundsCash += amt;
+        maintRefundsTotal += amt;
+        maintRefundsCount++;
+      }
+    });
+  });
+
+  // 3c. Expenses & Manual Drawer Movements in shift
   const shiftExpenses = (state.expenses || []).filter(ex => {
     if(ex.ShiftID && ex.ShiftID === shift.id) return true;
     return isTimeMatch(ex.Date, ex.Time);
@@ -810,6 +898,13 @@ function calculateShiftStats(shift){
 
     const isRet = ex.Category === 'مرتجع مبيعات POS' || String(ex.Reference||'').startsWith('RET-');
     if(isRet){
+      // S10/F9: Dedup against shiftReturns
+      const refStr = String(ex.Reference || '');
+      const alreadyHandled = shiftReturns.some(sr => {
+        return (sr.CreditNoteNumber && refStr.includes(sr.CreditNoteNumber)) ||
+               (sr.SaleID && refStr.includes(String(sr.SaleID).slice(-8)));
+      });
+      if(alreadyHandled) return;
       if(isCash) returnsCash += amt;
       returnsCount++;
       returnsTotal += amt;
@@ -824,10 +919,10 @@ function calculateShiftStats(shift){
     }
   });
 
-  // Fallback for returns if legacy data did not log return expense
+  // Fallback for returns if legacy data did not log return expense or state.returns
   if(returnsCount === 0){
     shiftSales.forEach(s => {
-      if(s.IsReturned){
+      if(s.IsReturned || s.IsPartiallyReturned){
         const tot = Number(s.Total || 0);
         const method = String(s.PaymentMethod || 'نقدي').toLowerCase();
         returnsCount++;
@@ -841,7 +936,7 @@ function calculateShiftStats(shift){
 
   const openingFloat = Number(shift.openingFloat || 0);
   const totalCashIn = posCash + maintCash + manualDrawerIn;
-  const totalCashOut = expensesCash + pettyCash + manualDrawerOut + returnsCash;
+  const totalCashOut = expensesCash + pettyCash + manualDrawerOut + returnsCash + maintRefundsCash;
   const netCashFlow = totalCashIn - totalCashOut;
   const expectedCash = openingFloat + netCashFlow;
   const actualCash = shift.actualCash != null ? Number(shift.actualCash) : null;
@@ -861,6 +956,9 @@ function calculateShiftStats(shift){
     returnsCount,
     returnsTotal,
     returnsCash,
+    maintRefundsCount,
+    maintRefundsTotal,
+    maintRefundsCash,
     maintPaymentsCount: shiftPayments.length,
     maintCash,
     maintNonCash,
@@ -1322,6 +1420,11 @@ function openShiftPrint(shift, mode = 'Z', format = 'thermal'){
         ${stats.returnsCash > 0 ? `
           <div style="display:flex;justify-content:space-between;font-size:10.5px;">
             <span>مرتجع مبيعات نقدي (-) :</span><b class="mono">-${stats.returnsCash.toLocaleString()} ج.م</b>
+          </div>
+        ` : ''}
+        ${stats.maintRefundsCash > 0 ? `
+          <div style="display:flex;justify-content:space-between;font-size:10.5px;">
+            <span>مردودات صيانة نقدية (-) :</span><b class="mono">-${stats.maintRefundsCash.toLocaleString()} ج.م</b>
           </div>
         ` : ''}
 

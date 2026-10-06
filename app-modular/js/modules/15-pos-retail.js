@@ -1674,7 +1674,9 @@ function renderPosSalesLog(main){
                   </td>
                   <td style="text-align:center;">
                     ${s.IsReturned ? `
-                      <span class="badge" style="background:#fee2e2;color:#b91c1c;font-weight:800;border:1px solid #fca5a5;padding:2px 6px;border-radius:4px;font-size:10.5px;white-space:nowrap;">مرتجع</span>
+                      <span class="badge" style="background:#fee2e2;color:#b91c1c;font-weight:800;border:1px solid #fca5a5;padding:2px 6px;border-radius:4px;font-size:10.5px;white-space:nowrap;">مرتجع كلياً</span>
+                    ` : s.IsPartiallyReturned ? `
+                      <span class="badge" style="background:#fef3c7;color:#92400e;font-weight:800;border:1px solid #fcd34d;padding:2px 6px;border-radius:4px;font-size:10.5px;white-space:nowrap;">مرتجع جزئياً</span>
                     ` : `
                       <span class="badge" style="background:#dcfce7;color:#15803d;font-weight:700;border:1px solid #bbf7d0;padding:2px 6px;border-radius:4px;font-size:10.5px;white-space:nowrap;">مباع</span>
                     `}
@@ -1706,6 +1708,34 @@ function renderPosSalesLog(main){
 
 /* ---------------- POS Sales Returns & Refunds Engine (آلية الإرجاع والاسترداد الدقيقة) ---------------- */
 
+function getPreviouslyReturnedQty(sale, idx, itemId, itemName){
+  if(!sale) return 0;
+  let returned = 0;
+  const returnsList = Array.isArray(sale.Returns) ? sale.Returns : (sale.ReturnDetails ? [sale.ReturnDetails] : []);
+
+  const stateReturns = (state.returns || []).filter(r => String(r.SaleID) === String(sale.ID));
+  const allReturns = [...returnsList];
+  stateReturns.forEach(sr => {
+    if(sr.ReturnDetails && !allReturns.some(r => r.voucherNumber && r.voucherNumber === sr.ReturnDetails.voucherNumber)){
+      allReturns.push(sr.ReturnDetails);
+    }
+  });
+
+  allReturns.forEach(ret => {
+    (ret.returnedItems || []).forEach(rit => {
+      if(idx != null && rit.idx !== undefined && Number(rit.idx) === Number(idx)){
+        returned += Number(rit.qty || 0);
+      } else if(itemId && rit.itemId && String(rit.itemId) === String(itemId)){
+        returned += Number(rit.qty || 0);
+      } else if(itemName && rit.name && rit.name === itemName){
+        returned += Number(rit.qty || 0);
+      }
+    });
+  });
+  return returned;
+}
+window.getPreviouslyReturnedQty = getPreviouslyReturnedQty;
+
 function openPosReturnModal(sale){
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
@@ -1728,19 +1758,34 @@ function openPosReturnModal(sale){
     } catch(e){}
   }
   if(!items.length){
-    items = [{ name: sale.ItemsSummary || 'مبيعات POS', qty: 1, price: Number(sale.Total||0), itemId: null }];
+    items = [{ name: sale.ItemsSummary || 'مبيعات POS', qty: 1, price: Number(sale.Total||0), itemId: null, costAtSale: 0 }];
+  }
+
+  // Pre-check: if all items already fully returned
+  const allItemsFullyReturned = items.every((it, idx) => {
+    const origQ = Number(it.qty || 1);
+    const prevQ = getPreviouslyReturnedQty(sale, idx, it.itemId, it.name);
+    return prevQ >= origQ;
+  });
+
+  if(allItemsFullyReturned){
+    showToast('تم إرجاع جميع أصناف هذه الفاتورة بالكامل مسبقاً', 'info');
+    openPosReturnVoucherPrint(sale, sale.ReturnDetails || (sale.Returns && sale.Returns[sale.Returns.length - 1]) || {});
+    return;
   }
 
   const refundMethod = sale.PaymentMethod || 'نقدي';
 
   overlay.innerHTML = `
-    <div class="modal-content" style="max-width:720px;max-height:90vh;overflow-y:auto;">
+    <div class="modal-content" style="max-width:740px;max-height:90vh;overflow-y:auto;">
       <!-- Modal Header -->
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid var(--line);padding-bottom:10px;margin-bottom:12px;">
         <div>
-          <h3 style="margin:0;font-size:16.5px;font-weight:900;color:var(--red);display:flex;align-items:center;gap:6px;">${getSvgIcon('refresh', 16)} استرجاع مبيعات POS (إشعار دائن وتسوية)</h3>
+          <h3 style="margin:0;font-size:16.5px;font-weight:900;color:var(--red);display:flex;align-items:center;gap:6px;">
+            ${getSvgIcon('refresh', 16)} استرجاع مبيعات POS (إشعار دائن وتسوية)
+          </h3>
           <div style="font-size:12px;color:var(--ink-secondary);margin-top:2px;">
-            فاتورة رقم: <b class="mono" style="color:var(--primary);">#${sale.ID.slice(-8)}</b> • العميل: <b>${sale.CustomerName || 'عميل زائر'}</b> (${sale.CustomerPhone || '-'})
+            فاتورة رقم: <b class="mono" style="color:var(--primary);">#${sale.ID.slice(-8)}</b> • العميل: <b>${escapeHtml(sale.CustomerName || 'عميل زائر')}</b> (${escapeHtml(sale.CustomerPhone || '-')})
           </div>
         </div>
         <button class="btn btn-ghost btn-xs" id="closePosReturnModalBtn" style="font-size:18px;line-height:1;">&times;</button>
@@ -1792,7 +1837,7 @@ function openPosReturnModal(sale){
           <div>
             <div style="font-size:11px;font-weight:800;color:#1e40af;">قناة الاسترداد الإلزامية (نفس وسيلة الدفع الأصلية):</div>
             <div style="font-size:13.5px;font-weight:900;color:#1e3a8a;margin-top:2px;">
-              رد المبلغ عبر: <b>${refundMethod}</b>
+              رد المبلغ عبر: <b>${escapeHtml(refundMethod)}</b>
             </div>
           </div>
           <span class="badge" style="background:#dbeafe;color:#1e40af;font-size:11px;font-weight:800;padding:4px 8px;border-radius:4px;">مطابقة وسيلة الدفع الأصلية</span>
@@ -1810,7 +1855,7 @@ function openPosReturnModal(sale){
       <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:6px;padding:10px 14px;margin-bottom:12px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
           <div style="font-size:12px;font-weight:800;color:#92400e;">
-            مسؤول البيع الأصلي: <b>${sale.By || 'الكاشير'}</b>
+            مسؤول البيع الأصلي: <b>${escapeHtml(sale.By || 'الكاشير')}</b>
           </div>
           <span style="font-size:11px;color:#b45309;">تصفية ومردودات العمولات</span>
         </div>
@@ -1846,22 +1891,30 @@ function openPosReturnModal(sale){
           </thead>
           <tbody>
             ${items.map((it, idx)=>{
+              const origQty = Number(it.qty || 1);
+              const prevReturned = getPreviouslyReturnedQty(sale, idx, it.itemId, it.name);
+              const remainingQty = Math.max(0, origQty - prevReturned);
+              const isLineDone = remainingQty <= 0;
+
               return `
-                <tr style="border-bottom:1px solid #e2e8f0;">
+                <tr style="border-bottom:1px solid #e2e8f0;${isLineDone ? 'background:#f8fafc;opacity:0.6;' : ''}">
                   <td style="padding:6px 10px;text-align:right;">
-                    <input type="checkbox" class="ret-item-chk" data-idx="${idx}" checked>
+                    <input type="checkbox" class="ret-item-chk" data-idx="${idx}" ${isLineDone ? 'disabled' : 'checked'}>
                   </td>
-                  <td style="padding:6px 10px;font-weight:700;">${it.name}</td>
-                  <td style="padding:6px 10px;text-align:center;" class="mono font-bold">${it.qty}</td>
+                  <td style="padding:6px 10px;font-weight:700;">
+                    ${escapeHtml(it.name)}
+                    ${isLineDone ? `<span class="badge" style="background:#fee2e2;color:#b91c1c;font-size:9.5px;margin-right:6px;">مرتجع كلياً (${origQty})</span>` : (prevReturned > 0 ? `<span class="badge" style="background:#fef3c7;color:#92400e;font-size:9.5px;margin-right:6px;">متبقي: ${remainingQty} من ${origQty}</span>` : '')}
+                  </td>
+                  <td style="padding:6px 10px;text-align:center;" class="mono font-bold">${origQty}</td>
                   <td style="padding:6px 10px;text-align:center;">
-                    <input type="number" class="ret-item-qty mono font-bold" data-idx="${idx}" min="1" max="${it.qty}" value="${it.qty}" style="width:60px;padding:3px;text-align:center;">
+                    <input type="number" class="ret-item-qty mono font-bold" data-idx="${idx}" min="${isLineDone ? 0 : 1}" max="${remainingQty}" value="${remainingQty}" ${isLineDone ? 'disabled' : ''} style="width:60px;padding:3px;text-align:center;${isLineDone ? 'background:#f1f5f9;' : ''}">
                   </td>
                   <td style="padding:6px 10px;text-align:center;" class="mono">${Number(it.price).toLocaleString()} ج.م</td>
                   <td style="padding:6px 10px;text-align:center;">
-                    <input type="checkbox" class="ret-item-restock" data-idx="${idx}" ${it.itemId ? 'checked' : 'disabled'} title="إعادة رصيد الصنف للمخزن">
+                    <input type="checkbox" class="ret-item-restock" data-idx="${idx}" ${(it.itemId && !isLineDone) ? 'checked' : 'disabled'} title="إعادة رصيد الصنف للمخزن">
                   </td>
                   <td style="padding:6px 10px;text-align:center;font-weight:900;color:var(--red);" class="ret-item-row-total mono" data-idx="${idx}">
-                    ${(it.qty * it.price).toLocaleString()} ج.م
+                    ${isLineDone ? '0 ج.م' : (remainingQty * it.price).toLocaleString() + ' ج.م'}
                   </td>
                 </tr>
               `;
@@ -1902,15 +1955,18 @@ function openPosReturnModal(sale){
     const chks = overlay.querySelectorAll('.ret-item-chk');
     chks.forEach(chk => {
       const idx = chk.dataset.idx;
+      const it = items[idx];
       const qtyInp = overlay.querySelector(`.ret-item-qty[data-idx="${idx}"]`);
       const rowTotEl = overlay.querySelector(`.ret-item-row-total[data-idx="${idx}"]`);
-      if(chk.checked){
-        const maxQ = Number(items[idx].qty || 1);
+      if(chk.checked && !chk.disabled){
+        const origQ = Number(it.qty || 1);
+        const prevQ = getPreviouslyReturnedQty(sale, idx, it.itemId, it.name);
+        const maxQ = Math.max(0, origQ - prevQ);
         let q = Number(qtyInp ? qtyInp.value : maxQ);
         if(isNaN(q) || q < 1) q = 1;
         if(q > maxQ) q = maxQ;
-        if(qtyInp && qtyInp.value != q) qtyInp.value = q;
-        const p = Number(items[idx].price || 0);
+        if(qtyInp && Number(qtyInp.value) !== q) qtyInp.value = q;
+        const p = Number(it.price || 0);
         const rowTot = q * p;
         sumRefund += rowTot;
         if(rowTotEl) rowTotEl.textContent = rowTot.toLocaleString() + ' ج.م';
@@ -1950,7 +2006,9 @@ function openPosReturnModal(sale){
   const chkAll = overlay.querySelector('#posRetCheckAll');
   if(chkAll){
     chkAll.onchange = ()=>{
-      overlay.querySelectorAll('.ret-item-chk').forEach(c => c.checked = chkAll.checked);
+      overlay.querySelectorAll('.ret-item-chk').forEach(c => {
+        if(!c.disabled) c.checked = chkAll.checked;
+      });
       updateRefundSummary();
     };
   }
@@ -1976,12 +2034,14 @@ function openPosReturnModal(sale){
         let totalRefund = 0;
 
         for(const chk of chks){
-          if(chk.checked){
+          if(chk.checked && !chk.disabled){
             const idx = chk.dataset.idx;
             const it = items[idx];
             const qtyInp = overlay.querySelector(`.ret-item-qty[data-idx="${idx}"]`);
             const restockChk = overlay.querySelector(`.ret-item-restock[data-idx="${idx}"]`);
-            const maxQ = Number(it.qty || 1);
+            const origQ = Number(it.qty || 1);
+            const prevQ = getPreviouslyReturnedQty(sale, idx, it.itemId, it.name);
+            const maxQ = Math.max(0, origQ - prevQ);
             let retQty = Number(qtyInp ? qtyInp.value : maxQ);
             if(isNaN(retQty) || retQty < 1) retQty = 1;
             if(retQty > maxQ) retQty = maxQ;
@@ -1989,12 +2049,16 @@ function openPosReturnModal(sale){
             const lineTot = retQty * Number(it.price || 0);
             totalRefund += lineTot;
 
+            // F4/F9: Strictly use costAtSale stored in ItemsJSON
+            const unitCost = Number(it.costAtSale != null ? it.costAtSale : (it.purchasePrice || 0));
+
             returnedItems.push({
+              idx: Number(idx),
               name: it.name,
               qty: retQty,
               price: it.price,
               itemId: it.itemId,
-              costAtSale: Number(it.costAtSale != null ? it.costAtSale : (it.purchasePrice || 0)),
+              costAtSale: unitCost,
               restocked: shouldRestock,
               lineTotal: lineTot
             });
@@ -2015,27 +2079,14 @@ function openPosReturnModal(sale){
         const reasonInp = overlay.querySelector('#posRetReason');
         const returnReason = (reasonInp ? reasonInp.value : '').trim() || 'مرتجع بناء على رغبة العميل';
 
-        // 2. Save Outflow Expense
-        const expId = 'exp_ret_' + Date.now();
-        const exp = {
-          ID: expId,
-          Date: new Date().toISOString().slice(0,10),
-          Category: 'مرتجع مبيعات POS',
-          Type: 'out',
-          Title: `مرتجع مبيعات POS: ${sale.CustomerName||'عميل زائر'} (فاتورة #${sale.ID.slice(-8)})`,
-          Amount: totalRefund,
-          PaymentMethod: refundMethod,
-          AccountCode: '4102-RET',
-          Reference: `RET-${sale.ID.slice(-8)}`,
-          By: state.user ? state.user.name : 'كاشير',
-          Notes: `رد بنفس وسيلة الدفع (${refundMethod}) • خصم عمولة بائع: ${commissionDeducted} ج.م من (${sale.By||'الكاشير'}) • سبب: ${returnReason}`,
-          skipAutoJournal: true
-        };
-        await saveExpenseRemote(exp);
+        // Unique clientRef UUID for backend deduplication (S10/F9)
+        const clientRef = `ret_${sale.ID}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const cnNumber = (typeof nextCreditNoteNumber === 'function') ? nextCreditNoteNumber() : ('CN-' + new Date().getFullYear() + '-0001');
 
-        // 3. Mark sale as returned & persist to backend
+        // Build return details
         const returnDetails = {
-          voucherNumber: `RET-${sale.ID.slice(-8)}`,
+          voucherNumber: cnNumber,
+          clientRef: clientRef,
           returnDate: new Date().toISOString().slice(0,10),
           returnTime: new Date().toLocaleTimeString('ar-EG'),
           returnedItems: returnedItems,
@@ -2050,14 +2101,90 @@ function openPosReturnModal(sale){
           diffDays: diffDays
         };
 
-        sale.IsReturned = true;
+        // Maintain cumulative returns array on sale
+        if(!Array.isArray(sale.Returns)){
+          sale.Returns = sale.ReturnDetails ? [sale.ReturnDetails] : [];
+        }
+        sale.Returns.push(returnDetails);
         sale.ReturnDetails = returnDetails;
+
+        // F9-1: Partial vs Full Return calculation per line item
+        let isFullyReturned = true;
+        let hasAnyReturned = false;
+        items.forEach((it, idx) => {
+          const origQty = Number(it.qty || 1);
+          const totalRet = getPreviouslyReturnedQty(sale, idx, it.itemId, it.name);
+          if(totalRet > 0) hasAnyReturned = true;
+          if(totalRet < origQty) isFullyReturned = false;
+        });
+
+        sale.IsReturned = isFullyReturned;
+        sale.IsPartiallyReturned = !isFullyReturned && hasAnyReturned;
         setCache('sales', state.sales);
 
-        // Sync return to remote Google Apps Script backend
+        // F9-4: Create Credit Note in state.invoices
+        const creditNote = {
+          ID: 'cn_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+          InvoiceNumber: cnNumber,
+          Type: 'CreditNote',
+          Date: returnDetails.returnDate,
+          DueDate: returnDetails.returnDate,
+          CustomerName: sale.CustomerName || 'عميل زائر',
+          CustomerPhone: sale.CustomerPhone || '',
+          CustomerTaxNumber: sale.CustomerTaxNumber || '',
+          CustomerAddress: sale.CustomerAddress || '',
+          ItemsSummary: returnedItems.map(x => `${x.qty}x ${x.name}`).join('، '),
+          ItemsJSON: JSON.stringify(returnedItems),
+          Subtotal: totalRefund,
+          TaxPercent: 0,
+          TaxAmount: 0,
+          IsTaxInclusive: true,
+          Discount: 0,
+          Total: totalRefund,
+          AmountPaid: totalRefund,
+          Remaining: 0,
+          Status: 'دائن / مسترد',
+          PaymentMethod: refundMethod,
+          ReferenceType: 'POS_Sale',
+          ReferenceID: sale.ID,
+          Notes: `إشعار دائن لمرتجع مبيعات POS فاتورة #${sale.ID.slice(-8)}. سبب: ${returnReason}`,
+          By: returnDetails.processedBy,
+          skipAutoJournal: true
+        };
+        if(!state.invoices) state.invoices = [];
+        state.invoices.push(creditNote);
+        setCache('invoices', state.invoices);
+        try {
+          saveInvoiceRemote(creditNote).catch(e => console.warn('CreditNote remote sync error:', e));
+        } catch(e){}
+
+        // F9-3: Record directly in state.returns without saving duplicate expense
+        const returnRecord = {
+          ID: 'ret_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+          SaleID: sale.ID,
+          ClientRef: clientRef,
+          CreditNoteNumber: cnNumber,
+          Date: returnDetails.returnDate,
+          Time: new Date().toTimeString().slice(0, 8),
+          ShiftID: state.activeShift ? state.activeShift.id : '',
+          CustomerName: sale.CustomerName || 'عميل زائر',
+          ItemsSummary: returnedItems.map(x => `${x.qty}x ${x.name}`).join('، '),
+          RefundAmount: totalRefund,
+          RefundMethod: refundMethod,
+          By: returnDetails.processedBy,
+          ReturnDetails: returnDetails
+        };
+        if(!state.returns) state.returns = [];
+        state.returns.push(returnRecord);
+        setCache('returns', state.returns);
+
+        // Sync return to remote Google Apps Script backend with clientRef
         apiPost('saveReturn', {
           saleId: sale.ID,
-          clientRef: `ret_${sale.ID}_${Date.now()}`,
+          clientRef: clientRef,
+          creditNoteNumber: cnNumber,
+          isFullyReturned: sale.IsReturned,
+          isPartiallyReturned: sale.IsPartiallyReturned,
           date: returnDetails.returnDate,
           itemsSummary: returnedItems.map(x => `${x.qty}x ${x.name}`).join('، '),
           items: returnedItems,
@@ -2067,7 +2194,7 @@ function openPosReturnModal(sale){
           user: returnDetails.processedBy
         }).catch(e => console.warn('Sync return to remote warning:', e));
 
-        // 4. Auto Journal Entry with dual reversal (Revenue & COGS)
+        // Auto Journal Entry with dual reversal (Revenue & COGS using costAtSale)
         const isBank = (refundMethod.includes('فيزا') || refundMethod.includes('visa') || refundMethod.includes('card') || refundMethod.includes('instapay') || refundMethod.includes('محفظ') || refundMethod.includes('wallet'));
         const isCredit = (refundMethod.includes('آجل') || refundMethod.includes('اجل') || refundMethod.includes('حساب'));
         const creditAccCode = isBank ? '1102' : (isCredit ? '1103' : '1101');
@@ -2076,8 +2203,7 @@ function openPosReturnModal(sale){
         let restockedCOGS = 0;
         returnedItems.forEach(it => {
           if(it.restocked && it.itemId && !String(it.itemId).startsWith('srv_')){
-            const inv = (state.inventory||[]).find(x => String(x.ID) === String(it.itemId));
-            const cost = Number(it.costAtSale != null ? it.costAtSale : (inv ? inv.PurchasePrice : 0)) || 0;
+            const cost = Number(it.costAtSale != null ? it.costAtSale : 0);
             restockedCOGS += round2(cost * Number(it.qty||1));
           }
         });
@@ -2094,13 +2220,13 @@ function openPosReturnModal(sale){
         }
 
         recordAutoJournalEntry(
-          `مرتجع مبيعات POS فاتورة #${sale.ID.slice(-8)} (رد عبر ${refundMethod})`,
+          `مرتجع مبيعات POS فاتورة #${sale.ID.slice(-8)} (إشعار دائن ${cnNumber})`,
           'POS_Return',
           sale.ID,
           retJournalLines
         ).catch(e=>{});
 
-        // 5. Audit logs
+        // Audit logs
         if(commissionDeducted > 0){
           recordAuditLog(
             'خصم عمولة بائع لمرتجع',
@@ -2113,12 +2239,12 @@ function openPosReturnModal(sale){
         recordAuditLog(
           'استرجاع مبيعات POS',
           'مبيعات',
-          `تم استرجاع أصناف بقيمة ${totalRefund} ج.م من فاتورة #${sale.ID.slice(-8)} ورد المبلغ عبر (${refundMethod}) بعد فحص الفاتورة وحالة المنتج`,
+          `تم استرجاع أصناف بقيمة ${totalRefund} ج.م من فاتورة #${sale.ID.slice(-8)} (إشعار دائن ${cnNumber}) ورد المبلغ عبر (${refundMethod}) [${sale.IsReturned ? 'مرتجع كلياً' : 'مرتجع جزئياً'}]`,
           sale.ID
         );
 
         overlay.remove();
-        showToast('تم إتمام عملية الاسترجاع بنجاح وتحديث الخزينة والمخزن', 'success');
+        showToast(`تم إتمام الاسترجاع بنجاح (${sale.IsReturned ? 'مرتجع كلياً' : 'مرتجع جزئياً'}) وإصدار إشعار دائن ${cnNumber}`, 'success');
 
         // Re-render
         if(state.currentSection === 'pos'){
@@ -2323,7 +2449,7 @@ function openPosReturnLookupModal(){
               <span class="mono font-bold" style="color:var(--primary);font-size:13px;">#${s.ID.slice(-8)}</span>
               <span style="font-size:11px;color:var(--ink-secondary);">${sDate}</span>
               ${isOk14 ? `<span class="badge" style="background:#ecfdf5;color:#047857;font-size:10px;">${daysDiff} يوم (ضمن 14 يوم)</span>` : `<span class="badge" style="background:#fef2f2;color:#b91c1c;font-size:10px;">${daysDiff} يوم (تجاوز 14 يوم)</span>`}
-              ${s.IsReturned ? `<span class="badge" style="background:#fee2e2;color:#b91c1c;font-size:10px;font-weight:800;">مرتجع</span>` : ''}
+              ${s.IsReturned ? `<span class="badge" style="background:#fee2e2;color:#b91c1c;font-size:10px;font-weight:800;">مرتجع كلياً</span>` : (s.IsPartiallyReturned ? `<span class="badge" style="background:#fef3c7;color:#92400e;font-size:10px;font-weight:800;">مرتجع جزئياً</span>` : '')}
             </div>
             <div style="font-size:12.5px;font-weight:700;margin-top:2px;">
               ${s.CustomerName || 'عميل زائر'} ${s.CustomerPhone ? `(${s.CustomerPhone})` : ''}
@@ -2338,6 +2464,9 @@ function openPosReturnLookupModal(){
               <div style="font-size:10px;color:var(--ink-secondary);">${s.PaymentMethod||'نقدي'}</div>
             </div>
             ${s.IsReturned ? `
+              <button class="btn btn-xs btn-purple" data-retlookupact="voucher" data-sid="${s.ID}">${getSvgIcon('fileText', 12)} إشعار</button>
+            ` : s.IsPartiallyReturned ? `
+              <button class="btn btn-xs btn-amber" data-retlookupact="return" data-sid="${s.ID}">استرجاع متبقي</button>
               <button class="btn btn-xs btn-purple" data-retlookupact="voucher" data-sid="${s.ID}">${getSvgIcon('fileText', 12)} إشعار</button>
             ` : `
               <button class="btn btn-xs btn-amber" data-retlookupact="return" data-sid="${s.ID}">استرجاع</button>

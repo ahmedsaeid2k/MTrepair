@@ -3419,11 +3419,17 @@ async function openReceiptDetail(rawR){
       <div class="field"><label>قطع الغيار (ج.م)</label><input id="ePartsCost" type="number" value="${r.partsCost||0}" disabled style="background:var(--paper3);font-weight:bold;color:var(--purple);"></div>
       <div class="field"><label>حساب إضافي (ج.م)</label><input id="eOtherDisplay" type="number" value="${r.otherAccountAmount||0}" disabled style="background:var(--paper3);"></div>
       <div class="field"><label>إجمالي المدفوع (ج.م)</label><input id="eDeposit" type="number" value="${r.deposit||0}" disabled style="background:var(--paper3);"></div>
+      <div class="field"><label>مسترد سابقاً (ج.م)</label><input id="eRefundedDisplay" type="number" value="${r.refunded||0}" disabled style="background:var(--paper3);color:var(--red);font-weight:bold;"></div>
       <div class="field"><label>المتبقي المطلوب (ج.م)</label><input id="eRem" type="number" value="${remaining}" disabled style="background:var(--paper3);font-weight:bold;color:var(--primary);"></div>
     </div>
 
     <div class="card" style="background:var(--paper3);padding:12px;border-radius:var(--radius-sm);margin-top:8px;">
-      <h3 style="font-size:13.5px;margin-bottom:6px;">سجل الدفعات</h3>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <h3 style="font-size:13.5px;margin:0;">سجل الدفعات والمردودات</h3>
+        <button type="button" class="btn btn-red btn-xs" id="detailCardRefundBtn" style="font-weight:700;">
+          ${getSvgIcon('arrowLeft', 13)} استرداد نقدي (مردودات)
+        </button>
+      </div>
       <div id="paymentsList" style="font-size:12px;margin-bottom:10px;">جارٍ التحميل...</div>
       <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
         <div class="field" style="flex:1;min-width:110px;margin-bottom:0;">
@@ -3450,6 +3456,7 @@ async function openReceiptDetail(rawR){
         <button class="btn btn-whatsapp btn-xs" id="detailWaNotifyBtn" title="إرسال إشعار واتساب للعميل">${WA_ICON} إشعار واتساب</button>
         <button class="btn btn-amber btn-xs" id="reIntakeDeviceDetailBtn" title="إعادة إدخال نفس الجهاز للصيانة بدورة جديدة">${getSvgIcon("refresh", 13)} إعادة صيانة الجهاز</button>
         <button class="btn btn-blue btn-xs" id="convertReceiptToInvoiceBtn" title="إصدار فاتورة ضريبية رسمية للعميل">${getSvgIcon("invoices", 13)} تحويل لفاتورة رسمية</button>
+        <button class="btn btn-red btn-xs" id="detailRefundActionBtn" title="استرداد نقدي أو عربون للعميل">${getSvgIcon("arrowLeft", 13)} استرداد نقدي</button>
         ${!r.paid ? `<button class="btn btn-green btn-xs" id="payBtn">${getSvgIcon("check", 13)} سداد المتبقي</button>` : `<button class="btn btn-blue btn-xs" id="invBtn">${getSvgIcon("printer", 13)} طباعة إيصال نهائي</button>`}
         <div style="display:inline-flex;border-radius:6px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,0.05);align-items:stretch;">
           <button class="btn btn-amber btn-xs" id="detailStickerBtn" title="طباعة ملصق الصيانة فوراً (وضع الكيوسك)">${getSvgIcon("tag", 13)} ملصق باركود</button>
@@ -3469,11 +3476,20 @@ async function openReceiptDetail(rawR){
   function renderPaymentsList(){
     const box = overlay.querySelector('#paymentsList');
     const payments = getReceiptPayments(r);
-    if(!payments.length){
-      box.innerHTML = '<span style="color:var(--ink-secondary);">لا توجد دفعات مسجلة لهذا الإيصال بعد.</span>';
+    const rRefunds = (Array.isArray(r.refunds) && r.refunds.length > 0) ? r.refunds : (Number(r.refunded || 0) > 0 ? [{
+      amount: Number(r.refunded),
+      method: r.refundMethod || 'نقدي (كاش)',
+      reason: r.refundReason || 'مبالغ مستردة',
+      date: cleanDate(r.refundDate || r.updatedAt || r.date),
+      by: r.updatedBy || 'كاشير'
+    }] : []);
+
+    if(!payments.length && !rRefunds.length){
+      box.innerHTML = '<span style="color:var(--ink-secondary);">لا توجد دفعات أو مردودات مسجلة لهذا الإيصال بعد.</span>';
       return;
     }
-    box.innerHTML = payments.map(p=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--line);">
+
+    const payHtml = payments.map(p=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--line);">
       <span>
         <b class="mono" style="font-size:11.5px;color:var(--ink-secondary);">${cleanDate(p.Date)}</b>
         ${getPaymentMethodBadge(p.PaymentMethod || 'نقدي (كاش)')}
@@ -3482,6 +3498,19 @@ async function openReceiptDetail(rawR){
       </span>
       <span class="mono" style="font-weight:800;color:var(--green-text);">${Number(p.Amount||0).toLocaleString()} ج.م</span>
     </div>`).join('');
+
+    const refHtml = rRefunds.map(ref=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 8px;border-bottom:1px solid #fecaca;background:#fff5f5;margin:3px 0;border-radius:4px;">
+      <span>
+        <b class="mono" style="font-size:11.5px;color:#991b1b;">${cleanDate(ref.date)}</b>
+        <span class="badge" style="background:#fee2e2;color:#b91c1c;font-size:10px;font-weight:bold;margin:0 4px;">استرداد نقدي ↩️</span>
+        ${getPaymentMethodBadge(ref.method || 'نقدي (كاش)')}
+        ${ref.reason ? '— ' + escapeHtml(ref.reason) : ''}
+        <span style="color:#7f1d1d;font-size:11px;">(${escapeHtml(ref.by || 'كاشير')})</span>
+      </span>
+      <span class="mono" style="font-weight:800;color:#dc2626;">-${Number(ref.amount || 0).toLocaleString()} ج.م</span>
+    </div>`).join('');
+
+    box.innerHTML = payHtml + refHtml;
   }
   renderPaymentsList();
 
@@ -4244,6 +4273,12 @@ async function openReceiptDetail(rawR){
   
   const woBtn = overlay.querySelector('#workOrderBtn');
   if(woBtn) woBtn.onclick = ()=>{ overlay.remove(); openReceiptPrint(r,'workorder'); };
+
+  const cardRefundBtn = overlay.querySelector('#detailCardRefundBtn');
+  if(cardRefundBtn) cardRefundBtn.onclick = ()=>{ overlay.remove(); if(typeof openReceiptRefundModal==='function') openReceiptRefundModal(r.id || r.receiptNumber, r.receiptNumber); };
+
+  const actRefundBtn = overlay.querySelector('#detailRefundActionBtn');
+  if(actRefundBtn) actRefundBtn.onclick = ()=>{ overlay.remove(); if(typeof openReceiptRefundModal==='function') openReceiptRefundModal(r.id || r.receiptNumber, r.receiptNumber); };
 
   const costEstBtn = overlay.querySelector('#detailCostEstimateBtn');
   if(costEstBtn) costEstBtn.onclick = ()=>{ overlay.remove(); openCostEstimateModal(r); };

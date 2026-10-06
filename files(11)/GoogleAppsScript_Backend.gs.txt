@@ -1167,6 +1167,7 @@ function doPost(e) {
       const saleIdCol = salesHeaders.indexOf('ID');
       const saleTotalCol = salesHeaders.indexOf('Total');
       let isRetCol = salesHeaders.indexOf('IsReturned');
+      let isPartCol = salesHeaders.indexOf('IsPartiallyReturned');
       let retDetCol = salesHeaders.indexOf('ReturnDetails');
       const salesValues = shSales.getDataRange().getValues();
 
@@ -1219,6 +1220,7 @@ function doPost(e) {
         ID: 'ret_' + new Date().getTime(),
         SaleID: saleId,
         ClientRef: body.clientRef || '',
+        CreditNoteNumber: body.creditNoteNumber || '',
         Date: body.date || new Date().toISOString().slice(0, 10),
         ItemsSummary: body.itemsSummary || '',
         RefundAmount: refundAmount,
@@ -1229,14 +1231,19 @@ function doPost(e) {
 
       // Mark original sale as returned in Sales sheet
       try {
-        if (isRetCol === -1 || retDetCol === -1) {
-          ensureHeaders(shSales, { IsReturned: '', ReturnDetails: '' });
+        const isFully = body.isFullyReturned === true;
+        if (isRetCol === -1 || isPartCol === -1 || retDetCol === -1) {
+          ensureHeaders(shSales, { IsReturned: '', IsPartiallyReturned: '', ReturnDetails: '' });
           const updatedHeaders = shSales.getRange(1, 1, 1, shSales.getLastColumn()).getValues()[0];
           isRetCol = updatedHeaders.indexOf('IsReturned');
+          isPartCol = updatedHeaders.indexOf('IsPartiallyReturned');
           retDetCol = updatedHeaders.indexOf('ReturnDetails');
         }
         if (isRetCol >= 0) {
-          shSales.getRange(targetSaleRow, isRetCol + 1).setValue(true);
+          shSales.getRange(targetSaleRow, isRetCol + 1).setValue(isFully ? true : false);
+        }
+        if (isPartCol >= 0) {
+          shSales.getRange(targetSaleRow, isPartCol + 1).setValue(isFully ? false : true);
         }
         if (retDetCol >= 0 && body.returnDetails) {
           shSales.getRange(targetSaleRow, retDetCol + 1).setValue(JSON.stringify(body.returnDetails));
@@ -1267,7 +1274,7 @@ function doPost(e) {
               invValues[rowIdx][invQtyCol] = newQty;
               shInv.getRange(rowIdx + 1, invQtyCol + 1).setValue(newQty);
 
-              const unitCost = safeNumber(invValues[rowIdx][invCostCol], 0);
+              const unitCost = (it.costAtSale != null && !isNaN(Number(it.costAtSale))) ? safeNumber(it.costAtSale, 0) : safeNumber(invValues[rowIdx][invCostCol], 0);
               restockedCOGS += unitCost * returnQty;
               break;
             }
@@ -1732,14 +1739,14 @@ function getAllRows(sheetName) {
 function ensureHeaders(sh, obj) {
   // Whitelist of allowed column names per sheet to prevent schema pollution attacks
   const ALLOWED_HEADERS = {
-    'Receipts': ['ID','ReceiptNumber','TrackToken','Date','CustomerTitle','CustomerName','CustomerPhone','CustomerEmail','Category','Brand','Model','Accessories','Faults','FaultNotes','Technician','Cost','Deposit','Refunded','PartsCost','PartsUsed','DeliveryDate','Status','Paid','Bonus','CreatedBy','UpdatedBy','UpdatedAt'],
+    'Receipts': ['ID','ReceiptNumber','TrackToken','Date','CustomerTitle','CustomerName','CustomerPhone','CustomerEmail','Category','Brand','Model','Accessories','Faults','FaultNotes','Technician','Cost','Deposit','Refunded','RefundMethod','RefundReason','PartsCost','PartsUsed','DeliveryDate','Status','Paid','Bonus','CreatedBy','UpdatedBy','UpdatedAt'],
     'Customers': ['Name','Phone','Email','Address','TaxNumber','Debt','Notes'],
     'Technicians': ['Name'],
     'Settings': ['Key','Value'],
     'Payments': ['ID','ReceiptID','Date','Time','ShiftID','Amount','Note','By','PaymentMethod'],
     'Inventory': ['ID','Name','Category','SubCategory','SKU','Barcode','ShelfLocation','Quantity','MinStock','Unit','PurchasePrice','SellPrice','WholesalePrice','WarrantyMonths','CompatibleModels','ImageURL'],
-    'Sales': ['ID','Date','Time','ShiftID','ItemsSummary','ItemsJSON','Total','TaxAmount','PaymentMethod','AmountPaid','ChangeDue','CustomerName','CustomerPhone','By','IsReturned','ReturnDetails'],
-    'Returns': ['ID','SaleID','ClientRef','Date','ItemsSummary','RefundAmount','RefundMethod','By'],
+    'Sales': ['ID','Date','Time','ShiftID','ItemsSummary','ItemsJSON','Total','TaxAmount','PaymentMethod','AmountPaid','ChangeDue','CustomerName','CustomerPhone','By','IsReturned','IsPartiallyReturned','ReturnDetails'],
+    'Returns': ['ID','SaleID','ClientRef','CreditNoteNumber','Date','ItemsSummary','RefundAmount','RefundMethod','By'],
     'Quotations': ['ID','Date','ClientName','ClientPhone','ItemsSummary','LaborCost','Total','Status','By'],
     'Services': ['Name','DefaultPrice','Notes'],
     'Purchases': ['ID','Date','Supplier','SupplierID','ItemsSummary','Total','TaxAmount','AmountPaid','PaymentMethod','WarrantyMonths','By'],
@@ -1749,7 +1756,7 @@ function ensureHeaders(sh, obj) {
     'Expenses': ['ID','Date','Time','ShiftID','Category','Title','Amount','Type','PaymentMethod','Supplier','Reference','AccountCode','Notes','By'],
     'Accounts': ['Code','Name','Type','ParentCode','Nature','Description','Balance'],
     'JournalEntries': ['ID','EntryNumber','Date','Description','ReferenceType','ReferenceID','LinesJSON','TotalDebit','TotalCredit','By'],
-    'Invoices': ['ID','InvoiceNumber','Date','DueDate','CustomerName','CustomerPhone','CustomerTaxNumber','CustomerAddress','ItemsSummary','ItemsJSON','Subtotal','TaxPercent','TaxAmount','IsTaxInclusive','Discount','Total','AmountPaid','Remaining','Status','PaymentMethod','ReferenceType','ReferenceID','Notes','By'],
+    'Invoices': ['ID','InvoiceNumber','Type','Date','DueDate','CustomerName','CustomerPhone','CustomerTaxNumber','CustomerAddress','ItemsSummary','ItemsJSON','Subtotal','TaxPercent','TaxAmount','IsTaxInclusive','Discount','Total','AmountPaid','Remaining','Status','PaymentMethod','ReferenceType','ReferenceID','Notes','By'],
     'Users': ['ID','Name','Password','Salt','Role','Sections','Superuser','Notes'],
     'AuditLog': ['Timestamp','User','Action','ReceiptID','RefType','Details','RowHash']
   };

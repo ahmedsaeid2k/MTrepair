@@ -1231,6 +1231,224 @@ window.deleteReceiptDirect = function(receiptId, receiptNum){
   }
 };
 
+window.openReceiptRefundModalDirect = function(receiptId, receiptNum){
+  try{
+    const r = findReceiptByIdOrNum(receiptId, receiptNum);
+    if(!r){ showToast('لم يتم العثور على الإيصال المطلوب', 'error'); return; }
+    openReceiptRefundModal(r.id || r.receiptNumber, r.receiptNumber);
+  }catch(err){
+    console.error('Error in openReceiptRefundModalDirect:', err);
+    showToast('حدث خطأ: ' + (err.message || err), 'error');
+  }
+};
+
+window.openReceiptRefundModal = function(receiptId, receiptNum){
+  const r = findReceiptByIdOrNum(receiptId, receiptNum);
+  if(!r){ showToast('لم يتم العثور على الإيصال المطلوب', 'error'); return; }
+
+  const cName = extractCustomerName(r) || (r.customer && r.customer.name) || 'عميل';
+  const cPhone = extractCustomerPhone(r) || (r.customer && r.customer.phone) || '-';
+  const rNum = String(r.receiptNumber || r.id);
+  const totalPaid = Number(r.deposit || 0);
+  const alreadyRefunded = Number(r.refunded || 0);
+  const maxRefundable = Math.max(0, totalPaid - alreadyRefunded);
+
+  if(maxRefundable <= 0){
+    showToast(`لا توجد مبالغ مدفوعة قابلة للاسترداد لهذا الإيصال (إجمالي المدفوع: ${totalPaid.toLocaleString()} ج.م، المسترد: ${alreadyRefunded.toLocaleString()} ج.م)`, 'warning');
+    return;
+  }
+
+  const prevModal = document.getElementById('receiptRefundModal');
+  if(prevModal) prevModal.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'receiptRefundModal';
+  overlay.style.zIndex = '12000';
+
+  overlay.innerHTML = `
+    <div class="modal-content" style="max-width:540px;padding:22px;border-radius:18px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid var(--line);padding-bottom:12px;margin-bottom:16px;">
+        <div>
+          <h3 style="margin:0;font-size:16px;font-weight:900;color:var(--red);display:flex;align-items:center;gap:6px;">
+            ${getSvgIcon('arrowLeft', 16)} استرداد نقدي لعميل صيانة (مردودات)
+          </h3>
+          <div style="font-size:12px;color:var(--ink-secondary);margin-top:2px;">
+            إيصال رقم: <b class="mono" style="color:var(--primary);">#${escapeHtml(rNum)}</b> • العميل: <b>${escapeHtml(cName)}</b> (${escapeHtml(cPhone)})
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-xs" id="closeReceiptRefundModalBtn" style="font-size:18px;line-height:1;">&times;</button>
+      </div>
+
+      <!-- Financial Snapshot -->
+      <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:8px;background:var(--paper2);padding:10px 12px;border-radius:10px;border:1px solid var(--line);margin-bottom:16px;text-align:center;">
+        <div>
+          <div style="font-size:11px;color:var(--ink-secondary);font-weight:700;">إجمالي المدفوع</div>
+          <div class="mono font-bold" style="font-size:14px;color:var(--green);">${totalPaid.toLocaleString()} ج.م</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--ink-secondary);font-weight:700;">مسترد سابقاً</div>
+          <div class="mono font-bold" style="font-size:14px;color:var(--amber);">${alreadyRefunded.toLocaleString()} ج.م</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--ink-secondary);font-weight:700;">الحد الأقصى للرد</div>
+          <div class="mono font-bold" style="font-size:14px;color:var(--red);">${maxRefundable.toLocaleString()} ج.م</div>
+        </div>
+      </div>
+
+      <!-- Form Inputs -->
+      <div class="field" style="margin-bottom:12px;">
+        <label style="font-weight:700;font-size:12px;">المبلغ المراد استرداده (ج.م) *</label>
+        <input type="number" id="receiptRefundAmt" min="1" max="${maxRefundable}" step="1" value="${maxRefundable}" class="mono font-bold" style="font-size:16px;color:var(--red);">
+        <div style="font-size:11px;color:var(--ink-secondary);margin-top:3px;">
+          الحد الأقصى المتاح للاسترداد: <b class="mono">${maxRefundable}</b> ج.م
+        </div>
+      </div>
+
+      <div class="field" style="margin-bottom:12px;">
+        <label style="font-weight:700;font-size:12px;">طريقة / قناة الاسترداد *</label>
+        <select id="receiptRefundMethod" style="font-weight:700;">
+          <option value="نقدي (كاش)">نقداً من الخزينة الرئيسية بالدرج (ح/ 1101)</option>
+          <option value="بنك / تحويل إلكتروني">البنك والمحافظ الإلكترونية (ح/ 1102)</option>
+          <option value="آجل (تسوية حساب العميل)">تسوية حساب العميل الآجل (ح/ 1103)</option>
+        </select>
+      </div>
+
+      <div class="field" style="margin-bottom:16px;">
+        <label style="font-weight:700;font-size:12px;">سبب الاسترداد الإلزامي *</label>
+        <input id="receiptRefundReason" placeholder="مثال: إلغاء الصيانة لتعذر توفر القطع، استرداد عربون، عيب صيانة..." style="font-size:12.5px;">
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding-top:14px;">
+        <button class="btn btn-ghost btn-sm" id="cancelReceiptRefundBtn">إلغاء</button>
+        <button class="btn btn-red btn-sm" id="confirmReceiptRefundBtn" style="font-weight:800;padding:8px 18px;">
+          تأكيد الاسترداد وقيد اليومية ↩️
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('#closeReceiptRefundModalBtn').onclick = () => overlay.remove();
+  overlay.querySelector('#cancelReceiptRefundBtn').onclick = () => overlay.remove();
+
+  const confirmBtn = overlay.querySelector('#confirmReceiptRefundBtn');
+  confirmBtn.onclick = async () => {
+    const amt = parseFloat(overlay.querySelector('#receiptRefundAmt').value) || 0;
+    const method = overlay.querySelector('#receiptRefundMethod').value || 'نقدي (كاش)';
+    const reason = (overlay.querySelector('#receiptRefundReason').value || '').trim();
+
+    if(amt <= 0){
+      showToast('يرجى إدخال مبلغ استرداد صحيح أكبر من صفر', 'error');
+      return;
+    }
+    if(amt > maxRefundable){
+      showToast(`مبلغ الاسترداد (${amt}) يتجاوز الحد الأقصى القابل للرد (${maxRefundable})`, 'error');
+      return;
+    }
+    if(!reason || reason.length < 3){
+      showToast('سبب الاسترداد إلزامي (3 أحرف على الأقل)', 'warning');
+      overlay.querySelector('#receiptRefundReason').focus();
+      return;
+    }
+
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'جارٍ تسجيل الاسترداد...';
+
+    try {
+      const nowDate = new Date();
+      const dateStr = nowDate.toISOString().slice(0, 10);
+      const timeStr = nowDate.toTimeString().slice(0, 8);
+      const userStr = state.user ? state.user.name : 'كاشير';
+      const shiftId = state.activeShift ? state.activeShift.id : '';
+
+      // 1. Update Receipt
+      r.refunded = Number(r.refunded || 0) + amt;
+      r.refundMethod = method;
+      r.refundReason = reason;
+      r.refundDate = dateStr;
+      r.refundTime = timeStr;
+      r.refundShiftId = shiftId;
+      r.updatedAt = nowDate.toISOString();
+      r.updatedBy = userStr;
+
+      if(!Array.isArray(r.refunds)) r.refunds = [];
+      r.refunds.push({
+        amount: amt,
+        method: method,
+        reason: reason,
+        date: dateStr,
+        time: timeStr,
+        by: userStr,
+        shiftId: shiftId
+      });
+
+      // Recalculate remaining on receipt
+      const totalCost = Number(r.cost || 0) + Number(r.partsCost || 0) + Number(r.otherAccountAmount || 0);
+      const dep = Number(r.deposit || 0);
+      r.remaining = Math.max(0, totalCost - dep + Number(r.refunded || 0));
+
+      await saveReceiptRemote(r);
+
+      // 2. Journal Entry (Receipt_Void)
+      // Dr 4101 (مردودات خدمات صيانة وتصليح) / Cr 1101 (الخزينة) or 1102 (البنك) or 1103 (العملاء)
+      const mLow = method.toLowerCase();
+      const isBank = mLow.includes('بنك') || mLow.includes('فيزا') || mLow.includes('card') || mLow.includes('محفظ') || mLow.includes('إلكتروني');
+      const isCredit = mLow.includes('آجل') || mLow.includes('حساب');
+      const creditAccCode = isBank ? '1102' : (isCredit ? '1103' : '1101');
+      const creditAccName = isBank ? 'البنك والحسابات الإلكترونية والمحافظ' : (isCredit ? 'العملاء والمدينون' : 'الخزينة الرئيسية (النقدية بالدرج)');
+
+      const lines = [
+        {
+          AccountCode: '4101',
+          AccountName: 'مردودات خدمات صيانة وتصليح',
+          Debit: amt,
+          Credit: 0,
+          Notes: `استرداد مبالغ صيانة للعميل: ${cName} (إيصال #${rNum}) - سبب: ${reason}`
+        },
+        {
+          AccountCode: creditAccCode,
+          AccountName: creditAccName,
+          Debit: 0,
+          Credit: amt,
+          Notes: `صرف مردودات صيانة عبر ${method} - إيصال #${rNum}`
+        }
+      ];
+
+      await recordAutoJournalEntry(
+        `استرداد مبالغ صيانة إيصال #${rNum} للعميل: ${cName}`,
+        'Receipt_Void',
+        String(r.id || r.receiptNumber),
+        lines
+      );
+
+      // 3. Audit Log
+      recordAuditLog(
+        'استرداد مبالغ صيانة',
+        'صيانة',
+        `تم استرداد مبلغ ${amt} ج.م للعميل (${cName}) عن إيصال صيانة #${rNum} عبر (${method}) - السبب: ${reason}`,
+        String(r.id || r.receiptNumber)
+      );
+
+      overlay.remove();
+      showToast(`تم استرداد ${amt} ج.م بنجاح وتحديث الحسابات والخزينة`, 'success');
+
+      // Refresh screens
+      if(state.currentSection === 'receipts' || state.currentSection === 'service'){
+        renderMain();
+      } else if(state.currentSection === 'daily'){
+        if(typeof renderDailyJournalPage === 'function') renderDailyJournalPage(document.getElementById('main'));
+      }
+    } catch(err){
+      console.error('Receipt refund error:', err);
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = 'تأكيد الاسترداد وقيد اليومية ↩️';
+      showToast('حدث خطأ أثناء معالجة الاسترداد: ' + (err.message || err), 'error');
+    }
+  };
+};
+
 /* ==========================================================================
    UNIFIED ACTIONS & SELECTION ENGINE (المحرك الموحد للاختيار وإجراءات البرنامج)
    ========================================================================== */
@@ -2391,7 +2609,7 @@ window.openPosReturnDirect = function(saleId){
   if(!s.IsReturned){
     if(typeof openPosReturnModal === 'function') openPosReturnModal(s);
   } else {
-    if(typeof openPosReturnVoucherPrint === 'function') openPosReturnVoucherPrint(s, s.ReturnDetails || {});
+    if(typeof openPosReturnVoucherPrint === 'function') openPosReturnVoucherPrint(s, s.ReturnDetails || (s.Returns && s.Returns[s.Returns.length - 1]) || {});
   }
 };
 
@@ -2758,6 +2976,11 @@ window.openReceiptActionSheet = function(receiptId, receiptNum){
             <div class="act-desc">إضافة رقم للعميل</div>
           </div>
         `}
+        <div class="action-sheet-card-btn" style="border-color:rgba(239,68,68,0.35);background:rgba(239,68,68,0.04);" onclick="document.getElementById('receiptActionSheetModal').remove(); openReceiptRefundModalDirect('${safeTargetId}', '${rNum}');">
+          <div class="act-icon" style="color:var(--red);">${getSvgIcon('arrowLeft', 20)}</div>
+          <div class="act-label" style="color:var(--red);">استرداد نقدي (مردودات)</div>
+          <div class="act-desc">رد عربون أو مبالغ للعميل</div>
+        </div>
         <div class="action-sheet-card-btn" style="border-color:rgba(239,68,68,0.3);background:rgba(239,68,68,0.03);" onclick="document.getElementById('receiptActionSheetModal').remove(); deleteReceiptDirect('${safeTargetId}', '${rNum}');">
           <div class="act-icon" style="color:var(--red);">${getSvgIcon('trash', 20)}</div>
           <div class="act-label" style="color:var(--red);">${(state.user && state.user.role === 'admin') ? 'حذف الإيصال' : 'طلب حذف'}</div>

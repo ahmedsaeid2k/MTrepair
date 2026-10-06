@@ -251,7 +251,7 @@ function renderDailyJournalPage(main){
           </div>
           ${state.user.role==='admin' ? `
             <button class="btn btn-sm btn-red font-bold" id="autoFixDuplicatePaymentsBtn" style="box-shadow:0 2px 6px rgba(220,38,38,0.25);">
-              ${getSvgIcon("refresh", 14)} تنظيف الدفعات المكررة وضبط الخزينة
+              ${getSvgIcon("alert", 14)} مراجعة وتدقيق الدفعات المشتبه بتكرارها
             </button>
           ` : ''}
         </div>
@@ -401,9 +401,8 @@ function renderDailyJournalPage(main){
 
   const autoFixBtn = document.getElementById('autoFixDuplicatePaymentsBtn');
   if(autoFixBtn){
-    autoFixBtn.onclick = async ()=>{
-      if(!confirm('هل أنت متأكد من رغبتك في إزالة الدفعات المتكررة تلقائياً وتصحيح رصيد الخزينة والإيصالات؟')) return;
-      await cleanDuplicatePayments();
+    autoFixBtn.onclick = ()=>{
+      openDuplicatePaymentsReviewModal(() => renderDailyJournalPage(main));
     };
   }
 

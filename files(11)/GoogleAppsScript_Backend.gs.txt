@@ -930,17 +930,27 @@ function doPost(e) {
     }
     if (action === 'savePayment') {
       const pId = body.id || ('p_' + new Date().getTime() + '_' + Math.floor(Math.random() * 1000));
+      const clientRef = body.clientRef || body.ClientRef || '';
       const shPay = getSheet(SHEET_PAYMENTS);
       const headers = shPay.getRange(1, 1, 1, shPay.getLastColumn()).getValues()[0];
       const idCol = headers.indexOf('ID');
+      const clientRefCol = headers.indexOf('ClientRef');
       const rIdCol = headers.indexOf('ReceiptID');
       const amtCol = headers.indexOf('Amount');
       const dateCol = headers.indexOf('Date');
       const noteCol = headers.indexOf('Note');
       const values = shPay.getDataRange().getValues();
 
-      // Idempotency: Check if payment already exists with same ID or exact same ReceiptID, Amount, Date & Note
+      // Idempotency: Check cache first via clientRef [F11-e]
+      if (clientRef && checkIdempotency('pay_' + clientRef)) {
+        return jsonOut({ ok: true, duplicateSuppressed: true, clientRef: clientRef });
+      }
+
+      // Idempotency: Check if payment already exists with same clientRef, ID, or exact same ReceiptID, Amount, Date & Note
       for (let i = 1; i < values.length; i++) {
+        if (clientRef && clientRefCol >= 0 && String(values[i][clientRefCol]) === String(clientRef)) {
+          return jsonOut({ ok: true, duplicateSuppressed: true, clientRef: clientRef });
+        }
         if (idCol >= 0 && String(values[i][idCol]) === String(pId)) {
           return jsonOut({ ok: true, duplicateSuppressed: true });
         }
@@ -958,6 +968,7 @@ function doPost(e) {
 
       const payment = {
         ID: pId,
+        ClientRef: clientRef,
         ReceiptID: body.receiptId,
         Date: body.date,
         Time: body.time || body.Time || '',
@@ -1785,7 +1796,7 @@ function ensureHeaders(sh, obj) {
     'Customers': ['Name','Phone','Email','Address','TaxNumber','Debt','Notes'],
     'Technicians': ['Name'],
     'Settings': ['Key','Value'],
-    'Payments': ['ID','ReceiptID','Date','Time','ShiftID','Amount','Note','By','PaymentMethod'],
+    'Payments': ['ID','ReceiptID','ClientRef','Date','Time','ShiftID','Amount','Note','By','PaymentMethod'],
     'Inventory': ['ID','Name','Category','SubCategory','SKU','Barcode','ShelfLocation','Quantity','MinStock','Unit','PurchasePrice','SellPrice','WholesalePrice','WarrantyMonths','CompatibleModels','ImageURL'],
     'Sales': ['ID','Date','Time','ShiftID','ItemsSummary','ItemsJSON','Total','TaxAmount','PaymentMethod','AmountPaid','ChangeDue','CustomerName','CustomerPhone','By','IsReturned','IsPartiallyReturned','ReturnDetails'],
     'Returns': ['ID','SaleID','ClientRef','CreditNoteNumber','Date','ItemsSummary','RefundAmount','RefundMethod','By'],

@@ -806,7 +806,8 @@ function openNewPurchaseModal(){
     }
 
     const grandTotal = validItems.reduce((s, it) => s + (Number(it.qty) * Number(it.purchasePrice)), 0);
-    const paidVal = parseFloat(toEngDigits(overlay.querySelector('#purAmountPaid').value)) || 0;
+    const rawPaid = parseFloat(toEngDigits(overlay.querySelector('#purAmountPaid').value)) || 0;
+    const paidVal = Math.min(grandTotal, Math.max(0, rawPaid));
     const payMode = overlay.querySelector('#purPayMode').value;
     const payMethodName = payMode === 'bank_full' ? 'بنك / محفظة إلكترونية' : (payMode === 'credit_full' ? 'آجل' : 'نقدي');
 

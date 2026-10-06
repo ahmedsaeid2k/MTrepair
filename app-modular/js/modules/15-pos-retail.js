@@ -1845,7 +1845,13 @@ function openPosReturnModal(sale){
     return;
   }
 
-  const refundMethod = sale.PaymentMethod || 'نقدي';
+  const origPaymentMethod = sale.PaymentMethod || 'نقدي';
+  const origTotal = Number(sale.Total || 0);
+  const origAmountPaid = Number(sale.AmountPaid != null ? sale.AmountPaid : origTotal);
+  const isCreditSale = String(origPaymentMethod).includes('آجل') || String(origPaymentMethod).includes('اجل') || origAmountPaid <= 0;
+  
+  // F11-h: If original sale was credit or unpaid, DO NOT refund cash from drawer! Route as debt settlement to customer receivables (1103)
+  const refundMethod = isCreditSale ? 'آجل (تسوية حساب العميل)' : origPaymentMethod;
 
   overlay.innerHTML = `
     <div class="modal-content" style="max-width:740px;max-height:90vh;overflow-y:auto;">
@@ -1903,22 +1909,27 @@ function openPosReturnModal(sale){
       </div>
 
       <!-- 3. Guaranteed Same Payment Method Refund Box -->
-      <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:6px;padding:10px 14px;margin-bottom:12px;">
+      <div style="background:${isCreditSale ? '#fef3c7' : '#eff6ff'};border:1.5px solid ${isCreditSale ? '#fcd34d' : '#bfdbfe'};border-radius:6px;padding:10px 14px;margin-bottom:12px;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <div>
-            <div style="font-size:11px;font-weight:800;color:#1e40af;">قناة الاسترداد الإلزامية (نفس وسيلة الدفع الأصلية):</div>
-            <div style="font-size:13.5px;font-weight:900;color:#1e3a8a;margin-top:2px;">
+            <div style="font-size:11px;font-weight:800;color:${isCreditSale ? '#92400e' : '#1e40af'};">
+              ${isCreditSale ? 'قناة التسوية الإلزامية (حساب العميل الآجل):' : 'قناة الاسترداد الإلزامية (نفس وسيلة الدفع الأصلية):'}
+            </div>
+            <div style="font-size:13.5px;font-weight:900;color:${isCreditSale ? '#78350f' : '#1e3a8a'};margin-top:2px;">
               رد المبلغ عبر: <b>${escapeHtml(refundMethod)}</b>
             </div>
           </div>
-          <span class="badge" style="background:#dbeafe;color:#1e40af;font-size:11px;font-weight:800;padding:4px 8px;border-radius:4px;">مطابقة وسيلة الدفع الأصلية</span>
+          <span class="badge" style="background:${isCreditSale ? '#fde68a' : '#dbeafe'};color:${isCreditSale ? '#92400e' : '#1e40af'};font-size:11px;font-weight:800;padding:4px 8px;border-radius:4px;">
+            ${isCreditSale ? 'تسوية مديونية / غير مسدد نقداً' : 'مطابقة وسيلة الدفع الأصلية'}
+          </span>
         </div>
-        <div style="font-size:10.5px;color:#2563eb;margin-top:4px;">
-          ${(refundMethod.includes('فيزا') || refundMethod.includes('visa') || refundMethod.includes('بطاق')) ? 'سيتم رد المبلغ عكسياً إلى حساب البنك والبطاقة (ح/ 1102).' :
-            (refundMethod.includes('instapay') || refundMethod.includes('إنستاباي')) ? 'سيتم رد المبلغ عبر تحويل InstaPay لحساب العميل (ح/ 1102).' :
-            (refundMethod.includes('محفظ') || refundMethod.includes('wallet')) ? 'سيتم رد المبلغ لنفس رقم المحفظة الإلكترونية للعميل (ح/ 1102).' :
-            (refundMethod.includes('آجل') || refundMethod.includes('حساب')) ? 'سيتم قيد إشعار دائن وتسوية حساب العميل الآجل (ح/ 1103).' :
-            'سيتم استرداد المبلغ نقداً وخصمه من الخزينة الرئيسية بالدرج (ح/ 1101).'}
+        <div style="font-size:10.5px;color:${isCreditSale ? '#b45309' : '#2563eb'};margin-top:4px;">
+          ${isCreditSale 
+            ? '⚠️ الفاتورة الأصلية تمت بالآجل أو لم تُسدد نقداً؛ سيتم قيد المرتجع كإشعار دائن وتسوية حساب العميل (ح/ 1103) دون صرف أي نقدية من الدرج منعاً لحدوث عجز بالخزينة.' 
+            : ((refundMethod.includes('فيزا') || refundMethod.includes('visa') || refundMethod.includes('بطاق')) ? 'سيتم رد المبلغ عكسياً إلى حساب البنك والبطاقة (ح/ 1102).' :
+              (refundMethod.includes('instapay') || refundMethod.includes('إنستاباي')) ? 'سيتم رد المبلغ عبر تحويل InstaPay لحساب العميل (ح/ 1102).' :
+              (refundMethod.includes('محفظ') || refundMethod.includes('wallet')) ? 'سيتم رد المبلغ لنفس رقم المحفظة الإلكترونية للعميل (ح/ 1102).' :
+              'سيتم استرداد المبلغ نقداً وخصمه من الخزينة الرئيسية بالدرج (ح/ 1101).')}
         </div>
       </div>
 

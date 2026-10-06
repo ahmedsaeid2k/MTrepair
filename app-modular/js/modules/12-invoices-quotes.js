@@ -937,8 +937,11 @@ function calculateShiftStats(shift){
   const openingFloat = Number(shift.openingFloat || 0);
   const totalCashIn = posCash + maintCash + manualDrawerIn;
   const totalCashOut = expensesCash + pettyCash + manualDrawerOut + returnsCash + maintRefundsCash;
-  const netCashFlow = totalCashIn - totalCashOut;
-  const expectedCash = openingFloat + netCashFlow;
+  const nonCashTotal = posCard + posInstapay + posWallet;
+  const cashNet = totalCashIn - totalCashOut;
+  const liquidityNet = (totalCashIn + nonCashTotal) - totalCashOut;
+  const netCashFlow = cashNet;
+  const expectedCash = openingFloat + cashNet;
   const actualCash = shift.actualCash != null ? Number(shift.actualCash) : null;
   const discrepancy = actualCash != null ? (actualCash - expectedCash) : 0;
   const totalTurnover = posTotalRevenue + maintCash + maintNonCash;
@@ -952,6 +955,9 @@ function calculateShiftStats(shift){
     posInstapay,
     posWallet,
     posCredit,
+    nonCashTotal,
+    cashNet,
+    liquidityNet,
     posTotalRevenue,
     returnsCount,
     returnsTotal,
@@ -1194,18 +1200,22 @@ function openCloseShiftModal(){
       </div>
 
       <!-- Financial Snapshot Cards -->
-      <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:8px;background:var(--paper2);padding:10px;border-radius:var(--radius-sm);margin-bottom:14px;">
+      <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:8px;background:var(--paper2);padding:10px;border-radius:var(--radius-sm);margin-bottom:14px;">
         <div style="text-align:center;">
-          <div style="font-size:10.5px;color:var(--ink-secondary);">الرصيد الافتتاحي</div>
-          <div class="num mono font-bold" style="font-size:14px;color:var(--ink);">${stats.openingFloat.toLocaleString()} ج.م</div>
+          <div style="font-size:10px;color:var(--ink-secondary);">الرصيد الافتتاحي</div>
+          <div class="num mono font-bold" style="font-size:13px;color:var(--ink);">${stats.openingFloat.toLocaleString()} ج.م</div>
         </div>
         <div style="text-align:center;">
-          <div style="font-size:10.5px;color:var(--green-text);">مبيعات ونقدية واردة (+)</div>
-          <div class="num mono font-bold" style="font-size:14px;color:var(--green-text);">+${stats.totalCashIn.toLocaleString()} ج.م</div>
+          <div style="font-size:10px;color:var(--green-text);">نقدية الدرج الواردة (+)</div>
+          <div class="num mono font-bold" style="font-size:13px;color:var(--green-text);">+${stats.totalCashIn.toLocaleString()} ج.م</div>
         </div>
         <div style="text-align:center;">
-          <div style="font-size:10.5px;color:var(--red-text);">منصرفات ومسحوبات (-)</div>
-          <div class="num mono font-bold" style="font-size:14px;color:var(--red-text);">-${stats.totalCashOut.toLocaleString()} ج.م</div>
+          <div style="font-size:10px;color:var(--red-text);">منصرفات الدرج (-)</div>
+          <div class="num mono font-bold" style="font-size:13px;color:var(--red-text);">-${stats.totalCashOut.toLocaleString()} ج.م</div>
+        </div>
+        <div style="text-align:center;">
+          <div style="font-size:10px;color:#2563eb;">إلكتروني / فيزا (خارج الدرج)</div>
+          <div class="num mono font-bold" style="font-size:13px;color:#2563eb;">${stats.nonCashTotal.toLocaleString()} ج.م</div>
         </div>
       </div>
 
@@ -1443,9 +1453,7 @@ function openShiftPrint(shift, mode = 'Z', format = 'thermal'){
           </div>
         ` : ''}
 
-        <div style="border-top:1.5px dashed #000;margin:6px 0;"></div>
-
-        <div style="font-weight:900;font-size:11px;margin-bottom:3px;text-align:center;">--- قنوات الدفع الإضافية ---</div>
+        <div style="font-weight:900;font-size:11px;margin-bottom:3px;text-align:center;">--- قنوات الدفع الإضافية والسيولة ---</div>
 
         <div style="display:flex;justify-content:space-between;font-size:10px;">
           <span>فيزا وبطاقات:</span><b class="mono">${stats.posCard.toLocaleString()} ج.م</b>
@@ -1458,6 +1466,12 @@ function openShiftPrint(shift, mode = 'Z', format = 'thermal'){
         </div>
         <div style="display:flex;justify-content:space-between;font-size:10px;">
           <span>مبيعات آجلة (حساب):</span><b class="mono">${stats.posCredit.toLocaleString()} ج.م</b>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:10.5px;font-weight:800;border-top:1px dotted #000;margin-top:3px;padding-top:2px;">
+          <span>صافي حركة نقدية الدرج (Cash Net):</span><b class="mono">${stats.cashNet.toLocaleString()} ج.م</b>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:10.5px;font-weight:800;">
+          <span>إجمالي صافي السيولة الموحدة:</span><b class="mono">${stats.liquidityNet.toLocaleString()} ج.م</b>
         </div>
 
         <div style="border-top:1px dashed #000;margin:4px 0;"></div>
@@ -1564,6 +1578,16 @@ function openShiftPrint(shift, mode = 'Z', format = 'thermal'){
               <td style="padding:6px 10px;font-weight:700;">منصرفات ومسحوبات الدرج</td>
               <td style="padding:6px 10px;text-align:center;" class="mono">-</td>
               <td style="padding:6px 10px;text-align:left;font-weight:800;color:#dc2626;" class="mono">-${stats.totalCashOut.toLocaleString()} ج.م</td>
+            </tr>
+            <tr style="border-bottom:1px solid #e2e8f0;background:#f0fdf4;">
+              <td style="padding:6px 10px;font-weight:800;color:#166534;">صافي حركة نقدية الدرج (Cash Net)</td>
+              <td style="padding:6px 10px;text-align:center;" class="mono">-</td>
+              <td style="padding:6px 10px;text-align:left;font-weight:900;color:#166534;" class="mono">${stats.cashNet.toLocaleString()} ج.م</td>
+            </tr>
+            <tr style="border-bottom:1px solid #e2e8f0;background:#eff6ff;">
+              <td style="padding:6px 10px;font-weight:800;color:#1e40af;">إجمالي صافي السيولة الموحدة (نقدية + إلكترونية)</td>
+              <td style="padding:6px 10px;text-align:center;" class="mono">-</td>
+              <td style="padding:6px 10px;text-align:left;font-weight:900;color:#1e40af;" class="mono">${stats.liquidityNet.toLocaleString()} ج.م</td>
             </tr>
             <tr style="background:#f8fafc;font-weight:900;">
               <td style="padding:8px 10px;font-size:13px;">إجمالي حركة المبيعات الشاملة</td>

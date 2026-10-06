@@ -101,3 +101,43 @@ const _origDateToLocaleDateString = Date.prototype.toLocaleDateString;
 Date.prototype.toLocaleDateString = function(locales, options) {
   return toEngDigits(_origDateToLocaleDateString.call(this, 'en-CA', options));
 };
+
+/* ---------------- Local Date & Time Formatter (Egypt UTC+2/+3 Safe) [F11-j] ---------------- */
+/**
+ * Returns YYYY-MM-DD formatted date string in the machine's local timezone.
+ * Immune to UTC midnight shifts (e.g. 1:00 AM in Egypt resulting in yesterday's date in UTC).
+ * @param {Date|string|number} [d=new Date()]
+ * @returns {string} Date string in YYYY-MM-DD
+ */
+function localDateStr(d = new Date()){
+  let dt = d;
+  if (!(dt instanceof Date) || isNaN(dt.getTime())) {
+    if (typeof dt === 'string' || typeof dt === 'number') dt = new Date(dt);
+    else dt = new Date();
+  }
+  if (isNaN(dt.getTime())) dt = new Date();
+  const year = dt.getFullYear();
+  const month = String(dt.getMonth() + 1).padStart(2, '0');
+  const day = String(dt.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+window.localDateStr = localDateStr;
+
+/**
+ * Returns HH:MM:SS formatted time string in local timezone.
+ * @param {Date|string|number} [d=new Date()]
+ * @returns {string} Time string in HH:MM:SS
+ */
+function localTimeStr(d = new Date()){
+  let dt = d;
+  if (!(dt instanceof Date) || isNaN(dt.getTime())) {
+    if (typeof dt === 'string' || typeof dt === 'number') dt = new Date(dt);
+    else dt = new Date();
+  }
+  if (isNaN(dt.getTime())) dt = new Date();
+  const hours = String(dt.getHours()).padStart(2, '0');
+  const mins = String(dt.getMinutes()).padStart(2, '0');
+  const secs = String(dt.getSeconds()).padStart(2, '0');
+  return `${hours}:${mins}:${secs}`;
+}
+window.localTimeStr = localTimeStr;

@@ -535,7 +535,7 @@ function openManualJournalModal(){
         </div>
 
         <div class="grid2">
-          <div class="field"><label>التاريخ *</label><input id="jeDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+          <div class="field"><label>التاريخ *</label><input id="jeDate" type="date" value="${(typeof localDateStr === 'function') ? localDateStr() : new Date().toISOString().slice(0,10)}"></div>
           <div class="field"><label>البيان العام للقيد *</label><input id="jeDesc" placeholder="مثال: تسوية جردية، سداد مصروفات نقدية..."></div>
         </div>
 
@@ -544,8 +544,11 @@ function openManualJournalModal(){
           ${lines.map((l,i)=>`
             <div class="journal-line-row">
               <select data-jacc="${i}">
-                <option value="">-- اختر الحساب --</option>
-                ${state.accounts.map(a=>`<option value="${a.Code}" ${l.accountCode===a.Code?'selected':''}>${a.Code} - ${a.Name}</option>`).join('')}
+                <option value="">-- اختر الحساب الفرعي التشغيلي --</option>
+                ${state.accounts.map(a=>{
+                  const isParent = (state.accounts||[]).some(x => String(x.ParentCode) === String(a.Code));
+                  return `<option value="${a.Code}" ${l.accountCode===a.Code?'selected':''} ${isParent?'disabled style="color:#94a3b8;background:#f8fafc;"':''}>${a.Code} - ${a.Name} ${isParent ? '(رئيسي تجميعي - لا يقبل القيود)' : ''}</option>`;
+                }).join('')}
               </select>
               <input type="number" placeholder="مدين" value="${l.debit||''}" data-jdebit="${i}">
               <input type="number" placeholder="دائن" value="${l.credit||''}" data-jcredit="${i}">
@@ -611,6 +614,16 @@ function openManualJournalModal(){
       const desc = overlay.querySelector('#jeDesc').value.trim();
       const date = overlay.querySelector('#jeDate').value;
       if(!desc){ showToast('اكتب بيان القيد', 'error'); return; }
+      if(!isBalanced){ showToast('القيد غير متوازن: المدين لا يساوي الدائن', 'error'); return; }
+
+      for(const l of lines){
+        if(!l.accountCode){ showToast('يجب اختيار الحساب لجميع أسطر القيد', 'error'); return; }
+        const isParent = (state.accounts || []).some(a => String(a.ParentCode) === String(l.accountCode));
+        if(isParent){
+          showToast(`الحساب (${l.accountCode}) هو حساب رئيسي/تجميعي ولا يقبل القيود المباشرة؛ اختر حساباً فرعياً تشغيلياً`, 'error');
+          return;
+        }
+      }
       
       const formattedLines = lines.map(l=>{
         const a = state.accounts.find(x=>x.Code===l.accountCode);
@@ -635,7 +648,7 @@ function openManualJournalModal(){
         overlay.remove();
         showToast('تم ترحيل وحفظ القيد اليومي بنجاح', 'success');
         renderJournalEntries(document.getElementById('main'));
-      }catch(e){ showToast('تم حفظ القيد محلياً', 'info'); }
+      }catch(e){ showToast('حدث خطأ أثناء حفظ القيد: ' + (e.message || e), 'error'); }
     };
   }
 
@@ -2561,7 +2574,12 @@ function openUserModal(editUser=null){
         </div>
         <div class="field">
           <label>${isEdit ? 'كلمة المرور الجديدة (اتركها فارغة للإبقاء على الحالية)' : 'كلمة المرور *'}</label>
-          <input id="uModalPassword" type="password" value="" placeholder="${isEdit ? 'اتركه فارغاً للإبقاء على الحالية' : 'أدخل كلمة المرور'}">
+          <div style="position:relative;display:flex;align-items:center;">
+            <input id="uModalPassword" type="password" value="" autocomplete="new-password" placeholder="${isEdit ? 'اتركه فارغاً للإبقاء على الحالية' : 'أدخل كلمة المرور'}" style="width:100%;padding-left:36px;">
+            <button type="button" id="togglePassVisBtn" class="btn btn-ghost btn-xs" style="position:absolute;left:4px;height:28px;width:28px;padding:0;display:flex;align-items:center;justify-content:center;color:var(--ink-secondary);" title="إظهار / إخفاء كلمة المرور">
+              ${getSvgIcon('eye', 14)}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -2771,6 +2789,16 @@ function openUserModal(editUser=null){
     }
     syncSecUI();
   };
+
+  const togglePassBtn = overlay.querySelector('#togglePassVisBtn');
+  if(togglePassBtn){
+    togglePassBtn.onclick = () => {
+      const pInp = overlay.querySelector('#uModalPassword');
+      if(pInp){
+        pInp.type = pInp.type === 'password' ? 'text' : 'password';
+      }
+    };
+  }
 
   // Save handler
   overlay.querySelector('#saveUserModalBtn').onclick = async ()=>{

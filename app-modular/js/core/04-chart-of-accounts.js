@@ -167,14 +167,16 @@ function reconcileHistoricalJournalEntries(){
     const refKey = `Sale_${s.ID}`;
     if (!existingRefs.has(refKey)) {
       const total = Number(s.Total || 0);
-      const paid = Number(s.AmountPaid != null ? s.AmountPaid : total);
+      const rawPaid = Number(s.AmountPaid != null ? s.AmountPaid : total);
+      const change = Number(s.ChangeDue != null ? s.ChangeDue : (rawPaid > total ? rawPaid - total : 0));
+      const paid = Math.min(total, Math.max(0, round2(rawPaid - change)));
       if (total > 0) {
         const lines = [];
         if (paid > 0) {
           lines.push({ AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: paid, Credit: 0, Notes: `مقبوضات مبيعات POS` });
         }
         if (total > paid) {
-          lines.push({ AccountCode: '1103', AccountName: 'العملاء والمدينون', Debit: total - paid, Credit: 0, Notes: `آجل مبيعات POS للعميل ${s.CustomerName || ''}` });
+          lines.push({ AccountCode: '1103', AccountName: 'العملاء والمدينون', Debit: round2(total - paid), Credit: 0, Notes: `آجل مبيعات POS للعميل ${s.CustomerName || ''}` });
         }
         const taxAmt = Math.max(0, Number(s.TaxAmount || 0));
         const netRevenue = Math.max(0, Math.round((total - taxAmt) * 100) / 100);
@@ -459,8 +461,39 @@ async function loadJournalEntries(){
 async function saveJournalEntryRemote(entry){
   if(!entry.ID) entry.ID = 'je_' + Date.now();
   if(!entry.EntryNumber) entry.EntryNumber = getNextJournalEntryNumber();
-  if(!entry.Date) entry.Date = new Date().toISOString().slice(0,10);
+  if(!entry.Date) entry.Date = (typeof localDateStr === 'function') ? localDateStr() : new Date().toISOString().slice(0,10);
   entry.By = state.user ? state.user.name : 'نظام';
+
+  // 1. Balance check (F11-a): Enforce double-entry accounting balance
+  const lines = Array.isArray(entry.Lines) ? entry.Lines : (typeof entry.LinesJSON === 'string' ? JSON.parse(entry.LinesJSON || '[]') : []);
+  const calcDebit = round2(lines.reduce((s, l) => s + Number(l.Debit || 0), 0));
+  const calcCredit = round2(lines.reduce((s, l) => s + Number(l.Credit || 0), 0));
+  if (Math.abs(calcDebit - calcCredit) > 0.005) {
+    const err = `قيد اليومية غير متوازن: المدين (${calcDebit}) لا يساوي الدائن (${calcCredit}) [قيد #${entry.EntryNumber || ''}]`;
+    console.error(`[saveJournalEntryRemote] Rejecting unbalanced entry:`, err, lines);
+    throw new Error(err);
+  }
+  entry.TotalDebit = calcDebit;
+  entry.TotalCredit = calcCredit;
+
+  // 2. Validate lines: account code presence and reject parent/summary accounts [F11-d]
+  for (const l of lines) {
+    const code = String(l.AccountCode || '').trim();
+    if (!code) {
+      throw new Error(`يوجد سطر في القيد بدون تحديد رقم/كود الحساب`);
+    }
+    const isParent = (state.accounts || []).some(a => String(a.ParentCode) === code);
+    if (isParent) {
+      throw new Error(`لا يمكن ترحيل قيود على حساب رئيسي/تجميعي (${code})؛ يرجى اختيار حساب فرعي تشغيلي`);
+    }
+  }
+
+  // 3. Audit logging for manual / non-auto journal entries [F11-d]
+  if (!entry.ReferenceType || entry.ReferenceType === 'Manual' || entry.ReferenceType === 'General') {
+    if (typeof recordAuditLog === 'function') {
+      recordAuditLog('قيد يومية يدوي', 'الحسابات', `ترحيل قيد يومي #${entry.EntryNumber} بقيمة ${calcDebit} ج.م - البيان: ${entry.Description}`, entry.ID);
+    }
+  }
 
   const existingIdx = (state.journalEntries || []).findIndex(x => String(x.ID) === String(entry.ID));
   if(existingIdx > -1){
@@ -474,12 +507,20 @@ async function saveJournalEntryRemote(entry){
 }
 
 async function recordAutoJournalEntry(desc, refType, refId, lines){
-  const totalDebit = lines.reduce((s,l)=>s+Number(l.Debit||0),0);
-  const totalCredit = lines.reduce((s,l)=>s+Number(l.Credit||0),0);
+  const totalDebit = round2(lines.reduce((s,l)=>s+Number(l.Debit||0),0));
+  const totalCredit = round2(lines.reduce((s,l)=>s+Number(l.Credit||0),0));
+
+  // Balance guard (F11-a)
+  if (Math.abs(totalDebit - totalCredit) > 0.005) {
+    const errMsg = `القيد التلقائي غير متوازن: المدين (${totalDebit}) لا يساوي الدائن (${totalCredit}) للمرجع ${refType} - ${refId}`;
+    console.error(`[recordAutoJournalEntry] Unbalanced journal entry rejected:`, errMsg, lines);
+    throw new Error(errMsg);
+  }
+
   const entry = {
     ID: 'je_' + Date.now() + '_' + Math.floor(Math.random()*1000),
     EntryNumber: getNextJournalEntryNumber(),
-    Date: new Date().toISOString().slice(0,10),
+    Date: (typeof localDateStr === 'function') ? localDateStr() : new Date().toISOString().slice(0,10),
     Description: desc,
     ReferenceType: refType,
     ReferenceID: refId || '',

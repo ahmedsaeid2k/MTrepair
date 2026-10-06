@@ -1132,11 +1132,16 @@ async function savePaymentRemote(receiptId, amount, note, paymentMethod){
   _recentPaymentGuards.set(guardKey, now);
 
   const nowDate = new Date();
+  const dateStr = (typeof localDateStr === 'function') ? localDateStr() : nowDate.toISOString().slice(0,10);
+  const timeStr = (typeof localTimeStr === 'function') ? localTimeStr() : nowDate.toTimeString().slice(0, 8);
+  const clientRef = `pay_${receiptId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
   const payment = {
     ID: 'p_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+    ClientRef: clientRef,
     ReceiptID: receiptId,
-    Date: nowDate.toISOString().slice(0,10),
-    Time: nowDate.toTimeString().slice(0, 8),
+    Date: dateStr,
+    Time: timeStr,
     Amount: numAmt,
     Note: note || '',
     By: state.user ? state.user.name : 'نظام',
@@ -1176,7 +1181,7 @@ async function savePaymentRemote(receiptId, amount, note, paymentMethod){
       {AccountCode: creditAccCode, AccountName: creditAccName, Debit: 0, Credit: numAmt, Notes: isDeliveredPayment ? `سداد مديونية إيصال #${rNumPayment}` : `دفعة مقدمة إيصال #${rNumPayment}`}
     ]
   ).catch(e=>{});
-  return apiPost('savePayment', {id: payment.ID, receiptId, amount: payment.Amount, note: payment.Note, paymentMethod: payMethod, date: payment.Date, time: payment.Time, shiftId: payment.ShiftID, user: payment.By});
+  return apiPost('savePayment', {id: payment.ID, clientRef: payment.ClientRef, receiptId, amount: payment.Amount, note: payment.Note, paymentMethod: payMethod, date: payment.Date, time: payment.Time, shiftId: payment.ShiftID, user: payment.By});
 }
 
 async function deletePaymentRemote(paymentId){
@@ -1241,24 +1246,134 @@ function detectDuplicatePayments(payments = state.payments || []){
   return duplicates;
 }
 
-async function cleanDuplicatePayments(){
+function openDuplicatePaymentsReviewModal(onDone){
   const duplicates = detectDuplicatePayments(state.payments || []);
   if(!duplicates.length){
     showToast('لا توجد أي دفعات مكررة في النظام', 'success');
     return;
   }
-  let count = 0;
-  for(const item of duplicates){
-    const dupP = item.duplicate;
-    await deletePaymentRemote(dupP.ID);
-    count++;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.zIndex = '12500';
+
+  function renderContent(){
+    const currentDups = detectDuplicatePayments(state.payments || []);
+    if(!currentDups.length){
+      overlay.remove();
+      showToast('تمت معالجة وتدقيق جميع الدفعات بنجاح', 'success');
+      if(typeof onDone === 'function') onDone();
+      else if(state.currentSection === 'daily') renderDailyJournalPage(document.getElementById('main'));
+      else render();
+      return;
+    }
+
+    overlay.innerHTML = `
+      <div class="modal-content" style="max-width:850px;max-height:90vh;overflow-y:auto;">
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid var(--line);padding-bottom:12px;margin-bottom:14px;">
+          <div>
+            <h3 style="margin:0;font-size:16.5px;font-weight:900;color:var(--ink);display:flex;align-items:center;gap:8px;">
+              <span>${getSvgIcon('alert', 18)}</span>
+              <span>تدقيق وممراجعة الدفعات المشتبه بتكرارها (Treasury Audit)</span>
+            </h3>
+            <div style="font-size:12px;color:var(--ink-secondary);margin-top:3px;">
+              تم رصد <b>${currentDups.length}</b> دفعة مشتبه بتكرارها لنفس الإيصال والمبلغ والتاريخ.
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-xs" id="closeDupRevModal" style="font-size:18px;line-height:1;">&times;</button>
+        </div>
+
+        <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:6px;padding:12px 14px;margin-bottom:16px;font-size:12px;color:#92400e;line-height:1.5;">
+          <b>⚠️ تنبيه الرقابة المالية:</b> بعض المعاملات قد تمثل أقساطاً متعددة حقيقية سددها العميل في نفس اليوم بنفس القيمة (كأقساط صيانة مجزأة). لن يتم حذف أي دفعة تلقائياً. راجع تفاصيل كل دفعة بالجدول أدناه واحذف فقط ما تتأكد أنه تكرار غير مقصود.
+        </div>
+
+        <div class="table-wrap" style="margin-bottom:16px;">
+          <table style="width:100%;font-size:11.5px;">
+            <thead>
+              <tr style="background:#f1f5f9;color:#334155;">
+                <th style="padding:6px 10px;text-align:right;">الإيصال</th>
+                <th style="padding:6px 10px;text-align:center;">المبلغ</th>
+                <th style="padding:6px 10px;text-align:center;">التاريخ والوقت</th>
+                <th style="padding:6px 10px;text-align:center;">الوسيلة</th>
+                <th style="padding:6px 10px;text-align:right;">البيان</th>
+                <th style="padding:6px 10px;text-align:center;">المسؤول</th>
+                <th style="padding:6px 10px;text-align:center;width:120px;">الإجراء</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${currentDups.map((d, idx) => {
+                const orig = d.original;
+                const dup = d.duplicate;
+                return `
+                  <tr style="background:#f8fafc;border-top:1.5px solid #cbd5e1;">
+                    <td style="padding:6px 10px;font-weight:700;">
+                      <span class="badge" style="background:#dbeafe;color:#1e40af;margin-left:4px;">الأصلية</span>
+                      #${orig.ReceiptID}
+                    </td>
+                    <td style="padding:6px 10px;text-align:center;" class="mono font-bold">${Number(orig.Amount).toLocaleString()} ج.م</td>
+                    <td style="padding:6px 10px;text-align:center;" class="mono">${orig.Date} ${orig.Time || ''}</td>
+                    <td style="padding:6px 10px;text-align:center;">${escapeHtml(orig.PaymentMethod || 'نقدي')}</td>
+                    <td style="padding:6px 10px;">${escapeHtml(orig.Note || '-')}</td>
+                    <td style="padding:6px 10px;text-align:center;">${escapeHtml(orig.By || '-')}</td>
+                    <td style="padding:6px 10px;text-align:center;color:#059669;font-weight:700;">احتفاظ</td>
+                  </tr>
+                  <tr style="background:#fef2f2;border-bottom:1.5px solid #fca5a5;">
+                    <td style="padding:6px 10px;font-weight:700;">
+                      <span class="badge" style="background:#fee2e2;color:#991b1b;margin-left:4px;">المكررة المشتبه بها</span>
+                      #${dup.ReceiptID}
+                    </td>
+                    <td style="padding:6px 10px;text-align:center;" class="mono font-bold" style="color:#b91c1c;">${Number(dup.Amount).toLocaleString()} ج.م</td>
+                    <td style="padding:6px 10px;text-align:center;" class="mono">${dup.Date} ${dup.Time || ''}</td>
+                    <td style="padding:6px 10px;text-align:center;">${escapeHtml(dup.PaymentMethod || 'نقدي')}</td>
+                    <td style="padding:6px 10px;">${escapeHtml(dup.Note || '-')}</td>
+                    <td style="padding:6px 10px;text-align:center;">${escapeHtml(dup.By || '-')}</td>
+                    <td style="padding:6px 10px;text-align:center;">
+                      <button class="btn btn-xs btn-red delete-dup-btn" data-pid="${dup.ID}" style="font-size:11px;padding:3px 8px;">
+                        ${getSvgIcon('trash', 12)} حذف المكررة
+                      </button>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:8px;">
+          <button class="btn btn-ghost" id="closeDupRevModalBtn">إغلاق</button>
+        </div>
+      </div>
+    `;
+
+    overlay.querySelector('#closeDupRevModal').onclick = () => overlay.remove();
+    overlay.querySelector('#closeDupRevModalBtn').onclick = () => overlay.remove();
+
+    overlay.querySelectorAll('.delete-dup-btn').forEach(btn => {
+      btn.onclick = async () => {
+        const pid = btn.dataset.pid;
+        if(!confirm(`هل أنت متأكد من حذف هذه الدفعة المكررة (#${pid})؟\nسيتم تصحيح رصيد الخزينة والإيصال فوراً.`)) return;
+        btn.disabled = true;
+        btn.textContent = 'جارٍ الحذف...';
+        try {
+          await deletePaymentRemote(pid);
+          showToast('تم حذف الدفعة المكررة بنجاح', 'success');
+          renderContent();
+        } catch(e) {
+          showToast('فشل حذف الدفعة: ' + (e.message || e), 'error');
+          btn.disabled = false;
+        }
+      };
+    });
   }
-  showToast(`تم تنظيف ${count} دفعة مكررة وتصحيح رصيد الخزينة والإيصالات بنجاح`, 'success');
-  if(state.currentSection === 'daily'){
-    renderDailyJournalPage(document.getElementById('main'));
-  } else {
-    render();
-  }
+
+  document.body.appendChild(overlay);
+  renderContent();
+}
+window.openDuplicatePaymentsReviewModal = openDuplicatePaymentsReviewModal;
+
+async function cleanDuplicatePayments(){
+  // Safe redirect to interactive review modal instead of silent blind auto-deletion [F11-f]
+  return openDuplicatePaymentsReviewModal();
 }
 
 async function loadInventory(){
@@ -1298,8 +1413,8 @@ async function loadSales(){
 }
 async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, customerPhone, paymentMethod, amountPaid, itemsList = [], taxAmount = 0, changeDue = null){
   const now = new Date();
-  const dateStr = now.toISOString().slice(0,10);
-  const timeStr = now.toTimeString().slice(0, 8);
+  const dateStr = (typeof localDateStr === 'function') ? localDateStr() : now.toISOString().slice(0,10);
+  const timeStr = (typeof localTimeStr === 'function') ? localTimeStr() : now.toTimeString().slice(0, 8);
   const finalPaid = amountPaid != null ? Number(amountPaid) : Number(total || 0);
   const finalChangeDue = changeDue != null ? Number(changeDue) : Math.max(0, round2(finalPaid - Number(total || 0)));
 
@@ -1374,10 +1489,47 @@ async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, cust
   const taxAmt = Math.max(0, Number(taxAmount || 0));
   const netRevenue = Math.max(0, Math.round((Number(total) - taxAmt) * 100) / 100);
 
-  const journalLines = [
-    {AccountCode: debitAccCode, AccountName: debitAccName, Debit: Number(total), Credit: 0, Notes: `مقبوضات مبيعات [${paymentMethod||'نقدي'}]`},
-    {AccountCode: '4102', AccountName: 'إيرادات مبيعات بضائع وقطع غيار', Debit: 0, Credit: netRevenue, Notes: itemsSummary}
-  ];
+  // Clamped Paid vs Credit routing [F11-b]
+  const numTotal = Number(total || 0);
+  const paidClamped = Math.min(numTotal, Math.max(0, round2(finalPaid - finalChangeDue)));
+  const remainingCredit = Math.max(0, round2(numTotal - paidClamped));
+
+  const journalLines = [];
+  if (paidClamped > 0 && !isCredit) {
+    journalLines.push({
+      AccountCode: debitAccCode,
+      AccountName: debitAccName,
+      Debit: paidClamped,
+      Credit: 0,
+      Notes: `مقبوضات مبيعات [${paymentMethod || 'نقدي'}]`
+    });
+  }
+  if (isCredit) {
+    journalLines.push({
+      AccountCode: '1103',
+      AccountName: 'العملاء والمدينون',
+      Debit: numTotal,
+      Credit: 0,
+      Notes: `آجل مبيعات POS للعميل (${customerName || 'عميل'})`
+    });
+  } else if (remainingCredit > 0) {
+    journalLines.push({
+      AccountCode: '1103',
+      AccountName: 'العملاء والمدينون',
+      Debit: remainingCredit,
+      Credit: 0,
+      Notes: `متبقي آجل مبيعات POS للعميل (${customerName || 'عميل'})`
+    });
+  }
+
+  journalLines.push({
+    AccountCode: '4102',
+    AccountName: 'إيرادات مبيعات بضائع وقطع غيار',
+    Debit: 0,
+    Credit: netRevenue,
+    Notes: itemsSummary
+  });
+
   if(taxAmt > 0){
     journalLines.push({
       AccountCode: '2104',

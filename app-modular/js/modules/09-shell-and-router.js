@@ -28,7 +28,7 @@ async function init(){
   if(typeof checkStorageQuotaStatus === 'function') checkStorageQuotaStatus();
 
   // If online and authenticated with server session, fetch fresh updates in background via unified bootstrap
-  if(navigator.onLine && state.user && getSessionToken()){
+  if(navigator.onLine && state.user && getSessionToken() && !String(getSessionToken()).startsWith('offline_token_')){
     try {
       // 🔒 Server Identity Verification: verify role and permissions against active server session
       const me = await apiGet('getMe', { _force: true });

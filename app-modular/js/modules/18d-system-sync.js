@@ -146,6 +146,38 @@ function renderSyncSettings(main){
       </div>
     </div>
 
+    <!-- بطاقة إعدادات رابط الخادم السحابي (Google Apps Script API) -->
+    <div class="card" style="border-right:4px solid var(--primary);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+        <h3 style="margin:0;font-size:15px;display:flex;align-items:center;gap:6px;">
+          <span>${getSvgIcon('settings', 16)}</span>
+          <span>إعدادات رابط الخادم السحابي (Google Apps Script API)</span>
+        </h3>
+        <span class="mono" style="font-size:11.5px;color:var(--ink-secondary);">نقطة النهاية الأساسية للربط</span>
+      </div>
+
+      <p style="font-size:12.5px;color:var(--ink-secondary);line-height:1.5;margin-bottom:12px;">
+        عنوان الويب الخاص بنشر سكريبت Google Apps Script كـ Web App. يمكنك تغيير الرابط أو فحصه أو استعادة الرابط الافتراضي للنظام.
+      </p>
+
+      <div class="field" style="margin-bottom:12px;">
+        <label style="font-size:12px;font-weight:700;">رابط النشر النشط (Active Web App URL):</label>
+        <div style="display:flex;gap:6px;">
+          <input id="syncApiUrlInp" dir="ltr" style="flex:1;font-size:12.5px;font-family:monospace;padding:8px 10px;" value="${escapeHtml(getApiUrl())}">
+          <button type="button" class="btn btn-ghost btn-sm" id="testSyncApiBtn" style="display:inline-flex;align-items:center;gap:6px;">
+            ${getSvgIcon('refresh', 13)} فحص الاتصال
+          </button>
+        </div>
+      </div>
+
+      <div id="syncApiTestFeedback" style="display:none;padding:8px 12px;border-radius:6px;font-size:12px;margin-bottom:12px;line-height:1.4;"></div>
+
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <button class="btn btn-primary btn-sm" id="saveSyncApiBtn" style="font-weight:800;">${getSvgIcon('check', 13)} حفظ الرابط وتطبيقه</button>
+        <button class="btn btn-ghost btn-sm" id="resetSyncApiBtn" style="color:var(--ink-secondary);">استعادة الرابط الافتراضي</button>
+      </div>
+    </div>
+
     <!-- بطاقة استعراض وإدارة طابور المزامنة التفاعلي -->
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
@@ -326,6 +358,96 @@ function renderSyncSettings(main){
         const res = typeof safePurgeLocalCache === 'function' ? safePurgeLocalCache() : { preservedQueueCount: q.length };
         showToast(`تم تفريغ الكاش بنجاح مع حماية ${res.preservedQueueCount} عملية معلقة، جاري إعادة التحميل...`, 'info');
         setTimeout(() => window.location.reload(), 700);
+      }
+    };
+  }
+
+  // Cloud API URL Settings Listeners
+  const syncApiInp = document.getElementById('syncApiUrlInp');
+  const syncApiFeedback = document.getElementById('syncApiTestFeedback');
+  const testSyncApiBtn = document.getElementById('testSyncApiBtn');
+  const saveSyncApiBtn = document.getElementById('saveSyncApiBtn');
+  const resetSyncApiBtn = document.getElementById('resetSyncApiBtn');
+
+  if(resetSyncApiBtn && syncApiInp){
+    resetSyncApiBtn.onclick = () => {
+      syncApiInp.value = DEFAULT_API_URL;
+      if(syncApiFeedback) syncApiFeedback.style.display = 'none';
+    };
+  }
+
+  if(saveSyncApiBtn && syncApiInp){
+    saveSyncApiBtn.onclick = () => {
+      const val = syncApiInp.value.trim();
+      if(val && !val.startsWith('https://script.google.com/macros/s/')){
+        showToast('يجب أن يبدأ الرابط بـ https://script.google.com/macros/s/', 'error');
+        return;
+      }
+      if(val === DEFAULT_API_URL || !val){
+        localStorage.removeItem('microerp_api_url');
+      } else {
+        localStorage.setItem('microerp_api_url', val);
+      }
+      refreshApiUrl();
+      showToast('تم حفظ وتطبيق رابط الخادم السحابي بنجاح', 'success');
+      renderSyncSettings(main);
+    };
+  }
+
+  if(testSyncApiBtn && syncApiInp){
+    testSyncApiBtn.onclick = async () => {
+      const url = syncApiInp.value.trim();
+      if(!url){
+        showToast('يرجى إدخال الرابط للفحص', 'error');
+        return;
+      }
+      testSyncApiBtn.disabled = true;
+      testSyncApiBtn.textContent = 'جارٍ الفحص...';
+      if(syncApiFeedback){
+        syncApiFeedback.style.display = 'block';
+        syncApiFeedback.style.background = 'var(--paper3)';
+        syncApiFeedback.style.color = 'var(--ink)';
+        syncApiFeedback.textContent = 'جارٍ إرسال طلب تجريبي للخادم...';
+      }
+
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {'Content-Type': 'text/plain;charset=utf-8'},
+          body: JSON.stringify({ action: 'ping' }),
+          signal: controller.signal
+        });
+        clearTimeout(timeout);
+        const text = await res.text();
+        let parsed = null;
+        try { parsed = JSON.parse(text); } catch(e){}
+
+        if(syncApiFeedback){
+          if(parsed && parsed.ok){
+            syncApiFeedback.style.background = 'var(--green-bg)';
+            syncApiFeedback.style.color = 'var(--green-text)';
+            syncApiFeedback.textContent = '✓ الاتصال ناجح! الخادم السحابي يعمل بكفاءة وجاهز للعمل.';
+          } else if(text.includes('google') && text.includes('html')){
+            syncApiFeedback.style.background = 'var(--amber-bg)';
+            syncApiFeedback.style.color = 'var(--amber-text)';
+            syncApiFeedback.textContent = '⚠️ استجاب الرابط بصفحة Google Drive غير صالحة. يرجى التأكد من نشر السكربت كـ Web App مع إتاحة الصلاحية لـ Anyone.';
+          } else {
+            syncApiFeedback.style.background = 'var(--green-bg)';
+            syncApiFeedback.style.color = 'var(--green-text)';
+            syncApiFeedback.textContent = '✓ استجاب الخادم بنجاح (حالة الاستجابة: ' + res.status + ')';
+          }
+        }
+      } catch(err){
+        if(syncApiFeedback){
+          syncApiFeedback.style.background = 'var(--red-bg)';
+          syncApiFeedback.style.color = 'var(--red-text)';
+          syncApiFeedback.textContent = '✕ فشل الاتصال: ' + (err.message || 'تعذر الوصول للرابط');
+        }
+      } finally {
+        testSyncApiBtn.disabled = false;
+        testSyncApiBtn.innerHTML = `${getSvgIcon('refresh', 13)} فحص الاتصال`;
       }
     };
   }

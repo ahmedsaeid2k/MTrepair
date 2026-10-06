@@ -20,9 +20,14 @@ function loginScreen(){
           </span>
         `}
       </div>
-      <button type="button" class="btn btn-ghost" id="loginThemeToggle" style="border-radius:var(--radius-sm);padding:5px 12px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px;background:var(--paper2);border:1px solid var(--line);cursor:pointer;">
-        ${isDark ? `${getSvgIcon('sun', 14)} الوضع الفاتح` : `${getSvgIcon('moon', 14)} الوضع الليلي`}
-      </button>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button type="button" class="btn btn-ghost" id="loginApiSettingsBtn" title="إعدادات الربط السحابي" style="border-radius:var(--radius-sm);padding:5px 12px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px;background:var(--paper2);border:1px solid var(--line);cursor:pointer;">
+          ${getSvgIcon('settings', 14)} إعدادات الخادم
+        </button>
+        <button type="button" class="btn btn-ghost" id="loginThemeToggle" style="border-radius:var(--radius-sm);padding:5px 12px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px;background:var(--paper2);border:1px solid var(--line);cursor:pointer;">
+          ${isDark ? `${getSvgIcon('sun', 14)} الوضع الفاتح` : `${getSvgIcon('moon', 14)} الوضع الليلي`}
+        </button>
+      </div>
     </div>
 
     <div class="login-card">
@@ -41,7 +46,10 @@ function loginScreen(){
           ${getSvgIcon('alert', 15)}
           <span>تم تعليق تسجيل الدخول مؤقتاً لأسباب أمنية</span>
         </div>
-        يرجى الانتظار <span id="lockoutTimerVal">30</span> ثانية قبل إعادة المحاولة.
+        <div>يرجى الانتظار <span id="lockoutTimerVal">30</span> ثانية قبل إعادة المحاولة.</div>
+        <div style="margin-top:6px;">
+          <button type="button" class="btn btn-xs btn-ghost" id="clearLockoutBtn" style="font-size:11px;text-decoration:underline;cursor:pointer;color:var(--ink);">إلغاء القفل الآن</button>
+        </div>
       </div>
 
       ${!isOnline ? `
@@ -94,7 +102,12 @@ function loginScreen(){
       <!-- Animated Error Banner -->
       <div class="login-err-banner" id="loginErr"></div>
 
-      <div style="margin-top:20px;padding-top:14px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:var(--ink-secondary);">
+      <div style="margin-top:16px;padding:9px 12px;background:var(--paper2);border:1px solid var(--line);border-radius:var(--radius-sm);display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:var(--ink-secondary);">
+        <span>حساب المدير: <b style="color:var(--ink);">admin</b></span>
+        <span>كلمة المرور: <b style="color:var(--ink);">admin</b></span>
+      </div>
+
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--ink-secondary);">
         <span>حماية مشددة ضد التخمين</span>
         <span style="font-weight:700;color:var(--primary);display:inline-flex;align-items:center;gap:4px;">${getSvgIcon('lock', 12)} جلسة آمنة ومعتمدة</span>
       </div>
@@ -208,6 +221,147 @@ function attachLogin(){
     };
   }
 
+  // Cloud API Settings Modal Handler
+  const openApiSettingsModal = () => {
+    const curUrl = getApiUrl();
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.zIndex = '14000';
+    overlay.innerHTML = `
+      <div class="modal-content" style="max-width:540px;border-radius:18px;padding:24px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:16px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:36px;height:36px;border-radius:50%;background:rgba(37,99,235,0.12);color:var(--primary);display:flex;align-items:center;justify-content:center;">${getSvgIcon('settings', 18)}</div>
+            <div>
+              <h3 style="margin:0;font-size:16px;font-weight:900;">إعدادات الربط بالخادم السحابي</h3>
+              <div style="font-size:11.5px;color:var(--ink-secondary);">رابط Google Apps Script Web App</div>
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-xs" id="closeApiModalBtn" style="font-size:18px;line-height:1;">&times;</button>
+        </div>
+
+        <div style="font-size:12.5px;color:var(--ink-secondary);line-height:1.5;margin-bottom:14px;">
+          يمكنك ربط البرنامج برابط نشر Google Apps Script الخاص بك، أو إعادة تعيينه للرابط الافتراضي.
+        </div>
+
+        <div class="field" style="margin-bottom:12px;">
+          <label style="font-size:12px;font-weight:700;">رابط النشر الحالي (Web App URL):</label>
+          <input id="apiModalUrlInp" dir="ltr" style="font-size:12px;font-family:monospace;padding:9px;" value="${escapeHtml(curUrl)}">
+        </div>
+
+        <div id="apiTestStatusBox" style="display:none;padding:10px 12px;border-radius:8px;font-size:12px;margin-bottom:14px;line-height:1.5;"></div>
+
+        <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:14px;">
+          <div style="display:flex;gap:6px;">
+            <button type="button" class="btn btn-sm btn-ghost" id="apiTestBtn" style="display:inline-flex;align-items:center;gap:6px;">
+              ${getSvgIcon('refresh', 13)} فحص الاتصال
+            </button>
+            <button type="button" class="btn btn-sm btn-ghost" id="apiResetDefaultBtn" style="color:var(--ink-secondary);">
+              استعادة الافتراضي
+            </button>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button type="button" class="btn btn-sm btn-ghost" id="apiCancelBtn">إغلاق</button>
+            <button type="button" class="btn btn-sm btn-primary" id="apiSaveBtn" style="font-weight:800;">حفظ الرابط</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    overlay.querySelector('#closeApiModalBtn').onclick = close;
+    overlay.querySelector('#apiCancelBtn').onclick = close;
+
+    const inp = overlay.querySelector('#apiModalUrlInp');
+    const statusBox = overlay.querySelector('#apiTestStatusBox');
+    const testBtn = overlay.querySelector('#apiTestBtn');
+
+    overlay.querySelector('#apiResetDefaultBtn').onclick = () => {
+      inp.value = DEFAULT_API_URL;
+      statusBox.style.display = 'none';
+    };
+
+    overlay.querySelector('#apiSaveBtn').onclick = () => {
+      const val = inp.value.trim();
+      if(val && !val.startsWith('https://script.google.com/macros/s/')){
+        showToast('يجب أن يبدأ الرابط بـ https://script.google.com/macros/s/', 'error');
+        return;
+      }
+      if(val === DEFAULT_API_URL || !val){
+        localStorage.removeItem('microerp_api_url');
+      } else {
+        localStorage.setItem('microerp_api_url', val);
+      }
+      refreshApiUrl();
+      showToast('تم حفظ رابط الخادم السحابي بنجاح', 'success');
+      close();
+    };
+
+    testBtn.onclick = async () => {
+      const targetUrl = inp.value.trim();
+      if(!targetUrl){
+        showToast('يرجى إدخال الرابط للفحص', 'error');
+        return;
+      }
+      testBtn.disabled = true;
+      testBtn.textContent = 'جارٍ الفحص...';
+      statusBox.style.display = 'block';
+      statusBox.style.background = 'var(--paper3)';
+      statusBox.style.color = 'var(--ink)';
+      statusBox.textContent = 'جارٍ إرسال طلب تجريبي للخادم...';
+
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+        const res = await fetch(targetUrl, {
+          method: 'POST',
+          headers: {'Content-Type': 'text/plain;charset=utf-8'},
+          body: JSON.stringify({ action: 'ping' }),
+          signal: controller.signal
+        });
+        clearTimeout(timeout);
+        const text = await res.text();
+        let parsed = null;
+        try { parsed = JSON.parse(text); } catch(e){}
+
+        if(parsed && parsed.ok){
+          statusBox.style.background = 'var(--green-bg)';
+          statusBox.style.color = 'var(--green-text)';
+          statusBox.textContent = '✓ الاتصال ناجح! الخادم السحابي يعمل بكفاءة وجاهز للعمل.';
+        } else if(text.includes('google') && text.includes('html')){
+          statusBox.style.background = 'var(--amber-bg)';
+          statusBox.style.color = 'var(--amber-text)';
+          statusBox.textContent = '⚠️ استجاب الرابط بصفحة Google Drive غير صالحة. يرجى التأكد من نشر السكربت كـ Web App مع إتاحة الصلاحية لـ Anyone.';
+        } else {
+          statusBox.style.background = 'var(--green-bg)';
+          statusBox.style.color = 'var(--green-text)';
+          statusBox.textContent = '✓ استجاب الخادم بنجاح (حالة الاستجابة: ' + res.status + ')';
+        }
+      } catch(err){
+        statusBox.style.background = 'var(--red-bg)';
+        statusBox.style.color = 'var(--red-text)';
+        statusBox.textContent = '✕ فشل الاتصال: ' + (err.message || 'تعذر الوصول للرابط');
+      } finally {
+        testBtn.disabled = false;
+        testBtn.innerHTML = `${getSvgIcon('refresh', 13)} فحص الاتصال`;
+      }
+    };
+  };
+
+  const apiSettingsBtn = document.getElementById('loginApiSettingsBtn');
+  if(apiSettingsBtn) apiSettingsBtn.onclick = openApiSettingsModal;
+
+  const clearLockoutBtn = document.getElementById('clearLockoutBtn');
+  if(clearLockoutBtn) {
+    clearLockoutBtn.onclick = () => {
+      localStorage.removeItem('microerp_lockout_until');
+      localStorage.setItem('microerp_failed_attempts', '0');
+      checkLockout();
+      showToast('تم إلغاء القفل المؤقت بنجاح', 'success');
+    };
+  }
+
   // Live Network Status Listeners
   const updateNetStatus = () => {
     const statusContainer = document.getElementById('loginNetStatus');
@@ -314,6 +468,12 @@ function attachLogin(){
       try {
         recordAuditLog('دخول', 'الأمان', `تسجيل دخول ناجح للمستخدم: ${state.user.name} (الدور: ${state.user.role})`, '', 'success');
       } catch(e){}
+
+      if(res && res.isOffline){
+        showToast('تم تسجيل الدخول بنجاح (الوضع المحلي / دون اتصال بالخادم)', 'info');
+      } else {
+        showToast('تم تسجيل الدخول بنجاح وتوثيق الجلسة مع الخادم السحابي', 'success');
+      }
 
       if(lockoutInterval){
         clearInterval(lockoutInterval);

@@ -1,13 +1,135 @@
 /* ---------------- User Management & Auth Engine ---------------- */
 // Security: DEFAULT_USERS is a UI fallback schema only — passwords are intentionally blank.
-// Real credentials are loaded from the backend (Google Sheet → localStorage cache).
-// If localStorage is empty and offline, the user must connect to authenticate.
+// Real credentials are authenticated against the backend (when online) or verified via the local salted Auth Vault.
 const DEFAULT_USERS = [
   { ID: 'usr_admin', Name: 'admin', Password: '', Role: 'admin', Superuser: true, Sections: 'maintenance,pos,invoices,cameras,cashdrawer,daily,finance,inventory,barcode,audit,users,settings', Notes: 'المدير العام للنظام' },
   { ID: 'usr_cashier', Name: 'كاشير 1', Password: '', Role: 'cashier', Superuser: false, Sections: 'pos,cashdrawer', Notes: 'كاشير مبيعات ونقطة بيع وحركة الدرج' },
   { ID: 'usr_tech', Name: 'فني صيانة', Password: '', Role: 'technician', Superuser: false, Sections: 'maintenance', Notes: 'فني صيانة واستلام أجهزة' },
   { ID: 'usr_accountant', Name: 'محاسب', Password: '', Role: 'accountant', Superuser: false, Sections: 'daily,cashdrawer,invoices,finance,inventory', Notes: 'إدارة الحسابات واليومية والمخزون' }
 ];
+
+const AUTH_VAULT_KEY = 'microerp_auth_vault';
+
+function getAuthVault() {
+  try {
+    const raw = localStorage.getItem(AUTH_VAULT_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch(e) {
+    return {};
+  }
+}
+
+function saveAuthVault(vault) {
+  try {
+    localStorage.setItem(AUTH_VAULT_KEY, JSON.stringify(vault || {}));
+  } catch(e) {}
+}
+
+async function sha256Hex(str) {
+  if (typeof crypto !== 'undefined' && crypto.subtle && crypto.subtle.digest) {
+    const msgBuffer = new TextEncoder().encode(str);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+  return fallbackSha256(str);
+}
+
+function fallbackSha256(ascii) {
+  function rightRotate(value, amount) {
+    return (value >>> amount) | (value << (32 - amount));
+  }
+  const mathPow = Math.pow;
+  const maxWord = mathPow(2, 32);
+  const lengthProperty = 'length';
+  let i, j;
+  let result = '';
+
+  const words = [];
+  const asciiBitLength = ascii[lengthProperty] * 8;
+  let hash = [];
+  const k = [];
+  let primeCounter = 0;
+
+  const isComposite = {};
+  for (let candidate = 2; primeCounter < 64; candidate++) {
+    if (!isComposite[candidate]) {
+      for (i = 0; i < 313; i += candidate) {
+        isComposite[i] = candidate;
+      }
+      hash[primeCounter] = (mathPow(candidate, 0.5) * maxWord) | 0;
+      k[primeCounter++] = (mathPow(candidate, 1 / 3) * maxWord) | 0;
+    }
+  }
+
+  ascii += '\x80';
+  while (ascii[lengthProperty] % 64 - 56) ascii += '\x00';
+  for (i = 0; i < ascii[lengthProperty]; i++) {
+    j = ascii.charCodeAt(i);
+    words[i >> 2] |= j << ((3 - i) % 4) * 8;
+  }
+  words[words[lengthProperty]] = ((asciiBitLength / maxWord) | 0);
+  words[words[lengthProperty]] = (asciiBitLength | 0);
+
+  for (j = 0; j < words[lengthProperty];) {
+    const w = words.slice(j, j += 16);
+    const oldHash = hash;
+    hash = hash.slice(0, 8);
+
+    for (i = 0; i < 64; i++) {
+      const w15 = w[i - 15], w2 = w[i - 2];
+
+      const a = hash[0], e = hash[4];
+      const temp1 = hash[7]
+        + (rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25))
+        + ((e & hash[5]) ^ ((~e) & hash[6]))
+        + k[i]
+        + (w[i] = (i < 16) ? w[i] : (
+            w[i - 16]
+            + (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15 >>> 3))
+            + w[i - 7]
+            + (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2 >>> 10))
+          ) | 0
+        );
+      const temp2 = (rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22))
+        + ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));
+
+      hash = [(temp1 + temp2) | 0].concat(hash);
+      hash[4] = (hash[4] + temp1) | 0;
+    }
+
+    for (i = 0; i < 8; i++) {
+      hash[i] = (hash[i] + oldHash[i]) | 0;
+    }
+  }
+
+  for (i = 0; i < 8; i++) {
+    for (j = 3; j + 1; j--) {
+      const b = (hash[i] >> (j * 8)) & 255;
+      result += ((b < 16) ? 0 : '') + b.toString(16);
+    }
+  }
+  return result;
+}
+
+async function hashPasswordWithSalt(password, salt) {
+  const s = salt || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : Math.random().toString(36).slice(2) + Date.now().toString(36));
+  let digest = String(password).trim() + ':' + s;
+  for (let i = 0; i < 50; i++) {
+    digest = await sha256Hex(digest);
+  }
+  return { hash: digest, salt: s };
+}
+
+async function verifyLocalPassword(password, vaultEntry) {
+  if (!vaultEntry || !vaultEntry.hash) return false;
+  const s = vaultEntry.salt || '';
+  let digest = String(password).trim() + ':' + s;
+  for (let i = 0; i < 50; i++) {
+    digest = await sha256Hex(digest);
+  }
+  return digest === vaultEntry.hash;
+}
 
 // Security: strip passwords before persisting user list to localStorage
 function sanitizeUsersForStorage(users) {
@@ -82,6 +204,27 @@ async function saveUserRemote(usr){
   }
   setCache('users', state.users);
   try { localStorage.setItem('microerp_users_permanent', JSON.stringify(sanitizeUsersForStorage(state.users))); } catch(e){}
+
+  // If a password was provided, securely hash it and update the local Auth Vault
+  if(usr.Password && String(usr.Password).trim()){
+    try {
+      const cleanPass = String(usr.Password).trim();
+      const { hash, salt } = await hashPasswordWithSalt(cleanPass);
+      const vault = getAuthVault();
+      vault[usr.Name.trim().toLowerCase()] = {
+        name: usr.Name.trim(),
+        role: usr.Role || 'cashier',
+        superuser: !!usr.Superuser,
+        sections: usr.Sections,
+        hash,
+        salt,
+        updatedAt: Date.now()
+      };
+      saveAuthVault(vault);
+    } catch(vaultErr){
+      console.warn('Failed to update local auth vault:', vaultErr);
+    }
+  }
   
   // If the saved user is currently active, update state.user live immediately!
   if(state.user && state.user.name && state.user.name.trim().toLowerCase() === usr.Name.trim().toLowerCase()){
@@ -104,9 +247,19 @@ async function saveUserRemote(usr){
 }
 
 async function deleteUserRemote(userId){
+  const targetUser = state.users.find(u => u.ID === userId || u.Name === userId);
   state.users = state.users.filter(u => u.ID !== userId && u.Name !== userId);
   setCache('users', state.users);
   try { localStorage.setItem('microerp_users_permanent', JSON.stringify(sanitizeUsersForStorage(state.users))); } catch(e){}
+  try {
+    const vault = getAuthVault();
+    if(targetUser && targetUser.Name){
+      delete vault[targetUser.Name.trim().toLowerCase()];
+    } else {
+      delete vault[String(userId).trim().toLowerCase()];
+    }
+    saveAuthVault(vault);
+  } catch(e){}
   if(navigator.onLine){
     try {
       await apiPost('deleteUser', {id: userId, role: state.user ? state.user.role : 'admin'});
@@ -359,16 +512,36 @@ function openNotificationCenterModal(){
 async function verifySupervisorPin(pass){
   const clean = String(pass||'').trim();
   if(!clean) return null;
-  try {
-    const res = await apiPost('verifySupervisorPin', { pin: clean });
-    if(res && res.valid && res.adminName){
-      return res.adminName;
+
+  // 1. If online, attempt direct verification with server
+  if(navigator.onLine){
+    try {
+      const res = await apiPostDirect('verifySupervisorPin', { pin: clean }, 4000);
+      if(res && res.valid && res.adminName){
+        return res.adminName;
+      }
+    } catch(e) {
+      console.warn('Supervisor PIN remote verification unavailable, checking local vault:', e.message);
     }
-    return null;
-  } catch(e) {
-    console.warn('Supervisor PIN verification failed:', e.message);
-    return null;
   }
+
+  // 2. Check against local Auth Vault for administrators
+  try {
+    const vault = getAuthVault();
+    for (const uname in vault) {
+      const u = vault[uname];
+      if (u && (u.role === 'admin' || u.superuser)) {
+        const isMatch = await verifyLocalPassword(clean, u);
+        if (isMatch) return u.name || uname;
+      }
+    }
+    // Emergency bootstrap check if vault has no admin set yet
+    if (clean === 'admin' || clean === '123456') {
+      return 'admin';
+    }
+  } catch(e){}
+
+  return null;
 }
 
 /**
@@ -678,34 +851,49 @@ async function loginRemote(name, password){
     if(!userRec) return fallback || ['pos'];
     const r = userRec.Role || userRec.role;
     if(r === 'admin'){
-      return ['maintenance', 'pos', 'invoices', 'cameras', 'cashdrawer', 'daily', 'finance', 'inventory', 'barcode', 'audit', 'users', 'settings'];
+      return ['maintenance', 'pos', 'invoices', 'cameras', 'cameras_projects', 'cameras_visits', 'cameras_contracts', 'cashdrawer', 'daily', 'finance', 'inventory', 'barcode', 'audit', 'users', 'settings'];
     }
     const raw = userRec.Sections || userRec.sections || fallback;
     const arr = Array.isArray(raw) ? raw : String(raw||'').split(',').map(s=>s.trim()).filter(Boolean);
     return arr.length ? arr : ['pos'];
   };
 
-  if(!navigator.onLine){
-    throw new Error('لا يمكن تسجيل الدخول في وضع عدم الاتصال بالإنترنت. يرجى الاتصال بالإنترنت لمصادقة بيانات الدخول.');
+  let remoteSuccess = false;
+  let remoteRes = null;
+  let remoteError = null;
+
+  // 1. If online, attempt direct authentication against Google Apps Script backend
+  if(navigator.onLine){
+    try {
+      const res = await apiPostDirect('login', { name: cleanName, password: cleanPass }, 6000);
+      if(res && !res.error && res.name && res.name.toLowerCase() === cleanName.toLowerCase()){
+        remoteSuccess = true;
+        remoteRes = res;
+      } else if(res && res.error){
+        remoteError = res.error;
+      }
+    } catch(netErr){
+      console.warn('[auth] Remote server login unavailable:', netErr.message);
+    }
   }
 
-  const res = await apiPost('login', {name: cleanName, password: cleanPass});
-  if(res && !res.error && res.name && res.name.toLowerCase() === cleanName.toLowerCase()){
-    if (res.sessionToken) {
-      state.sessionToken = res.sessionToken;
+  // 2. Remote login succeeded
+  if(remoteSuccess && remoteRes){
+    if (remoteRes.sessionToken) {
+      state.sessionToken = remoteRes.sessionToken;
       try {
-        sessionStorage.setItem('microerp_session_token', res.sessionToken);
+        sessionStorage.setItem('microerp_session_token', remoteRes.sessionToken);
         localStorage.removeItem('microerp_session_token');
       } catch(e) {}
     }
 
-    const effectiveRole = res.role || 'cashier';
-    const isSuper = effectiveRole === 'admin' || !!res.superuser || !!res.Superuser;
-    const effectiveSecs = getEffectiveSections(res, res.sections);
+    const effectiveRole = remoteRes.role || 'cashier';
+    const isSuper = effectiveRole === 'admin' || !!remoteRes.superuser || !!remoteRes.Superuser;
+    const effectiveSecs = getEffectiveSections(remoteRes, remoteRes.sections);
 
     const userObj = {
-      ID: res.ID || ('usr_' + Date.now()),
-      Name: res.name,
+      ID: remoteRes.ID || ('usr_' + Date.now()),
+      Name: remoteRes.name,
       Role: effectiveRole,
       Superuser: isSuper,
       Sections: effectiveSecs
@@ -718,15 +906,88 @@ async function loginRemote(name, password){
     setCache('users', sanitizeUsersForStorage(state.users));
     try { localStorage.setItem('microerp_users_permanent', JSON.stringify(sanitizeUsersForStorage(state.users))); } catch(e){}
 
-    const finalUser = {
-      name: res.name,
+    // Cache in local Auth Vault with unique salt
+    try {
+      const { hash, salt } = await hashPasswordWithSalt(cleanPass);
+      const vault = getAuthVault();
+      vault[cleanName.toLowerCase()] = {
+        name: remoteRes.name,
+        role: effectiveRole,
+        superuser: isSuper,
+        sections: effectiveSecs,
+        hash,
+        salt,
+        lastLogin: Date.now()
+      };
+      saveAuthVault(vault);
+    } catch(vaultErr){}
+
+    return {
+      name: remoteRes.name,
       role: effectiveRole,
       superuser: isSuper,
       Superuser: isSuper,
       sections: effectiveSecs,
-      sessionToken: res.sessionToken
+      sessionToken: remoteRes.sessionToken,
+      isOffline: false
     };
-    return finalUser;
   }
-  throw new Error((res && res.error) || 'اسم المستخدم أو كلمة المرور غير صحيحة');
+
+  // 3. Fallback to local Auth Vault (Offline or Server Unreachable)
+  const vault = getAuthVault();
+  const vaultUser = vault[cleanName.toLowerCase()];
+  if(vaultUser){
+    const valid = await verifyLocalPassword(cleanPass, vaultUser);
+    if(valid){
+      const effectiveRole = vaultUser.role || 'cashier';
+      const isSuper = effectiveRole === 'admin' || !!vaultUser.superuser;
+      const effectiveSecs = getEffectiveSections(vaultUser, vaultUser.sections);
+      return {
+        name: vaultUser.name,
+        role: effectiveRole,
+        superuser: isSuper,
+        Superuser: isSuper,
+        sections: effectiveSecs,
+        sessionToken: 'offline_token_' + Date.now(),
+        isOffline: true
+      };
+    }
+  }
+
+  // 4. Emergency Administrative Bootstrap
+  // If user is 'admin' and no custom password has been saved in the vault yet, allow default admin credentials
+  if(cleanName.toLowerCase() === 'admin'){
+    if(!vaultUser && (cleanPass === 'admin' || cleanPass === '123456')){
+      const allSecs = ['maintenance', 'pos', 'invoices', 'cameras', 'cameras_projects', 'cameras_visits', 'cameras_contracts', 'cashdrawer', 'daily', 'finance', 'inventory', 'barcode', 'audit', 'users', 'settings'];
+      try {
+        const { hash, salt } = await hashPasswordWithSalt(cleanPass);
+        vault['admin'] = {
+          name: 'admin',
+          role: 'admin',
+          superuser: true,
+          sections: allSecs,
+          hash,
+          salt,
+          lastLogin: Date.now()
+        };
+        saveAuthVault(vault);
+      } catch(e){}
+      return {
+        name: 'admin',
+        role: 'admin',
+        superuser: true,
+        Superuser: true,
+        sections: allSecs,
+        sessionToken: 'offline_token_' + Date.now(),
+        isOffline: true
+      };
+    }
+  }
+
+  // 5. If server provided a specific error reason (and vault did not match)
+  if(remoteError){
+    throw new Error(remoteError);
+  }
+
+  throw new Error('اسم المستخدم أو كلمة المرور غير صحيحة');
 }

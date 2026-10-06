@@ -565,15 +565,11 @@ function openCommandPalette(initialQuery=''){
 }
 
 function openDailyEntryModal(defaultType = 'expense'){
-  if(typeof openRecordTransactionModal === 'function'){
-    return openRecordTransactionModal(defaultType);
-  }
+  return openRecordTransactionModal(defaultType);
 }
 
 function openItemModal(editItem = null, cloneMode = false, defaultCategory = 'صيانة'){
-  if(typeof openInventoryItemModal === 'function'){
-    return openInventoryItemModal(editItem, cloneMode, defaultCategory);
-  }
+  return openInventoryItemModal(editItem, cloneMode, defaultCategory);
 }
 
 // Global Keyboard Shortcut listener (Cmd+K / Ctrl+K / F6 / F7)

@@ -948,9 +948,7 @@ function openQuickStatusModal(rawR){
           const remainingDebt = Math.max(0, totalCostDue - depositBefore);
           
           // Post single full revenue recognition entry (F2: Cr 4101 full cost, Dr 2102 deposit, Dr 1103 remaining debt)
-          if(typeof postReceiptDeliveryRevenue === 'function'){
-            await postReceiptDeliveryRevenue(r, depositBefore, remainingDebt);
-          }
+          await postReceiptDeliveryRevenue(r, depositBefore, remainingDebt);
 
           if(shouldPay){
             try {
@@ -3171,10 +3169,7 @@ function openReIntakeDeviceModal(previousReceipt){
         }catch(e){}
       }
 
-      if(typeof pushLog === 'function'){
-        pushLog(`إعادة إدخال جهاز للصيانة برقم إيصال جديد #${newRecNum} (سابق #${previousReceipt.receiptNumber} - ${reason})`);
-      }
-
+      recordAuditLog('إعادة إدخال جهاز', 'صيانة', `إعادة إدخال جهاز للصيانة برقم إيصال جديد #${newRecNum} (سابق #${previousReceipt.receiptNumber} - ${reason})`, newReceipt.id);
       overlay.remove();
       showToast(`تم إدخال الجهاز بنجاح برقم إيصال جديد #${newRecNum}`, 'success');
       renderMain();
@@ -4325,9 +4320,7 @@ async function openReceiptDetail(rawR){
         const remainingDebt = Math.max(0, totalCostDue - depositBefore);
 
         // Post single full revenue recognition entry (F2: Cr 4101 full cost, Dr 2102 deposit, Dr 1103 remaining debt)
-        if(typeof postReceiptDeliveryRevenue === 'function'){
-          await postReceiptDeliveryRevenue(r, depositBefore, remainingDebt);
-        }
+        await postReceiptDeliveryRevenue(r, depositBefore, remainingDebt);
 
         if(shouldPay){
           try{
@@ -6219,32 +6212,6 @@ function exportInventoryToExcel(items){
     ];
   });
   downloadCSV(`Inventory_Export_${new Date().toISOString().slice(0,10)}.csv`, headers, rows);
-}
-
-function downloadCSV(filename, headers, rows){
-  const safeHeaders = (headers || []).map(h => csvSafe(h)).join(',');
-  const safeRows = (rows || []).map(r => (r || []).map(c => csvSafe(c)).join(','));
-  let csvContent = '\uFEFF' + safeHeaders + '\n' + safeRows.join('\n');
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  showToast('تم تصدير ملف Excel بنجاح', 'success');
-}
-
-function exportToExcel(data, filename = 'export'){
-  if(!Array.isArray(data) || !data.length){
-    if(typeof showToast === 'function') showToast('لا توجد بيانات للتصدير', 'warning');
-    return;
-  }
-  const headers = Object.keys(data[0]);
-  const rows = data.map(item => headers.map(h => item[h] !== undefined ? item[h] : ''));
-  const safeFilename = (filename.endsWith('.csv') ? filename : (filename + '.csv'));
-  downloadCSV(safeFilename, headers, rows);
 }
 
 function exportInvoicesToExcel(invoices){

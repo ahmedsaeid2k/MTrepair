@@ -304,14 +304,7 @@ function openNotificationCenterModal(){
       btn.disabled = true;
       btn.textContent = 'جارٍ الاعتماد...';
       try {
-        r.status = 'approved';
-        r.resolvedAt = new Date().toISOString();
-        r.resolvedBy = state.user ? state.user.name : 'المدير العام';
-        setCache('auth_requests', state.authRequests);
-        try { localStorage.setItem('microerp_auth_requests', JSON.stringify(state.authRequests)); } catch(e){}
-        recordAuditLog('موافقة على حذف', r.entityType, `تم اعتماد طلب الحذف لـ (${r.entityTitle}) بناء على طلب (${r.reqUser})`, r.entityId, 'معتمد');
-
-        // Execute actual deletion
+        // Execute actual deletion first [U7]
         if(r.entityType === 'صيانة' || r.entityType === 'إيصال صيانة'){
           await deleteReceiptRemote(r.entityId);
         } else if(r.entityType === 'فاتورة' || r.entityType === 'فاتورة ضريبية'){
@@ -322,12 +315,21 @@ function openNotificationCenterModal(){
           await deleteJournalEntryRemote(r.entityId);
         }
 
+        // Only mark approved and write audit log after execution succeeds
+        r.status = 'approved';
+        r.resolvedAt = new Date().toISOString();
+        r.resolvedBy = state.user ? state.user.name : 'المدير العام';
+        setCache('auth_requests', state.authRequests);
+        try { localStorage.setItem('microerp_auth_requests', JSON.stringify(state.authRequests)); } catch(e){}
+        recordAuditLog('موافقة على حذف', r.entityType, `تم اعتماد طلب الحذف لـ (${r.entityTitle}) بناء على طلب (${r.reqUser})`, r.entityId, 'معتمد');
+
         showToast(`تمت الموافقة وحذف (${r.entityTitle}) بنجاح`, 'success');
         close();
         render();
       } catch(err){
         showToast('تعذر التنفيذ: ' + err.message, 'error');
         btn.disabled = false;
+        btn.textContent = 'موافقة';
       }
     };
   });

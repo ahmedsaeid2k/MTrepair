@@ -911,6 +911,45 @@ function csvSafe(v){
 }
 
 /**
+ * Universal CSV downloader with UTF-8 BOM and Formula Injection sanitization.
+ * @param {string} filename - Target filename.
+ * @param {string[]} headers - Array of header titles.
+ * @param {any[][]} rows - 2D array of row cells.
+ */
+function downloadCSV(filename, headers, rows){
+  const safeHeaders = (headers || []).map(h => csvSafe(h)).join(',');
+  const safeRows = (rows || []).map(r => (r || []).map(c => csvSafe(c)).join(','));
+  const csvContent = '\uFEFF' + safeHeaders + '\n' + safeRows.join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  if(typeof showToast === 'function') {
+    showToast('تم تصدير ملف Excel بنجاح', 'success');
+  }
+}
+
+/**
+ * Universal Excel/CSV exporter from an array of objects.
+ * @param {Object[]} data - Array of record objects.
+ * @param {string} filename - Destination filename without or with extension.
+ */
+function exportToExcel(data, filename = 'export'){
+  if(!Array.isArray(data) || !data.length){
+    if(typeof showToast === 'function') showToast('لا توجد بيانات للتصدير', 'warning');
+    return;
+  }
+  const headers = Object.keys(data[0]);
+  const rows = data.map(item => headers.map(h => item[h] !== undefined ? item[h] : ''));
+  const safeFilename = (filename.endsWith('.csv') ? filename : (filename + '.csv'));
+  downloadCSV(safeFilename, headers, rows);
+}
+
+/**
  * Safely parses any value to a finite number, returning fallback if invalid.
  * @param {any} val - Value to parse.
  * @param {number} fallback - Default value if parsing fails.

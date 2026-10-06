@@ -1434,6 +1434,35 @@ function renderPosSettings(main){
             يتم حساب النسبة تلقائياً وإضافتها لملخص الفاتورة وإيصال البيع.
           </div>
         </div>
+
+        <div style="background:var(--paper2);padding:12px;border-radius:var(--radius-sm);border:1px solid var(--line);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <label style="font-size:13px;font-weight:800;margin:0;">
+              سقف الخصم المسموح بدون تصريح المشرف (POS)
+            </label>
+            <div style="display:flex;align-items:center;gap:4px;">
+              <input type="number" id="posMaxDiscountPercent" value="${posSettings.maxDiscountPercent!=null?posSettings.maxDiscountPercent:10}" min="0" max="100" style="width:60px;padding:3px 6px;text-align:center;" class="mono font-bold">
+              <span style="font-size:12px;font-weight:800;">%</span>
+            </div>
+          </div>
+          <div style="font-size:11.5px;color:var(--ink-secondary);margin-bottom:8px;">
+            أي خصم يتجاوز هذه النسبة المعتمدة سيتطلب إدخال كلمة مرور المشرف/المدير لإتمامه.
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px dashed var(--line);padding-top:6px;">
+            <span style="font-size:11.5px;font-weight:700;">سقف المبلغ الأقصى (ج.م):</span>
+            <input type="number" id="posMaxDiscountAmount" value="${posSettings.maxDiscountAmount||0}" min="0" placeholder="0 = غير محدد" style="width:85px;padding:2px 6px;text-align:center;" class="mono">
+          </div>
+        </div>
+
+        <div style="background:var(--paper2);padding:12px;border-radius:var(--radius-sm);border:1px solid var(--line);">
+          <label class="checkbox-row" style="font-size:13px;font-weight:800;margin-bottom:4px;">
+            <input type="checkbox" id="posPreventBelowCost" ${posSettings.preventBelowCost!==false?'checked':''}>
+            <span>حظر البيع بأقل من التكلفة دون إذن المشرف</span>
+          </label>
+          <div style="font-size:11.5px;color:var(--ink-secondary);padding-right:24px;">
+            يمنع الكاشير من بيع أي صنف بسعر أقل من سعر شرائه وتكلفته المسجلة إلا بعد الحصول على تصريح المشرف.
+          </div>
+        </div>
       </div>
 
       <div style="text-align:left;margin-top:16px;border-top:1px solid var(--line);padding-top:12px;">
@@ -1562,6 +1591,9 @@ function attachPosSettingsEvents(main){
       posSettings.allowNegativeStock = document.getElementById('posAllowNegativeStock').checked;
       posSettings.enableTax = document.getElementById('posEnableTax').checked;
       posSettings.taxRate = Number(document.getElementById('posTaxRate').value) || 14;
+      posSettings.maxDiscountPercent = Number(document.getElementById('posMaxDiscountPercent').value) || 0;
+      posSettings.maxDiscountAmount = Number(document.getElementById('posMaxDiscountAmount').value) || 0;
+      posSettings.preventBelowCost = document.getElementById('posPreventBelowCost').checked;
       posSettings.paymentMethods = payMethods;
       posSettings.quickServices = quickServices;
 

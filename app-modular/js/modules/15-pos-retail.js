@@ -355,6 +355,17 @@ function renderPosSell(main){
   const currentPaid = ps.amountPaid !== '' ? Number(ps.amountPaid) : grandTotal;
   const changeDue = Math.max(0, currentPaid - grandTotal);
 
+  // Discount & Pricing Controls [F10]
+  const maxPct = Number(posSettings.maxDiscountPercent != null ? posSettings.maxDiscountPercent : 10);
+  const maxAmt = Number(posSettings.maxDiscountAmount || 0);
+  const isDiscountOver = (subtotal > 0 && discountAmount > 0) && ((discountAmount > subtotal * (maxPct / 100) + 0.005) || (maxAmt > 0 && discountAmount > maxAmt));
+  const hasBelowCost = cart.some(c => {
+    if(!c.itemId || String(c.itemId).startsWith('srv_')) return false;
+    const it = (state.inventory||[]).find(x => String(x.ID||x.id) === String(c.itemId));
+    const cost = Number((it && it.PurchasePrice) || c.costAtSale || c.purchasePrice || 0);
+    return cost > 0 && Number(c.price || 0) < cost - 0.005;
+  });
+
   // Filter Catalog
   const rawInventory = state.inventory || [];
   let filteredItems = [...rawInventory];
@@ -555,6 +566,19 @@ function renderPosSell(main){
               </select>
             </div>
           </div>
+
+          ${isDiscountOver ? `
+            <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:3px 8px;font-size:10.5px;color:#92400e;display:flex;align-items:center;gap:4px;margin-bottom:4px;">
+              <span>⚠️</span>
+              <span>الخصم (${ps.discountValue}%) يتجاوز السقف المعتمد (${maxPct}%) — يلزم تصريح المشرف</span>
+            </div>
+          ` : ''}
+          ${hasBelowCost ? `
+            <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:3px 8px;font-size:10.5px;color:#991b1b;display:flex;align-items:center;gap:4px;margin-bottom:4px;">
+              <span>⚠️</span>
+              <span>يوجد صنف معروض بأقل من سعر التكلفة — يلزم تصريح المشرف</span>
+            </div>
+          ` : ''}
 
           ${posSettings.enableTax ? `
             <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;margin-bottom:4px;color:var(--ink-secondary);">
@@ -1075,6 +1099,49 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
         };
       });
 
+      // 1. Check Below-Cost Selling [F10]
+      const belowCostList = [];
+      for(const c of cartSnapshot){
+        const cost = Number(c.costAtSale || c.purchasePrice || 0);
+        const price = Number(c.price || 0);
+        if(cost > 0 && price < cost - 0.005){
+          belowCostList.push({ name: c.name, price, cost });
+        }
+      }
+
+      if(belowCostList.length > 0 && posSettings.preventBelowCost !== false){
+        const auth = await promptSupervisorApproval({
+          action: 'بيع بأقل من التكلفة',
+          details: `أصناف معروضة للبيع بأقل من سعر الشراء والتكلفة: (${belowCostList.map(x=>`${x.name}: بيع ${x.price} ج.م / تكلفة ${x.cost} ج.م`).join('، ')})`
+        });
+        if(!auth || !auth.approved){
+          if(btn){
+            btn.disabled = false;
+            btn.textContent = isTaxInvoice ? 'إتمام وطباعة فاتورة رسمية' : 'إتمام البيع السريع (Enter)';
+          }
+          return;
+        }
+      }
+
+      // 2. Check Discount Cap [F10]
+      const maxPct = Number(posSettings.maxDiscountPercent != null ? posSettings.maxDiscountPercent : 10);
+      const maxAmt = Number(posSettings.maxDiscountAmount || 0);
+      const isDiscountOver = (subtotal > 0 && discountAmount > 0) && ((discountAmount > subtotal * (maxPct / 100) + 0.005) || (maxAmt > 0 && discountAmount > maxAmt));
+
+      if(isDiscountOver){
+        const auth = await promptSupervisorApproval({
+          action: 'خصم يتجاوز السقف المعتمد',
+          details: `خصم مطلوب قدره ${discountAmount} ج.م (${ps.discountValue}%) يتجاوز السقف المسموح به بدون تصريح (${maxPct}% أو ${maxAmt ? maxAmt + ' ج.م' : 'بدون حد مبلغي'})`
+        });
+        if(!auth || !auth.approved){
+          if(btn){
+            btn.disabled = false;
+            btn.textContent = isTaxInvoice ? 'إتمام وطباعة فاتورة رسمية' : 'إتمام البيع السريع (Enter)';
+          }
+          return;
+        }
+      }
+
       // Update local inventory quantities immediately
       for(const c of cartSnapshot){
         if(c.itemId && !String(c.itemId).startsWith('srv_')){
@@ -1103,6 +1170,10 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
       const saleRes = await saveSaleRemote(itemsSummary, itemsJson, grandTotal, fullCustName, customerPhone, payMethodName, paidAmount, cartSnapshot, taxAmount, changeDue);
       
       showToast('تمت عملية البيع بنجاح', 'success');
+
+      if(discountAmount > 0){
+        recordAuditLog('تطبيق خصم مبيعات POS', 'المبيعات', `تم تطبيق خصم بقيمة ${discountAmount} ج.م (${ps.discountType === 'percent' ? ps.discountValue + '%' : 'مبلغ مباشر'}) على فاتورة بقيمة ${subtotal} ج.م للعميل (${fullCustName})`, saleRes?.sale?.ID || '');
+      }
 
       const saleData = saleRes.sale || {
         ID: 's_' + Date.now(),

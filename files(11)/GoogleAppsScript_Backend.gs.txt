@@ -273,7 +273,7 @@ const AUTOPOST_REFS = [
   'Sale', 'POS_Sale', 'POS_Return', 'Purchase', 'Receipt', 'Receipt_Parts',
   'Receipt_Debt', 'Receipt_Reversal', 'Expense', 'Supplier_Payment', 'SupplierPayment', 'DeliveryCredit',
   'Receipt_Payment', 'Receipt_Payment_Void', 'Receipt_Delivery', 'Receipt_Revenue', 'Receipt_Void',
-  'Invoice', 'Invoice_Void', 'Quotation_Payment', 'Quotation_Delivery', 'Quotation',
+  'Invoice', 'Invoice_Void', 'Invoice_Adjustment', 'Quotation_Payment', 'Quotation_Delivery', 'Quotation',
   'CashIn', 'CashOut', 'Shift_Open', 'Shift_Close', 'Shift_Variance', 'Opening_Balance'
 ];
 
@@ -1559,8 +1559,50 @@ function doPost(e) {
       return jsonOut({ ok: true });
     }
     if (action === 'saveInvoice') {
+      const invId = (body.data && body.data.ID) || ('inv_' + new Date().getTime());
+
+      // Check paid invoice lock on server [F10]
+      try {
+        const shInv = getSheet(SHEET_INVOICES);
+        const invHeaders = shInv.getRange(1, 1, 1, Math.max(1, shInv.getLastColumn())).getValues()[0];
+        const idCol = invHeaders.indexOf('ID');
+        const paidCol = invHeaders.indexOf('AmountPaid');
+        const totCol = invHeaders.indexOf('Total');
+        const itemsCol = invHeaders.indexOf('ItemsJSON');
+        const invRows = shInv.getLastRow() > 1 ? shInv.getDataRange().getValues() : [];
+
+        if (idCol >= 0) {
+          for (let r = 1; r < invRows.length; r++) {
+            if (String(invRows[r][idCol]) === String(invId)) {
+              const priorPaid = safeNumber(invRows[r][paidCol], 0);
+              if (priorPaid > 0) {
+                const priorTotal = safeNumber(invRows[r][totCol], 0);
+                const newTotal = Number(body.data.Total || 0);
+                const priorItems = String(invRows[r][itemsCol] || '');
+                const newItems = typeof body.data.ItemsJSON === 'string' ? body.data.ItemsJSON : JSON.stringify(body.data.Items || []);
+                const isChanged = Math.abs(priorTotal - newTotal) > 0.005 || (priorItems && priorItems !== newItems);
+
+                const isAuthorized = verifyAdminRole(body, session) || !!body.supervisorAuth;
+                if (isChanged && !isAuthorized) {
+                  return jsonOut({ error: 'لا يمكن تعديل بنود أو إجمالي فاتورة مسددة دون تصريح إداري' }, 403);
+                }
+                if (isChanged && isAuthorized) {
+                  logAudit(invId, actorUser, 'تعديل فاتورة مسددة بتصريح إداري', 'Invoice', {
+                    beforeTotal: priorTotal,
+                    newTotal: newTotal,
+                    amountPaid: priorPaid,
+                    authorizedBy: body.supervisorAuth || actorUser
+                  });
+                }
+              }
+              break;
+            }
+          }
+        }
+      } catch(e) {}
+
       const inv = {
-        ID: body.data.ID || ('inv_' + new Date().getTime()),
+        ID: invId,
         InvoiceNumber: body.data.InvoiceNumber || ('INV-' + new Date().getFullYear() + '-' + String(new Date().getTime()).slice(-4)),
         Date: body.data.Date || new Date().toISOString().slice(0, 10),
         DueDate: body.data.DueDate || body.data.Date || new Date().toISOString().slice(0, 10),

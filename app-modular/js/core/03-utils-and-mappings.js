@@ -1756,6 +1756,7 @@ async function saveInvoiceRemote(inv){
   if(!inv.DueDate) inv.DueDate = inv.Date;
   inv.By = state.user ? state.user.name : 'نظام';
   const idx = state.invoices.findIndex(x=>x.ID===inv.ID);
+  const isExisting = idx > -1;
   if(idx>-1) state.invoices[idx] = inv; else state.invoices.push(inv);
   setCache('invoices', state.invoices);
 
@@ -1801,7 +1802,7 @@ async function saveInvoiceRemote(inv){
   const unpaidDebt = Math.max(0, totalAmt - paidAmt);
   let journalEntry = null;
 
-  if (totalAmt > 0 && !inv.skipAutoJournal) {
+  if (totalAmt > 0 && !inv.skipAutoJournal && !isExisting) {
     const pLow = String(inv.PaymentMethod || 'نقدي').toLowerCase();
     const isBank = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('إنستاباي') || pLow.includes('محفظ') || pLow.includes('فودافون');
     const debitAccCode = isBank ? '1102' : '1101';

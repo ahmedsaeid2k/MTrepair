@@ -366,19 +366,124 @@ async function verifySupervisorPin(pass){
 }
 
 /**
+ * نافذة طلب موافقة وتصريح المشرف للعمليات المالية الحساسة (خصم استثنائي، بيع بأقل من التكلفة...)
+ * تعيد كائن Promise: { approved: true, adminName } أو { approved: false }
+ */
+function promptSupervisorApproval({ action, reason, details }){
+  return new Promise((resolve) => {
+    const currentUser = state.user || { name: 'مستخدم', role: 'staff' };
+    const isSuperuser = currentUser.role === 'admin' || !!currentUser.superuser || !!currentUser.Superuser;
+    if(isSuperuser){
+      if(confirm(`تأكيد إداري: ${action}\n${details || reason || ''}\n\nهل تؤكد الموافقة والمتابعة؟`)){
+        recordAuditLog(action, 'رقابة مالية', `${action}: ${details || reason || ''} - تم الاعتماد مباشرة بواسطة المدير (${currentUser.name})`, '');
+        resolve({ approved: true, adminName: currentUser.name });
+      } else {
+        resolve({ approved: false });
+      }
+      return;
+    }
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.zIndex = '13000';
+    overlay.innerHTML = `
+      <div class="modal-content" style="max-width:460px;border-top:4px solid #f59e0b;padding:22px;border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,0.3);">
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div style="width:36px;height:36px;border-radius:50%;background:rgba(245,158,11,0.15);color:var(--amber);display:flex;align-items:center;justify-content:center;font-size:18px;">🔑</div>
+            <div>
+              <h3 style="margin:0;font-size:16px;color:#b45309;">تصريح مشرف مطلوب</h3>
+              <div style="font-size:11px;color:var(--ink-secondary);">${escapeHtml(action)}</div>
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-xs" id="closeSupervisorApprovalModal" style="font-size:18px;line-height:1;">&times;</button>
+        </div>
+
+        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px;margin-bottom:14px;font-size:12.5px;color:#92400e;line-height:1.5;">
+          <b>تفاصيل العملية:</b> ${escapeHtml(details || reason || action)}
+          <div style="margin-top:4px;font-size:11.5px;color:var(--ink-secondary);">الموظف الحالي: <b>${escapeHtml(currentUser.name)}</b></div>
+        </div>
+
+        <div class="field" style="margin-bottom:16px;">
+          <label style="font-size:12.5px;font-weight:700;">كلمة مرور المدير العام أو المشرف *</label>
+          <input id="supervisorApprovalPinInp" type="password" placeholder="أدخل كلمة مرور المشرف للتصريح..." style="font-size:14px;">
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:8px;">
+          <button class="btn btn-ghost btn-sm" id="cancelSupervisorApprovalBtn">إلغاء</button>
+          <button class="btn btn-primary btn-sm" id="confirmSupervisorApprovalBtn" style="font-weight:800;">اعتماد ومتابعة ↩️</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const closeOverlay = () => {
+      overlay.remove();
+      resolve({ approved: false });
+    };
+
+    overlay.querySelector('#closeSupervisorApprovalModal').onclick = closeOverlay;
+    overlay.querySelector('#cancelSupervisorApprovalBtn').onclick = closeOverlay;
+
+    const pinInp = overlay.querySelector('#supervisorApprovalPinInp');
+    setTimeout(() => pinInp && pinInp.focus(), 50);
+
+    const confirmBtn = overlay.querySelector('#confirmSupervisorApprovalBtn');
+    const doVerify = async () => {
+      const pin = pinInp.value.trim();
+      if(!pin){
+        showToast('يرجى إدخال كلمة مرور المشرف أو المدير', 'error');
+        pinInp.focus();
+        return;
+      }
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'جارٍ التحقق...';
+      try {
+        const adminName = await verifySupervisorPin(pin);
+        if(!adminName){
+          showToast('كلمة مرور المشرف غير صحيحة! تم رفض التصريح', 'error');
+          recordAuditLog('محاولة تصريح فاشلة', 'رقابة مالية', `محاولة تصريح غير مصرح بها لـ (${action}) من الموظف (${currentUser.name}) - كلمة سر خاطئة`, '');
+          pinInp.value = '';
+          pinInp.focus();
+          confirmBtn.disabled = false;
+          confirmBtn.textContent = 'اعتماد ومتابعة ↩️';
+          return;
+        }
+
+        recordAuditLog(action, 'رقابة مالية', `${action}: ${details || reason || ''} - تم الاعتماد بواسطة المشرف (${adminName}) للموظف (${currentUser.name})`, '');
+        overlay.remove();
+        showToast(`تم اعتماد التصريح بنجاح بواسطة (${adminName})`, 'success');
+        resolve({ approved: true, adminName });
+      } catch(e) {
+        showToast('تعذر الاتصال للتحقق من كلمة المرور', 'error');
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'اعتماد ومتابعة ↩️';
+      }
+    };
+
+    confirmBtn.onclick = doVerify;
+    pinInp.onkeydown = (e) => { if(e.key === 'Enter') doVerify(); };
+  });
+}
+window.promptSupervisorApproval = promptSupervisorApproval;
+
+/**
  * دالة طلب تصريح الحذف أو الإجراء الحساس
  * إذا كان المستخدم مدير عام -> تأكيد مباشر وتسجيل في سجل الرقابة
  * إذا كان موظف -> إظهار نافذة التصريح الفوري بكلمة سر المدير أو إرسال طلب للإدارة
  */
-function requestAdminAuthorization({ action, entityType, entityId, entityTitle, onApproved }){
+function requestAdminAuthorization({ action, entityType, entityId, entityTitle, onApproved, onCancel }){
   const currentUser = state.user || { name: 'مستخدم', role: 'staff' };
 
   // 1. إذا كان المستخدم الحالي مدير عام (Admin) أو لديه صلاحية Superuser (الحذف المباشر بدون إذن)
   const isSuperuser = currentUser.role === 'admin' || !!currentUser.superuser || !!currentUser.Superuser;
   if(isSuperuser){
     if(confirm(`تأكيد إداري: هل أنت متأكد من رغبتك في ${action} (${entityTitle})؟\nسيتم توثيق هذه العملية في سجل الرقابة والتدقيق.`)){
-      recordAuditLog(action, entityType, `تم الحذف مباشرة بواسطة المستخدم المصرح له (${currentUser.name}) [Superuser]`, entityId, 'معتمد');
-      onApproved();
+      recordAuditLog(action, entityType, `تم الإجراء مباشرة بواسطة المستخدم المصرح له (${currentUser.name}) [Superuser]`, entityId, 'معتمد');
+      onApproved(currentUser.name);
+    } else {
+      if(typeof onCancel === 'function') onCancel();
     }
     return;
   }
@@ -494,10 +599,10 @@ function requestAdminAuthorization({ action, entityType, entityId, entityTitle, 
         return;
       }
 
-      recordAuditLog(action, entityType, `تم التصريح الفوري بالحذف من المدير (${adminName}) للموظف (${currentUser.name})`, entityId, 'بتصريح فوري');
+      recordAuditLog(action, entityType, `تم التصريح الفوري من المشرف (${adminName}) للموظف (${currentUser.name})`, entityId, 'بتصريح فوري');
       close();
-      showToast(`تم التصريح بنجاح بواسطة المدير (${adminName}) وجارٍ الحذف`, 'success');
-      onApproved();
+      showToast(`تم التصريح بنجاح بواسطة (${adminName})`, 'success');
+      onApproved(adminName);
     } catch(err) {
       showToast('حدث خطأ أثناء الاتصال بالخادم للتحقق من التصريح', 'error');
       btn.disabled = false;

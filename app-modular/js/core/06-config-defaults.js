@@ -160,7 +160,10 @@ const DEFAULT_POS_SETTINGS = {
   showLogoOnReceipt: true,
   receiptFooter: 'شكراً لتعاملكم معنا • نسعد دائماً بخدمتكم',
   enableTax: false,
-  taxRate: 14
+  taxRate: 14,
+  maxDiscountPercent: 10,
+  maxDiscountAmount: 0,
+  preventBelowCost: true
 };
 
 function getPosSettings(){
@@ -171,6 +174,9 @@ function getPosSettings(){
     if(!Array.isArray(state.settings.pos.shortcutItemIds)) state.settings.pos.shortcutItemIds = [];
     if(!state.settings.pos.paymentMethods) state.settings.pos.paymentMethods = DEFAULT_POS_SETTINGS.paymentMethods;
     if(!state.settings.pos.quickServices) state.settings.pos.quickServices = DEFAULT_POS_SETTINGS.quickServices;
+    if(state.settings.pos.maxDiscountPercent == null) state.settings.pos.maxDiscountPercent = DEFAULT_POS_SETTINGS.maxDiscountPercent;
+    if(state.settings.pos.maxDiscountAmount == null) state.settings.pos.maxDiscountAmount = DEFAULT_POS_SETTINGS.maxDiscountAmount;
+    if(state.settings.pos.preventBelowCost == null) state.settings.pos.preventBelowCost = DEFAULT_POS_SETTINGS.preventBelowCost;
   }
   return state.settings.pos;
 }

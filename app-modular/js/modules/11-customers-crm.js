@@ -6367,6 +6367,9 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   const isEdit = !!existingInv && !isFromReceipt;
+  const isPaidLocked = isEdit && Number(existingInv.AmountPaid || 0) > 0;
+  let editAuthorized = false;
+  let authorizedBy = '';
 
   const inv = existingInv ? {
     ...existingInv,
@@ -6480,12 +6483,34 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
           </div>
         </div>
 
+        ${isPaidLocked ? `
+          <div style="background:${editAuthorized?'#ecfdf5':'#fffbeb'};border:1px solid ${editAuthorized?'#a7f3d0':'#fde68a'};border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+            <div style="display:flex;align-items:center;gap:10px;color:${editAuthorized?'#065f46':'#92400e'};font-size:12.5px;">
+              <span style="font-size:18px;">${editAuthorized?'🔓':'🔒'}</span>
+              <div>
+                ${editAuthorized ? `
+                  <div style="font-weight:800;">تعديل مصرح إدارياً</div>
+                  <div style="font-size:11.5px;color:#047857;">تم فتح التعديل بتصريح المشرف (<b>${escapeHtml(authorizedBy)}</b>). سيتم توليد قيد تسوية لأي فروق في الإجمالي.</div>
+                ` : `
+                  <div style="font-weight:800;">فاتورة مسددة (مدفوع: ${Number(existingInv.AmountPaid).toLocaleString()} ج.م)</div>
+                  <div style="font-size:11.5px;color:#b45309;">بنود الفاتورة وإجمالياتها مقفلة حمايةً لسلامة القيود المحاسبية. يلزم تصريح إداري لفتح التعديل.</div>
+                `}
+              </div>
+            </div>
+            ${!editAuthorized ? `
+              <button type="button" class="btn btn-sm btn-amber" id="unlockPaidInvBtn" style="font-weight:800;display:inline-flex;align-items:center;gap:6px;">
+                ${getSvgIcon('key', 14)} طلب تصريح المشرف لفتح التعديل
+              </button>
+            ` : ''}
+          </div>
+        ` : ''}
+
         <div class="card" style="padding:14px 16px;margin-bottom:14px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
             <h3 style="font-size:13.5px;margin:0;display:flex;align-items:center;gap:6px;">${getSvgIcon("package", 15)} بنود الفاتورة / بيان السعر</h3>
             <div style="display:flex;gap:6px;">
-              <button class="btn btn-ghost btn-xs" id="addFromInventoryBtn" type="button">${getSvgIcon("inventory", 12)} من المخزن</button>
-              <button class="btn btn-primary btn-xs" id="addInvLineBtn" type="button">${getSvgIcon("plus", 12)} سطر جديد</button>
+              <button class="btn btn-ghost btn-xs" id="addFromInventoryBtn" type="button" ${isPaidLocked && !editAuthorized ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>${getSvgIcon("inventory", 12)} من المخزن</button>
+              <button class="btn btn-primary btn-xs" id="addInvLineBtn" type="button" ${isPaidLocked && !editAuthorized ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>${getSvgIcon("plus", 12)} سطر جديد</button>
             </div>
           </div>
           <div class="table-wrap">
@@ -6494,11 +6519,11 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
               <tbody id="invoiceLinesTableBody">
                 ${inv.Items.map((it, idx)=>`
                   <tr>
-                    <td><input value="${it.Name||''}" data-linefield="Name" data-idx="${idx}" style="width:100%;"></td>
-                    <td><input type="number" class="mono" min="1" value="${it.Qty||1}" data-linefield="Qty" data-idx="${idx}" style="width:100%;text-align:center;"></td>
-                    <td><input type="number" class="mono" step="any" value="${it.Price||0}" data-linefield="Price" data-idx="${idx}" style="width:100%;text-align:center;"></td>
+                    <td><input value="${it.Name||''}" data-linefield="Name" data-idx="${idx}" style="width:100%;" ${isPaidLocked && !editAuthorized ? 'disabled style="background:var(--paper2);cursor:not-allowed;"' : ''}></td>
+                    <td><input type="number" class="mono" min="1" value="${it.Qty||1}" data-linefield="Qty" data-idx="${idx}" style="width:100%;text-align:center;" ${isPaidLocked && !editAuthorized ? 'disabled style="background:var(--paper2);cursor:not-allowed;"' : ''}></td>
+                    <td><input type="number" class="mono" step="any" value="${it.Price||0}" data-linefield="Price" data-idx="${idx}" style="width:100%;text-align:center;" ${isPaidLocked && !editAuthorized ? 'disabled style="background:var(--paper2);cursor:not-allowed;"' : ''}></td>
                     <td class="mono font-bold" style="color:var(--primary);">${(Number(it.Qty||1) * Number(it.Price||0)).toLocaleString()} ج.م</td>
-                    <td style="text-align:center;"><button class="btn btn-xs btn-red" data-delline="${idx}">&times;</button></td>
+                    <td style="text-align:center;"><button class="btn btn-xs btn-red" data-delline="${idx}" ${isPaidLocked && !editAuthorized ? 'disabled style="opacity:0.4;cursor:not-allowed;"' : ''}>&times;</button></td>
                   </tr>
                 `).join('')}
               </tbody>
@@ -6522,14 +6547,14 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
               <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;">
                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                   <span>ضريبة (VAT):</span>
-                  <select id="invTaxPercentSelect" style="width:70px;"><option value="0" ${Number(inv.TaxPercent)===0?'selected':''}>0%</option><option value="14" ${Number(inv.TaxPercent)===14?'selected':''}>14%</option></select>
+                  <select id="invTaxPercentSelect" style="width:70px;" ${isPaidLocked && !editAuthorized ? 'disabled' : ''}><option value="0" ${Number(inv.TaxPercent)===0?'selected':''}>0%</option><option value="14" ${Number(inv.TaxPercent)===14?'selected':''}>14%</option></select>
                   <label style="font-size:11px;display:inline-flex;align-items:center;gap:3px;margin:0;cursor:pointer;color:var(--ink-secondary);">
-                    <input type="checkbox" id="invTaxInclusiveCheck" ${inv.IsTaxInclusive?'checked':''}> شامل الضريبة
+                    <input type="checkbox" id="invTaxInclusiveCheck" ${inv.IsTaxInclusive?'checked':''} ${isPaidLocked && !editAuthorized ? 'disabled' : ''}> شامل الضريبة
                   </label>
                 </div>
                 <span class="mono font-bold" style="color:var(--blue);">${inv.TaxAmount.toLocaleString()} ج.م</span>
               </div>
-              <div style="display:flex;justify-content:space-between;"><span>الخصم:</span><input id="invDiscountInput" type="number" value="${inv.Discount||0}" style="width:90px;text-align:center;" class="mono"></div>
+              <div style="display:flex;justify-content:space-between;"><span>الخصم:</span><input id="invDiscountInput" type="number" value="${inv.Discount||0}" style="width:90px;text-align:center;" class="mono" ${isPaidLocked && !editAuthorized ? 'disabled style="background:var(--paper2);cursor:not-allowed;"' : ''}></div>
               <div style="display:flex;justify-content:space-between;font-size:14.5px;font-weight:900;border-top:1px solid #ccc;padding-top:6px;"><span>الإجمالي المستحق:</span><span class="mono" style="color:var(--primary);">${inv.Total.toLocaleString()} ج.م</span></div>
               <div style="display:flex;justify-content:space-between;color:var(--green-text);"><span>المدفوع:</span><span class="mono">${(inv.AmountPaid||0).toLocaleString()} ج.م</span></div>
               <div style="display:flex;justify-content:space-between;color:${inv.Remaining>0?'var(--red)':'var(--green-text)'};font-weight:900;"><span>المتبقي:</span><span class="mono">${inv.Remaining.toLocaleString()} ج.م</span></div>
@@ -6619,6 +6644,22 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
     overlay.querySelector('#invPaidInput').oninput = (e)=>{ inv.AmountPaid = Number(e.target.value)||0; };
     overlay.querySelector('#invPaidInput').onblur = ()=>renderModal();
 
+    const unlockBtn = overlay.querySelector('#unlockPaidInvBtn');
+    if(unlockBtn){
+      unlockBtn.onclick = async ()=>{
+        const auth = await promptSupervisorApproval({
+          action: 'تعديل بنود وإجمالي فاتورة مسددة',
+          details: `فاتورة #${existingInv.InvoiceNumber} للعميل (${existingInv.CustomerName}) - المسدد: ${Number(existingInv.AmountPaid).toLocaleString()} ج.م من أصل ${Number(existingInv.Total).toLocaleString()} ج.م`
+        });
+        if(auth && auth.approved){
+          editAuthorized = true;
+          authorizedBy = auth.adminName || (state.user ? state.user.name : 'المدير');
+          showToast(`تم فتح تعديل الفاتورة بتصريح المشرف (${authorizedBy})`, 'success');
+          renderModal();
+        }
+      };
+    }
+
     function collectData(){
       inv.CustomerTitle = (overlay.querySelector('#invCustTitle')?.value || '').trim();
       inv.CustomerName = overlay.querySelector('#invCustName').value.trim();
@@ -6638,6 +6679,83 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
       collectData();
       if(!inv.CustomerName){ showToast('يرجى اختيار اسم العميل', 'error'); return; }
       if(!inv.Items.length || !inv.Items[0].Name){ showToast('يرجى إضافة بنود للفاتورة', 'error'); return; }
+
+      // 1. Below-cost check in invoice items [F10]
+      const belowCostInvItems = [];
+      for(const it of inv.Items){
+        if(!it || !it.Name) continue;
+        const invItem = (state.inventory||[]).find(x => x.Name === it.Name || String(x.ID) === String(it.ItemId || it.id));
+        const buyPrice = Number(it.PurchasePrice != null ? it.PurchasePrice : (invItem ? invItem.PurchasePrice : 0));
+        const sellPrice = Number(it.Price || 0);
+        if(buyPrice > 0 && sellPrice < buyPrice - 0.005){
+          belowCostInvItems.push({ name: it.Name, price: sellPrice, cost: buyPrice });
+        }
+      }
+
+      if(belowCostInvItems.length > 0){
+        const auth = await promptSupervisorApproval({
+          action: 'بيع بأقل من التكلفة في الفاتورة',
+          details: `أصناف بسعر بيع أقل من سعر الشراء: (${belowCostInvItems.map(x=>`${x.name}: بيع ${x.price} ج.م / تكلفة ${x.cost} ج.م`).join('، ')})`
+        });
+        if(!auth || !auth.approved){
+          return;
+        }
+      }
+
+      // 2. Paid Invoice Lock Verification & Adjustment Journal [F10]
+      if(isPaidLocked){
+        const itemsChanged = JSON.stringify(inv.Items) !== JSON.stringify(existingInv.Items);
+        const totalChanged = Math.abs(Number(inv.Total || 0) - Number(existingInv.Total || 0)) > 0.005;
+
+        if((itemsChanged || totalChanged) && !editAuthorized){
+          showToast('لا يمكن تعديل بنود أو إجمالي فاتورة مسددة دون تصريح إداري', 'error');
+          return;
+        }
+
+        if(editAuthorized && (itemsChanged || totalChanged)){
+          const oldTot = Number(existingInv.Total || 0);
+          const newTot = Number(inv.Total || 0);
+          const diff = Math.round((newTot - oldTot) * 100) / 100;
+
+          if(Math.abs(diff) > 0.005){
+            const isDebit = diff > 0;
+            const absDiff = Math.abs(diff);
+            const adjLines = [
+              {
+                AccountCode: isDebit ? '1103' : '4102',
+                AccountName: isDebit ? 'حساب العميل (مدينون عملاء)' : 'مردودات ومسموحات مبيعات الأجهزة والإكسسوار',
+                Debit: absDiff,
+                Credit: 0,
+                Notes: `تسوية تعديل إجمالي فاتورة مسددة #${inv.InvoiceNumber} بتصريح المشرف (${authorizedBy})`
+              },
+              {
+                AccountCode: isDebit ? '4102' : '1103',
+                AccountName: isDebit ? 'إيرادات مبيعات الأجهزة والإكسسوار' : 'حساب العميل (مدينون عملاء)',
+                Debit: 0,
+                Credit: absDiff,
+                Notes: `تسوية فارق إجمالي فاتورة مسددة #${inv.InvoiceNumber} (السابق: ${oldTot} -> الجديد: ${newTot})`
+              }
+            ];
+
+            await recordAutoJournalEntry(
+              `تسوية تعديل فاتورة مسددة #${inv.InvoiceNumber} للعميل: ${inv.CustomerName}`,
+              'Invoice_Adjustment',
+              inv.ID,
+              adjLines
+            );
+          }
+
+          recordAuditLog(
+            'تعديل فاتورة مسددة',
+            'الفواتير',
+            `تم تعديل الفاتورة المسددة #${inv.InvoiceNumber} بتصريح المشرف (${authorizedBy}). الإجمالي السابق: ${oldTot} ج.م -> الإجمالي الجديد: ${newTot} ج.م (فارق: ${diff} ج.م) - المسدد: ${existingInv.AmountPaid} ج.م`,
+            inv.ID
+          );
+
+          inv.supervisorAuth = authorizedBy;
+          inv.skipAutoJournal = true;
+        }
+      }
       try{
         await saveInvoiceRemote(inv);
         showToast(`تم حفظ ${docType==='quote'?'عرض السعر':'الفاتورة'} بنجاح (${inv.InvoiceNumber})`, 'success');

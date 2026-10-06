@@ -74,6 +74,7 @@ const SHEET_PURCHASE_RETURNS = 'PurchaseReturns';
 const SHEET_BUNDLE_ITEMS = 'BundleItems';
 const SHEET_STOCKTAKE_SESSIONS = 'StocktakeSessions';
 const SHEET_STOCKTAKE_LINES = 'StocktakeLines';
+const SHEET_WAREHOUSE_TRANSFERS = 'Warehouse_Transfers';
 /* أضف ورقة عمل جديدة باسم Invoices لإدارة الفواتير الضريبية والرسمية:
       أعمدة: ID | InvoiceNumber | Date | DueDate | CustomerName | CustomerPhone | CustomerTaxNumber | CustomerAddress |
               ItemsSummary | ItemsJSON | Subtotal | TaxPercent | TaxAmount | Discount | Total |
@@ -259,6 +260,7 @@ const ACTION_ROLES = {
   saveInventoryItem:  ['admin','accountant','technician'],
   deleteInventoryItem:['admin'],
   adjustInventoryQty: ['admin','accountant'],
+  transferWarehouseStock: ['admin','accountant'],
   savePurchase:       ['admin','accountant'],
   savePurchaseReturn: ['admin','accountant'],
   settlePurchaseDebt: ['admin','accountant'],
@@ -1302,6 +1304,135 @@ function doPost(e) {
         }
       }
       return jsonOut({ error: 'الصنف غير موجود' }, 404);
+    }
+    if (action === 'transferWarehouseStock') {
+      const sourceId = String(body.sourceId || body.id || '');
+      const fromWh = String(body.fromWarehouse || 'المخزن الرئيسي').trim();
+      const toWh = String(body.toWarehouse || '').trim();
+      const qty = safeNumber(body.qty, 0);
+
+      if (!sourceId) return jsonOut({ error: 'معرف الصنف المصدر مطلوب' }, 400);
+      if (!toWh) return jsonOut({ error: 'المخزن الوجهة مطلوب' }, 400);
+      if (fromWh === toWh) return jsonOut({ error: 'لا يمكن التحويل لنفس المخزن' }, 400);
+      if (qty <= 0) return jsonOut({ error: 'الكمية المحولة يجب أن تكون أكبر من صفر' }, 400);
+
+      const sh = getSheet(SHEET_INVENTORY);
+      const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+      const idCol = headers.indexOf('ID');
+      const qtyCol = headers.indexOf('Quantity');
+      const whCol = headers.indexOf('Warehouse');
+      const nameCol = headers.indexOf('Name');
+      const barcodeCol = headers.indexOf('Barcode');
+
+      if (idCol === -1 || qtyCol === -1) {
+        return jsonOut({ error: 'أعمدة المخزن غير صالحة في جدول البيانات' }, 500);
+      }
+
+      const values = sh.getDataRange().getValues();
+      let sourceRowIdx = -1;
+      let sourceRow = null;
+
+      for (let i = 1; i < values.length; i++) {
+        if (String(values[i][idCol]) === sourceId) {
+          sourceRowIdx = i;
+          sourceRow = values[i];
+          break;
+        }
+      }
+
+      if (sourceRowIdx === -1) {
+        return jsonOut({ error: 'الصنف المصدر غير موجود بالمخزن' }, 404);
+      }
+
+      const currentSrcQty = safeNumber(sourceRow[qtyCol], 0);
+      if (currentSrcQty < qty) {
+        return jsonOut({ error: 'الرصيد المتاح (' + currentSrcQty + ') أقل من الكمية المطلوبة (' + qty + ')' }, 400);
+      }
+
+      const newSrcQty = currentSrcQty - qty;
+      sh.getRange(sourceRowIdx + 1, qtyCol + 1).setValue(newSrcQty);
+
+      const srcName = nameCol !== -1 ? String(sourceRow[nameCol] || '') : '';
+      const srcBarcode = barcodeCol !== -1 ? String(sourceRow[barcodeCol] || '') : '';
+
+      // Check if dest item exists in toWh
+      let destRowIdx = -1;
+      let destRow = null;
+      let newDestQty = qty;
+      let destId = '';
+
+      for (let i = 1; i < values.length; i++) {
+        if (i === sourceRowIdx) continue;
+        const rowWh = whCol !== -1 ? String(values[i][whCol] || 'المخزن الرئيسي') : 'المخزن الرئيسي';
+        if (rowWh === toWh) {
+          const rowBc = barcodeCol !== -1 ? String(values[i][barcodeCol] || '') : '';
+          const rowNm = nameCol !== -1 ? String(values[i][nameCol] || '') : '';
+          if ((srcBarcode && rowBc && rowBc === srcBarcode) || (srcName && rowNm && rowNm === srcName)) {
+            destRowIdx = i;
+            destRow = values[i];
+            break;
+          }
+        }
+      }
+
+      if (destRowIdx !== -1) {
+        destId = String(destRow[idCol]);
+        const currentDestQty = safeNumber(destRow[qtyCol], 0);
+        newDestQty = currentDestQty + qty;
+        sh.getRange(destRowIdx + 1, qtyCol + 1).setValue(newDestQty);
+      } else {
+        // Clone item into destination warehouse
+        destId = 'inv_' + new Date().getTime() + '_' + Math.floor(Math.random() * 1000);
+        const newDestItem = {};
+        headers.forEach((h, colIdx) => {
+          newDestItem[h] = sourceRow[colIdx];
+        });
+        newDestItem['ID'] = destId;
+        newDestItem['Warehouse'] = toWh;
+        newDestItem['Quantity'] = qty;
+        appendRow(SHEET_INVENTORY, newDestItem);
+      }
+
+      // Record transfer history
+      const transferRecord = {
+        ID: body.id || ('wht_' + new Date().getTime()),
+        Date: body.date || new Date().toISOString().slice(0, 10),
+        ItemID: sourceId,
+        ItemName: srcName,
+        Barcode: srcBarcode,
+        FromWarehouse: fromWh,
+        ToWarehouse: toWh,
+        Qty: qty,
+        User: actorUser,
+        Notes: body.notes || '',
+        Timestamp: new Date().toISOString()
+      };
+
+      try {
+        appendRow(SHEET_WAREHOUSE_TRANSFERS, transferRecord);
+      } catch (trErr) {
+        console.warn('Could not append to Warehouse_Transfers: ' + trErr);
+      }
+
+      logAudit(sourceId, actorUser, 'تحويل مخزني: ' + qty + ' من [' + srcName + '] من ' + fromWh + ' إلى ' + toWh, 'Inventory', {
+        sourceId: sourceId,
+        destId: destId,
+        fromWarehouse: fromWh,
+        toWarehouse: toWh,
+        qty: qty,
+        sourceQty: newSrcQty,
+        destQty: newDestQty,
+        notes: body.notes || ''
+      });
+
+      return jsonOut({
+        ok: true,
+        success: true,
+        sourceQty: newSrcQty,
+        destQty: newDestQty,
+        destId: destId,
+        transfer: transferRecord
+      });
     }
     if (action === 'saveSale') {
       const clientRef = body.clientRef || body.ClientRef || '';
@@ -2416,7 +2547,14 @@ function doPost(e) {
 function getSheet(name) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sh = ss.getSheetByName(name);
-  if (!sh) throw new Error('ورقة العمل غير موجودة: ' + name);
+  if (!sh) {
+    if (name === SHEET_WAREHOUSE_TRANSFERS) {
+      sh = ss.insertSheet(name);
+      sh.appendRow(['ID', 'Date', 'ItemID', 'ItemName', 'Barcode', 'FromWarehouse', 'ToWarehouse', 'Qty', 'User', 'Notes', 'Timestamp']);
+      return sh;
+    }
+    throw new Error('ورقة العمل غير موجودة: ' + name);
+  }
   return sh;
 }
 

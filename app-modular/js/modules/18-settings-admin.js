@@ -1545,8 +1545,14 @@ function attachPosSettingsEvents(main){
   // Add new payment method prompt / button
   const addPmBtn = document.getElementById('addNewPayMethodBtn');
   if(addPmBtn){
-    addPmBtn.onclick = ()=>{
-      const name = prompt('أدخل اسم طريقة أو محفظة الدفع الجديدة (مثال: أورنج كاش / كاش بلس):');
+    addPmBtn.onclick = async ()=>{
+      const name = await openPromptModal({
+        title: 'إضافة طريقة دفع جديدة',
+        message: 'أدخل اسم طريقة أو محفظة الدفع الجديدة:',
+        placeholder: 'مثال: أورنج كاش / كاش بلس',
+        confirmText: 'إضافة',
+        cancelText: 'إلغاء'
+      });
       if(!name || !name.trim()) return;
       const icon = '';
       const id = 'pm_' + Date.now();
@@ -1801,8 +1807,14 @@ function renderWhatsappSettings(main){
     }
   };
 
-  document.getElementById('resetCurrentWaBtn').onclick = ()=>{
-    if(confirm('هل تريد بالتأكيد استعادة القالب الافتراضي لهذه الحالة؟')){
+  document.getElementById('resetCurrentWaBtn').onclick = async ()=>{
+    const ok = await openConfirmModal({
+      title: 'استعادة القالب الافتراضي',
+      message: 'هل تريد بالتأكيد استعادة القالب الافتراضي لهذه الحالة؟',
+      confirmText: 'استعادة',
+      cancelText: 'إلغاء'
+    });
+    if(ok){
       if(!state.settings.waTemplates) state.settings.waTemplates = {...DEFAULT_WA_TEMPLATES};
       state.settings.waTemplates[activeWaKey] = DEFAULT_WA_TEMPLATES[activeWaKey];
       textarea.value = DEFAULT_WA_TEMPLATES[activeWaKey];
@@ -2052,7 +2064,14 @@ function renderDevicesSettings(main){
   const delCatBtn = document.getElementById('deleteCurrentCatBtn');
   if(delCatBtn){
     delCatBtn.onclick = async ()=>{
-      if(confirm(`هل تريد بالتأكيد حذف فئة الأجهزة "${selectedCat}" بكافة ماركاتها؟`)){
+      const ok = await openConfirmModal({
+        title: 'حذف فئة أجهزة',
+        message: `هل تريد بالتأكيد حذف فئة الأجهزة "${escapeHtml(selectedCat)}" بكافة ماركاتها؟`,
+        confirmText: 'حذف الفئة',
+        cancelText: 'إلغاء',
+        confirmClass: 'btn-danger'
+      });
+      if(ok){
         delete brandsObj[selectedCat];
         state.settings.brands = brandsObj;
         state.selectedDeviceCat = Object.keys(brandsObj)[0] || 'لابتوب';
@@ -2402,8 +2421,15 @@ function renderSyncSettings(main){
 
   const clearQueueBtn = document.getElementById('clearQueueBtn');
   if(clearQueueBtn){
-    clearQueueBtn.onclick = ()=>{
-      if(confirm('هل ترغب في تفريغ طابور المزامنة المعلق؟ سيتم إزالة أي عمليات معلقة لم تُرفع للسحابة بعد.')){
+    clearQueueBtn.onclick = async ()=>{
+      const ok = await openConfirmModal({
+        title: 'تفريغ طابور المزامنة',
+        message: 'هل ترغب في تفريغ طابور المزامنة المعلق؟ سيتم إزالة أي عمليات معلقة لم تُرفع للسحابة بعد.',
+        confirmText: 'تفريغ الطابور',
+        cancelText: 'إلغاء',
+        confirmClass: 'btn-danger'
+      });
+      if(ok){
         clearOfflineSyncQueue();
         renderSyncSettings(main);
       }
@@ -2427,9 +2453,16 @@ function renderSyncSettings(main){
   });
 
   main.querySelectorAll('.delete-single-btn').forEach(btn => {
-    btn.onclick = () => {
+    btn.onclick = async () => {
       const id = btn.dataset.id;
-      if(confirm('هل أنت متأكد من حذف هذه العملية من طابور المزامنة؟')){
+      const ok = await openConfirmModal({
+        title: 'حذف عملية من المزامنة',
+        message: 'هل أنت متأكد من حذف هذه العملية من طابور المزامنة؟',
+        confirmText: 'حذف',
+        cancelText: 'إلغاء',
+        confirmClass: 'btn-danger'
+      });
+      if(ok){
         deleteSingleQueueItem(id);
         renderSyncSettings(main);
       }
@@ -2460,13 +2493,20 @@ function renderSyncSettings(main){
 
   const clearCacheBtn = document.getElementById('clearLocalCacheBtn');
   if(clearCacheBtn){
-    clearCacheBtn.onclick = () => {
+    clearCacheBtn.onclick = async () => {
       const q = getSyncQueue();
       let confirmMsg = 'هل تريد بالتأكيد تفريغ الذاكرة المؤقتة (الكاش) وإعادة التحميل من السحابة؟';
       if(q.length > 0){
-        confirmMsg = `تنبيه أمان: يوجد ${q.length} عملية معلقة في طابور المزامنة لم تُرفع بعد إلى السحابة. سيتم الحفاظ عليها بأمان وحمايتها من المسح.\n\nهل ترغب في متابعة تفريغ الكاش؟`;
+        confirmMsg = `تنبيه أمان: يوجد ${q.length} عملية معلقة في طابور المزامنة لم تُرفع بعد إلى السحابة. سيتم الحفاظ عليها بأمان وحمايتها من المسح.<br><br>هل ترغب في متابعة تفريغ الكاش؟`;
       }
-      if(confirm(confirmMsg)){
+      const ok = await openConfirmModal({
+        title: 'تفريغ الذاكرة المؤقتة (الكاش)',
+        message: confirmMsg,
+        confirmText: 'تفريغ الكاش وإعادة التحميل',
+        cancelText: 'إلغاء',
+        confirmClass: 'btn-warning'
+      });
+      if(ok){
         const res = typeof safePurgeLocalCache === 'function' ? safePurgeLocalCache() : { preservedQueueCount: q.length };
         showToast(`تم تفريغ الكاش بنجاح مع حماية ${res.preservedQueueCount} عملية معلقة، جاري إعادة التحميل...`, 'info');
         setTimeout(() => window.location.reload(), 700);
@@ -4034,7 +4074,7 @@ function openInvoiceBarcodePrintModal(type = 'purchase', targetId = ''){
           <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">تحديد الأصناف والكميات المطلوب طباعتها لطابعة الباركود</div>
         </div>
       </div>
-      <button id="closeInvoiceBarcodeModalBtn" style="background: rgba(255,255,255,0.1); border: none; color: #cbd5e1; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;">&times;</button>
+      <button id="closeInvoiceBarcodeModalBtn" style="background: rgba(255,255,255,0.1); border: none; color: #cbd5e1; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;" aria-label="إغلاق">&times;</button>
     </div>
     <div id="invoiceBarcodeWorkspaceMount" style="padding: 16px 20px; overflow-y: auto; max-height: calc(90vh - 65px);"></div>
   `;
@@ -4414,7 +4454,7 @@ function openRestoreConfirmationModal(backupData){
           <div style="font-size: 11.5px; color: rgba(255,255,255,0.85); margin-top: 2px;">استبدال ومزامنة جداول النظام بالنسخة المختارة</div>
         </div>
       </div>
-      <button id="closeRestoreModalBtn" style="background: rgba(255,255,255,0.15); border: none; color: #fff; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center;">&times;</button>
+      <button id="closeRestoreModalBtn" style="background: rgba(255,255,255,0.15); border: none; color: #fff; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center;" aria-label="إغلاق">&times;</button>
     </div>
 
     <div style="padding: 20px 24px; overflow-y: auto; max-height: calc(90vh - 140px);">

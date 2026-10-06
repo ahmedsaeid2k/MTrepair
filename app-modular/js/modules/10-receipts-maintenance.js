@@ -358,19 +358,13 @@ function renderForm(main){
         startNewDraft(true);
         if(typeof showToast === 'function') showToast('تم مسح المسودة والبدء بإيصال جديد', 'info');
       };
-      if(typeof openConfirmModal === 'function'){
-        openConfirmModal({
-          title: 'مسح مسودة الاستلام',
-          message: 'هل أنت متأكد من مسح كافة بيانات المسودة الحالية والبدء من جديد؟ سيتم حذف البيانات المدخلة في هذه المسودة.',
-          confirmText: 'نعم، مسح المسودة',
-          confirmClass: 'btn-danger',
-          onConfirm: doDiscard
-        });
-      } else {
-        if(confirm('هل أنت متأكد من مسح مسودة الاستلام والبدء من جديد؟')){
-          doDiscard();
-        }
-      }
+      openConfirmModal({
+        title: 'مسح مسودة الاستلام',
+        message: 'هل أنت متأكد من مسح كافة بيانات المسودة الحالية والبدء من جديد؟ سيتم حذف البيانات المدخلة في هذه المسودة.',
+        confirmText: 'نعم، مسح المسودة',
+        confirmClass: 'btn-danger',
+        onConfirm: doDiscard
+      });
     };
   }
 
@@ -896,13 +890,20 @@ function stepDevice(body,d){
 
   // Delete device chip
   body.querySelectorAll('.delete-dev-chip').forEach(btn => {
-    btn.onclick = (e)=>{
+    btn.onclick = async (e)=>{
       e.stopPropagation();
       const delIdx = Number(btn.dataset.delidx);
       if(d.devices.length <= 1) return;
       const targetDev = d.devices[delIdx];
       const targetName = `${targetDev.category || 'جهاز'} ${targetDev.brand || ''} ${targetDev.model || ''}`.trim() || `جهاز #${delIdx+1}`;
-      if(!confirm(`هل أنت متأكد من حذف ${targetName} من هذا الإيصال؟`)) return;
+      const ok = await openConfirmModal({
+        title: 'حذف جهاز من الإيصال',
+        message: `هل أنت متأكد من حذف ${targetName} من هذا الإيصال؟`,
+        confirmText: 'حذف',
+        confirmClass: 'btn-danger',
+        icon: 'trash'
+      });
+      if(!ok) return;
       collectActiveDeviceFromDom();
       d.devices.splice(delIdx, 1);
       if(d.activeDeviceIndex >= d.devices.length){
@@ -1595,6 +1596,7 @@ async function saveReceipt(d, printA5, sendWa, printSticker){
 const STATUS_GROUPS = {
   all: {label:'الكل', statuses:null},
   active: {label:'قيد العمل', statuses:['قيد الفحص','بانتظار موافقة العميل','بانتظار قطعة غيار','الصيانة']},
+  quotationWaiting: {label:'عروض بانتظار موافقة العميل', statuses:null},
   delayed48h: {label:'متأخرة بالورشة (+48 س)', statuses:null},
   done: {label:'جاهزة للاستلام', statuses:['مكتمل']},
   delivered: {label:'تم التسليم', statuses:['تم التسليم']},
@@ -1889,9 +1891,7 @@ window.openReceiptRefundModal = function(receiptId, receiptNum){
       });
 
       // Recalculate remaining on receipt
-      const totalCost = Number(r.cost || 0) + Number(r.partsCost || 0) + Number(r.otherAccountAmount || 0);
-      const dep = Number(r.deposit || 0);
-      r.remaining = Math.max(0, totalCost - dep + Number(r.refunded || 0));
+      r.remaining = (typeof getReceiptRemaining === 'function') ? getReceiptRemaining(r) : Math.max(0, (Number(r.cost || 0) + Number(r.partsCost || 0) + Number(r.otherAccountAmount || 0)) - Number(r.deposit || 0) + Number(r.refunded || 0));
 
       await saveReceiptRemote(r);
 
@@ -1988,21 +1988,6 @@ window.viewCustomerReceiptsInArchive = function(custName){
   state.archiveFilter.q = custName || '';
   renderMain();
 };
-
-function getOrCreateUnifiedSelectionBar(){
-  let bar = document.getElementById('unifiedSelectionBar');
-  if(!bar){
-    bar = document.createElement('div');
-    bar.id = 'unifiedSelectionBar';
-  }
-  const topSlot = document.getElementById('unifiedSelectionTopSlot');
-  if(topSlot){
-    if(bar.parentElement !== topSlot){
-      topSlot.appendChild(bar);
-    }
-  }
-  return bar;
-}
 
 window.renderUnifiedSelectionBar = function(){
   const topSlot = document.getElementById('unifiedSelectionTopSlot');
@@ -2358,10 +2343,9 @@ window.renderUnifiedSelectionBar = function(){
     let totalDue = 0, totalDeposit = 0, totalRemaining = 0;
     const customerNames = new Set();
     selReceipts.forEach(r => {
-      const otherAmt = Number(r.otherAccountAmount || 0);
-      const due = Number(r.cost || 0) + Number(r.partsCost || 0) + otherAmt;
+      const due = (typeof getReceiptTotalDue === 'function') ? getReceiptTotalDue(r) : (Number(r.cost || 0) + Number(r.partsCost || 0) + Number(r.otherAccountAmount || 0));
       const dep = Number(r.deposit || 0);
-      const rem = Math.max(0, due - dep + Number(r.refunded || 0));
+      const rem = (typeof getReceiptRemaining === 'function') ? getReceiptRemaining(r) : Math.max(0, due - dep + Number(r.refunded || 0));
       totalDue += due;
       totalDeposit += dep;
       totalRemaining += rem;
@@ -2397,7 +2381,7 @@ window.renderUnifiedSelectionBar = function(){
         <button class="unified-bar-btn btn-ghost" style="background:var(--paper2);border:1px solid var(--line);" onclick="deselectCurrentSelection(); if(typeof renderArchive==='function') renderArchive();" title="إلغاء التحديد">
           إلغاء التحديد
         </button>
-        <button class="unified-bar-btn-close" onclick="deselectCurrentSelection(); if(typeof renderArchive==='function') renderArchive();" title="إلغاء التحديد">
+        <button class="unified-bar-btn-close" onclick="deselectCurrentSelection(); if(typeof renderArchive==='function') renderArchive();" title="إلغاء التحديد" aria-label="إلغاء التحديد">
           &times;
         </button>
       </div>
@@ -2411,10 +2395,9 @@ window.renderUnifiedSelectionBar = function(){
     if(r){
       const safeTargetId = String(r.id != null ? r.id : (r.ID != null ? r.ID : r.receiptNumber));
       const rNum = String(r.receiptNumber || r.ReceiptNumber || state.selectedReceiptNum || '');
-      const otherAmt = Number(r.otherAccountAmount || 0);
-      const totalDue = Number(r.cost || 0) + Number(r.partsCost || 0) + otherAmt;
+      const totalDue = (typeof getReceiptTotalDue === 'function') ? getReceiptTotalDue(r) : (Number(r.cost || 0) + Number(r.partsCost || 0) + Number(r.otherAccountAmount || 0));
       const deposit = Number(r.deposit || 0);
-      const remaining = Math.max(0, totalDue - deposit + Number(r.refunded || 0));
+      const remaining = (typeof getReceiptRemaining === 'function') ? getReceiptRemaining(r) : Math.max(0, totalDue - deposit + Number(r.refunded || 0));
       const cName = extractCustomerName(r) || 'عميل';
       const dCat = (r.device && r.device.category) || 'جهاز';
       const dBrand = (r.device ? (r.device.brand === 'أخرى' ? r.device.brandOther : r.device.brand) : '') || '';
@@ -3879,6 +3862,8 @@ function renderArchive(main){
       const t = new Date(dStr).getTime();
       return !isNaN(t) && (Date.now() - t) / 86400000 > 30;
     });
+  } else if(f.group==='quotationWaiting'){
+    list = list.filter(r => (r.quotationStatus === 'sent' || r.status === 'بانتظار موافقة العميل') && r.quotationStatus !== 'approved' && r.quotationStatus !== 'rejected');
   } else if(f.group==='warranty'){
     const todayStr = (typeof localDateStr === 'function') ? localDateStr() : new Date().toISOString().slice(0, 10);
     list = list.filter(r => r.previousReceiptId || r.reIntakeReason || (r.warrantyEnd && r.warrantyEnd >= todayStr) || r.isUnderWarranty);
@@ -3916,7 +3901,7 @@ function renderArchive(main){
         <button class="btn btn-whatsapp btn-sm" id="archBulkUnclaimedBtn" style="background:#b45309;" title="تذكير وإشعار العملاء بالأجهزة غير المطالب بها (+30 يوم)">${WA_ICON} لم تُطالَب (+30 يوم)</button>
         <button class="btn btn-ghost btn-sm" id="archRecoverPhonesBtn" style="color:var(--primary);font-weight:800;" title="فحص كافة السجلات واسترداد أرقام الهواتف التائهة">${getSvgIcon("refresh", 13)} استرداد الهواتف</button>
         <button class="btn btn-ghost btn-sm" id="archGotoCustBtn">${getSvgIcon("users", 13)} دليل العملاء</button>
-        <button class="btn btn-ghost btn-sm" id="exportArchiveExcelBtn">${getSvgIcon("download", 13)} تصدير Excel</button>
+        <button class="btn btn-ghost btn-sm" id="exportArchiveExcelBtn">${getSvgIcon("download", 13)} تصدير CSV (Excel)</button>
         <button class="btn btn-primary btn-sm" id="archNewReceiptBtn">${getSvgIcon("plus", 13)} إيصال جديد</button>
       </div>
     </div>

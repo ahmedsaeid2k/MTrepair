@@ -740,7 +740,7 @@ function getCustomerLiveBalance(custName, custPhone){
     const rPhone = extractCustomerPhone(r) || '';
     const isMatch = (cName && rName === cName) || (cPhone && rPhone === cPhone);
     if(isMatch){
-      const totalDue = Number(r.cost || 0) + Number(r.partsCost || 0) + Number(r.otherAccountAmount || 0);
+      const totalDue = (typeof getReceiptTotalDue === 'function') ? getReceiptTotalDue(r) : (Number(r.cost || 0) + Number(r.partsCost || 0) + Number(r.otherAccountAmount || 0));
       const dep = Number(r.deposit || 0);
       const refAmt = Number(r.refunded || 0);
       totalDebit += totalDue + refAmt;

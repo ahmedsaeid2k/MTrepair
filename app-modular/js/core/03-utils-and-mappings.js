@@ -561,7 +561,13 @@ function extractCustomerEmail(obj){
 }
 
 /* Safe customer normalizer - links receipts to Customer Directory & heals typos */
+let _lastSilentPhoneSyncTime = 0;
 function recoverAndSyncAllCustomerPhones(verbose = false){
+  const now = Date.now();
+  if(!verbose && (now - _lastSilentPhoneSyncTime < 15000)){
+    return { recoveredCount: 0, namesSynced: 0, totalCustomers: (state.customers || []).length };
+  }
+  if(!verbose) _lastSilentPhoneSyncTime = now;
   deduplicateCustomerDirectory();
   let matchedCount = 0;
   let namesSynced = 0;
@@ -673,13 +679,6 @@ function formatReceiptTime(rawR){
     } catch(e){}
   }
   return '';
-}
-
-function formatReceiptDateTime(rawR){
-  if(!rawR) return '';
-  const dStr = (typeof cleanDate === 'function') ? cleanDate(rawR.date || rawR.Date) : (String(rawR.date || rawR.Date || '').slice(0,10));
-  const tStr = formatReceiptTime(rawR);
-  return tStr ? `${dStr} — ${tStr}` : dStr;
 }
 
 /* ---- Warranty End Date Computation Helper ---- */
@@ -906,6 +905,7 @@ function rowToReceipt(row){
 /* Master Normalizer for Maintenance Receipts to guarantee fault-tolerant operations */
 function normalizeReceipt(r){
   if(!r || typeof r !== 'object') return null;
+  if(r._isNormalized) return r;
 
   // Guarantee ID is ALWAYS present and string
   if(!r.id){
@@ -1149,8 +1149,44 @@ function normalizeReceipt(r){
     r.customerApproval.notes = String(r.customerApproval.notes || '');
   }
 
+  r._isNormalized = true;
   return r;
 }
+
+/**
+ * Computes the unified total cost/due for a maintenance receipt.
+ * Formula: Cost + PartsCost + OtherAccountAmount
+ * @param {object} rawR - Receipt object
+ * @returns {number} Total due in EGP
+ */
+function getReceiptTotalDue(rawR){
+  if(!rawR) return 0;
+  const cost = Number(rawR.cost != null ? rawR.cost : (rawR.Cost || 0));
+  const partsCost = Number(rawR.partsCost != null ? rawR.partsCost : (rawR.PartsCost || 0));
+  const otherAccountAmount = Number(rawR.otherAccountAmount != null ? rawR.otherAccountAmount : (rawR.OtherAccountAmount || 0));
+  const sum = cost + partsCost + otherAccountAmount;
+  return (typeof round2 === 'function') ? round2(sum) : (Math.round(sum * 100) / 100);
+}
+
+/**
+ * Computes the unified remaining balance for a maintenance receipt.
+ * Formula: Math.max(0, TotalDue - (Deposit - Refunded))
+ * @param {object} rawR - Receipt object
+ * @returns {number} Remaining balance in EGP
+ */
+function getReceiptRemaining(rawR){
+  if(!rawR) return 0;
+  const totalDue = getReceiptTotalDue(rawR);
+  const deposit = Number(rawR.deposit != null ? rawR.deposit : (rawR.Deposit || 0));
+  const refunded = Number(rawR.refunded != null ? rawR.refunded : (rawR.Refunded || 0));
+  const effectivePaid = Math.max(0, deposit - refunded);
+  const rem = totalDue - effectivePaid;
+  const rounded = (typeof round2 === 'function') ? round2(rem) : (Math.round(rem * 100) / 100);
+  return Math.max(0, rounded);
+}
+
+window.getReceiptTotalDue = getReceiptTotalDue;
+window.getReceiptRemaining = getReceiptRemaining;
 
 /* Safe universal receipt finder by String ID or Receipt Number */
 function findReceiptByIdOrNum(queryId, queryNum){
@@ -1323,7 +1359,7 @@ async function deletePaymentRemote(paymentId){
   // 2. Adjust corresponding receipt if it exists
   const r = (state.receipts||[]).find(x => String(x.id) === String(p.ReceiptID) || String(x.receiptNumber) === String(p.ReceiptID));
   if(r){
-    const totalDue = Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0);
+    const totalDue = getReceiptTotalDue(r);
     r.deposit = Math.max(0, Number(r.deposit || 0) - Number(p.Amount || 0));
     if(r.deposit < totalDue){
       r.paid = false;
@@ -1479,7 +1515,14 @@ function openDuplicatePaymentsReviewModal(onDone){
     overlay.querySelectorAll('.delete-dup-btn').forEach(btn => {
       btn.onclick = async () => {
         const pid = btn.dataset.pid;
-        if(!confirm(`هل أنت متأكد من حذف هذه الدفعة المكررة (#${pid})؟\nسيتم تصحيح رصيد الخزينة والإيصال فوراً.`)) return;
+        const ok = await openConfirmModal({
+          title: 'حذف دفعة مكررة',
+          message: `هل أنت متأكد من حذف هذه الدفعة المكررة (#${pid})؟\nسيتم تصحيح رصيد الخزينة والإيصال فوراً.`,
+          confirmText: 'حذف',
+          confirmClass: 'btn-danger',
+          icon: 'trash'
+        });
+        if(!ok) return;
         btn.disabled = true;
         btn.textContent = 'جارٍ الحذف...';
         try {
@@ -1532,7 +1575,6 @@ async function adjustInventoryQtyRemote(id, delta){
   recordAuditLog('تعديل رصيد صنف', 'المخزن', `تعديل رصيد الصنف (${it ? it.Name : id}) بفارق (${delta}) - الرصيد الجديد: ${it ? it.Quantity : '-'}`, id);
   return apiPost('adjustInventoryQty', {id, delta});
 }
-async function refreshInventory(){ state.inventory = await loadInventory(); }
 
 async function loadSales(){
   const rows = await apiGet('getSales');

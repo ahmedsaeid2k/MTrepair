@@ -165,7 +165,7 @@ function renderInventory(main, categoryFilter, titleOverride){
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn btn-ghost btn-sm" id="btnManageWarehouses" style="border-color:var(--line-strong);">${getSvgIcon('store', 14)} إدارة المخازن (${whNames.length})</button>
         <button class="btn btn-ghost btn-sm" id="btnTransferWarehouses" style="color:var(--primary);border-color:var(--primary);">${getSvgIcon('refresh', 14)} تحويل بين المخازن</button>
-        <button class="btn btn-ghost btn-sm" id="exportInvExcelBtn">${getSvgIcon('download', 14)} تصدير Excel</button>
+        <button class="btn btn-ghost btn-sm" id="exportInvExcelBtn">${getSvgIcon('download', 14)} تصدير CSV (Excel)</button>
         <button class="btn btn-ghost btn-sm" id="importInvExcelBtn">${getSvgIcon('upload', 14)} استيراد من Excel</button>
         <button class="btn btn-primary btn-sm" id="addNewItemMasterBtn">${getSvgIcon('plus', 14)} إضافة صنف جديد</button>
       </div>
@@ -747,7 +747,7 @@ function openInventoryImportModal(){
     <div class="modal-content" style="max-width:650px;">
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:16px;">
         <h3 style="margin:0;font-size:16px;">استيراد أصناف جماعي من ملف Excel / CSV</h3>
-        <button class="btn btn-ghost btn-xs" id="closeImportModal" style="font-size:18px;line-height:1;">&times;</button>
+        <button class="btn btn-ghost btn-xs" id="closeImportModal" style="font-size:18px;line-height:1;" aria-label="إغلاق">&times;</button>
       </div>
 
       <div style="background:var(--paper3);border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px;margin-bottom:16px;font-size:12.5px;line-height:1.7;">
@@ -755,7 +755,7 @@ function openInventoryImportModal(){
         <ol style="margin-right:18px;margin-top:4px;">
           <li>يمكنك تنزيل النموذج الجاهز وتعبئته ببيانات أصنافك.</li>
           <li>الأعمدة المطلوبة: <b>الاسم، القسم، الباركود، الكمية، سعر الشراء، سعر البيع، مكان الرف</b>.</li>
-          <li>يدعم الملفات بصيغة CSV أو Excel (.csv).</li>
+          <li>يدعم الملفات بصيغة CSV المتوافقة مع معيار RFC-4180 أو Excel (.csv).</li>
         </ol>
         <button class="btn btn-ghost btn-xs" id="downloadImportTemplateBtn" style="margin-top:6px;">${getSvgIcon('download', 14)} تنزيل نموذج الاستيراد الفارغ (Template)</button>
       </div>
@@ -797,36 +797,62 @@ function openInventoryImportModal(){
     const reader = new FileReader();
     reader.onload = (evt)=>{
       const text = evt.target.result;
-      const lines = text.split(/\r?\n/).filter(l=>l.trim());
-      if(lines.length <= 1){ showToast('الملف فارغ أو لا يحتوي على بيانات كافية', 'error'); return; }
+      const rows = typeof parseCSV === 'function' ? parseCSV(text) : text.split(/\r?\n/).map(l=>l.split(','));
+      if(rows.length <= 1){ showToast('الملف فارغ أو لا يحتوي على بيانات كافية', 'error'); return; }
 
       parsedItems = [];
-      for(let i=1; i<lines.length; i++){
-        const cols = lines[i].split(',').map(c=>c.replace(/^["']|["']$/g,'').trim());
-        if(cols[0]){
-          parsedItems.push({
-            ID: 'inv_' + Date.now() + '_' + i,
-            Name: cols[0],
-            Category: cols[1] || 'صيانة',
-            Barcode: cols[2] || ('20' + String(Date.now()).slice(-8) + i),
-            Quantity: Number(cols[3])||0,
-            PurchasePrice: Number(cols[4])||0,
-            SellPrice: Number(cols[5])||0,
-            WholesalePrice: Number(cols[6])||0,
-            ShelfLocation: cols[7] || '',
-            CompatibleModels: cols[8] || '',
-            MinStock: 2,
-            Unit: 'قطعة'
-          });
+      const existingBarcodes = new Set((state.inventory || []).map(x => String(x.Barcode || '').trim().toLowerCase()).filter(Boolean));
+      const batchBarcodes = new Set();
+      let duplicateBarcodeCount = 0;
+
+      for(let i=1; i<rows.length; i++){
+        const cols = (rows[i] || []).map(c => String(c || '').trim());
+        const name = cols[0];
+        if(!name) continue;
+
+        let barcode = cols[2] || '';
+        if(barcode){
+          const bcLower = barcode.toLowerCase();
+          if(existingBarcodes.has(bcLower) || batchBarcodes.has(bcLower)){
+            duplicateBarcodeCount++;
+            barcode = barcode + '-' + i;
+          }
+          batchBarcodes.add(barcode.toLowerCase());
+        } else {
+          barcode = '20' + String(Date.now()).slice(-8) + i;
+          batchBarcodes.add(barcode.toLowerCase());
         }
+
+        parsedItems.push({
+          ID: 'inv_' + Date.now() + '_' + i,
+          Name: name,
+          Category: cols[1] || 'صيانة',
+          Barcode: barcode,
+          Quantity: Math.max(0, Number(cols[3]) || 0),
+          PurchasePrice: Math.max(0, Number(cols[4]) || 0),
+          SellPrice: Math.max(0, Number(cols[5]) || 0),
+          WholesalePrice: Math.max(0, Number(cols[6]) || 0),
+          ShelfLocation: cols[7] || '',
+          CompatibleModels: cols[8] || '',
+          MinStock: 2,
+          Unit: 'قطعة'
+        });
       }
 
       const previewMount = overlay.querySelector('#importPreviewMount');
-      previewMount.innerHTML = `
+      let previewHtml = `
         <div style="background:var(--green-bg);color:var(--green-text);padding:8px 12px;border-radius:var(--radius-sm);font-size:12px;font-weight:700;margin-bottom:8px;">
           <span style="display:inline-flex;align-items:center;gap:4px;color:var(--green);">${getSvgIcon('check', 14)} تم قراءة <b>${parsedItems.length}</b> صنف بنجاح وجاهز للاستيراد.</span>
         </div>
       `;
+      if(duplicateBarcodeCount > 0){
+        previewHtml += `
+          <div style="background:rgba(245,158,11,0.12);color:#b45309;padding:8px 12px;border-radius:var(--radius-sm);font-size:12px;font-weight:700;margin-bottom:8px;">
+            <span style="display:inline-flex;align-items:center;gap:4px;">${getSvgIcon('alert', 14)} تنبيه: تم رصد <b>${duplicateBarcodeCount}</b> باركود مكرر مسجل مسبقاً أو متكرر بالملف وتمت معالجتها تلقائياً لتفادي التعارض.</span>
+          </div>
+        `;
+      }
+      previewMount.innerHTML = previewHtml;
       overlay.querySelector('#processImportBtn').disabled = parsedItems.length === 0;
     };
     reader.readAsText(file);
@@ -952,12 +978,19 @@ function openWarehouseManagerModal(){
     });
 
     overlay.querySelectorAll('[data-delwh]').forEach(btn => {
-      btn.onclick = ()=>{
+      btn.onclick = async ()=>{
         const targetWh = btn.dataset.delwh;
         const current = (state.warehouses || ['المخزن الرئيسي']).map(w => typeof w === 'string' ? w : w.name);
         const hasItems = (state.inventory || []).some(it => (it.Warehouse || 'المخزن الرئيسي') === targetWh);
         if(hasItems){
-          if(!confirm(`تنبيه: يوجد أصناف مسجلة في "${targetWh}". هل تريد بالتأكيد حذف المخزن ونقل أصنافه للمخزن الرئيسي؟`)) return;
+          const ok = await openConfirmModal({
+            title: 'حذف مخزن ونقل أصنافه',
+            message: `تنبيه: يوجد أصناف مسجلة في "${escapeHtml(targetWh)}".<br><br>هل تريد بالتأكيد حذف المخزن ونقل أصنافه تلقائياً إلى "المخزن الرئيسي"؟`,
+            confirmText: 'نقل وحذف',
+            cancelText: 'إلغاء',
+            confirmClass: 'btn-danger'
+          });
+          if(!ok) return;
           (state.inventory || []).forEach(it => {
             if((it.Warehouse || 'المخزن الرئيسي') === targetWh){
               it.Warehouse = 'المخزن الرئيسي';
@@ -965,7 +998,14 @@ function openWarehouseManagerModal(){
           });
           setCache('inventory', state.inventory);
         } else {
-          if(!confirm(`هل أنت متأكد من حذف المخزن "${targetWh}"؟`)) return;
+          const ok = await openConfirmModal({
+            title: 'حذف مخزن',
+            message: `هل أنت متأكد من حذف المخزن "${escapeHtml(targetWh)}"؟`,
+            confirmText: 'حذف المخزن',
+            cancelText: 'إلغاء',
+            confirmClass: 'btn-danger'
+          });
+          if(!ok) return;
         }
         state.warehouses = current.filter(w => w !== targetWh);
         setCache('warehouses', state.warehouses);
@@ -1016,7 +1056,7 @@ function openWarehouseTransferModal(preselectedItem=null){
               <div style="font-size:12px;color:var(--ink-secondary);">نقل كميات الأصناف وتحديث الأرصدة وسجل الحركات آلياً</div>
             </div>
           </div>
-          <button class="btn btn-ghost btn-xs" id="closeWhTransModal">&times; إغلاق</button>
+          <button class="btn btn-ghost btn-xs" id="closeWhTransModal" aria-label="إغلاق">&times; إغلاق</button>
         </div>
 
         <!-- Step 1: Select Item -->
@@ -1171,10 +1211,26 @@ function openWarehouseTransferModal(preselectedItem=null){
 
         recordAuditLog('تحويل مخزني', 'المخزن', `تم تحويل ${qty} قطعة من (${selItem.Name}) من [${fromWh}] إلى [${toWh}] - السبب: ${notes||'تحويل بضاعة'}`, transferRecord.id);
 
-        try{
-          await saveInventoryItemRemote(selItem);
-          await saveInventoryItemRemote(destItem);
-        }catch(e){}
+        try {
+          const res = await apiPost('transferWarehouseStock', {
+            sourceId: selItem.ID,
+            fromWarehouse: fromWh,
+            toWarehouse: toWh,
+            qty: qty,
+            notes: notes,
+            user: state.user ? state.user.name : ''
+          });
+          if(res && res.destId && destItem && destItem.ID !== res.destId && destItem.ID.startsWith('inv_')){
+            destItem.ID = res.destId;
+            setCache('inventory', state.inventory);
+          }
+        } catch(e) {
+          console.warn('[openWarehouseTransferModal] transferWarehouseStock error, falling back to per-item save:', e);
+          try {
+            await saveInventoryItemRemote(selItem);
+            await saveInventoryItemRemote(destItem);
+          } catch(err2){}
+        }
 
         showToast(`تم تحويل ${qty} قطعة من "${selItem.Name}" إلى ${toWh} بنجاح`, 'success');
         playNotificationChime();
@@ -1829,12 +1885,19 @@ function openStartStocktakeModal(){
 
       if(!title){ showToast('يرجى إدخال عنوان جلسة الجرد', 'error'); return; }
 
-      const confirmMsg = `هل أنت متأكد من رغبتك في اعتماد وترحيل جلسة الجرد؟\n\n` +
-        `• سيتم تعديل كميات الأصناف بالمخزن إلى الرصيد الفعلي فورياً.\n` +
-        `• سيتم إنشاء قيد تسوية فروق الجرد (مدين 5209 / دائن 4201).\n` +
-        `• صافي الأثر المالي: ${netImpact} ج.م`;
+      const confirmMsg = `هل أنت متأكد من رغبتك في اعتماد وترحيل جلسة الجرد؟<br><br>` +
+        `• سيتم تعديل كميات الأصناف بالمخزن إلى الرصيد الفعلي فورياً.<br>` +
+        `• سيتم إنشاء قيد تسوية فروق الجرد (مدين 5209 / دائن 4201).<br>` +
+        `• صافي الأثر المالي: <strong>${netImpact} ج.م</strong>`;
 
-      if(!confirm(confirmMsg)) return;
+      const ok = await openConfirmModal({
+        title: 'اعتماد وترحيل جلسة الجرد',
+        message: confirmMsg,
+        confirmText: 'اعتماد وترحيل',
+        cancelText: 'إلغاء',
+        confirmClass: 'btn-primary'
+      });
+      if(!ok) return;
 
       commitBtn.disabled = true;
       commitBtn.textContent = 'جارٍ الاعتماد والترحيل...';
@@ -2100,7 +2163,14 @@ function renderBundlesView(main){
   main.querySelectorAll('.del-bundle-comp-btn').forEach(btn => {
     btn.onclick = async (e) => {
       e.stopPropagation();
-      if(!confirm('هل أنت متأكد من حذف هذا المكون من الطقم؟')) return;
+      const ok = await openConfirmModal({
+        title: 'حذف مكون من الطقم',
+        message: 'هل أنت متأكد من حذف هذا المكون من الطقم؟',
+        confirmText: 'حذف المكون',
+        cancelText: 'إلغاء',
+        confirmClass: 'btn-danger'
+      });
+      if(!ok) return;
       await deleteBundleItemRemote(btn.dataset.compId);
       showToast('تم حذف المكون من الطقم بنجاح', 'info');
       refreshInventorySectionOrTab();
@@ -2284,7 +2354,14 @@ function openBundleComponentsModal(parentItem){
 
     overlay.querySelectorAll('.remove-comp-btn').forEach(btn => {
       btn.onclick = async () => {
-        if(!confirm('هل تريد حذف هذا المكون من الطقم؟')) return;
+        const ok = await openConfirmModal({
+          title: 'حذف مكون من الطقم',
+          message: 'هل تريد حذف هذا المكون من الطقم؟',
+          confirmText: 'حذف المكون',
+          cancelText: 'إلغاء',
+          confirmClass: 'btn-danger'
+        });
+        if(!ok) return;
         try {
           await deleteBundleItemRemote(btn.dataset.compId);
           showToast('تم حذف المكون', 'info');

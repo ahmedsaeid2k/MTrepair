@@ -123,7 +123,7 @@ function renderCustomersPage(main){
         <button class="btn btn-ghost btn-sm" id="custRecoverBtn" style="color:var(--primary);font-weight:800;">
           ${getSvgIcon("refresh", 14)} فحص واسترداد الأرقام المفقودة
         </button>
-        <button class="btn btn-ghost btn-sm" id="exportCustsExcelBtn">${getSvgIcon("download", 14)} تصدير Excel</button>
+        <button class="btn btn-ghost btn-sm" id="exportCustsExcelBtn">${getSvgIcon("download", 14)} تصدير CSV (Excel)</button>
         <button class="btn btn-primary btn-sm" id="addNewCustModalBtn">${getSvgIcon("plus", 14)} إضافة عميل جديد</button>
       </div>
     </div>
@@ -724,7 +724,7 @@ function openCustomerApprovalModal(rawR, onApproved, onCancelled){
   const currentApproval = r.customerApproval || {};
   const defApprover = currentApproval.approverName || cFullName;
   const defChannel = currentApproval.channel || 'واتساب';
-  const defCost = currentApproval.approvedCost != null ? Number(currentApproval.approvedCost) : (Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0));
+  const defCost = currentApproval.approvedCost != null ? Number(currentApproval.approvedCost) : ((typeof getReceiptTotalDue === 'function') ? getReceiptTotalDue(r) : (Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0)));
   const defNotes = currentApproval.notes || (r.faultNotes || '');
 
   overlay.innerHTML = `
@@ -919,7 +919,7 @@ function openQuickStatusModal(rawR){
       const newStatus = btn.dataset.setstatus;
       const newTech = overlay.querySelector('#quickTechSelect').value;
       const sendWa = overlay.querySelector('#sendWaAfterStatus').checked;
-      const remaining = Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0) - Number(r.deposit||0) + Number(r.refunded||0);
+      const remaining = (typeof getReceiptRemaining === 'function') ? getReceiptRemaining(r) : Math.max(0, (Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0)) - Number(r.deposit||0) + Number(r.refunded||0));
 
       // إذا كان الانتقال إلى "الصيانة" بدون توثيق موافقة العميل
       if(newStatus === 'الصيانة' && (!r.customerApproval || !r.customerApproval.approved)){
@@ -943,7 +943,7 @@ function openQuickStatusModal(rawR){
           r.updatedAt = new Date().toISOString();
           recordAuditLog('تسليم جهاز', 'صيانة', `تم تسليم الجهاز للإيصال #${r.receiptNumber} للعميل (${r.customer.name})` + (shouldPay ? ` مع سداد كامل المتبقي (${remaining} ج.م) بواسطة [${payMethodName||'نقدي'}]` : ' (المتبقي آجل)'), r.id);
 
-          const totalCostDue = Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0);
+          const totalCostDue = (typeof getReceiptTotalDue === 'function') ? getReceiptTotalDue(r) : (Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0));
           const depositBefore = Math.min(totalCostDue, Number(r.deposit || 0));
           const remainingDebt = Math.max(0, totalCostDue - depositBefore);
           
@@ -1002,7 +1002,7 @@ function normalizePhoneForWa(phone){
 
 function getStatusCustomMessage(rawR, status){
   const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
-  const remaining = Math.max(0, Number(r.cost||0)+Number(r.partsCost||0)+Number(r.otherAccountAmount||0)-Number(r.deposit||0)+Number(r.refunded||0));
+  const remaining = (typeof getReceiptRemaining === 'function') ? getReceiptRemaining(r) : Math.max(0, Number(r.cost||0)+Number(r.partsCost||0)+Number(r.otherAccountAmount||0)-Number(r.deposit||0)+Number(r.refunded||0));
   const shop = (state.settings && state.settings.shopName) || 'مركز الصيانة';
   const shopPhone = (state.settings && (state.settings.shopPhone || state.settings.phone)) || '';
   const shopAddress = (state.settings && (state.settings.shopAddress || state.settings.address)) || '';
@@ -1063,7 +1063,7 @@ function getStatusCustomMessage(rawR, status){
     .replace(/{faults}/g, faultsStr)
     .replace(/{faults_report}/g, faultsStr)
     .replace(/{status}/g, r.status || '')
-    .replace(/{cost}/g, (Number(r.cost||0)+Number(r.partsCost||0)+Number(r.otherAccountAmount||0)).toLocaleString())
+    .replace(/{cost}/g, ((typeof getReceiptTotalDue === 'function') ? getReceiptTotalDue(r) : (Number(r.cost||0)+Number(r.partsCost||0)+Number(r.otherAccountAmount||0))).toLocaleString())
     .replace(/{deposit}/g, depositVal.toLocaleString())
     .replace(/{deposit_info}/g, depositInfo)
     .replace(/{remaining}/g, remaining.toLocaleString())
@@ -1502,7 +1502,7 @@ function openBulkOverdueWhatsappModal(initialDays){
   function renderContent(){
     overdue = getOverdueList();
     const totalRemaining = overdue.filter(r => selectedIds.has(r.id)).reduce((sum, r) => {
-      const rem = Math.max(0, Number(r.cost||0)+Number(r.partsCost||0)+Number(r.otherAccountAmount||0)-Number(r.deposit||0)+Number(r.refunded||0));
+      const rem = (typeof getReceiptRemaining === 'function') ? getReceiptRemaining(r) : Math.max(0, Number(r.cost||0)+Number(r.partsCost||0)+Number(r.otherAccountAmount||0)-Number(r.deposit||0)+Number(r.refunded||0));
       return sum + rem;
     }, 0);
 
@@ -1516,7 +1516,7 @@ function openBulkOverdueWhatsappModal(initialDays){
             </h3>
             <p style="margin:4px 0 0 0;font-size:12px;color:var(--ink-secondary);">${daysThreshold>=30 ? 'إشعار نهائي للعملاء بالاستلام وسداد المستحقات قبل تطبيق سياسة الأجهزة المهملة' : 'تذكير العملاء باستلام أجهزتهم الجاهزة والمكتملة وسداد المستحقات المتبقية'}</p>
           </div>
-          <button class="btn btn-ghost btn-xs" id="closeBulkOverdueModal" style="font-size:16px;line-height:1;padding:4px 8px;">&times;</button>
+          <button class="btn btn-ghost btn-xs" id="closeBulkOverdueModal" style="font-size:16px;line-height:1;padding:4px 8px;" aria-label="إغلاق">&times;</button>
         </div>
 
         <!-- Filter Pills & Summary -->
@@ -1553,7 +1553,7 @@ function openBulkOverdueWhatsappModal(initialDays){
               ${overdue.length === 0 ? `
                 <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--ink-secondary);">لا توجد أجهزة مكتملة متأخرة تتجاوز هذه المدة.</td></tr>
               ` : overdue.map(r => {
-                const rem = Math.max(0, Number(r.cost||0)+Number(r.partsCost||0)+Number(r.otherAccountAmount||0)-Number(r.deposit||0)+Number(r.refunded||0));
+                const rem = (typeof getReceiptRemaining === 'function') ? getReceiptRemaining(r) : Math.max(0, Number(r.cost||0)+Number(r.partsCost||0)+Number(r.otherAccountAmount||0)-Number(r.deposit||0)+Number(r.refunded||0));
                 const cName = escapeHtml((r.customer && r.customer.name) || extractCustomerName(r) || 'عميل');
                 const rawPh = (r.customer && r.customer.phone) || extractCustomerPhone(r) || '';
                 const dDate = new Date(r.updatedAt || r.date);
@@ -2159,7 +2159,14 @@ function openCostEstimateModal(rawR){
   if(approveBtn){
     approveBtn.onclick = async ()=>{
       const vals = getVals();
-      if(!confirm(`هل أنت متأكد من تسجيل موافقة العميل على الصيانة؟\n\n- تكلفة الصيانة: ${vals.cost} ج.م\n- العربون: ${vals.deposit} ج.م\n- المتبقي: ${Math.max(0, vals.cost - vals.deposit)} ج.م\n\nسيتم تحويل حالة الجهاز إلى "الصيانة" وبدء العمل فوراً.`)) return;
+      const ok = await openConfirmModal({
+        title: 'تسجيل موافقة العميل',
+        message: `هل أنت متأكد من تسجيل موافقة العميل على الصيانة؟\n\n- تكلفة الصيانة: ${vals.cost} ج.م\n- العربون: ${vals.deposit} ج.م\n- المتبقي: ${Math.max(0, vals.cost - vals.deposit)} ج.م\n\nسيتم تحويل حالة الجهاز إلى "الصيانة" وبدء العمل فوراً.`,
+        confirmText: 'تأكيد الموافقة',
+        confirmClass: 'btn-success',
+        icon: 'check'
+      });
+      if(!ok) return;
 
       r.cost = vals.cost;
       r.deposit = vals.deposit;
@@ -2207,7 +2214,14 @@ function openCostEstimateModal(rawR){
   if(rejectBtn){
     rejectBtn.onclick = async ()=>{
       const vals = getVals();
-      if(!confirm(`هل أنت متأكد من تسجيل رفض العميل للصيانة؟\n\n- سيتم إعفاء العميل من أي تكاليف صيانة أو قطع غيار.\n- سيتم احتساب رسوم فحص وتشخيص العطل المعتمدة (${vals.inspectionFee} ج.م) فقط.\n- سيتم تحويل حالة الجهاز إلى "رفض العميل".`)) return;
+      const ok = await openConfirmModal({
+        title: 'تسجيل رفض العميل',
+        message: `هل أنت متأكد من تسجيل رفض العميل للصيانة؟\n\n- سيتم إعفاء العميل من أي تكاليف صيانة أو قطع غيار.\n- سيتم احتساب رسوم فحص وتشخيص العطل المعتمدة (${vals.inspectionFee} ج.م) فقط.\n- سيتم تحويل حالة الجهاز إلى "رفض العميل".`,
+        confirmText: 'تأكيد الرفض',
+        confirmClass: 'btn-danger',
+        icon: 'alertTriangle'
+      });
+      if(!ok) return;
 
       r.cost = vals.inspectionFee; // Set receipt billable cost to the diagnosis inspection fee!
       r.deposit = vals.deposit;
@@ -3346,7 +3360,7 @@ async function openReceiptDetail(rawR){
   try {
     const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
     const initialStatus = r.status;
-    const remaining = Number(r.cost||0)+Number(r.partsCost||0)+Number(r.otherAccountAmount||0)-Number(r.deposit||0)+Number(r.refunded||0);
+    const remaining = (typeof getReceiptRemaining === 'function') ? getReceiptRemaining(r) : Math.max(0, Number(r.cost||0)+Number(r.partsCost||0)+Number(r.otherAccountAmount||0)-Number(r.deposit||0)+Number(r.refunded||0));
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
 
@@ -4324,7 +4338,7 @@ async function openReceiptDetail(rawR){
       }
     }
 
-    const totalDue = Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0);
+    const totalDue = (typeof getReceiptTotalDue === 'function') ? getReceiptTotalDue(r) : (Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0));
     const totalPaid = Number(r.deposit||0);
 
     // التحقق: لا يجوز تقليل التكلفة لتصبح أقل من المبلغ المدفوع مسبقاً دون تسوية استرداد
@@ -4335,14 +4349,14 @@ async function openReceiptDetail(rawR){
       return;
     }
 
-    const remainingNow = Math.max(0, totalDue - totalPaid + Number(r.refunded||0));
+    const remainingNow = (typeof getReceiptRemaining === 'function') ? getReceiptRemaining(r) : Math.max(0, totalDue - totalPaid + Number(r.refunded||0));
     const statusChanged = (initialStatus !== r.status);
 
     if(r.status === 'تم التسليم' && remainingNow > 0){
       const btn = overlay.querySelector('#saveEditBtn');
       if(btn){ btn.disabled = true; btn.textContent = 'جارٍ الحفظ...'; }
       promptDeliveryRemainingPayment(r, remainingNow, async (shouldPay, payMethodName)=>{
-        const totalCostDue = Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0);
+        const totalCostDue = (typeof getReceiptTotalDue === 'function') ? getReceiptTotalDue(r) : (Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0));
         const depositBefore = Math.min(totalCostDue, Number(r.deposit || 0));
         const remainingDebt = Math.max(0, totalCostDue - depositBefore);
 
@@ -4417,8 +4431,8 @@ async function openReceiptDetail(rawR){
     const chosenMethod = payMethodInp ? payMethodInp.value : 'نقدي (كاش)';
     if(!amt || amt<=0){ showToast('أدخل مبلغاً صحيحاً', 'error'); return; }
 
-    const totalDue = Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0);
-    const remainingBefore = Math.max(0, totalDue - Number(r.deposit||0) + Number(r.refunded||0));
+    const totalDue = (typeof getReceiptTotalDue === 'function') ? getReceiptTotalDue(r) : (Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0));
+    const remainingBefore = (typeof getReceiptRemaining === 'function') ? getReceiptRemaining(r) : Math.max(0, totalDue - Number(r.deposit||0) + Number(r.refunded||0));
 
     // منع دفع مبلغ أكبر من حساب الجهاز المتبقي نهائياً
     if(amt > remainingBefore){
@@ -4466,7 +4480,7 @@ async function openReceiptDetail(rawR){
       await savePaymentRemote(r.id, amt, note, chosenMethod);
       r.deposit = Number(r.deposit||0) + amt;
       if(r.deposit >= totalDue) r.paid = true;
-      const newRem = Math.max(0, totalDue - Number(r.deposit||0) + Number(r.refunded||0));
+      const newRem = (typeof getReceiptRemaining === 'function') ? getReceiptRemaining(r) : Math.max(0, totalDue - Number(r.deposit||0) + Number(r.refunded||0));
       const remInp = overlay.querySelector('#eRem');
       if(remInp) remInp.value = newRem;
       const depInp = overlay.querySelector('#eDeposit');
@@ -4490,8 +4504,8 @@ async function openReceiptDetail(rawR){
   const payBtn = overlay.querySelector('#payBtn');
   if(payBtn) payBtn.onclick = async ()=>{
     if(isPayBtnSubmitting) return;
-    const totalDue = Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0);
-    const remainingNow = Math.max(0, totalDue - Number(r.deposit||0) + Number(r.refunded||0));
+    const totalDue = (typeof getReceiptTotalDue === 'function') ? getReceiptTotalDue(r) : (Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0));
+    const remainingNow = (typeof getReceiptRemaining === 'function') ? getReceiptRemaining(r) : Math.max(0, totalDue - Number(r.deposit||0) + Number(r.refunded||0));
     if(remainingNow <= 0){
       showToast('الإيصال مسدد بالكامل بالفعل', 'info');
       return;
@@ -6258,14 +6272,21 @@ function exportInvoicesToExcel(invoices){
    Invoicing System & Receipt-To-Invoice Conversion (منظومة الفواتير)
    ============================================================ */
 
-function convertReceiptToInvoice(receiptId){
+async function convertReceiptToInvoice(receiptId){
   const r = findReceiptByIdOrNum(receiptId);
   if(!r){ showToast('تعذر العثور على الإيصال المطلوب', 'error'); return; }
 
   // Check if this receipt already has an invoice issued
   const existing = state.invoices.find(inv => inv.ReferenceType==='Receipt' && (String(inv.ReferenceID)===String(r.receiptNumber) || String(inv.ReferenceID)===String(r.id)));
   if(existing){
-    if(confirm(`تم إصدار فاتورة سابقة لهذا الإيصال برقم (${existing.InvoiceNumber}). هل ترغب في فتح الفاتورة المسجلة؟`)){
+    const openExisting = await openConfirmModal({
+      title: 'فاتورة مسجلة مسبقاً',
+      message: `تم إصدار فاتورة سابقة لهذا الإيصال برقم (${existing.InvoiceNumber}). هل ترغب في فتح الفاتورة المسجلة؟`,
+      confirmText: 'فتح الفاتورة المسجلة',
+      cancelText: 'إلغاء',
+      icon: 'fileText'
+    });
+    if(openExisting){
       openInvoiceModal(existing);
       return;
     }
@@ -6360,7 +6381,7 @@ function convertReceiptToInvoice(receiptId){
   openInvoiceModal(prefilledInvoice, true);
 }
 
-window.convertMultipleReceiptsToInvoice = function(receiptIds){
+window.convertMultipleReceiptsToInvoice = async function(receiptIds){
   if(!Array.isArray(receiptIds) || receiptIds.length === 0){
     showToast('يرجى تحديد إيصالات لإصدار الفاتورة المجمعة', 'error');
     return;
@@ -6383,9 +6404,14 @@ window.convertMultipleReceiptsToInvoice = function(receiptIds){
 
   const differentCusts = receipts.filter(r => (extractCustomerName(r) || '').trim().toLowerCase() !== firstCustName.trim().toLowerCase());
   if(differentCusts.length > 0){
-    if(!confirm(`تنبيه: الإيصالات المحددة تخص أكثر من عميل.\nهل ترغب في إصدار الفاتورة المجمعة باسم العميل (${firstCustName})؟`)){
-      return;
-    }
+    const ok = await openConfirmModal({
+      title: 'إيصالات لعملاء متعددين',
+      message: `تنبيه: الإيصالات المحددة تخص أكثر من عميل.\nهل ترغب في إصدار الفاتورة المجمعة باسم العميل (${firstCustName})؟`,
+      confirmText: 'متابعة إصدار الفاتورة',
+      confirmClass: 'btn-amber',
+      icon: 'alertTriangle'
+    });
+    if(!ok) return;
   }
 
   const items = [];

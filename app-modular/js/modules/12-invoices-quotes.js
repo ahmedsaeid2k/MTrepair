@@ -563,7 +563,7 @@ function openRecordTransactionModal(defaultType='expense'){
       <div class="modal-content" style="max-width:620px;">
         <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
           <h3 style="margin:0;font-size:16.5px;font-weight:900;display:flex;align-items:center;gap:8px;">${cfg.label}</h3>
-          <button class="btn btn-ghost btn-xs" id="closeTxModal" style="font-size:18px;line-height:1;">&times;</button>
+          <button class="btn btn-ghost btn-xs" id="closeTxModal" style="font-size:18px;line-height:1;" aria-label="إغلاق">&times;</button>
         </div>
 
         <!-- Type Switcher Tabs -->
@@ -1098,7 +1098,7 @@ function openStartShiftModal(onStarted){
           <span>${getSvgIcon('pos', 18)}</span>
           <span>بدء وفتح وردية كاشير جديدة</span>
         </h3>
-        <button class="btn btn-ghost btn-xs" id="closeStartShiftModal" style="font-size:18px;line-height:1;">&times;</button>
+        <button class="btn btn-ghost btn-xs" id="closeStartShiftModal" style="font-size:18px;line-height:1;" aria-label="إغلاق">&times;</button>
       </div>
 
       <div class="field">
@@ -1196,7 +1196,7 @@ function openCloseShiftModal(){
             الكاشير: <b>${escapeHtml(shift.cashierName)}</b> • المدة: <b>${durationStr}</b>
           </div>
         </div>
-        <button class="btn btn-ghost btn-xs" id="closeCloseShiftModal" style="font-size:18px;line-height:1;">&times;</button>
+        <button class="btn btn-ghost btn-xs" id="closeCloseShiftModal" style="font-size:18px;line-height:1;" aria-label="إغلاق">&times;</button>
       </div>
 
       <!-- Financial Snapshot Cards -->
@@ -1635,7 +1635,7 @@ function openShiftsHistoryModal(){
           <span>${getSvgIcon('archive', 18)}</span>
           <span>سجل تقارير الورديات السابقة (Z-Reports Archive)</span>
         </h3>
-        <button class="btn btn-ghost btn-xs" id="closeShiftsHistoryModal" style="font-size:18px;line-height:1;">&times;</button>
+        <button class="btn btn-ghost btn-xs" id="closeShiftsHistoryModal" style="font-size:18px;line-height:1;" aria-label="إغلاق">&times;</button>
       </div>
 
       ${shiftsList.length === 0 ? `

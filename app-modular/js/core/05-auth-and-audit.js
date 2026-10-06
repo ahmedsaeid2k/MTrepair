@@ -380,12 +380,18 @@ function promptSupervisorApproval({ action, reason, details }){
     const currentUser = state.user || { name: 'مستخدم', role: 'staff' };
     const isSuperuser = currentUser.role === 'admin' || !!currentUser.superuser || !!currentUser.Superuser;
     if(isSuperuser){
-      if(confirm(`تأكيد إداري: ${action}\n${details || reason || ''}\n\nهل تؤكد الموافقة والمتابعة؟`)){
-        recordAuditLog(action, 'رقابة مالية', `${action}: ${details || reason || ''} - تم الاعتماد مباشرة بواسطة المدير (${currentUser.name})`, '');
-        resolve({ approved: true, adminName: currentUser.name });
-      } else {
-        resolve({ approved: false });
-      }
+      openConfirmModal({
+        title: 'تأكيد إداري مباشر',
+        message: `${action}\n${details || reason || ''}\n\nهل تؤكد الموافقة والمتابعة؟`,
+        confirmText: 'تأكيد ومتابعة',
+        confirmClass: 'btn-primary',
+        icon: 'check',
+        onConfirm: () => {
+          recordAuditLog(action, 'رقابة مالية', `${action}: ${details || reason || ''} - تم الاعتماد مباشرة بواسطة المدير (${currentUser.name})`, '');
+          resolve({ approved: true, adminName: currentUser.name });
+        },
+        onCancel: () => resolve({ approved: false })
+      });
       return;
     }
 
@@ -485,12 +491,20 @@ function requestAdminAuthorization({ action, entityType, entityId, entityTitle, 
   // 1. إذا كان المستخدم الحالي مدير عام (Admin) أو لديه صلاحية Superuser (الحذف المباشر بدون إذن)
   const isSuperuser = currentUser.role === 'admin' || !!currentUser.superuser || !!currentUser.Superuser;
   if(isSuperuser){
-    if(confirm(`تأكيد إداري: هل أنت متأكد من رغبتك في ${action} (${entityTitle})؟\nسيتم توثيق هذه العملية في سجل الرقابة والتدقيق.`)){
-      recordAuditLog(action, entityType, `تم الإجراء مباشرة بواسطة المستخدم المصرح له (${currentUser.name}) [Superuser]`, entityId, 'معتمد');
-      onApproved(currentUser.name);
-    } else {
-      if(typeof onCancel === 'function') onCancel();
-    }
+    openConfirmModal({
+      title: 'تأكيد إداري مباشر',
+      message: `هل أنت متأكد من رغبتك في ${action} (${entityTitle})؟\nسيتم توثيق هذه العملية في سجل الرقابة والتدقيق.`,
+      confirmText: `تأكيد ${action}`,
+      confirmClass: 'btn-danger',
+      icon: 'alertTriangle',
+      onConfirm: () => {
+        recordAuditLog(action, entityType, `تم الإجراء مباشرة بواسطة المستخدم المصرح له (${currentUser.name}) [Superuser]`, entityId, 'معتمد');
+        onApproved(currentUser.name);
+      },
+      onCancel: () => {
+        if(typeof onCancel === 'function') onCancel();
+      }
+    });
     return;
   }
 

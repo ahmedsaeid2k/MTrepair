@@ -111,7 +111,7 @@ function renderDailyJournalPage(main){
         <div class="subtitle mono" style="font-size:12px;color:var(--ink-secondary);">${filtered.length} حركة وقيد مسجل باليومية • سجل الإيرادات الشاملة والمصروفات الإدارية</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-ghost btn-sm" id="exportDailyExcelBtn">${getSvgIcon("download", 14)} تصدير Excel</button>
+        <button class="btn btn-ghost btn-sm" id="exportDailyExcelBtn">${getSvgIcon("download", 14)} تصدير CSV (Excel)</button>
         ${canUserAccessSection('cashdrawer') ? `<button class="btn btn-blue btn-sm" id="goToDrawerBtn">${getSvgIcon("cashdrawer", 14)} حركة الخزينة والدرج</button>` : ''}
         <button class="btn btn-green btn-sm" id="recordManualInBtn">${getSvgIcon("plus", 14)} تسجيل وارد</button>
         <button class="btn btn-amber btn-sm" id="recordManualOutBtn">${getSvgIcon("arrowDown", 14)} تسجيل منصرف</button>
@@ -1004,11 +1004,6 @@ function renderCashDrawerPage(main){
       });
     };
   });
-}
-
-// Alias for backward compatibility
-function renderExpensesPage(main){
-  renderCashDrawerPage(main);
 }
 
 /* Note: Cameras Section, CCTV Projects, Sites and Quotations migrated to 21-cctv-projects.js [U1] */

@@ -244,7 +244,14 @@ function renderTreeNodes(mount, filterQ){
   });
   mount.querySelectorAll('[data-accdel]').forEach(btn=>{
     btn.onclick = async ()=>{
-      if(!confirm(`هل تريد حذف الحساب (${btn.dataset.accdel})؟`)) return;
+      const ok = await openConfirmModal({
+        title: 'حذف الحساب المالي',
+        message: `هل تريد بالتأكيد حذف الحساب (${btn.dataset.accdel}) من دليل الحسابات؟`,
+        confirmText: 'حذف الحساب',
+        confirmClass: 'btn-danger',
+        icon: 'trash'
+      });
+      if(!ok) return;
       try{
         await deleteAccountRemote(btn.dataset.accdel);
         showToast('تم حذف الحساب بنجاح', 'success');
@@ -274,7 +281,7 @@ function openAccountModal(parentCode, editAcc){
     <div class="modal-content" style="max-width:500px;">
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
         <h3 style="margin:0;font-size:16px;">${isEdit ? 'تعديل الحساب: '+editAcc.Name : 'إضافة حساب جديد للدليل'}</h3>
-        <button class="btn btn-ghost btn-xs" id="closeAccModal">&times;</button>
+        <button class="btn btn-ghost btn-xs" id="closeAccModal" aria-label="إغلاق">&times;</button>
       </div>
 
       <div class="field"><label>الحساب الرئيسي التابع له</label>
@@ -531,7 +538,7 @@ function openManualJournalModal(){
       <div class="modal-content" style="max-width:760px;">
         <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
           <h3 style="margin:0;font-size:16px;display:flex;align-items:center;gap:6px;">${getSvgIcon("plus", 16)} إضافة قيد يومية يدوي متوازن</h3>
-          <button class="btn btn-ghost btn-xs" id="closeJournalModal">&times;</button>
+          <button class="btn btn-ghost btn-xs" id="closeJournalModal" aria-label="إغلاق">&times;</button>
         </div>
 
         <div class="grid2">
@@ -887,7 +894,7 @@ function openOpeningBalancesModal(){
             تسجيل قيد افتتاحي متوازن (Dr الأصول / Cr الخصوم وحقوق الملكية) لضمان اتزان ميزان المراجعة والمركز المالي
           </div>
         </div>
-        <button class="btn btn-ghost btn-xs" id="closeOpBalModal" style="font-size:20px;line-height:1;">&times;</button>
+        <button class="btn btn-ghost btn-xs" id="closeOpBalModal" style="font-size:20px;line-height:1;" aria-label="إغلاق">&times;</button>
       </div>
 
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;background:var(--paper2);padding:10px 14px;border-radius:6px;border:1px solid var(--line);flex-wrap:wrap;">
@@ -1335,7 +1342,7 @@ function renderFinanceReportPage(main){
         </div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-        <button class="btn btn-ghost btn-sm" id="exportIncomeExcelBtn">${getSvgIcon("download", 14)} تصدير Excel</button>
+        <button class="btn btn-ghost btn-sm" id="exportIncomeExcelBtn">${getSvgIcon("download", 14)} تصدير CSV (Excel)</button>
         <button class="btn btn-primary btn-sm" id="printIncomeReportBtn">${getSvgIcon("printer", 14)} طباعة قائمة الدخل A4</button>
       </div>
     </div>
@@ -1768,7 +1775,7 @@ function openCustomerStatementModal(custName, custPhone){
     const rPhone = extractCustomerPhone(r);
     const isMatch = (rName && rName.toLowerCase() === custName.toLowerCase()) || (cPhone && rPhone === cPhone);
     if(isMatch){
-      const totalDue = Number(r.cost || 0) + Number(r.partsCost || 0) + Number(r.otherAccountAmount || 0);
+      const totalDue = (typeof getReceiptTotalDue === 'function') ? getReceiptTotalDue(r) : (Number(r.cost || 0) + Number(r.partsCost || 0) + Number(r.otherAccountAmount || 0));
       const dep = Number(r.deposit || 0);
       const devStr = `${r.device?.category||''} ${r.device?.brand||''} ${r.device?.model||''}`.trim();
       const faultStr = (Array.isArray(r.faults) && r.faults.length) ? r.faults.join('، ') : (r.faultNotes || 'صيانة');
@@ -1974,7 +1981,7 @@ function renderCustomerStatementModalView(data){
             <span>• ${data.transactions.length} حركة مسجلة</span>
           </div>
         </div>
-        <button type="button" class="btn btn-ghost btn-sm" id="closeCustStatementBtn" style="color:#fff;font-size:18px;">&times;</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="closeCustStatementBtn" style="color:#fff;font-size:18px;" aria-label="إغلاق">&times;</button>
       </div>
 
       <!-- Quick KPI Balance Cards -->
@@ -2269,7 +2276,7 @@ function renderSupplierStatementModalView(data){
             <span>• ${data.transactions.length} حركة مسجلة</span>
           </div>
         </div>
-        <button type="button" class="btn btn-ghost btn-sm" id="closeSupStatementBtn" style="color:#fff;font-size:18px;">&times;</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="closeSupStatementBtn" style="color:#fff;font-size:18px;" aria-label="إغلاق">&times;</button>
       </div>
 
       <!-- Quick KPI Balance Cards -->
@@ -2567,7 +2574,7 @@ function openUserModal(editUser=null){
             تحديد بيانات الدخول وتعيين الشاشات والأقسام وصلاحية Superuser المباشرة للمستخدم
           </div>
         </div>
-        <button class="btn btn-ghost btn-xs" id="closeUserModal">&times;</button>
+        <button class="btn btn-ghost btn-xs" id="closeUserModal" aria-label="إغلاق">&times;</button>
       </div>
 
       <div class="grid2" style="margin-bottom:14px;">
@@ -2905,7 +2912,7 @@ function renderUsersManagementPage(main){
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn btn-ghost btn-sm" id="importTechsAsUsersBtn">${getSvgIcon("users", 13)} استيراد الفنيين كمستخدمين</button>
-        <button class="btn btn-ghost btn-sm" id="exportUsersExcelBtn">${getSvgIcon("download", 13)} تصدير Excel</button>
+        <button class="btn btn-ghost btn-sm" id="exportUsersExcelBtn">${getSvgIcon("download", 13)} تصدير CSV (Excel)</button>
         <button class="btn btn-primary btn-sm" id="addNewUserBtn">${getSvgIcon("plus", 13)} إضافة مستخدم جديد وتخصيص الصلاحيات</button>
       </div>
     </div>
@@ -3611,7 +3618,14 @@ function renderAuditCenterPage(main){
       const req = (state.authRequests||[]).find(x => x.id === reqId);
       if(!req) return;
 
-      if(!confirm(`هل أنت متأكد من اعتماد طلب الحذف وحذف (${req.entityTitle}) نهائياً من النظام؟`)) return;
+      const ok = await openConfirmModal({
+        title: 'اعتماد تصريح الحذف',
+        message: `هل أنت متأكد من اعتماد طلب الحذف وحذف (${req.entityTitle}) نهائياً من النظام؟`,
+        confirmText: 'اعتماد الحذف النهائي',
+        confirmClass: 'btn-danger',
+        icon: 'trash'
+      });
+      if(!ok) return;
 
       btn.disabled = true; btn.textContent = 'جارٍ التنفيذ...';
       try {
@@ -3654,7 +3668,14 @@ function renderAuditCenterPage(main){
       const req = (state.authRequests||[]).find(x => x.id === reqId);
       if(!req) return;
 
-      if(!confirm(`هل أنت متأكد من رغبتك في رفض طلب حذف (${req.entityTitle})؟`)) return;
+      const ok = await openConfirmModal({
+        title: 'رفض تصريح الحذف',
+        message: `هل أنت متأكد من رغبتك في رفض طلب حذف (${req.entityTitle})؟`,
+        confirmText: 'رفض الطلب',
+        confirmClass: 'btn-amber',
+        icon: 'alertTriangle'
+      });
+      if(!ok) return;
 
       req.status = 'rejected';
       req.resolvedBy = state.user.name;

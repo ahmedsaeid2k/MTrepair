@@ -868,8 +868,15 @@ function openImageLightbox(photo, allPhotos = [], onDelete = null){
   if(onDelete){
     const delBtn = overlay.querySelector('#lbDeleteBtn');
     if(delBtn){
-      delBtn.onclick = () => {
-        if(confirm('هل أنت متأكد من حذف هذه الصورة الموثقة للجهاز؟')){
+      delBtn.onclick = async () => {
+        const ok = await openConfirmModal({
+          title: 'حذف صورة الجهاز',
+          message: 'هل أنت متأكد من حذف هذه الصورة الموثقة للجهاز؟',
+          confirmText: 'حذف',
+          confirmClass: 'btn-danger',
+          icon: 'trash'
+        });
+        if(ok){
           overlay.remove();
           onDelete(photo);
         }
@@ -916,7 +923,7 @@ function renderDevicePhotosThumbnails(photos, containerEl, options = {}){
           </span>
         </div>
         ${options.canDelete !== false ? `
-          <button type="button" class="del-photo-btn" data-delpidx="${idx}" style="position:absolute;top:3px;left:3px;background:rgba(239,68,68,0.85);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;" title="حذف الصورة">&times;</button>
+          <button type="button" class="del-photo-btn" data-delpidx="${idx}" style="position:absolute;top:3px;left:3px;background:rgba(239,68,68,0.85);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;" title="حذف الصورة" aria-label="حذف الصورة">&times;</button>
         ` : ''}
       </div>
     `;
@@ -938,10 +945,17 @@ function renderDevicePhotosThumbnails(photos, containerEl, options = {}){
 
   if(options.canDelete !== false){
     containerEl.querySelectorAll('.del-photo-btn').forEach(btn => {
-      btn.onclick = (e) => {
+      btn.onclick = async (e) => {
         e.stopPropagation();
         const idx = Number(btn.dataset.delpidx);
-        if(confirm('هل تريد حذف هذه الصورة؟')){
+        const ok = await openConfirmModal({
+          title: 'حذف صورة الجهاز',
+          message: 'هل تريد حذف هذه الصورة؟',
+          confirmText: 'حذف',
+          confirmClass: 'btn-danger',
+          icon: 'trash'
+        });
+        if(ok){
           list.splice(idx, 1);
           if(typeof options.onChanged === 'function') options.onChanged(list);
           renderDevicePhotosThumbnails(list, containerEl, options);
@@ -1039,15 +1053,273 @@ function exportToExcel(data, filename = 'export'){
 }
 
 /**
- * Safely parses any value to a finite number, returning fallback if invalid.
- * @param {any} val - Value to parse.
- * @param {number} fallback - Default value if parsing fails.
- * @returns {number} Validated number.
+ * RFC-4180 compliant CSV parser supporting quotes, commas, escaped quotes ("") and multiline cells.
+ * @param {string} text - Raw CSV content
+ * @returns {Array<Array<string>>} Matrix of rows and cell strings
  */
-function parseSafeNumber(val, fallback = 0){
-  const parsed = Number(val);
-  return Number.isFinite(parsed) ? parsed : fallback;
+function parseCSV(text){
+  if(!text || typeof text !== 'string') return [];
+  let input = text;
+  if(input.charCodeAt(0) === 0xFEFF) input = input.slice(1); // Strip UTF-8 BOM
+  const rows = [];
+  let currentRow = [];
+  let currentCell = '';
+  let insideQuotes = false;
+  let i = 0;
+  const len = input.length;
+
+  while(i < len){
+    const char = input[i];
+    const nextChar = input[i + 1];
+
+    if(insideQuotes){
+      if(char === '"'){
+        if(nextChar === '"'){
+          currentCell += '"';
+          i += 2;
+          continue;
+        } else {
+          insideQuotes = false;
+          i++;
+          continue;
+        }
+      } else {
+        currentCell += char;
+        i++;
+        continue;
+      }
+    } else {
+      if(char === '"'){
+        insideQuotes = true;
+        i++;
+        continue;
+      } else if(char === ','){
+        currentRow.push(currentCell.trim());
+        currentCell = '';
+        i++;
+        continue;
+      } else if(char === '\r'){
+        if(nextChar === '\n') i++;
+        currentRow.push(currentCell.trim());
+        rows.push(currentRow);
+        currentRow = [];
+        currentCell = '';
+        i++;
+        continue;
+      } else if(char === '\n'){
+        currentRow.push(currentCell.trim());
+        rows.push(currentRow);
+        currentRow = [];
+        currentCell = '';
+        i++;
+        continue;
+      } else {
+        currentCell += char;
+        i++;
+        continue;
+      }
+    }
+  }
+
+  if(currentCell.length > 0 || currentRow.length > 0){
+    currentRow.push(currentCell.trim());
+    rows.push(currentRow);
+  }
+
+  return rows.filter(r => r.length > 0 && r.some(c => c && c.trim().length > 0));
 }
+
+/**
+ * Modern async confirm dialog replacement for window.confirm
+ * @param {Object} opts
+ * @returns {Promise<boolean>}
+ */
+function openConfirmModal(opts = {}){
+  return new Promise((resolve) => {
+    const title = opts.title || 'تأكيد العملية';
+    const message = opts.message || '';
+    const confirmText = opts.confirmText || 'تأكيد';
+    const cancelText = opts.cancelText || 'إلغاء';
+    const confirmClass = opts.confirmClass || 'btn-primary';
+    const icon = opts.icon || (confirmClass.includes('danger') ? 'alertTriangle' : 'help');
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.zIndex = '12000';
+
+    overlay.innerHTML = `
+      <div class="modal-content" style="max-width:440px;padding:22px;border-radius:12px;box-shadow:var(--shadow-lg);">
+        <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:16px;">
+          <div style="width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:${confirmClass.includes('danger') ? 'rgba(239, 68, 68, 0.15);color:#ef4444' : 'rgba(59, 130, 246, 0.15);color:var(--primary)'};">
+            ${getSvgIcon(icon, 20)}
+          </div>
+          <div style="flex:1;">
+            <h3 style="margin:0 0 6px 0;font-size:16px;font-weight:800;color:var(--ink);">${escapeHtml(title)}</h3>
+            <div style="font-size:13px;line-height:1.6;color:var(--ink-secondary);white-space:pre-line;">${escapeHtml(message)}</div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px;">
+          <button type="button" class="btn btn-ghost" id="_modalCancelBtn">${escapeHtml(cancelText)}</button>
+          <button type="button" class="btn ${confirmClass}" id="_modalConfirmBtn">${escapeHtml(confirmText)}</button>
+        </div>
+      </div>
+    `;
+
+    let resolved = false;
+    function cleanup(result){
+      if(resolved) return;
+      resolved = true;
+      window.removeEventListener('keydown', keyHandler);
+      overlay.remove();
+      if(result && typeof opts.onConfirm === 'function') opts.onConfirm();
+      if(!result && typeof opts.onCancel === 'function') opts.onCancel();
+      resolve(result);
+    }
+
+    const keyHandler = (e) => {
+      if(e.key === 'Escape'){ cleanup(false); }
+    };
+    window.addEventListener('keydown', keyHandler);
+
+    overlay.querySelector('#_modalCancelBtn').onclick = () => cleanup(false);
+    overlay.querySelector('#_modalConfirmBtn').onclick = () => cleanup(true);
+    overlay.addEventListener('click', (e) => {
+      if(e.target === overlay) cleanup(false);
+    });
+
+    document.body.appendChild(overlay);
+    overlay.querySelector('#_modalConfirmBtn').focus();
+  });
+}
+
+/**
+ * Modern async prompt dialog replacement for window.prompt
+ * @param {Object} opts
+ * @returns {Promise<string|null>}
+ */
+function openPromptModal(opts = {}){
+  return new Promise((resolve) => {
+    const title = opts.title || 'إدخال بيانات';
+    const message = opts.message || '';
+    const placeholder = opts.placeholder || '';
+    const defaultValue = opts.defaultValue || '';
+    const confirmText = opts.confirmText || 'موافق';
+    const cancelText = opts.cancelText || 'إلغاء';
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.zIndex = '12000';
+
+    overlay.innerHTML = `
+      <div class="modal-content" style="max-width:440px;padding:22px;border-radius:12px;box-shadow:var(--shadow-lg);">
+        <div style="margin-bottom:14px;">
+          <h3 style="margin:0 0 6px 0;font-size:16px;font-weight:800;color:var(--ink);">${escapeHtml(title)}</h3>
+          <div style="font-size:13px;line-height:1.6;color:var(--ink-secondary);white-space:pre-line;">${escapeHtml(message)}</div>
+        </div>
+        <div style="margin-bottom:16px;">
+          <input type="text" id="_modalPromptInput" class="input" style="width:100%;box-sizing:border-box;padding:8px 10px;" placeholder="${escapeHtml(placeholder)}" value="${escapeHtml(defaultValue)}">
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;">
+          <button type="button" class="btn btn-ghost" id="_modalPromptCancelBtn">${escapeHtml(cancelText)}</button>
+          <button type="button" class="btn btn-primary" id="_modalPromptConfirmBtn">${escapeHtml(confirmText)}</button>
+        </div>
+      </div>
+    `;
+
+    const input = overlay.querySelector('#_modalPromptInput');
+    let resolved = false;
+
+    function cleanup(val){
+      if(resolved) return;
+      resolved = true;
+      window.removeEventListener('keydown', keyHandler);
+      overlay.remove();
+      if(val !== null && typeof opts.onConfirm === 'function') opts.onConfirm(val);
+      if(val === null && typeof opts.onCancel === 'function') opts.onCancel();
+      resolve(val);
+    }
+
+    const keyHandler = (e) => {
+      if(e.key === 'Escape'){ cleanup(null); }
+      if(e.key === 'Enter'){ e.preventDefault(); cleanup(input.value); }
+    };
+    window.addEventListener('keydown', keyHandler);
+
+    overlay.querySelector('#_modalPromptCancelBtn').onclick = () => cleanup(null);
+    overlay.querySelector('#_modalPromptConfirmBtn').onclick = () => cleanup(input.value);
+    overlay.addEventListener('click', (e) => {
+      if(e.target === overlay) cleanup(null);
+    });
+
+    document.body.appendChild(overlay);
+    input.focus();
+    input.select();
+  });
+}
+
+/**
+ * Modern async alert dialog replacement for window.alert
+ * @param {Object|string} opts
+ * @returns {Promise<void>}
+ */
+function openAlertModal(opts = {}){
+  return new Promise((resolve) => {
+    const isStr = typeof opts === 'string';
+    const title = (!isStr && opts.title) ? opts.title : 'تنبيه';
+    const message = isStr ? opts : (opts.message || '');
+    const confirmText = (!isStr && opts.confirmText) ? opts.confirmText : 'حسناً';
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.zIndex = '12000';
+
+    overlay.innerHTML = `
+      <div class="modal-content" style="max-width:420px;padding:22px;border-radius:12px;box-shadow:var(--shadow-lg);">
+        <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:16px;">
+          <div style="width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:rgba(59, 130, 246, 0.15);color:var(--primary);">
+            ${getSvgIcon('info', 20)}
+          </div>
+          <div style="flex:1;">
+            <h3 style="margin:0 0 6px 0;font-size:16px;font-weight:800;color:var(--ink);">${escapeHtml(title)}</h3>
+            <div style="font-size:13px;line-height:1.6;color:var(--ink-secondary);white-space:pre-line;">${escapeHtml(message)}</div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-top:16px;">
+          <button type="button" class="btn btn-primary" id="_modalAlertBtn">${escapeHtml(confirmText)}</button>
+        </div>
+      </div>
+    `;
+
+    let resolved = false;
+    function cleanup(){
+      if(resolved) return;
+      resolved = true;
+      window.removeEventListener('keydown', keyHandler);
+      overlay.remove();
+      if(!isStr && typeof opts.onClose === 'function') opts.onClose();
+      resolve();
+    }
+
+    const keyHandler = (e) => {
+      if(e.key === 'Escape' || e.key === 'Enter'){ cleanup(); }
+    };
+    window.addEventListener('keydown', keyHandler);
+
+    overlay.querySelector('#_modalAlertBtn').onclick = cleanup;
+    overlay.addEventListener('click', (e) => {
+      if(e.target === overlay) cleanup();
+    });
+
+    document.body.appendChild(overlay);
+    overlay.querySelector('#_modalAlertBtn').focus();
+  });
+}
+
+// Global modal & parser bindings
+window.openConfirmModal = openConfirmModal;
+window.openPromptModal = openPromptModal;
+window.openAlertModal = openAlertModal;
+window.parseCSV = parseCSV;
 
 /**
  * High-performance debounce utility for rapid input and search events.

@@ -166,7 +166,7 @@ function holdCurrentCart(){
   if(main) renderPosSell(main);
 }
 
-function resumeHeldCart(holdId){
+async function resumeHeldCart(holdId){
   const heldList = getHeldCarts();
   const target = heldList.find(h => h.id === holdId);
   if(!target){
@@ -176,7 +176,13 @@ function resumeHeldCart(holdId){
 
   // Check if active cart has items
   if(state.cart && state.cart.length > 0){
-    const confirmSwap = confirm('توجد أصناف حالية في السلة! هل ترغب في استبدالها واسترجاع الفاتورة المعلقة؟\n(نصيحة: يمكنك تعليق الفاتورة الحالية أولاً لعدم فقدانها)');
+    const confirmSwap = await openConfirmModal({
+      title: 'استرجاع فاتورة معلقة',
+      message: 'توجد أصناف حالية في السلة! هل ترغب في استبدالها واسترجاع الفاتورة المعلقة؟<br><small style="color:var(--text-muted);">(نصيحة: يمكنك تعليق الفاتورة الحالية أولاً لعدم فقدانها)</small>',
+      confirmText: 'استبدال السلة',
+      cancelText: 'إلغاء',
+      confirmClass: 'btn-warning'
+    });
     if(!confirmSwap) return;
   }
 
@@ -223,7 +229,7 @@ function openHeldCartsModal(){
             <div style="font-size:11.5px; color:#94a3b8;">إدارة واسترجاع السلات المحفوظة (${heldList.length} فواتير معلقة)</div>
           </div>
         </div>
-        <button type="button" id="closeHeldCartsModalBtn" style="background:rgba(255,255,255,0.1); border:none; color:#cbd5e1; width:28px; height:28px; border-radius:50%; cursor:pointer; font-size:16px; line-height:1;">&times;</button>
+        <button type="button" id="closeHeldCartsModalBtn" style="background:rgba(255,255,255,0.1); border:none; color:#cbd5e1; width:28px; height:28px; border-radius:50%; cursor:pointer; font-size:16px; line-height:1;" aria-label="إغلاق">&times;</button>
       </div>
 
       <!-- Body -->
@@ -294,9 +300,16 @@ function openHeldCartsModal(){
   });
 
   overlay.querySelectorAll('.delete-held-cart-btn').forEach(btn => {
-    btn.onclick = () => {
+    btn.onclick = async () => {
       const id = btn.dataset.id;
-      if(confirm('هل تريد بالتأكيد حذف هذه الفاتورة المعلقة؟')){
+      const ok = await openConfirmModal({
+        title: 'حذف فاتورة معلقة',
+        message: 'هل تريد بالتأكيد حذف هذه الفاتورة المعلقة؟',
+        confirmText: 'حذف',
+        cancelText: 'إلغاء',
+        confirmClass: 'btn-danger'
+      });
+      if(ok){
         const list = getHeldCarts().filter(x => x.id !== id);
         saveHeldCarts(list);
         showToast('تم حذف الفاتورة المعلقة', 'info');
@@ -309,8 +322,15 @@ function openHeldCartsModal(){
 
   const clearAllBtn = overlay.querySelector('#clearAllHeldCartsBtn');
   if(clearAllBtn){
-    clearAllBtn.onclick = () => {
-      if(confirm('هل تريد بالتأكيد تفريغ كافة الفواتير المعلقة؟')){
+    clearAllBtn.onclick = async () => {
+      const ok = await openConfirmModal({
+        title: 'تفريغ كافة الفواتير المعلقة',
+        message: 'هل تريد بالتأكيد تفريغ كافة الفواتير المعلقة؟ لا يمكن التراجع عن هذا الإجراء.',
+        confirmText: 'تفريغ الكل',
+        cancelText: 'إلغاء',
+        confirmClass: 'btn-danger'
+      });
+      if(ok){
         saveHeldCarts([]);
         showToast('تم تفريغ كافة الفواتير المعلقة', 'info');
         overlay.remove();
@@ -1090,8 +1110,15 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
   // Top Buttons
   const clearTopBtn = document.getElementById('posClearCartTopBtn');
   if(clearTopBtn){
-    clearTopBtn.onclick = ()=>{
-      if(confirm('هل تريد بالتأكيد إفراغ السلة؟')){
+    clearTopBtn.onclick = async ()=>{
+      const ok = await openConfirmModal({
+        title: 'إفراغ السلة',
+        message: 'هل تريد بالتأكيد إفراغ السلة الحالية بالكامل؟',
+        confirmText: 'إفراغ السلة',
+        cancelText: 'إلغاء',
+        confirmClass: 'btn-danger'
+      });
+      if(ok){
         state.cart = [];
         renderPosSell(main);
       }
@@ -1768,17 +1795,23 @@ function openSalePrint(sale, cartItems, meta={}){
   }
 }
 
-function convertSaleToInvoice(saleId){
+async function convertSaleToInvoice(saleId){
   const s = state.sales.find(x => x.ID === saleId) || (saleId.startsWith('s_') ? { ID: saleId, Date: new Date().toISOString().slice(0,10), Total: 0 } : null);
   if(!s){ showToast('تعذر العثور على عملية البيع', 'error'); return; }
 
   // Check if this sale already has an invoice issued
   const existing = state.invoices.find(inv => inv.ReferenceType==='POS' && (inv.ReferenceID===s.ID || inv.ReferenceID===s.ID.slice(-8)));
   if(existing){
-    if(confirm(`تم إصدار فاتورة ضريبية سابقة لهذه العملية برقم (${existing.InvoiceNumber}). هل ترغب في فتح الفاتورة المسجلة؟`)){
+    const ok = await openConfirmModal({
+      title: 'فاتورة ضريبية مسجلة',
+      message: `تم إصدار فاتورة ضريبية سابقة لهذه العملية برقم (${existing.InvoiceNumber}). هل ترغب في فتح الفاتورة المسجلة؟`,
+      confirmText: 'فتح الفاتورة',
+      cancelText: 'إلغاء'
+    });
+    if(ok){
       openInvoiceModal(existing);
-      return;
     }
+    return;
   }
 
   // Parse items
@@ -1874,7 +1907,7 @@ function renderPosSalesLog(main){
         <div class="subtitle mono" style="font-size:12px;color:var(--ink-secondary);">${list.length} عملية مسجلة</div>
       </div>
       <div style="display:flex;gap:8px;">
-        <button class="btn btn-ghost btn-sm" id="exportSalesExcelBtn">${getSvgIcon('download', 14)} تصدير المبيعات Excel</button>
+        <button class="btn btn-ghost btn-sm" id="exportSalesExcelBtn">${getSvgIcon('download', 14)} تصدير CSV (Excel)</button>
         <button class="btn btn-primary btn-sm" id="goToNewSaleBtn">${getSvgIcon('plus', 14)} بيع جديد</button>
       </div>
     </div>
@@ -2082,7 +2115,7 @@ function openPosReturnModal(sale){
             فاتورة رقم: <b class="mono" style="color:var(--primary);">#${sale.ID.slice(-8)}</b> • العميل: <b>${escapeHtml(sale.CustomerName || 'عميل زائر')}</b> (${escapeHtml(sale.CustomerPhone || '-')})
           </div>
         </div>
-        <button class="btn btn-ghost btn-xs" id="closePosReturnModalBtn" style="font-size:18px;line-height:1;">&times;</button>
+        <button class="btn btn-ghost btn-xs" id="closePosReturnModalBtn" style="font-size:18px;line-height:1;" aria-label="إغلاق">&times;</button>
       </div>
 
       <!-- 1. 14-Day Limit Verification Box -->
@@ -2703,7 +2736,7 @@ function openPosReturnLookupModal(){
           <h3 style="margin:0;font-size:16.5px;font-weight:900;">استرجاع فاتورة مبيعات (POS Return)</h3>
           <div style="font-size:11.5px;color:var(--ink-secondary);margin-top:2px;">امسح باركود البون أو ابحث برقم الفاتورة أو اسم وهاتف العميل</div>
         </div>
-        <button class="btn btn-ghost btn-xs" id="closePosRetLookupModal" style="font-size:18px;line-height:1;">&times;</button>
+        <button class="btn btn-ghost btn-xs" id="closePosRetLookupModal" style="font-size:18px;line-height:1;" aria-label="إغلاق">&times;</button>
       </div>
       <div style="margin-bottom:12px;">
         <input id="posRetLookupInp" placeholder="امسح الباركود أو اكتب رقم الفاتورة / اسم العميل / الهاتف..." style="width:100%;font-size:14px;padding:9px 12px;" autofocus>

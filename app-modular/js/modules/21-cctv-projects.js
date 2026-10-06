@@ -1047,7 +1047,14 @@ function openAddDeviceModal(p, onDone){
 }
 
 async function handleDeleteProjectDevice(devId){
-  if(!confirm('هل أنت متأكد من حذف هذا الجهاز من المشروع؟')) return;
+  const ok = await openConfirmModal({
+    title: 'حذف جهاز من المشروع',
+    message: 'هل أنت متأكد من حذف هذا الجهاز من المشروع؟',
+    confirmText: 'حذف',
+    cancelText: 'إلغاء',
+    confirmClass: 'btn-danger'
+  });
+  if(!ok) return;
   try {
     await deleteProjectDeviceRemote(devId);
     showToast('تم حذف الجهاز بنجاح', 'success');
@@ -1291,7 +1298,14 @@ function openSiteModal(editSite = null){
 }
 
 async function handleDeleteSite(id){
-  if(!confirm('هل أنت متأكد من حذف هذا الموقع؟')) return;
+  const ok = await openConfirmModal({
+    title: 'حذف موقع',
+    message: 'هل أنت متأكد من حذف هذا الموقع؟ لا يمكن التراجع عن هذا الإجراء.',
+    confirmText: 'حذف',
+    cancelText: 'إلغاء',
+    confirmClass: 'btn-danger'
+  });
+  if(!ok) return;
   try {
     await deleteSiteRemote(id);
     showToast('تم حذف الموقع بنجاح', 'success');

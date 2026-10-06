@@ -156,8 +156,6 @@ async function init(){
   });
 }
 async function refreshPayments(){ state.payments = await loadPayments(); }
-async function refreshSales(){ state.sales = await loadSales(); }
-async function refreshExpenses(){ state.expenses = await loadExpenses(); }
 
 function canUserAccessSection(sec, user = state.user){
   if(!user) return false;
@@ -1602,11 +1600,7 @@ function renderDashboard(main){
   // Remaining debt formula: Σ(Total - AmountPaid)
   const remainingDebt = r
     .filter(x => x.status !== 'ملغي' && x.status !== 'تعذرت الصيانة' && x.status !== 'رفض العميل')
-    .reduce((s, x) => {
-      const total = Number(x.cost||0) + Number(x.partsCost||0) + Number(x.otherAccountAmount||0);
-      const paid = Number(x.deposit||0);
-      return s + Math.max(0, total - paid + Number(x.refunded||0));
-    }, 0);
+    .reduce((s, x) => s + (typeof getReceiptRemaining === 'function' ? getReceiptRemaining(x) : Math.max(0, (Number(x.cost||0) + Number(x.partsCost||0) + Number(x.otherAccountAmount||0)) - Number(x.deposit||0) + Number(x.refunded||0))), 0);
 
   main.innerHTML = `
     <div class="top-header">
@@ -1615,7 +1609,7 @@ function renderDashboard(main){
       </div>
       <div style="display:flex;gap:8px;align-items:center;">
         <div id="networkSyncPill" class="sync-pill online" onclick="syncOfflineQueue(true)"><span style="width:7px;height:7px;border-radius:50%;background:var(--primary);display:inline-block;"></span> متصل</div>
-        <button class="btn btn-ghost btn-sm" id="exportExcelDashBtn">${getSvgIcon('invoices', 14)} تصدير Excel</button>
+        <button class="btn btn-ghost btn-sm" id="exportExcelDashBtn">${getSvgIcon('invoices', 14)} تصدير CSV (Excel)</button>
         <button class="btn btn-primary btn-sm" id="dashNewReceiptBtn">${getSvgIcon('plus', 14)} استلام جهاز جديد</button>
       </div>
     </div>

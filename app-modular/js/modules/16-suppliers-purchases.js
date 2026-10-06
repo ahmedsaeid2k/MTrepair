@@ -111,7 +111,7 @@ function openPaySupplierModal(preselectedName){
           <span>${getSvgIcon('dollar', 18)}</span>
           <span>تسجيل سند صرف / سداد دفعة لمورد</span>
         </h3>
-        <button class="btn btn-ghost btn-xs" id="closePaySupModal" style="font-size:18px;line-height:1;">&times;</button>
+        <button class="btn btn-ghost btn-xs" id="closePaySupModal" style="font-size:18px;line-height:1;" aria-label="إغلاق">&times;</button>
       </div>
 
       <div class="field">
@@ -245,8 +245,14 @@ function openPaySupplierModal(preselectedName){
       if(state.invHubTab === 'suppliers') renderSuppliers(main);
       else refreshInventorySectionOrTab();
 
-      setTimeout(()=>{
-        if(confirm(`تم تسجيل سداد ${amount.toLocaleString()} ج.م للمورد (${supName}) بنجاح\n\nهل ترغب في طباعة سند الصرف الآن؟`)){
+      setTimeout(async () => {
+        const ok = await openConfirmModal({
+          title: 'طباعة سند الصرف',
+          message: `تم تسجيل سداد ${amount.toLocaleString()} ج.م للمورد (${supName}) بنجاح.<br><br>هل ترغب في طباعة سند الصرف الآن؟`,
+          confirmText: 'طباعة الآن',
+          cancelText: 'تخطي'
+        });
+        if(ok){
           openExpenseVoucherPrint(expObj);
         }
       }, 100);
@@ -394,7 +400,7 @@ function openSupplierPaymentsHistoryModal(supName){
           <span>${getSvgIcon('fileText', 18)}</span>
           <span>سجل سدادات وسندات صرف المورد: <b>${escapeHtml(supName)}</b></span>
         </h3>
-        <button class="btn btn-ghost btn-xs" id="closeSupHistModal" style="font-size:18px;line-height:1;">&times;</button>
+        <button class="btn btn-ghost btn-xs" id="closeSupHistModal" style="font-size:18px;line-height:1;" aria-label="إغلاق">&times;</button>
       </div>
 
       <div style="background:var(--paper2);border:1px solid var(--line);border-radius:6px;padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
@@ -658,7 +664,7 @@ function openNewPurchaseModal(){
           <h3 style="margin:0;font-size:16px;font-weight:900;display:flex;align-items:center;gap:8px;">${getSvgIcon('truck', 18)} تسجيل فاتورة شراء وتوريد مخزون جديدة</h3>
           <div style="font-size:11px;color:#94a3b8;margin-top:2px;">إضافة أصناف للمخزن + توليد القيود المحاسبية التلقائية (مخزون 1104 / موردين 2101 / خزينة)</div>
         </div>
-        <button type="button" class="btn btn-ghost btn-sm" id="closePurModalBtn" style="color:#fff;font-size:18px;line-height:1;" style="font-size:16px;line-height:1;">&times;</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="closePurModalBtn" style="color:#fff;font-size:18px;line-height:1;" aria-label="إغلاق">&times;</button>
       </div>
 
       <div style="padding:16px 20px;overflow-y:auto;flex:1;">
@@ -845,8 +851,14 @@ function openNewPurchaseModal(){
       const main = document.getElementById('main');
       if(main) renderPurchases(main);
 
-      setTimeout(() => {
-        if(confirm(`تم توريد أصناف الفاتورة بنجاح\n\nهل ترغب في فتح نافذة طباعة ملصقات الباركود لهذه الأصناف المشتراة؟`)){
+      setTimeout(async () => {
+        const ok = await openConfirmModal({
+          title: 'طباعة ملصقات الباركود',
+          message: 'تم توريد أصناف الفاتورة بنجاح.<br><br>هل ترغب في فتح نافذة طباعة ملصقات الباركود لهذه الأصناف المشتراة؟',
+          confirmText: 'فتح نافذة الطباعة',
+          cancelText: 'لاحقاً'
+        });
+        if(ok){
           openInvoiceBarcodePrintModal('purchase', purObj.ID);
         }
       }, 200);

@@ -6,6 +6,7 @@
   "author": "MicroTech",
   "scripts": {
     "verify": "node app-modular/build.js",
+    "test": "vitest run",
     "start": "node app-modular/build.js && electron .",
     "bundle": "node app-modular/build.js",
     "build:win": "node app-modular/build.js && electron-builder --win",
@@ -71,6 +72,7 @@
   },
   "devDependencies": {
     "electron": "^33.2.1",
-    "electron-builder": "^25.1.8"
+    "electron-builder": "^25.1.8",
+    "vitest": "^5.0.3"
   }
 }

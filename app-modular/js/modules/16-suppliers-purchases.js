@@ -30,12 +30,13 @@ function renderSuppliers(main){
     <div class="card">
       <h3>قائمة الموردين</h3>
       ${state.suppliers.length===0 ? '<div class="empty">لا يوجد موردون بعد.</div>' : `
-      <div class="table-wrap"><table><thead><tr><th style="width:30%;">اللقب والاسم</th><th style="width:25%;">الهاتف والاتصال</th><th>ملاحظات ومجال التوريد</th><th style="width:18%;text-align:center;">سجل الحركات</th></tr></thead><tbody>
+      <div class="table-wrap"><table><thead><tr><th style="width:26%;">اللقب والاسم</th><th style="width:22%;">الهاتف والاتصال</th><th style="width:18%;text-align:center;">الرصيد المستحق</th><th>ملاحظات ومجال التوريد</th><th style="width:16%;text-align:center;">سجل الحركات</th></tr></thead><tbody>
         ${state.suppliers.map(s=>{
           const sTitle = s.Title || s.title || '';
           const sName = s.Name || s.name || '';
           const isSelected = String(state.selectedSupplierName) === String(sName);
           const pCount = (state.expenses || []).filter(ex => (ex.Category === 'سداد موردين ومشتريات' || ex.Supplier) && ex.Supplier === sName).length;
+          const sBal = typeof getSupplierLiveBalance === 'function' ? getSupplierLiveBalance(sName) : 0;
           return `
             <tr class="selectable-row ${isSelected ? 'selected-row' : ''}" data-sup-name="${escapeHtml(sName)}" onclick="handleSupplierRowClick('${escapeHtml(sName)}', event)" ondblclick="openSupplierStatementModal('${escapeHtml(sName)}')" style="cursor:pointer;">
               <td>
@@ -53,6 +54,15 @@ function renderSuppliers(main){
                     <a href="https://wa.me/${normalizePhoneForWa(s.Phone||s.phone)}" target="_blank" class="btn btn-ghost btn-xs" style="padding:2px 6px;color:#22c55e;" title="محادثة واتساب" onclick="event.stopPropagation();">${getSvgIcon('message', 13)}</a>
                   </div>
                 ` : '<span style="color:var(--ink-secondary);font-size:11px;">-</span>'}
+              </td>
+              <td style="text-align:center;">
+                ${sBal > 0 ? `
+                  <span class="badge" style="background:#fee2e2;color:#991b1b;font-weight:800;font-size:11.5px;" title="مستحق للمورد لم يسدد بعد">مستحق: ${sBal.toLocaleString()} ج.م</span>
+                ` : sBal < 0 ? `
+                  <span class="badge" style="background:#dcfce7;color:#166534;font-weight:800;font-size:11.5px;" title="دفعة مسددة للمورد بالزيادة">مدفوع زيادة: ${Math.abs(sBal).toLocaleString()} ج.م</span>
+                ` : `
+                  <span class="badge" style="background:var(--paper2);color:var(--green);font-weight:700;font-size:11px;">خالص (0)</span>
+                `}
               </td>
               <td style="font-size:12px;color:var(--ink-secondary);">${escapeHtml(s.Notes||s.notes||'-')}</td>
               <td style="text-align:center;">

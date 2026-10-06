@@ -165,10 +165,11 @@ function renderCustomersPage(main){
         <table>
           <thead>
             <tr>
-              <th style="text-align:right;width:32%;">اسم العميل</th>
-              <th style="text-align:right;width:24%;">رقم الهاتف والاتصال</th>
-              <th style="text-align:center;width:14%;">أجهزة الصيانة</th>
-              <th style="text-align:right;width:30%;">البريد / الملاحظات</th>
+              <th style="text-align:right;width:28%;">اسم العميل</th>
+              <th style="text-align:right;width:22%;">رقم الهاتف والاتصال</th>
+              <th style="text-align:center;width:12%;">أجهزة الصيانة</th>
+              <th style="text-align:center;width:16%;">الرصيد المالي</th>
+              <th style="text-align:right;width:22%;">البريد / الملاحظات</th>
             </tr>
           </thead>
           <tbody>
@@ -182,6 +183,7 @@ function renderCustomersPage(main){
                 return (rName && rName.toLowerCase() === cName.toLowerCase()) || (cPhone && rPhone === cPhone);
               });
               const isSelectedCust = String(cName) === String(state.selectedCustomerId);
+              const liveBal = typeof getCustomerLiveBalance === 'function' ? getCustomerLiveBalance(cName, cPhone) : 0;
 
               return `
                 <tr class="selectable-row ${isSelectedCust ? 'selected-row' : ''}" data-cust-name="${escapeHtml(cName)}" data-cust-phone="${escapeHtml(cPhone||'')}" style="cursor:pointer;">
@@ -211,6 +213,15 @@ function renderCustomersPage(main){
                         ${getSvgIcon("maintenance", 12)} ${clientReceipts.length} جهاز
                       </button>
                     ` : `<span style="color:var(--ink-secondary);font-size:11px;">-</span>`}
+                  </td>
+                  <td style="text-align:center;">
+                    ${liveBal > 0 ? `
+                      <span class="badge" style="background:#fee2e2;color:#991b1b;font-weight:800;font-size:11px;" title="مستحق على العميل (مدين)">مدين: ${liveBal.toLocaleString()} ج.م</span>
+                    ` : liveBal < 0 ? `
+                      <span class="badge" style="background:#dcfce7;color:#166534;font-weight:800;font-size:11px;" title="رصيد لصالح العميل (دائن)">دائن: ${Math.abs(liveBal).toLocaleString()} ج.م</span>
+                    ` : `
+                      <span class="badge" style="background:var(--paper2);color:var(--ink-secondary);font-size:11px;">خالص (0)</span>
+                    `}
                   </td>
                   <td style="font-size:11.5px;color:var(--ink-secondary);">
                     ${highlightSpotlightMatch(c.email || c.address || '-', state.custSearch)}

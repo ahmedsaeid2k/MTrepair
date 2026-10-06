@@ -27,6 +27,7 @@ const DEFAULT_ACCOUNTS = [
   {Code:'3101', Name:'رأس المال', Type:'حقوق الملكية', ParentCode:'31', Nature:'دائن', Description:'رأس مال البداية', Balance:0},
   {Code:'3102', Name:'الأرباح والخسائر المرحلة', Type:'حقوق الملكية', ParentCode:'31', Nature:'دائن', Description:'أرباح الأعوام والفترات السابقة', Balance:0},
   {Code:'3103', Name:'جاري الشركاء والمسحوبات', Type:'حقوق الملكية', ParentCode:'31', Nature:'دائن', Description:'المسحوبات الشخصية للشركاء', Balance:0},
+  {Code:'3104', Name:'أرصدة افتتاحية معلقة وتسوية البداية', Type:'حقوق الملكية', ParentCode:'31', Nature:'دائن', Description:'حساب وسيط لتسوية الفروق وموازنة القيد الافتتاحي', Balance:0},
 
   // 4 - الإيرادات
   {Code:'4', Name:'الإيرادات', Type:'الإيرادات', ParentCode:'', Nature:'دائن', Description:'عوائد النشاط والمبيعات', Balance:0},
@@ -79,17 +80,20 @@ async function loadAccounts(){
   const finalAccounts = (Array.isArray(rows) && rows.length) ? rows : DEFAULT_ACCOUNTS;
   state.accounts = finalAccounts;
   setCache('accounts', finalAccounts);
+  if(typeof invalidateAccountStatsCache === 'function') invalidateAccountStatsCache();
   return finalAccounts;
 }
 async function saveAccountRemote(acc){
   const idx = state.accounts.findIndex(x=>String(x.Code)===String(acc.Code));
   if(idx>-1) state.accounts[idx] = acc; else state.accounts.push(acc);
   setCache('accounts', state.accounts);
+  if(typeof invalidateAccountStatsCache === 'function') invalidateAccountStatsCache();
   return apiPost('saveAccount', {data:acc});
 }
 async function deleteAccountRemote(code){
   state.accounts = state.accounts.filter(x=>String(x.Code)!==String(code));
   setCache('accounts', state.accounts);
+  if(typeof invalidateAccountStatsCache === 'function') invalidateAccountStatsCache();
   return apiPost('deleteAccount', {code, role: state.user.role});
 }
 
@@ -434,6 +438,7 @@ function reconcileHistoricalJournalEntries(){
 
   if (newEntries.length > 0) {
     setCache('journal', state.journalEntries);
+    invalidateAccountStatsCache();
     console.log(`[reconcileHistoricalJournalEntries] Reconciled ${newEntries.length} entries for General Ledger.`);
   }
   return state.journalEntries;
@@ -447,6 +452,7 @@ async function loadJournalEntries(){
   }));
   state.journalEntries = mapped.length ? mapped : (getCache('journal', []) || []);
   setCache('journal', state.journalEntries);
+  invalidateAccountStatsCache();
   return state.journalEntries;
 }
 
@@ -455,8 +461,15 @@ async function saveJournalEntryRemote(entry){
   if(!entry.EntryNumber) entry.EntryNumber = getNextJournalEntryNumber();
   if(!entry.Date) entry.Date = new Date().toISOString().slice(0,10);
   entry.By = state.user ? state.user.name : 'نظام';
-  state.journalEntries.push(entry);
+
+  const existingIdx = (state.journalEntries || []).findIndex(x => String(x.ID) === String(entry.ID));
+  if(existingIdx > -1){
+    state.journalEntries[existingIdx] = entry;
+  } else {
+    state.journalEntries.push(entry);
+  }
   setCache('journal', state.journalEntries);
+  invalidateAccountStatsCache();
   return apiPost('saveJournalEntry', {data: entry, user: entry.By});
 }
 
@@ -496,38 +509,288 @@ async function autoPostJournalEntry(opts = {}) {
 async function deleteJournalEntryRemote(id){
   state.journalEntries = (state.journalEntries || []).filter(x => String(x.ID) !== String(id) && String(x.EntryNumber) !== String(id));
   setCache('journal', state.journalEntries);
+  invalidateAccountStatsCache();
   return apiPost('deleteJournalEntry', { id, role: (state.user ? state.user.role : 'admin') });
 }
 
-function getAccountStats(accountCode){
-  const code = String(accountCode).trim();
-  const acc = state.accounts.find(a=>String(a.Code)===code);
-  const nature = acc ? acc.Nature : 'مدين';
-  let totalDebit = 0;
-  let totalCredit = 0;
+/* ---------------- F8: Memoized Account Stats & Balances Engine ---------------- */
+let _accountStatsCache = new Map();
+let _journalRevision = 0;
+let _cachedRevision = -1;
 
-  // Direct transactions from journal entries
-  (state.journalEntries||[]).forEach(je=>{
-    (je.Lines||[]).forEach(l=>{
-      if(String(l.AccountCode).trim()===code){
-        totalDebit += Number(l.Debit||0);
-        totalCredit += Number(l.Credit||0);
+function invalidateAccountStatsCache(){
+  _journalRevision++;
+  _accountStatsCache.clear();
+}
+
+function _computeAllAccountStats(){
+  _accountStatsCache.clear();
+  const accounts = state.accounts || [];
+
+  // Map parent-child relationships
+  const parentMap = new Map();
+  const isParent = new Set();
+  accounts.forEach(a => {
+    if(a.ParentCode){
+      const p = String(a.ParentCode).trim();
+      isParent.add(p);
+      if(!parentMap.has(p)) parentMap.set(p, []);
+      parentMap.get(p).push(String(a.Code).trim());
+    }
+  });
+
+  // Direct movements accumulator
+  const directData = new Map();
+  accounts.forEach(a => {
+    directData.set(String(a.Code).trim(), { openDr: 0, openCr: 0, moveDr: 0, moveCr: 0 });
+  });
+
+  const hasOpeningEntry = (state.journalEntries || []).some(je => je.ReferenceType === 'Opening_Balance');
+
+  (state.journalEntries || []).forEach(je => {
+    const isOpening = je.ReferenceType === 'Opening_Balance';
+    const lines = Array.isArray(je.Lines) ? je.Lines : (typeof je.LinesJSON === 'string' ? JSON.parse(je.LinesJSON || '[]') : []);
+    lines.forEach(l => {
+      const c = String(l.AccountCode || '').trim();
+      if(!directData.has(c)){
+        directData.set(c, { openDr: 0, openCr: 0, moveDr: 0, moveCr: 0 });
+      }
+      const item = directData.get(c);
+      const dr = Number(l.Debit || 0);
+      const cr = Number(l.Credit || 0);
+      if(isOpening){
+        item.openDr += dr;
+        item.openCr += cr;
+      } else {
+        item.moveDr += dr;
+        item.moveCr += cr;
       }
     });
   });
 
-  // Also include child accounts if this is a parent category
-  const children = state.accounts.filter(a=>String(a.ParentCode)===code);
-  children.forEach(ch=>{
-    const chStats = getAccountStats(ch.Code);
-    totalDebit += chStats.totalDebit;
-    totalCredit += chStats.totalCredit;
+  function computeCode(code){
+    if(_accountStatsCache.has(code)) return _accountStatsCache.get(code);
+
+    const acc = accounts.find(a => String(a.Code).trim() === code);
+    const nature = acc ? acc.Nature : 'مدين';
+    const hasChildren = isParent.has(code);
+
+    let openDr = 0;
+    let openCr = 0;
+    let moveDr = 0;
+    let moveCr = 0;
+
+    if(!hasChildren){
+      // Leaf account: takes direct journal entries
+      const d = directData.get(code) || { openDr: 0, openCr: 0, moveDr: 0, moveCr: 0 };
+      openDr = d.openDr;
+      openCr = d.openCr;
+      moveDr = d.moveDr;
+      moveCr = d.moveCr;
+
+      // If no Opening_Balance entry exists in journal, fallback to legacy acc.Balance for leaf accounts
+      if(!hasOpeningEntry && acc && Number(acc.Balance || 0) > 0){
+        const legacyBal = Number(acc.Balance || 0);
+        if(nature === 'مدين') openDr += legacyBal;
+        else openCr += legacyBal;
+      }
+    } else {
+      // Parent account: sum from children ONLY (F8: no direct Balance on parent)
+      const children = parentMap.get(code) || [];
+      children.forEach(chCode => {
+        const chStats = computeCode(chCode);
+        openDr += chStats.openingDebit;
+        openCr += chStats.openingCredit;
+        moveDr += chStats.totalDebit;
+        moveCr += chStats.totalCredit;
+      });
+    }
+
+    openDr = round2(openDr);
+    openCr = round2(openCr);
+    moveDr = round2(moveDr);
+    moveCr = round2(moveCr);
+
+    const openingBalance = nature === 'مدين' ? round2(openDr - openCr) : round2(openCr - openDr);
+    const netBalance = nature === 'مدين'
+      ? round2((openDr - openCr) + (moveDr - moveCr))
+      : round2((openCr - openDr) + (moveCr - moveDr));
+
+    let closingDebit = 0;
+    let closingCredit = 0;
+    if(nature === 'مدين'){
+      if(netBalance >= 0) closingDebit = netBalance;
+      else closingCredit = round2(Math.abs(netBalance));
+    } else {
+      if(netBalance >= 0) closingCredit = netBalance;
+      else closingDebit = round2(Math.abs(netBalance));
+    }
+
+    const stats = {
+      openingDebit: openDr,
+      openingCredit: openCr,
+      openingBalance,
+      totalDebit: moveDr,
+      totalCredit: moveCr,
+      closingDebit,
+      closingCredit,
+      netBalance,
+      nature,
+      hasChildren
+    };
+
+    _accountStatsCache.set(code, stats);
+    return stats;
+  }
+
+  accounts.forEach(a => computeCode(String(a.Code).trim()));
+  _cachedRevision = _journalRevision;
+}
+
+function getAccountStats(accountCode){
+  const code = String(accountCode).trim();
+  if(_cachedRevision !== _journalRevision || _accountStatsCache.size === 0){
+    _computeAllAccountStats();
+  }
+  if(_accountStatsCache.has(code)){
+    return _accountStatsCache.get(code);
+  }
+  return {
+    openingDebit: 0,
+    openingCredit: 0,
+    openingBalance: 0,
+    totalDebit: 0,
+    totalCredit: 0,
+    closingDebit: 0,
+    closingCredit: 0,
+    netBalance: 0,
+    nature: 'مدين',
+    hasChildren: false
+  };
+}
+
+/* ---------------- F8: Customer and Supplier Live Balance Engines ---------------- */
+function getCustomerLiveBalance(custName, custPhone){
+  if(!custName && !custPhone) return 0;
+  const cName = String(custName || '').trim().toLowerCase();
+  const cPhone = String(custPhone || '').trim();
+
+  let totalDebit = 0;
+  let totalCredit = 0;
+
+  // 1. Receipts
+  (state.receipts || []).forEach(r => {
+    const rName = (extractCustomerName(r) || '').toLowerCase();
+    const rPhone = extractCustomerPhone(r) || '';
+    const isMatch = (cName && rName === cName) || (cPhone && rPhone === cPhone);
+    if(isMatch){
+      const totalDue = Number(r.cost || 0) + Number(r.partsCost || 0) + Number(r.otherAccountAmount || 0);
+      const dep = Number(r.deposit || 0);
+      const refAmt = Number(r.refunded || 0);
+      totalDebit += totalDue + refAmt;
+
+      const hasDepositInPayments = (state.payments || []).some(p => 
+        (String(p.ReceiptID) === String(r.id) || String(p.ReceiptID) === String(r.receiptNumber)) &&
+        (String(p.Note || '').includes('عربون') || String(p.Note || '').includes('مقدم') || Number(p.Amount) === dep)
+      );
+      if(dep > 0 && !hasDepositInPayments){
+        totalCredit += dep;
+      }
+    }
   });
 
-  const initBal = Number(acc ? acc.Balance : 0);
-  const netBalance = nature === 'مدين' ? (initBal + totalDebit - totalCredit) : (initBal + totalCredit - totalDebit);
+  // 2. Receipt Payments
+  (state.payments || []).forEach(p => {
+    const linkedReceipt = (state.receipts || []).find(r => String(r.id) === String(p.ReceiptID) || String(r.receiptNumber) === String(p.ReceiptID));
+    if(linkedReceipt){
+      const rName = (extractCustomerName(linkedReceipt) || '').toLowerCase();
+      const rPhone = extractCustomerPhone(linkedReceipt) || '';
+      const isMatch = (cName && rName === cName) || (cPhone && rPhone === cPhone);
+      if(isMatch){
+        totalCredit += Number(p.Amount || 0);
+      }
+    }
+  });
 
-  return { totalDebit, totalCredit, netBalance, nature };
+  // 3. Sales
+  (state.sales || []).forEach(s => {
+    const sName = String(s.CustomerName || '').trim().toLowerCase();
+    const sPhone = String(s.CustomerPhone || '').trim();
+    const isMatch = (cName && sName === cName) || (cPhone && sPhone === cPhone);
+    if(isMatch){
+      const tot = Number(s.Total || 0);
+      const paid = Number(s.AmountPaid != null ? s.AmountPaid : tot);
+      totalDebit += tot;
+      totalCredit += paid;
+      if(s.IsReturned){
+        const retDetails = s.ReturnDetails || {};
+        const retAmt = Number(retDetails.totalRefund != null ? retDetails.totalRefund : tot);
+        const retMethod = retDetails.refundMethod || s.PaymentMethod || 'نقدي';
+        totalCredit += retAmt;
+        const isDebtSettlementOnly = (retMethod.includes('آجل') || retMethod.includes('حساب'));
+        if(!isDebtSettlementOnly && paid > 0){
+          totalDebit += Math.min(paid, retAmt);
+        }
+      }
+    }
+  });
+
+  // 4. Invoices
+  (state.invoices || []).forEach(inv => {
+    if(inv.ReferenceType !== 'Receipt' && inv.ReferenceType !== 'POS_Sale'){
+      const invName = String(inv.CustomerName || '').trim().toLowerCase();
+      const invPhone = String(inv.CustomerPhone || '').trim();
+      const isMatch = (cName && invName === cName) || (cPhone && invPhone === cPhone);
+      if(isMatch){
+        const tot = Number(inv.Total || 0);
+        const paid = Number(inv.AmountPaid != null ? inv.AmountPaid : (inv.Status === 'مدفوعة' ? tot : 0));
+        totalDebit += tot;
+        totalCredit += paid;
+      }
+    }
+  });
+
+  // 5. Quotations
+  (state.quotations || []).forEach(q => {
+    const qName = String(q.CustomerName || '').trim().toLowerCase();
+    const qPhone = String(q.CustomerPhone || '').trim();
+    const isMatch = (cName && qName === cName) || (cPhone && qPhone === cPhone);
+    const isExecuted = ['تم التنفيذ والتسليم', 'مكتمل', 'موافق عليه'].includes(String(q.Status || '').trim());
+    if(isMatch && isExecuted){
+      const tot = Number(q.Total || 0);
+      const paid = Number(q.AmountPaid != null ? q.AmountPaid : (q.Deposit != null ? q.Deposit : 0));
+      totalDebit += tot;
+      totalCredit += paid;
+    }
+  });
+
+  return round2(totalDebit - totalCredit);
+}
+
+function getSupplierLiveBalance(supName){
+  if(!supName) return 0;
+  const sName = String(supName).trim().toLowerCase();
+  let totalPurchases = 0;
+  let totalPaid = 0;
+
+  (state.purchases || []).forEach(p => {
+    if((p.Supplier || '').trim().toLowerCase() === sName){
+      const tot = Number(p.Total || 0);
+      const paid = Number(p.AmountPaid != null ? p.AmountPaid : tot);
+      totalPurchases += tot;
+      totalPaid += paid;
+    }
+  });
+
+  (state.expenses || []).forEach(exp => {
+    const isSupplier = (exp.Supplier && exp.Supplier.trim().toLowerCase() === sName) ||
+                       (exp.Category === 'سداد موردين ومشتريات' && (exp.Title || '').toLowerCase().includes(sName));
+    if(isSupplier){
+      totalPaid += Number(exp.Amount || 0);
+    }
+  });
+
+  return round2(totalPurchases - totalPaid);
 }
 
 async function loadReceipts(params){

@@ -274,7 +274,7 @@ const AUTOPOST_REFS = [
   'Receipt_Debt', 'Receipt_Reversal', 'Expense', 'Supplier_Payment', 'SupplierPayment', 'DeliveryCredit',
   'Receipt_Payment', 'Receipt_Payment_Void', 'Receipt_Delivery', 'Receipt_Revenue', 'Receipt_Void',
   'Invoice', 'Invoice_Void', 'Quotation_Payment', 'Quotation_Delivery', 'Quotation',
-  'CashIn', 'CashOut', 'Shift_Open', 'Shift_Close', 'Shift_Variance'
+  'CashIn', 'CashOut', 'Shift_Open', 'Shift_Close', 'Shift_Variance', 'Opening_Balance'
 ];
 
 function postAutoJournal(desc, refType, refId, lines, actorUser) {

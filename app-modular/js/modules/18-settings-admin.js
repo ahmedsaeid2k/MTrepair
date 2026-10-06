@@ -2168,6 +2168,7 @@ function renderSyncSettings(main){
   const isOnline = navigator.onLine;
   const terminalCount = queue.filter(i => i.status === 'failed_terminal').length;
   const pendingCount = queue.filter(i => i.status !== 'failed_terminal').length;
+  const storageStats = typeof getLocalStorageUsage === 'function' ? getLocalStorageUsage() : { percentUsed: 0, usedMB: '0.00', usedKB: '0', keyCount: 0, breakdown: {} };
 
   const ACTION_LABELS = {
     saveSale: 'تسجيل عملية بيع',
@@ -2264,6 +2265,49 @@ function renderSyncSettings(main){
         ${queue.length > 0 ? `<button class="btn btn-ghost" id="exportAllQueueBtn">${getSvgIcon("download", 14)} تصدير الطابور كملف JSON</button>` : ''}
         ${queue.length > 0 ? `<button class="btn btn-ghost" id="clearQueueBtn" style="color:var(--red);">${getSvgIcon("trash", 13)} تفريغ طابور المزامنة</button>` : ''}
         <button class="btn btn-ghost" id="reloadCloudDataBtn">${getSvgIcon("refresh", 14)} إعادة تحميل البيانات من السحابة</button>
+      </div>
+    </div>
+
+    <!-- بطاقة استهلاك مساحة التخزين المحلية والتحصين ضد الامتلاء (U9) -->
+    <div class="card" style="border-right:4px solid ${storageStats.percentUsed > 90 ? 'var(--red)' : storageStats.percentUsed > 70 ? 'var(--amber)' : 'var(--green)'};">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+        <h3 style="margin:0;font-size:15px;display:flex;align-items:center;gap:6px;">
+          <span>مساحة التخزين المحلية (LocalStorage Usage)</span>
+          <span class="mono" style="font-size:12px;background:var(--paper3);padding:2px 8px;border-radius:12px;font-weight:700;">
+            ${storageStats.usedMB} MB / ~5.00 MB (${storageStats.percentUsed}%)
+          </span>
+        </h3>
+        <button class="btn btn-ghost btn-sm" id="smartCleanCacheBtn" style="color:var(--primary);border-color:var(--line);">
+          ${getSvgIcon("trash", 13)} تنظيف الكاش الذكي (Smart Clean)
+        </button>
+      </div>
+
+      <!-- Meter Bar -->
+      <div style="background:var(--paper3);border-radius:999px;height:10px;overflow:hidden;margin-bottom:12px;border:1px solid var(--line);">
+        <div style="background:${storageStats.percentUsed > 90 ? 'var(--red)' : storageStats.percentUsed > 70 ? 'var(--amber)' : 'var(--green)'};width:${storageStats.percentUsed}%;height:100%;transition:width 0.4s ease-in-out;"></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:8px;font-size:11.5px;">
+        <div style="background:var(--paper3);padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--line);">
+          <span style="color:var(--ink-secondary);">كاش البيانات:</span>
+          <span class="mono" style="font-weight:700;margin-right:4px;">${storageStats.breakdown ? storageStats.breakdown.cacheKB : 0} KB</span>
+        </div>
+        <div style="background:var(--paper3);padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--line);">
+          <span style="color:var(--ink-secondary);">طابور المزامنة:</span>
+          <span class="mono" style="font-weight:700;margin-right:4px;">${storageStats.breakdown ? storageStats.breakdown.queueKB : 0} KB</span>
+        </div>
+        <div style="background:var(--paper3);padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--line);">
+          <span style="color:var(--ink-secondary);">سجلات التدقيق:</span>
+          <span class="mono" style="font-weight:700;margin-right:4px;">${storageStats.breakdown ? storageStats.breakdown.auditKB : 0} KB</span>
+        </div>
+        <div style="background:var(--paper3);padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--line);">
+          <span style="color:var(--ink-secondary);">إعدادات النظام:</span>
+          <span class="mono" style="font-weight:700;margin-right:4px;">${storageStats.breakdown ? storageStats.breakdown.settingsKB : 0} KB</span>
+        </div>
+        <div style="background:var(--paper3);padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--line);">
+          <span style="color:var(--ink-secondary);">عناصر التخزين:</span>
+          <span class="mono" style="font-weight:700;margin-right:4px;">${storageStats.keyCount} مفتاح</span>
+        </div>
       </div>
     </div>
 
@@ -2405,13 +2449,30 @@ function renderSyncSettings(main){
     }
   };
 
-  document.getElementById('clearLocalCacheBtn').onclick = ()=>{
-    if(confirm('هل تريد بالتأكيد تفريغ الكاش المحلي؟')){
-      localStorage.clear();
-      showToast('تم تفريغ الكاش بنجاح، جاري إعادة التحميل...', 'info');
-      setTimeout(()=>window.location.reload(), 600);
-    }
-  };
+  const smartCleanBtn = document.getElementById('smartCleanCacheBtn');
+  if(smartCleanBtn){
+    smartCleanBtn.onclick = () => {
+      const res = pruneNonEssentialCaches(true);
+      showToast(`تم تنظيف الكاش بنجاح وحذف ${res.freedCount} عنصراً مؤقتاً وتحرير ${res.freedKB} كيلوبايت`, 'success');
+      renderSyncSettings(main);
+    };
+  }
+
+  const clearCacheBtn = document.getElementById('clearLocalCacheBtn');
+  if(clearCacheBtn){
+    clearCacheBtn.onclick = () => {
+      const q = getSyncQueue();
+      let confirmMsg = 'هل تريد بالتأكيد تفريغ الذاكرة المؤقتة (الكاش) وإعادة التحميل من السحابة؟';
+      if(q.length > 0){
+        confirmMsg = `تنبيه أمان: يوجد ${q.length} عملية معلقة في طابور المزامنة لم تُرفع بعد إلى السحابة. سيتم الحفاظ عليها بأمان وحمايتها من المسح.\n\nهل ترغب في متابعة تفريغ الكاش؟`;
+      }
+      if(confirm(confirmMsg)){
+        const res = typeof safePurgeLocalCache === 'function' ? safePurgeLocalCache() : { preservedQueueCount: q.length };
+        showToast(`تم تفريغ الكاش بنجاح مع حماية ${res.preservedQueueCount} عملية معلقة، جاري إعادة التحميل...`, 'info');
+        setTimeout(() => window.location.reload(), 700);
+      }
+    };
+  }
 }
 
 /* 10. AI Settings (إعدادات وتكامل Google Gemini AI) */

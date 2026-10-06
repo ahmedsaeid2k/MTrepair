@@ -131,9 +131,13 @@ function recordAuditLog(action, section, details, refId, status = 'success'){
   };
   if(!Array.isArray(state.auditLogs)) state.auditLogs = [];
   state.auditLogs.unshift(log);
-  if(state.auditLogs.length > 2000) state.auditLogs = state.auditLogs.slice(0, 2000);
+  if(state.auditLogs.length > 250) state.auditLogs = state.auditLogs.slice(0, 250);
   setCache('audit_logs', state.auditLogs);
-  try { localStorage.setItem('microerp_audit_logs', JSON.stringify(state.auditLogs)); } catch(e){}
+  if(typeof safeLocalStorageSet === 'function') {
+    safeLocalStorageSet('microerp_audit_logs', state.auditLogs);
+  } else {
+    try { localStorage.setItem('microerp_audit_logs', JSON.stringify(state.auditLogs)); } catch(e){}
+  }
   try { apiPost('saveAuditLog', { data: log }).catch(()=>{}); } catch(e){}
   return log;
 }

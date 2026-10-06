@@ -25,6 +25,7 @@ async function init(){
 
   render();
   updateSyncStatusPill();
+  if(typeof checkStorageQuotaStatus === 'function') checkStorageQuotaStatus();
 
   // If online and authenticated with server session, fetch fresh updates in background via unified bootstrap
   if(navigator.onLine && state.user && getSessionToken()){

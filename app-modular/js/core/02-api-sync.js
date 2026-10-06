@@ -35,68 +35,304 @@ function handleSessionExpired() {
   }, 800);
 }
 
+/* ============================================================
+   LocalStorage Engine & Quota Protection (U9)
+   - QuotaExceededError interception & auto-pruning
+   - Protected keys immunity (Sync queue, credentials, settings)
+   - Dynamic storage usage metrics & breakdown
+   - Floating quota warning banner (#storageQuotaBanner)
+   ============================================================ */
+
+const PROTECTED_STORAGE_KEYS = [
+  'microerp_sync_queue',
+  'microerp_api_url',
+  'microerp_users_permanent',
+  'microerp_auth_requests',
+  'microerp_printers_settings',
+  'microerp_known_printers',
+  'microerp_theme',
+  'microerp_sidebar_collapsed',
+  'microerp_maint_view_mode',
+  'mterp_held_carts',
+  'microerp_barcode_studio'
+];
+
+/**
+ * Calculate localStorage usage statistics (characters, bytes, KB, MB, percentage, breakdown)
+ */
+function getLocalStorageUsage(){
+  let totalChars = 0;
+  let keyCount = 0;
+  const breakdown = { cache: 0, queue: 0, audit: 0, settings: 0, other: 0 };
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+      const val = localStorage.getItem(k) || '';
+      const chars = k.length + val.length;
+      totalChars += chars;
+      keyCount++;
+      if (k.startsWith('microerp_cache_')) {
+        breakdown.cache += chars;
+      } else if (k === 'microerp_sync_queue') {
+        breakdown.queue += chars;
+      } else if (k.includes('audit')) {
+        breakdown.audit += chars;
+      } else if (k.startsWith('microerp_') && (k.includes('settings') || k.includes('printers') || k.includes('theme') || k.includes('barcode'))) {
+        breakdown.settings += chars;
+      } else {
+        breakdown.other += chars;
+      }
+    }
+  } catch(e){}
+
+  // Standard browser quota is 5MB in UTF-16 (~2,621,440 chars = 5,242,880 bytes)
+  const maxQuotaChars = 2621440;
+  const usedBytes = totalChars * 2;
+  const percentUsed = Math.min(100, Math.round((totalChars / maxQuotaChars) * 100));
+
+  return {
+    totalChars,
+    usedBytes,
+    usedKB: (usedBytes / 1024).toFixed(1),
+    usedMB: (usedBytes / (1024 * 1024)).toFixed(2),
+    percentUsed,
+    keyCount,
+    breakdown: {
+      cacheKB: ((breakdown.cache * 2) / 1024).toFixed(1),
+      queueKB: ((breakdown.queue * 2) / 1024).toFixed(1),
+      auditKB: ((breakdown.audit * 2) / 1024).toFixed(1),
+      settingsKB: ((breakdown.settings * 2) / 1024).toFixed(1),
+      otherKB: ((breakdown.other * 2) / 1024).toFixed(1)
+    }
+  };
+}
+
+/**
+ * Prune non-essential caches while strictly preserving protected keys (sync queue, credentials)
+ */
+function pruneNonEssentialCaches(forceAll = false){
+  let freedCount = 0;
+  let freedChars = 0;
+  const now = Date.now();
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+  try {
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+
+      // IMMUNITY: Never evict protected keys under any circumstance
+      if (PROTECTED_STORAGE_KEYS.includes(k)) continue;
+
+      if (k.startsWith('microerp_cache_')) {
+        if (forceAll) {
+          keysToRemove.push(k);
+        } else {
+          try {
+            const raw = localStorage.getItem(k);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed && parsed._cacheTimestamp && (now - parsed._cacheTimestamp > SEVEN_DAYS_MS)) {
+                keysToRemove.push(k);
+              } else if (k === 'microerp_cache_bootstrapData' || k.includes('audit') || k.includes('journal') || k.includes('track_') || k.includes('invoices') || k.includes('reports')) {
+                // Secondary non-essential caches can be cleared on pressure
+                keysToRemove.push(k);
+              }
+            }
+          } catch(e){
+            keysToRemove.push(k);
+          }
+        }
+      } else if (k.startsWith('trackToken_') || k.startsWith('microerp_temp_')) {
+        keysToRemove.push(k);
+      }
+    }
+
+    for (const k of keysToRemove) {
+      const val = localStorage.getItem(k);
+      if (val) freedChars += (k.length + val.length);
+      localStorage.removeItem(k);
+      freedCount++;
+    }
+
+    // Truncate audit logs to latest 40 entries if storage is pressured
+    try {
+      const auditRaw = localStorage.getItem('microerp_audit_logs');
+      if (auditRaw) {
+        const logs = JSON.parse(auditRaw);
+        if (Array.isArray(logs) && logs.length > 40) {
+          const truncated = logs.slice(0, 40);
+          const trStr = JSON.stringify(truncated);
+          freedChars += (auditRaw.length - trStr.length);
+          localStorage.setItem('microerp_audit_logs', trStr);
+        }
+      }
+    } catch(e){}
+
+  } catch(err){
+    console.warn('[pruneNonEssentialCaches] Error during cache pruning:', err);
+  }
+
+  checkStorageQuotaStatus();
+
+  return {
+    freedCount,
+    freedBytes: freedChars * 2,
+    freedKB: ((freedChars * 2) / 1024).toFixed(1)
+  };
+}
+
+// Backward-compatible alias for existing callers
+function freeStorageSpace(){
+  return pruneNonEssentialCaches(false);
+}
+
+/**
+ * Check storage quota status and render or dismiss the floating warning banner
+ */
+function checkStorageQuotaStatus(){
+  const stats = getLocalStorageUsage();
+  if (stats.percentUsed >= 90) {
+    showStorageQuotaBanner(stats.percentUsed);
+  } else {
+    const banner = document.getElementById('storageQuotaBanner');
+    if (banner) banner.remove();
+  }
+}
+
+/**
+ * Floating red quota warning banner (#storageQuotaBanner) with cleanup button
+ */
+function showStorageQuotaBanner(percent = null){
+  if (typeof document === 'undefined' || !document.body) return;
+  const pct = percent || getLocalStorageUsage().percentUsed;
+  let banner = document.getElementById('storageQuotaBanner');
+
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'storageQuotaBanner';
+    banner.style.cssText = 'position:fixed;bottom:14px;left:14px;z-index:99999;background:#b91c1c;color:#fff;padding:10px 16px;border-radius:8px;font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:12px;box-shadow:0 6px 20px rgba(0,0,0,0.35);direction:rtl;';
+    document.body.appendChild(banner);
+  }
+
+  banner.innerHTML = `
+    <span style="display:flex;align-items:center;gap:6px;">
+      <span style="font-size:16px;">⚠️</span>
+      <span>مساحة التخزين المحلية قاربت على الامتلاء (${pct}%). يرجى تنظيف الذاكرة المؤقتة لضمان استمرار الحفظ.</span>
+    </span>
+    <div style="display:flex;gap:6px;align-items:center;margin-right:auto;">
+      <button type="button" id="quotaBannerCleanBtn" style="background:#fff;color:#b91c1c;border:none;border-radius:4px;padding:4px 10px;font-size:11.5px;font-weight:800;cursor:pointer;">تنظيف الكاش الآن</button>
+      <button type="button" style="background:transparent;border:none;color:#fca5a5;font-size:16px;font-weight:700;cursor:pointer;padding:0 4px;" onclick="this.closest('#storageQuotaBanner').remove()">✕</button>
+    </div>
+  `;
+
+  const cleanBtn = banner.querySelector('#quotaBannerCleanBtn');
+  if (cleanBtn) {
+    cleanBtn.onclick = () => {
+      const res = pruneNonEssentialCaches(true);
+      if (typeof showToast === 'function') {
+        showToast(`تم تنظيف الكاش بنجاح وتحرير ${res.freedKB} كيلوبايت`, 'success');
+      }
+      checkStorageQuotaStatus();
+      const syncContainer = document.getElementById('settingsMainContent');
+      if (syncContainer && typeof renderSyncSettings === 'function' && state.settingsTab === 'sync') {
+        renderSyncSettings(syncContainer);
+      }
+    };
+  }
+}
+
+/**
+ * Safe localStorage setter with automatic QuotaExceededError interception, smart eviction, and retry
+ */
+function safeLocalStorageSet(key, value){
+  const strVal = typeof value === 'string' ? value : JSON.stringify(value);
+  try {
+    localStorage.setItem(key, strVal);
+    if (key.startsWith('microerp_cache_') || key === 'microerp_sync_queue') {
+      checkStorageQuotaStatus();
+    }
+    return true;
+  } catch(e) {
+    const isQuota = e && (
+      e.name === 'QuotaExceededError' ||
+      e.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+      e.code === 22 ||
+      e.code === 1014 ||
+      (e.message && e.message.toLowerCase().includes('quota'))
+    );
+    if (isQuota) {
+      console.warn(`[safeLocalStorageSet] QuotaExceededError for key "${key}". Running smart cache pruning...`);
+      pruneNonEssentialCaches(false);
+      try {
+        localStorage.setItem(key, strVal);
+        checkStorageQuotaStatus();
+        return true;
+      } catch(retryErr) {
+        console.warn(`[safeLocalStorageSet] Retry failed for "${key}". Performing aggressive cache purge...`);
+        pruneNonEssentialCaches(true);
+        try {
+          localStorage.setItem(key, strVal);
+          checkStorageQuotaStatus();
+          return true;
+        } catch(finalErr) {
+          console.error(`[safeLocalStorageSet] Storage full even after purge for key "${key}".`, finalErr);
+          showStorageQuotaBanner();
+          if (typeof showToast === 'function') {
+            showToast('⚠️ نفدت مساحة تخزين المتصفح تماماً! تعذر الحفظ على القرص المحلي.', 'error', 6000);
+          }
+          return false;
+        }
+      }
+    } else {
+      console.error(`[safeLocalStorageSet] Error saving "${key}":`, e);
+      return false;
+    }
+  }
+}
+
+/**
+ * Safely purge non-essential local cache while preserving offline queue, auth, and printer settings
+ */
+function safePurgeLocalCache(){
+  const queue = getSyncQueue();
+  const keysToRemove = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && !PROTECTED_STORAGE_KEYS.includes(k)) {
+        keysToRemove.push(k);
+      }
+    }
+    for (const k of keysToRemove) {
+      localStorage.removeItem(k);
+    }
+  } catch(e){}
+  checkStorageQuotaStatus();
+  return { preservedQueueCount: queue.length, removedKeysCount: keysToRemove.length };
+}
+
 /* Local Cache Helpers */
 function getCache(key, fallback){
   try {
     const d = localStorage.getItem('microerp_cache_' + key);
-    return d ? JSON.parse(d) : fallback;
-  } catch(e) { return fallback; }
-}
-let isQuotaWarningShown = false;
-
-function showStorageQuotaWarning() {
-  if (isQuotaWarningShown) return;
-  isQuotaWarningShown = true;
-  
-  if (typeof showToast === 'function') {
-    showToast('⚠️ تحذير: مساحة تخزين المتصفح المحلية ممتلئة (Storage Quota Exceeded). تم الحفظ في الذاكرة الحية فقط.', 'warning', 7000);
-  }
-  
-  let banner = document.getElementById('storageQuotaBanner');
-  if (!banner && typeof document !== 'undefined' && document.body) {
-    banner = document.createElement('div');
-    banner.id = 'storageQuotaBanner';
-    banner.style.cssText = 'position:fixed;bottom:12px;left:12px;z-index:99999;background:#b91c1c;color:#fff;padding:8px 14px;border-radius:8px;font-size:12px;font-weight:700;display:flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(0,0,0,0.3);';
-    banner.innerHTML = `
-      <span>⚠️ مساحة التخزين المحلية ممتلئة. البيانات تُحفظ مؤقتاً في الذاكرة الحية.</span>
-      <button type="button" style="background:#fff;color:#b91c1c;border:none;border-radius:4px;padding:2px 6px;font-size:11px;font-weight:800;cursor:pointer;" onclick="this.parentElement.remove()">إغلاق</button>
-    `;
-    document.body.appendChild(banner);
-  }
-}
-
-function freeStorageSpace() {
-  try {
-    const evictableKeys = [
-      'microerp_cache_audit_logs',
-      'microerp_audit_logs',
-      'microerp_cache_bootstrapData',
-      'microerp_cache_journal',
-      'microerp_cache_invoices'
-    ];
-    for (const k of evictableKeys) {
-      localStorage.removeItem(k);
+    if (!d) return fallback;
+    const parsed = JSON.parse(d);
+    if (parsed && typeof parsed === 'object' && '_cacheTimestamp' in parsed && 'data' in parsed) {
+      return parsed.data;
     }
-  } catch(e) {}
+    return parsed;
+  } catch(e) { return fallback; }
 }
 
 function setCache(key, val){
-  try {
-    localStorage.setItem('microerp_cache_' + key, JSON.stringify(val));
-  } catch(e) {
-    if (e && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' || e.code === 22 || e.code === 1014)) {
-      console.warn(`[setCache] QuotaExceededError for key "${key}". Attempting smart eviction...`);
-      freeStorageSpace();
-      try {
-        localStorage.setItem('microerp_cache_' + key, JSON.stringify(val));
-      } catch (retryErr) {
-        console.error(`[setCache] Storage quota exceeded even after eviction for key "${key}". Data retained in memory.`);
-        showStorageQuotaWarning();
-      }
-    } else {
-      console.warn(`[setCache] Failed to cache "${key}":`, e.message);
-    }
-  }
+  const cacheObj = {
+    _cacheTimestamp: Date.now(),
+    data: val
+  };
+  return safeLocalStorageSet('microerp_cache_' + key, cacheObj);
 }
 
 /* Offline Sync Queue */
@@ -111,7 +347,7 @@ function getSyncQueue(){
   try { return JSON.parse(localStorage.getItem('microerp_sync_queue') || '[]'); } catch(e){ return []; }
 }
 function saveSyncQueue(q){
-  try { localStorage.setItem('microerp_sync_queue', JSON.stringify(q)); } catch(e){}
+  safeLocalStorageSet('microerp_sync_queue', q);
   updateSyncStatusPill();
 }
 function addToSyncQueue(action, data){

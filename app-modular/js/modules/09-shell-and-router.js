@@ -1568,17 +1568,39 @@ function renderMain(){
 
 /* ---------------- Dashboard ---------------- */
 function renderDashboard(main){
-  const r = state.receipts;
-  const today = new Date().toISOString().slice(0,10);
-  const inProgress = r.filter(x=>x.status==='قيد الفحص'||x.status==='الصيانة').length;
+  const r = state.receipts || [];
+  const today = (typeof localDateStr === 'function') ? localDateStr() : new Date().toISOString().slice(0,10);
+  const inProgress = r.filter(x=>x.status==='قيد الفحص'||x.status==='الصيانة'||x.status==='بانتظار موافقة العميل'||x.status==='بانتظار قطعة غيار').length;
   const done = r.filter(x=>x.status==='مكتمل').length;
   const delivered = r.filter(x=>x.status==='تم التسليم').length;
-  const todayIncome = state.payments.filter(p=>String(p.Date||'').slice(0,10)===today).reduce((s,p)=>s+Number(p.Amount||0),0);
+  const todayIncome = (state.payments || []).filter(p=>String(p.Date||p.date||'').slice(0,10)===today).reduce((s,p)=>s+Number(p.Amount||p.amount||0),0);
+
+  // 48h delayed in workshop (active maintenance taking >= 48 hours)
+  const delayed48hList = r.filter(x => {
+    if(x.status==='مكتمل' || x.status==='تم التسليم' || x.status==='ملغي' || x.status==='تعذرت الصيانة' || x.status==='رفض العميل') return false;
+    const dStr = x.receivedAt || x.date || x.Date || '';
+    if(!dStr) return false;
+    const t = new Date(dStr).getTime();
+    return !isNaN(t) && (Date.now() - t) / 3600000 >= 48;
+  });
+
+  // Overdue completed devices (> 7 days sitting on shelf)
   const overdueList = r.filter(x=>{
     if(x.status!=='مكتمل') return false;
-    const d = new Date(x.updatedAt||x.date);
-    return (Date.now()-d.getTime())/86400000 > 7;
+    const dStr = x.updatedAt || x.receivedAt || x.date || x.Date || '';
+    if(!dStr) return false;
+    const t = new Date(dStr).getTime();
+    return !isNaN(t) && (Date.now() - t) / 86400000 > 7;
   });
+
+  // Remaining debt formula: Σ(Total - AmountPaid)
+  const remainingDebt = r
+    .filter(x => x.status !== 'ملغي' && x.status !== 'تعذرت الصيانة' && x.status !== 'رفض العميل')
+    .reduce((s, x) => {
+      const total = Number(x.cost||0) + Number(x.partsCost||0) + Number(x.otherAccountAmount||0);
+      const paid = Number(x.deposit||0);
+      return s + Math.max(0, total - paid + Number(x.refunded||0));
+    }, 0);
 
   main.innerHTML = `
     <div class="top-header">
@@ -1592,22 +1614,22 @@ function renderDashboard(main){
       </div>
     </div>
 
-    <div class="stat-grid">
-      <div class="stat-card blue">
+    <div class="stat-grid" style="grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));">
+      <div class="stat-card blue" id="dashCardInProgress" style="cursor:pointer;" title="عرض الأجهزة قيد الفحص والصيانة">
         <div class="top-row">
           <span class="lbl">أجهزة قيد العمل</span>
           <div class="icon-box">${getSvgIcon('maintenance', 16)}</div>
         </div>
         <div class="num mono">${inProgress}</div>
       </div>
-      <div class="stat-card green">
+      <div class="stat-card green" id="dashCardDone" style="cursor:pointer;" title="عرض الأجهزة الجاهزة للتسليم">
         <div class="top-row">
           <span class="lbl">جاهزة للاستلام</span>
           <div class="icon-box">${getSvgIcon('check', 16)}</div>
         </div>
         <div class="num mono">${done}</div>
       </div>
-      <div class="stat-card purple" style="border-right-color:#8b5cf6;">
+      <div class="stat-card purple" id="dashCardDelivered" style="border-right-color:#8b5cf6;cursor:pointer;" title="عرض الأجهزة المسلمة">
         <div class="top-row">
           <span class="lbl">تم تسليمها للعملاء</span>
           <div class="icon-box">${getSvgIcon('check', 16)}</div>
@@ -1621,14 +1643,28 @@ function renderDashboard(main){
         </div>
         <div class="num mono">${todayIncome.toLocaleString()} <span style="font-size:13px;font-weight:600;">ج.م</span></div>
       </div>
-      <div class="stat-card red">
+      <div class="stat-card amber" id="dashCardDelayed48h" style="border-right-color:#f59e0b;cursor:pointer;" title="أجهزة قيد الصيانة تجاوزت 48 ساعة بالورشة">
+        <div class="top-row">
+          <span class="lbl">متأخرة بالورشة (+48 س)</span>
+          <div class="icon-box" style="color:#d97706;">${getSvgIcon('clock', 16)}</div>
+        </div>
+        <div class="num mono" style="color:#d97706;">${delayed48hList.length}</div>
+      </div>
+      <div class="stat-card red" id="dashCardOverdue7d" style="cursor:pointer;" title="أجهزة مكتملة لم يستلمها العملاء لأكثر من أسبوع">
         <div class="top-row">
           <span class="lbl">متروكة +7 أيام</span>
           <div class="icon-box">${getSvgIcon('alert', 16)}</div>
         </div>
         <div class="num mono">${overdueList.length}</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card purple" style="border-right-color:#6366f1;">
+        <div class="top-row">
+          <span class="lbl">متبقي الصيانة والديون</span>
+          <div class="icon-box">${getSvgIcon('finance', 16)}</div>
+        </div>
+        <div class="num mono" style="font-size:18px;">${remainingDebt.toLocaleString()} <span style="font-size:12px;font-weight:600;">ج.م</span></div>
+      </div>
+      <div class="stat-card" id="dashCardTotal" style="cursor:pointer;" title="عرض كل أرشيف الصيانة">
         <div class="top-row">
           <span class="lbl">إجمالي الإيصالات</span>
           <div class="icon-box">${getSvgIcon('invoices', 16)}</div>
@@ -1637,12 +1673,23 @@ function renderDashboard(main){
       </div>
     </div>
 
-    ${overdueList.length > 0 ? `
-    <div class="card" style="border-right: 3px solid var(--amber);background:var(--amber-bg);color:var(--amber-text);padding:14px 18px;margin-bottom:18px;border-radius:var(--radius-sm);">
+    ${delayed48hList.length > 0 ? `
+    <div class="card" style="border-right: 4px solid var(--amber);background:rgba(245,158,11,0.06);color:var(--amber-text);padding:14px 18px;margin-bottom:14px;border-radius:var(--radius-sm);">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
         <div style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;">
           ${getSvgIcon('alert', 16)}
-          <span>يوجد <b>${overdueList.length}</b> أجهزة جاهزة ومكتملة الصيانة ولم يستلمها العملاء لأكثر من أسبوع!</span>
+          <span>تنبيه تشغيلي: يوجد <b>${delayed48hList.length}</b> أجهزة قيد الصيانة تجاوزت <b>48 ساعة</b> بالورشة دون إنجاز!</span>
+        </div>
+        <button class="btn btn-amber btn-sm" id="viewDelayed48hBtn">عرض الأجهزة المتأخرة بالورشة (${delayed48hList.length})</button>
+      </div>
+    </div>` : ''}
+
+    ${overdueList.length > 0 ? `
+    <div class="card" style="border-right: 4px solid var(--red);background:rgba(239,68,68,0.06);color:var(--red-text);padding:14px 18px;margin-bottom:14px;border-radius:var(--radius-sm);">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+        <div style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;">
+          ${getSvgIcon('alert', 16)}
+          <span>يوجد <b>${overdueList.length}</b> أجهزة مكتملة وجاهزة للاستلام لم يتسلمها العملاء منذ أكثر من <b>7 أيام</b>!</span>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <button class="btn btn-whatsapp btn-sm" id="dashBulkOverdueWaBtn">${WA_ICON} إرسال تذكيرات واتساب</button>
@@ -1681,6 +1728,25 @@ function renderDashboard(main){
     renderMain();
   };
 
+  // Card click navigations
+  const cardInProgress = document.getElementById('dashCardInProgress');
+  if(cardInProgress) cardInProgress.onclick = ()=>{ state.archiveFilter.group = 'active'; state.tab = 'archive'; renderMain(); };
+
+  const cardDone = document.getElementById('dashCardDone');
+  if(cardDone) cardDone.onclick = ()=>{ state.archiveFilter.group = 'done'; state.tab = 'archive'; renderMain(); };
+
+  const cardDelivered = document.getElementById('dashCardDelivered');
+  if(cardDelivered) cardDelivered.onclick = ()=>{ state.archiveFilter.group = 'delivered'; state.tab = 'archive'; renderMain(); };
+
+  const cardDelayed48h = document.getElementById('dashCardDelayed48h');
+  if(cardDelayed48h) cardDelayed48h.onclick = ()=>{ state.archiveFilter.group = 'delayed48h'; state.tab = 'archive'; renderMain(); };
+
+  const cardOverdue7d = document.getElementById('dashCardOverdue7d');
+  if(cardOverdue7d) cardOverdue7d.onclick = ()=>{ state.archiveFilter.group = 'overdue'; state.tab = 'archive'; renderMain(); };
+
+  const cardTotal = document.getElementById('dashCardTotal');
+  if(cardTotal) cardTotal.onclick = ()=>{ state.archiveFilter.group = 'all'; state.tab = 'archive'; renderMain(); };
+
   updateSyncStatusPill();
   document.getElementById('dashNewReceiptBtn').onclick = ()=>{
     state.tab = 'new';
@@ -1691,6 +1757,14 @@ function renderDashboard(main){
     renderMain();
   };
   document.getElementById('exportExcelDashBtn').onclick = ()=>exportReceiptsToExcel(state.receipts);
+
+  const del48Btn = document.getElementById('viewDelayed48hBtn');
+  if(del48Btn) del48Btn.onclick = ()=>{
+    state.archiveFilter.group = 'delayed48h';
+    state.tab = 'archive';
+    renderMain();
+  };
+
   const ovBtn = document.getElementById('viewOverdueBtn');
   if(ovBtn) ovBtn.onclick = ()=>{
     state.archiveFilter.group = 'overdue';

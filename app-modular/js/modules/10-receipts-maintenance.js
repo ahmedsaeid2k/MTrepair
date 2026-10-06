@@ -1161,6 +1161,7 @@ async function saveReceipt(d, printA5, sendWa, printSticker){
 const STATUS_GROUPS = {
   all: {label:'الكل', statuses:null},
   active: {label:'قيد العمل', statuses:['قيد الفحص','بانتظار موافقة العميل','بانتظار قطعة غيار','الصيانة']},
+  delayed48h: {label:'متأخرة بالورشة (+48 س)', statuses:null},
   done: {label:'جاهزة للاستلام', statuses:['مكتمل']},
   delivered: {label:'تم التسليم', statuses:['تم التسليم']},
   overdue: {label:'متروكة +7 أيام', statuses:null},
@@ -3228,7 +3229,8 @@ function archiveTable(list){
     const totalDue = Number(r.cost||0) + Number(r.partsCost||0) + otherAmt;
     const deposit = Number(r.deposit||0);
     const remaining = Math.max(0, totalDue - deposit + Number(r.refunded||0));
-    const isOverdue = r.status==='مكتمل' && (Date.now()-new Date(r.updatedAt||r.date).getTime())/86400000 > 7;
+    const intakeDateStr = r.updatedAt || r.receivedAt || r.date || r.Date || '';
+    const isOverdue = r.status==='مكتمل' && intakeDateStr && (Date.now()-new Date(intakeDateStr).getTime())/86400000 > 7;
     const cTitle = extractCustomerTitle(r);
     const cName = extractCustomerName(r) || 'عميل';
     const cPhone = extractCustomerPhone(r);
@@ -3267,8 +3269,8 @@ function archiveTable(list){
         </div>
         ${r.previousReceiptNumber ? `<div style="font-size:10px;color:#b45309;font-weight:700;margin-top:1px;direction:ltr;unicode-bidi:isolate;">صيانة راجعة (#${escapeHtml(r.previousReceiptNumber)})</div>` : ''}
         <div style="color:var(--ink-secondary);font-size:11px;display:flex;align-items:center;gap:4px;margin-top:2px;">
-          <span>${getSvgIcon("calendar", 11)} ${cleanDate(r.date)}</span>
-          ${(formatReceiptTime(r) || r.time) ? `<span class="mono" style="color:var(--primary);font-size:10px;font-weight:600;direction:ltr;unicode-bidi:isolate;">${getSvgIcon("clock", 11)} ${formatReceiptTime(r) || r.time}</span>` : ''}
+          <span>${getSvgIcon("calendar", 11)} ${cleanDate(r.receivedAt || r.date || r.Date)}</span>
+          ${(formatReceiptTime(r) || r.time || (r.receivedAt ? cleanTime(r.receivedAt) : '')) ? `<span class="mono" style="color:var(--primary);font-size:10px;font-weight:600;direction:ltr;unicode-bidi:isolate;">${getSvgIcon("clock", 11)} ${formatReceiptTime(r) || r.time || cleanTime(r.receivedAt)}</span>` : ''}
         </div>
       </td>
       <td>
@@ -3318,7 +3320,8 @@ function archiveCards(list){
     const totalDue = Number(r.cost||0) + Number(r.partsCost||0) + otherAmt;
     const deposit = Number(r.deposit||0);
     const remaining = Math.max(0, totalDue - deposit + Number(r.refunded||0));
-    const isOverdue = r.status==='مكتمل' && (Date.now()-new Date(r.updatedAt||r.date).getTime())/86400000 > 7;
+    const intakeDateStr = r.updatedAt || r.receivedAt || r.date || r.Date || '';
+    const isOverdue = r.status==='مكتمل' && intakeDateStr && (Date.now()-new Date(intakeDateStr).getTime())/86400000 > 7;
     const cTitle = extractCustomerTitle(r);
     const cName = extractCustomerName(r) || 'عميل';
     const cPhone = extractCustomerPhone(r);
@@ -3348,8 +3351,8 @@ function archiveCards(list){
                 ${r.previousReceiptNumber ? `<span class="badge" style="background:#fef3c7;color:#b45309;font-size:10px;font-weight:700;">صيانة راجعة (<span class="mono" style="direction:ltr;unicode-bidi:isolate;display:inline-block;">${escapeHtml(r.previousReceiptNumber)}</span>)</span>` : ''}
               </div>
               <div style="color:var(--ink-secondary);font-size:11px;display:flex;align-items:center;gap:6px;margin-top:3px;">
-                <span>${getSvgIcon("calendar", 11)} ${cleanDate(r.date)}</span>
-                ${(formatReceiptTime(r) || r.time) ? `<span class="mono" style="color:var(--primary);font-size:10.5px;font-weight:600;">${getSvgIcon("clock", 11)} ${formatReceiptTime(r) || r.time}</span>` : ''}
+                <span>${getSvgIcon("calendar", 11)} ${cleanDate(r.receivedAt || r.date || r.Date)}</span>
+                ${(formatReceiptTime(r) || r.time || (r.receivedAt ? cleanTime(r.receivedAt) : '')) ? `<span class="mono" style="color:var(--primary);font-size:10.5px;font-weight:600;">${getSvgIcon("clock", 11)} ${formatReceiptTime(r) || r.time || cleanTime(r.receivedAt)}</span>` : ''}
               </div>
             </div>
           </div>
@@ -3418,14 +3421,34 @@ function renderArchive(main){
   let list = [...state.receipts];
 
   if(f.group==='overdue'){
-    list = list.filter(r=>r.status==='مكتمل' && (Date.now()-new Date(r.updatedAt||r.date).getTime())/86400000 > 7);
+    list = list.filter(r=>{
+      if(r.status!=='مكتمل') return false;
+      const dStr = r.updatedAt || r.receivedAt || r.date || r.Date || '';
+      if(!dStr) return false;
+      const t = new Date(dStr).getTime();
+      return !isNaN(t) && (Date.now() - t) / 86400000 > 7;
+    });
+  } else if(f.group==='delayed48h'){
+    list = list.filter(r=>{
+      if(r.status==='مكتمل' || r.status==='تم التسليم' || r.status==='ملغي' || r.status==='تعذرت الصيانة' || r.status==='رفض العميل') return false;
+      const dStr = r.receivedAt || r.date || r.Date || '';
+      if(!dStr) return false;
+      const t = new Date(dStr).getTime();
+      return !isNaN(t) && (Date.now() - t) / 3600000 >= 48;
+    });
   } else if(f.group==='unclaimed'){
-    list = list.filter(r=>r.status!=='تم التسليم' && r.status!=='ملغي' && (Date.now()-new Date(r.updatedAt||r.deliveryDate||r.date).getTime())/86400000 > 30);
+    list = list.filter(r=>{
+      if(r.status==='تم التسليم' || r.status==='ملغي') return false;
+      const dStr = r.updatedAt || r.deliveryDate || r.receivedAt || r.date || r.Date || '';
+      if(!dStr) return false;
+      const t = new Date(dStr).getTime();
+      return !isNaN(t) && (Date.now() - t) / 86400000 > 30;
+    });
   } else if(f.group==='warranty'){
     const todayStr = (typeof localDateStr === 'function') ? localDateStr() : new Date().toISOString().slice(0, 10);
     list = list.filter(r => r.previousReceiptId || r.reIntakeReason || (r.warrantyEnd && r.warrantyEnd >= todayStr) || r.isUnderWarranty);
   } else {
-    const groupStatuses = STATUS_GROUPS[f.group].statuses;
+    const groupStatuses = STATUS_GROUPS[f.group] ? STATUS_GROUPS[f.group].statuses : null;
     if(groupStatuses) list = list.filter(r=>groupStatuses.includes(r.status));
   }
 

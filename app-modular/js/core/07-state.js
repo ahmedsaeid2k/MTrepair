@@ -114,7 +114,7 @@ let state = {
   theme: (function(){ try{ return localStorage.getItem('microerp_theme') || 'light'; }catch(e){ return 'light'; } })()
 };
 window.state = state;
-window.render = render;
+window.render = function(...args){ if(typeof render === 'function') return render(...args); };
 
 function applyThemeAndAppearance(){
   const t = state.theme || 'light';

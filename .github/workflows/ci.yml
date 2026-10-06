@@ -1,0 +1,37 @@
+name: CI & Code Quality
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Verify, Lint & Unit Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: 1. Verify Modular Bundler & Syntax
+        run: npm run verify
+
+      - name: 2. Run ESLint Quality Check
+        run: npm run lint
+
+      - name: 3. Run Automated Vitest Unit Tests
+        run: npm test

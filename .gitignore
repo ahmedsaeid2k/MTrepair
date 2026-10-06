@@ -1,7 +1,12 @@
 .DS_Store
+**/.DS_Store
+*.DS_Store
 node_modules/
 dist-desktop/
 dist-electron/
 release/
 app-modular/dist/
-
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

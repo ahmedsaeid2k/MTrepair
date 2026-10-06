@@ -102,11 +102,13 @@ async function init(){
   setInterval(async ()=>{
     if(document.hidden) return; // Do not waste bandwidth/quota if tab is in background
     if(navigator.onLine){
-      if(getSyncQueue().length > 0){
+      const pendingItems = getSyncQueue().filter(i => i.status !== 'failed_terminal');
+      if(pendingItems.length > 0){
         await syncOfflineQueue();
       }
-      // Pull fresh data from cloud (bypass SWR cache with _force)
-      if(!state.draft){
+      // Pull fresh data from cloud only if offline queue has no pending items (conflict guard)
+      const stillPending = getSyncQueue().filter(i => i.status !== 'failed_terminal');
+      if(stillPending.length === 0 && !state.draft){
         const isTyping = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT');
         const modalOpen = !!document.querySelector('.modal-overlay, .modal-backdrop, .modal, [id*="Modal"]');
         if(!isTyping && !modalOpen){

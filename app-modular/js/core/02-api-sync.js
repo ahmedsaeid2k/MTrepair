@@ -100,6 +100,13 @@ function setCache(key, val){
 }
 
 /* Offline Sync Queue */
+function generateUUID() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'uuid_' + Date.now() + '_' + Math.random().toString(36).slice(2, 11);
+}
+
 function getSyncQueue(){
   try { return JSON.parse(localStorage.getItem('microerp_sync_queue') || '[]'); } catch(e){ return []; }
 }
@@ -112,13 +119,35 @@ function addToSyncQueue(action, data){
   // Strip sessionToken from offline queue storage in localStorage to prevent token exposure on disk
   const itemData = { ...(data || {}) };
   delete itemData.sessionToken;
+
+  // U5: Ensure clientRef (idempotency key) is generated AT CREATION TIME
+  if (!itemData.clientRef && !itemData.ClientRef) {
+    itemData.clientRef = generateUUID();
+  }
+  const clientRef = itemData.clientRef || itemData.ClientRef;
+
   const serialized = JSON.stringify({action, data: itemData});
-  const alreadyInQueue = q.some(item => JSON.stringify({action: item.action, data: item.data}) === serialized);
+  const alreadyInQueue = q.some(item => {
+    if (item.action !== action) return false;
+    const itemRef = item.clientRef || (item.data && (item.data.clientRef || item.data.ClientRef));
+    if (itemRef && itemRef === clientRef) return true;
+    return JSON.stringify({action: item.action, data: item.data}) === serialized;
+  });
   if(alreadyInQueue){
     console.warn(`[addToSyncQueue] Suppressed identical pending queue item for ${action}`);
     return;
   }
-  q.push({ id: 'sync_' + Date.now() + '_' + Math.random().toString(36).slice(2,7), action, data: itemData, timestamp: new Date().toISOString() });
+  q.push({
+    id: 'sync_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+    clientRef: clientRef,
+    action: action,
+    data: itemData,
+    retryCount: 0,
+    status: 'pending', // 'pending' | 'failed_terminal'
+    lastError: null,
+    nextRetryAt: 0,
+    timestamp: new Date().toISOString()
+  });
   saveSyncQueue(q);
 }
 
@@ -159,7 +188,15 @@ class ClientRequestThrottler {
 }
 const networkThrottler = new ClientRequestThrottler(3);
 
-async function fetchBootstrapData(){
+async function fetchBootstrapData(forceOverwrite = false){
+  const pendingQueue = getSyncQueue().filter(i => i.status !== 'failed_terminal');
+  if (pendingQueue.length > 0 && !forceOverwrite) {
+    console.warn(`[fetchBootstrapData] State overwrite prevented: ${pendingQueue.length} pending items in offline queue.`);
+    if (typeof showToast === 'function') {
+      showToast(`⚠️ توجد ${pendingQueue.length} عمليات معلقة في طابور المزامنة. تم الاحتفاظ بالبيانات المحلية حتى اكتمال رفع العمليات.`, 'warning', 6000);
+    }
+    return false;
+  }
   try {
     const res = await apiGet('getBootstrapData');
     if(res && res.ok){
@@ -274,14 +311,18 @@ async function apiGet(action, params){
 }
 
 async function apiPost(action, data){
+  const payloadData = { ...(data || {}) };
+  if (!payloadData.clientRef && !payloadData.ClientRef) {
+    payloadData.clientRef = generateUUID();
+  }
   if(!navigator.onLine){
-    addToSyncQueue(action, data);
-    return { ok: true, offline: true };
+    addToSyncQueue(action, payloadData);
+    return { ok: true, offline: true, clientRef: payloadData.clientRef };
   }
   return networkThrottler.schedule(async () => {
     try {
       const token = getSessionToken();
-      const payload = { action, ...(token ? {sessionToken: token} : {}), ...data };
+      const payload = { action, ...(token ? {sessionToken: token} : {}), ...payloadData };
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 25000);
       const res = await fetch(API_URL, {
@@ -301,8 +342,8 @@ async function apiPost(action, data){
     } catch(e) {
       if(e.message && e.message.includes('جلسة العمل')) throw e;
       console.warn(`apiPost network error on ${action}, enqueuing for background sync:`, e.message);
-      addToSyncQueue(action, data);
-      return { ok: true, offline: true };
+      addToSyncQueue(action, payloadData);
+      return { ok: true, offline: true, clientRef: payloadData.clientRef };
     }
   });
 }
@@ -353,17 +394,39 @@ async function syncOfflineQueue(isManual = false){
   const q = getSyncQueue();
   if(!q.length) { 
     updateSyncStatusPill(); 
-    if(isManual) showToast('لا توجد أي عمليات معلقة — كافة البيانات متزامنة تماماً مع السحابة', 'success');
+    if(isManual && typeof showToast === 'function') {
+      showToast('لا توجد أي عمليات معلقة — كافة البيانات متزامنة تماماً مع السحابة', 'success');
+    }
     return; 
+  }
+
+  const now = Date.now();
+  // If automatic sync: skip terminal failures and items that haven't reached nextRetryAt
+  const eligibleItems = isManual
+    ? q
+    : q.filter(item => item.status !== 'failed_terminal' && (!item.nextRetryAt || now >= item.nextRetryAt));
+
+  if (!eligibleItems.length) {
+    updateSyncStatusPill();
+    return;
   }
 
   isSyncingNow = true;
   updateSyncStatusPill();
-  if(isManual) showToast(`جاري مزامنة ${q.length} عمليات مسجلة دون إنترنت...`, 'info', 2500);
+  if(isManual && typeof showToast === 'function') {
+    showToast(`جاري مزامنة ${eligibleItems.length} عمليات مسجلة...`, 'info', 2500);
+  }
 
   const remaining = [];
   const currentToken = getSessionToken();
+
   for(const item of q){
+    // In automatic mode, preserve items not yet eligible
+    if (!isManual && (item.status === 'failed_terminal' || (item.nextRetryAt && now < item.nextRetryAt))) {
+      remaining.push(item);
+      continue;
+    }
+
     try {
       const payload = {
         action: item.action,
@@ -373,6 +436,10 @@ async function syncOfflineQueue(isManual = false){
       if (!payload.sessionToken && currentToken) {
         payload.sessionToken = currentToken;
       }
+      if (!payload.clientRef && !payload.ClientRef && item.clientRef) {
+        payload.clientRef = item.clientRef;
+      }
+
       const res = await fetch(API_URL, {
         method: 'POST',
         headers: {'Content-Type': 'text/plain;charset=utf-8'},
@@ -380,10 +447,24 @@ async function syncOfflineQueue(isManual = false){
       });
       const json = await res.json();
       if(json && json.error) throw new Error(json.error);
+
+      if(json && json.duplicateSuppressed){
+        console.log(`[syncOfflineQueue] Item ${item.id} (${item.action}) was already processed on server (idempotent duplicate suppressed).`);
+      }
+      // Successfully pushed to server; omit from remaining to remove from queue
     } catch(err) {
       console.warn('Sync failed for item:', item, err);
       item.retryCount = (item.retryCount || 0) + 1;
       item.lastError = err.message || 'Unknown network error';
+      if (item.retryCount >= 10) {
+        item.status = 'failed_terminal';
+        item.nextRetryAt = 0;
+      } else {
+        // Exponential backoff: min(2^retry * 1000, 300,000ms = 5min)
+        const backoffMs = Math.min(Math.pow(2, Math.min(item.retryCount, 10)) * 1000, 300000);
+        item.nextRetryAt = Date.now() + backoffMs;
+        item.status = 'pending';
+      }
       remaining.push(item);
     }
   }
@@ -392,12 +473,15 @@ async function syncOfflineQueue(isManual = false){
   isSyncingNow = false;
   updateSyncStatusPill();
 
+  const terminalCount = remaining.filter(i => i.status === 'failed_terminal').length;
+
   if(remaining.length === 0){
-    if(isManual) showToast('تم مزامنة كافة العمليات بنجاح مع السحابة', 'success');
+    if(isManual && typeof showToast === 'function') {
+      showToast('تم مزامنة كافة العمليات بنجاح مع السحابة', 'success');
+    }
     // Refresh memory from cloud using unified bootstrap
     try {
       await fetchBootstrapData();
-      // Only refresh view if user is in Maintenance and not editing/typing
       if(state.currentSection === 'maintenance' && !state.draft){
         const isTyping = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT');
         const modalOpen = !!document.querySelector('.modal-overlay, .modal-backdrop, .modal, [id*="Modal"]');
@@ -407,8 +491,94 @@ async function syncOfflineQueue(isManual = false){
       }
     } catch(e){}
   } else {
-    if(isManual) showToast(`تبقى ${remaining.length} عمليات في الطابور سيتم رفعها تلقائياً.`, 'info');
+    if(isManual && typeof showToast === 'function') {
+      let msg = `تبقى ${remaining.length} عمليات في الطابور.`;
+      if (terminalCount > 0) {
+        msg += ` (${terminalCount} عمليات فشلت نهائياً بعد 10 محاولات وتحتاج مراجعة)`;
+      }
+      showToast(msg, terminalCount > 0 ? 'warning' : 'info', 5000);
+    }
   }
+}
+
+/* U5 Queue Helper Functions */
+function retrySingleQueueItem(itemId){
+  const q = getSyncQueue();
+  const item = q.find(i => i.id === itemId);
+  if(!item) return false;
+  item.status = 'pending';
+  item.retryCount = 0;
+  item.nextRetryAt = 0;
+  saveSyncQueue(q);
+  updateSyncStatusPill();
+  syncOfflineQueue(true);
+  return true;
+}
+
+function deleteSingleQueueItem(itemId){
+  const q = getSyncQueue();
+  const nextQ = q.filter(i => i.id !== itemId);
+  saveSyncQueue(nextQ);
+  updateSyncStatusPill();
+  if (typeof showToast === 'function') {
+    showToast('تم حذف العملية من طابور المزامنة بنجاح', 'info');
+  }
+  return true;
+}
+
+function exportSingleQueueItem(itemId){
+  const q = getSyncQueue();
+  const item = q.find(i => i.id === itemId);
+  if(!item) return;
+  const jsonStr = JSON.stringify(item, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `microerp_queue_item_${itemId}_${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function retryAllFailedQueueItems(){
+  const q = getSyncQueue();
+  let count = 0;
+  q.forEach(i => {
+    if (i.status === 'failed_terminal' || (i.retryCount && i.retryCount > 0)) {
+      i.status = 'pending';
+      i.retryCount = 0;
+      i.nextRetryAt = 0;
+      count++;
+    }
+  });
+  if (count === 0) {
+    if (typeof showToast === 'function') showToast('لا توجد عمليات فاشلة لإعادة المحاولة', 'info');
+    return;
+  }
+  saveSyncQueue(q);
+  updateSyncStatusPill();
+  if (typeof showToast === 'function') showToast(`تمت إعادة جدولة ${count} عمليات للمزامنة الفورية`, 'info');
+  syncOfflineQueue(true);
+}
+
+function exportAllQueueItems(){
+  const q = getSyncQueue();
+  if (!q.length) {
+    if (typeof showToast === 'function') showToast('طابور المزامنة فارغ حالياً', 'info');
+    return;
+  }
+  const jsonStr = JSON.stringify(q, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `microerp_sync_queue_full_${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function clearOfflineSyncQueue(){
@@ -416,10 +586,12 @@ function clearOfflineSyncQueue(){
     localStorage.removeItem('microerp_sync_queue');
   } catch(e){}
   updateSyncStatusPill();
-  showToast('تم تفريغ طابور المزامنة المعلق بنجاح', 'success');
+  if (typeof showToast === 'function') {
+    showToast('تم تفريغ طابور المزامنة المعلق بنجاح', 'success');
+  }
 }
 
-/* Listen to online/offline network events */
+/* Listen to online/offline network events & periodic backoff check */
 window.addEventListener('online', ()=>{
   updateSyncStatusPill();
   syncOfflineQueue(false);
@@ -428,23 +600,51 @@ window.addEventListener('offline', ()=>{
   updateSyncStatusPill();
 });
 
+// Periodic backoff check: retry pending eligible items every 30s
+setInterval(() => {
+  if (navigator.onLine && !document.hidden && !isSyncingNow) {
+    const q = getSyncQueue();
+    const now = Date.now();
+    if (q.some(i => i.status !== 'failed_terminal' && (!i.nextRetryAt || now >= i.nextRetryAt))) {
+      syncOfflineQueue(false);
+    }
+  }
+}, 30000);
+
 function updateSyncStatusPill(){
   const pill = document.getElementById('networkSyncPill');
   if(!pill) return;
   const q = getSyncQueue();
+  const terminalCount = q.filter(i => i.status === 'failed_terminal').length;
+  const pendingCount = q.filter(i => i.status !== 'failed_terminal').length;
+
   if(!navigator.onLine){
     pill.className = 'sync-pill offline';
+    pill.style.borderColor = '';
+    pill.style.color = '';
     pill.innerHTML = `<span class="sync-dot"></span><span>غير متصل</span>${q.length ? `<span class="mono">(${q.length} معلقة)</span>` : ''}`;
     pill.title = 'أنت تعمل حالياً في الوضع المحلي (أوفلاين)، وسيتم حفظ وتطبيق كل العمليات تلقائياً.';
   } else if(isSyncingNow){
     pill.className = 'sync-pill syncing';
+    pill.style.borderColor = '';
+    pill.style.color = '';
     pill.innerHTML = `<span class="sync-dot"></span><span>جاري المزامنة...</span>`;
-  } else if(q.length > 0){
+  } else if(terminalCount > 0){
     pill.className = 'sync-pill offline';
-    pill.innerHTML = `<span class="sync-dot"></span><span>${q.length} عمليات معلقة</span>`;
+    pill.style.borderColor = 'var(--red)';
+    pill.style.color = 'var(--red-text)';
+    pill.innerHTML = `<span class="sync-dot" style="background:var(--red);"></span><span>${terminalCount} فشل نهائي${pendingCount > 0 ? ` (${pendingCount} معلقة)` : ''}</span>`;
+    pill.title = 'توجد عمليات فشلت بعد 10 محاولات، اضغط للانتقال إلى إدارة المزامنة أو المزامنة الفورية';
+  } else if(pendingCount > 0){
+    pill.className = 'sync-pill offline';
+    pill.style.borderColor = '';
+    pill.style.color = '';
+    pill.innerHTML = `<span class="sync-dot"></span><span>${pendingCount} عمليات معلقة</span>`;
     pill.title = 'اضغط للمزامنة الفورية مع السحابة';
   } else {
     pill.className = 'sync-pill online';
+    pill.style.borderColor = '';
+    pill.style.color = '';
     pill.innerHTML = `<span class="sync-dot"></span><span>متصل ومتزامن</span>`;
     pill.title = 'النظام متصل بالسحابة ومتزامن بالكامل';
   }

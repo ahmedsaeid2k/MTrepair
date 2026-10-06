@@ -2162,36 +2162,144 @@ function renderFaultsSettings(main){
   });
 }
 
-/* 7. Cloud Sync & Offline Diagnostics */
+/* 7. Cloud Sync & Offline Diagnostics [U5] */
 function renderSyncSettings(main){
   const queue = getSyncQueue();
   const isOnline = navigator.onLine;
+  const terminalCount = queue.filter(i => i.status === 'failed_terminal').length;
+  const pendingCount = queue.filter(i => i.status !== 'failed_terminal').length;
+
+  const ACTION_LABELS = {
+    saveSale: 'تسجيل عملية بيع',
+    saveReceipt: 'تسجيل / تعديل إيصال صيانة',
+    savePayment: 'سند صرف / قبض مالي',
+    saveReturn: 'مرتجع مبيعات',
+    savePurchase: 'فاتورة مشتريات',
+    saveExpense: 'تسجيل مصروف',
+    saveInvoice: 'فاتورة ضريبية / مبيعات',
+    saveCustomer: 'إضافة / تعديل عميل',
+    saveItem: 'صنف مخزون',
+    saveSupplier: 'بيانات مورد',
+    settleSaleDebt: 'سداد مديونية بيع'
+  };
+
+  const queueRowsHtml = queue.map((item, idx) => {
+    const actionName = ACTION_LABELS[item.action] || item.action || 'عملية غير معروفة';
+    const clientRefDisplay = item.clientRef || (item.data && (item.data.clientRef || item.data.ClientRef)) || item.id || '—';
+    const isTerminal = item.status === 'failed_terminal';
+    const retryCount = item.retryCount || 0;
+    const timeFormatted = item.timestamp ? new Date(item.timestamp).toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+    
+    let statusBadge = '';
+    if (isTerminal) {
+      statusBadge = `<span class="status-badge st-reject" style="background:#fee2e2;color:#b91c1c;font-weight:700;">فشل نهائي (${retryCount}/10)</span>`;
+    } else if (retryCount > 0) {
+      statusBadge = `<span class="status-badge st-repair" style="background:#fef3c7;color:#b45309;">معلق (${retryCount}/10)</span>`;
+    } else {
+      statusBadge = `<span class="status-badge st-new">معلق للرفع</span>`;
+    }
+
+    const errText = item.lastError ? escapeHtml(item.lastError) : '—';
+
+    return `
+      <tr>
+        <td style="font-weight:700;color:var(--ink-secondary);">${idx + 1}</td>
+        <td>
+          <div style="font-weight:700;font-size:13px;">${actionName}</div>
+          <div style="font-size:11px;color:var(--ink-secondary);font-family:monospace;">${escapeHtml(item.action)}</div>
+        </td>
+        <td>
+          <span class="mono" style="font-size:11.5px;background:var(--paper3);padding:2px 6px;border-radius:4px;" title="${escapeHtml(clientRefDisplay)}">
+            ${escapeHtml(clientRefDisplay.length > 18 ? clientRefDisplay.slice(0, 16) + '...' : clientRefDisplay)}
+          </span>
+        </td>
+        <td style="font-size:12px;color:var(--ink-secondary);">${timeFormatted}</td>
+        <td>${statusBadge}</td>
+        <td style="max-width:220px;">
+          <div style="font-size:11.5px;color:${item.lastError ? 'var(--red-text)' : 'var(--ink-secondary)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${errText}">
+            ${errText}
+          </div>
+        </td>
+        <td>
+          <div style="display:flex;gap:4px;justify-content:flex-end;">
+            <button class="btn btn-ghost btn-sm retry-single-btn" data-id="${item.id}" title="إعادة محاولة المزامنة الفورية">${getSvgIcon("refresh", 13)}</button>
+            <button class="btn btn-ghost btn-sm export-single-btn" data-id="${item.id}" title="تصدير بيانات العملية">${getSvgIcon("download", 13)}</button>
+            <button class="btn btn-ghost btn-sm delete-single-btn" data-id="${item.id}" title="حذف من الطابور" style="color:var(--red);">${getSvgIcon("trash", 13)}</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
 
   main.innerHTML = `
     ${renderSettingsNavHeader('المزامنة السحابية والصيانة', 'فحص حالة الاتصال بـ Google Sheets، مزامنة العمليات المعلقة، وإدارة الكاش المحلي')}
 
     <div class="card" style="border-right:4px solid ${isOnline?'var(--green)':'var(--amber)'};">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
         <h3 style="margin:0;font-size:16px;">حالة الاتصال والبيئة السحابية</h3>
         <span class="status-badge ${isOnline?'st-done':'st-repair'}">${isOnline?'متصل بالإنترنت':'وضع غير متصل (Offline)'}</span>
       </div>
-      <p style="font-size:13px;color:var(--ink-secondary);line-height:1.6;">
-        يعمل نظام <b>ميكروERP</b> بتقنية <b>Dual-Sync Hybrid Engine</b> التي تسمح لك بالعمل وتسجيل الإيصالات والمبيعات واليومية حتى في حالة انقطاع الإنترنت، ويتم رفع وتزامن كافة العمليات فور عودة الاتصال دون أي فقدان للبيانات.
+      <p style="font-size:13px;color:var(--ink-secondary);line-height:1.6;margin-bottom:16px;">
+        يعمل نظام <b>ميكروERP</b> بتقنية <b>Dual-Sync Hybrid Engine مع التحصين ضد التكرار (Idempotency)</b> والتراجع الأسي التلقائي (Exponential Backoff). يتم حفظ كل عملية محلياً بمرجع فريد مشفّر، ورفعها للسحابة دون تكرار حتى لو انقطع الاتصال أو أُعيدت المحاولة عدة مرات.
       </p>
 
-      <div style="background:var(--paper3);border-radius:var(--radius-sm);padding:14px;margin:16px 0;display:flex;justify-content:space-between;align-items:center;">
-        <div>
-          <div style="font-weight:800;font-size:13.5px;">العمليات المعلقة في طابور المزامنة (Offline Queue):</div>
-          <div style="font-size:12px;color:var(--ink-secondary);margin-top:2px;">${queue.length === 0 ? 'لا توجد عمليات معلقة - كافة البيانات متزامنة تماماً مع السحابة' : `${queue.length} عملية بانتظار الرفع للسحابة`}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;margin-bottom:18px;">
+        <div style="background:var(--paper3);border-radius:var(--radius-sm);padding:12px 14px;border:1px solid var(--line);">
+          <div style="font-size:11.5px;color:var(--ink-secondary);">إجمالي طابور العمليات</div>
+          <div class="num mono" style="font-size:22px;font-weight:800;color:${queue.length > 0 ? 'var(--amber-text)' : 'var(--green-text)'};margin-top:4px;">${queue.length}</div>
         </div>
-        <div class="num mono" style="font-size:22px;color:${queue.length>0?'var(--amber-text)':'var(--green-text)'};">${queue.length}</div>
+        <div style="background:var(--paper3);border-radius:var(--radius-sm);padding:12px 14px;border:1px solid var(--line);">
+          <div style="font-size:11.5px;color:var(--ink-secondary);">عمليات معلقة قيد الرفع</div>
+          <div class="num mono" style="font-size:22px;font-weight:800;color:var(--primary);margin-top:4px;">${pendingCount}</div>
+        </div>
+        <div style="background:var(--paper3);border-radius:var(--radius-sm);padding:12px 14px;border:1px solid var(--line);">
+          <div style="font-size:11.5px;color:var(--ink-secondary);">عمليات فشل نهائي (10 محاولات)</div>
+          <div class="num mono" style="font-size:22px;font-weight:800;color:${terminalCount > 0 ? 'var(--red-text)' : 'var(--ink-secondary)'};margin-top:4px;">${terminalCount}</div>
+        </div>
       </div>
 
-      <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        <button class="btn btn-primary" id="forceSyncBtn">${getSvgIcon("refresh", 14)} مزامنة كافة العمليات المعلقة الآن</button>
-        ${queue.length > 0 ? `<button class="btn btn-ghost" id="clearQueueBtn" style="color:var(--red);">${getSvgIcon("trash", 13)} تفريغ طابور المزامنة المعلق</button>` : ''}
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+        <button class="btn btn-primary" id="forceSyncBtn">${getSvgIcon("refresh", 14)} مزامنة العمليات المعلقة الآن</button>
+        ${terminalCount > 0 ? `<button class="btn btn-ghost" id="retryFailedQueueBtn" style="color:var(--amber-text);border-color:var(--amber);">${getSvgIcon("refresh", 14)} إعادة محاولة الفشل النهائي (${terminalCount})</button>` : ''}
+        ${queue.length > 0 ? `<button class="btn btn-ghost" id="exportAllQueueBtn">${getSvgIcon("download", 14)} تصدير الطابور كملف JSON</button>` : ''}
+        ${queue.length > 0 ? `<button class="btn btn-ghost" id="clearQueueBtn" style="color:var(--red);">${getSvgIcon("trash", 13)} تفريغ طابور المزامنة</button>` : ''}
         <button class="btn btn-ghost" id="reloadCloudDataBtn">${getSvgIcon("refresh", 14)} إعادة تحميل البيانات من السحابة</button>
       </div>
+    </div>
+
+    <!-- بطاقة استعراض وإدارة طابور المزامنة التفاعلي -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+        <h3 style="margin:0;font-size:15px;">سجل عناصر طابور المزامنة المحلي (Sync Queue)</h3>
+        <span style="font-size:12px;color:var(--ink-secondary);">المحاولات تتم تلقائياً بتدرج زمني أسي (1s -> 2s -> 4s -> ... -> 5min)</span>
+      </div>
+
+      ${queue.length === 0 ? `
+        <div style="text-align:center;padding:32px 16px;color:var(--ink-secondary);background:var(--paper3);border-radius:var(--radius-sm);border:1px dashed var(--line);">
+          <div style="font-size:26px;margin-bottom:8px;">✓</div>
+          <div style="font-weight:700;font-size:14px;color:var(--green-text);">طابور المزامنة فارغ تماماً</div>
+          <div style="font-size:12px;margin-top:4px;">كافة العمليات والبيانات تم حفظها ورفعها للسحابة بنجاح دون أي تأخير.</div>
+        </div>
+      ` : `
+        <div class="table-container" style="max-height:420px;overflow-y:auto;border:1px solid var(--line);border-radius:var(--radius-sm);">
+          <table class="table" style="margin:0;font-size:12.5px;">
+            <thead style="position:sticky;top:0;background:var(--paper2);z-index:2;">
+              <tr>
+                <th style="width:40px;">#</th>
+                <th>نوع العملية</th>
+                <th>معرف الطلب (ClientRef)</th>
+                <th>وقت التسجيل</th>
+                <th>الحالة والمحاولات</th>
+                <th>آخر استجابة / خطأ</th>
+                <th style="text-align:left;">إجراءات</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${queueRowsHtml}
+            </tbody>
+          </table>
+        </div>
+      `}
     </div>
 
     <div class="card" style="border-right:4px solid var(--primary);">
@@ -2225,10 +2333,28 @@ function renderSyncSettings(main){
     };
   }
 
-  document.getElementById('forceSyncBtn').onclick = async ()=>{
-    await syncOfflineQueue(true);
-    renderSyncSettings(main);
-  };
+  const forceSyncBtn = document.getElementById('forceSyncBtn');
+  if(forceSyncBtn){
+    forceSyncBtn.onclick = async ()=>{
+      await syncOfflineQueue(true);
+      renderSyncSettings(main);
+    };
+  }
+
+  const retryFailedBtn = document.getElementById('retryFailedQueueBtn');
+  if(retryFailedBtn){
+    retryFailedBtn.onclick = async ()=>{
+      retryAllFailedQueueItems();
+      renderSyncSettings(main);
+    };
+  }
+
+  const exportAllBtn = document.getElementById('exportAllQueueBtn');
+  if(exportAllBtn){
+    exportAllBtn.onclick = ()=>{
+      exportAllQueueItems();
+    };
+  }
 
   const clearQueueBtn = document.getElementById('clearQueueBtn');
   if(clearQueueBtn){
@@ -2239,6 +2365,32 @@ function renderSyncSettings(main){
       }
     };
   }
+
+  // Row-level action buttons
+  main.querySelectorAll('.retry-single-btn').forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.dataset.id;
+      retrySingleQueueItem(id);
+      renderSyncSettings(main);
+    };
+  });
+
+  main.querySelectorAll('.export-single-btn').forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.dataset.id;
+      exportSingleQueueItem(id);
+    };
+  });
+
+  main.querySelectorAll('.delete-single-btn').forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.dataset.id;
+      if(confirm('هل أنت متأكد من حذف هذه العملية من طابور المزامنة؟')){
+        deleteSingleQueueItem(id);
+        renderSyncSettings(main);
+      }
+    };
+  });
 
   document.getElementById('reloadCloudDataBtn').onclick = async ()=>{
     showToast('جاري جلب أحدث البيانات من السحابة...', 'info');

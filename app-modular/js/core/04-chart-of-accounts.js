@@ -848,13 +848,20 @@ function getSupplierLiveBalance(supName){
 async function loadReceipts(params){
   try {
     const rows = await apiGet('getReceipts', params);
-    if(Array.isArray(rows) && rows.length > 0){
-      state.receipts = rows.map(rowToReceipt);
-      setCache('receipts_raw', rows);
-      setCache('receipts', state.receipts);
+    if(Array.isArray(rows)){
+      if(rows.length > 0){
+        state.receipts = rows.map(rowToReceipt);
+        setCache('receipts_raw', rows);
+        setCache('receipts', state.receipts);
 
-      // Extract customers from receipts that are missing from the directory
-      _extractCustomersFromReceipts();
+        // Extract customers from receipts that are missing from the directory
+        _extractCustomersFromReceipts();
+      } else if(navigator.onLine){
+        // Cloud sheet is legitimately empty and client is online
+        state.receipts = [];
+        setCache('receipts_raw', []);
+        setCache('receipts', []);
+      }
     }
   } catch(e){
     console.warn('loadReceipts fetch failed or offline:', e);
@@ -942,52 +949,61 @@ function _extractCustomersFromReceipts(){
 async function loadCustomers(params){
   try {
     const rows = await apiGet('getCustomers', params);
-    if(Array.isArray(rows) && rows.length > 0){
-      const cloudList = [];
-      const seen = new Set();
-      rows.forEach(r => {
-        const name = extractCustomerName(r);
-        const phone = extractCustomerPhone(r);
-        const email = extractCustomerEmail(r);
-        const title = extractCustomerTitle(r);
-        const taxNumber = r.TaxNumber || r.taxNumber || '';
-        const address = r.Address || r.address || '';
-        const key = `${(name||'').trim().toLowerCase()}_${(phone||'').trim()}`;
-        if((name || phone) && !seen.has(key)){
-          seen.add(key);
-          cloudList.push({ title, name: name || 'عميل', phone: phone || '', email: email || '', taxNumber, address });
-        }
-      });
-
-      // === SAFE MERGE: preserve local customers not yet in cloud ===
-      const merged = [...cloudList];
-      const cloudKeys = new Set(cloudList.map(c => (c.name||'').trim().toLowerCase()));
-      const cloudPhones = new Set(cloudList.filter(c => c.phone).map(c => c.phone.trim()));
-
-      // Keep any local-only customers (added via receipts/POS but not yet synced to cloud)
-      (state.customers || []).forEach(local => {
-        const localName = (local.name||'').trim().toLowerCase();
-        const localPhone = (local.phone||'').trim();
-        const inCloudByName = localName && localName !== 'عميل' && localName !== 'زبون' && cloudKeys.has(localName);
-        const inCloudByPhone = localPhone && localPhone !== '0000000000' && cloudPhones.has(localPhone);
-        if(!inCloudByName && !inCloudByPhone){
-          // This customer exists locally but NOT in cloud — preserve it and try to sync
-          merged.push(local);
-          if(local.name && local.name !== 'عميل'){
-            try { saveCustomerRemote(local); } catch(e){ console.warn('Re-sync local customer:', e); }
+    if(Array.isArray(rows)){
+      if(rows.length > 0){
+        const cloudList = [];
+        const seen = new Set();
+        rows.forEach(r => {
+          const name = extractCustomerName(r);
+          const phone = extractCustomerPhone(r);
+          const email = extractCustomerEmail(r);
+          const title = extractCustomerTitle(r);
+          const taxNumber = r.TaxNumber || r.taxNumber || '';
+          const address = r.Address || r.address || '';
+          const key = `${(name||'').trim().toLowerCase()}_${(phone||'').trim()}`;
+          if((name || phone) && !seen.has(key)){
+            seen.add(key);
+            cloudList.push({ title, name: name || 'عميل', phone: phone || '', email: email || '', taxNumber, address });
           }
-        } else if(inCloudByName && localPhone && !inCloudByPhone) {
-          // Customer exists in cloud by name but with different/missing phone — update cloud entry
-          const cloudEntry = merged.find(c => (c.name||'').trim().toLowerCase() === localName);
-          if(cloudEntry && (!cloudEntry.phone || cloudEntry.phone === '0000000000') && localPhone !== '0000000000'){
-            cloudEntry.phone = localPhone;
-          }
-        }
-      });
+        });
 
-      state.customers = merged;
-      deduplicateCustomerDirectory();
-      setCache('customers', state.customers);
+        // === SAFE MERGE: preserve local customers not yet in cloud ===
+        const merged = [...cloudList];
+        const cloudKeys = new Set(cloudList.map(c => (c.name||'').trim().toLowerCase()));
+        const cloudPhones = new Set(cloudList.filter(c => c.phone).map(c => c.phone.trim()));
+
+        // Keep any local-only customers (added via receipts/POS but not yet synced to cloud)
+        (state.customers || []).forEach(local => {
+          const localName = (local.name||'').trim().toLowerCase();
+          const localPhone = (local.phone||'').trim();
+          const inCloudByName = localName && localName !== 'عميل' && localName !== 'زبون' && cloudKeys.has(localName);
+          const inCloudByPhone = localPhone && localPhone !== '0000000000' && cloudPhones.has(localPhone);
+          if(!inCloudByName && !inCloudByPhone){
+            // This customer exists locally but NOT in cloud — preserve it and try to sync
+            merged.push(local);
+            if(local.name && local.name !== 'عميل'){
+              try { saveCustomerRemote(local); } catch(e){ console.warn('Re-sync local customer:', e); }
+            }
+          } else if(inCloudByName && localPhone && !inCloudByPhone) {
+            // Customer exists in cloud by name but with different/missing phone — update cloud entry
+            const cloudEntry = merged.find(c => (c.name||'').trim().toLowerCase() === localName);
+            if(cloudEntry && (!cloudEntry.phone || cloudEntry.phone === '0000000000') && localPhone !== '0000000000'){
+              cloudEntry.phone = localPhone;
+            }
+          }
+        });
+
+        state.customers = merged;
+        deduplicateCustomerDirectory();
+        setCache('customers', state.customers);
+      } else if(navigator.onLine){
+        // Cloud customers sheet is legitimately empty
+        const localCustomers = (state.customers || []).filter(c => c && c.name && c.name !== 'عميل' && c.name !== 'زبون');
+        if(localCustomers.length === 0){
+          state.customers = [];
+          setCache('customers', []);
+        }
+      }
     }
   } catch(e){
     console.warn('loadCustomers remote get failed:', e);

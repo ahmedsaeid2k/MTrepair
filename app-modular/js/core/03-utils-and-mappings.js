@@ -682,6 +682,29 @@ function formatReceiptDateTime(rawR){
   return tStr ? `${dStr} — ${tStr}` : dStr;
 }
 
+/* ---- Warranty End Date Computation Helper ---- */
+function computeWarrantyEndDate(startDateStr, months = 3){
+  if(!startDateStr) return '';
+  try {
+    const cleanStr = String(startDateStr).slice(0, 10);
+    const parts = cleanStr.split('-');
+    if(parts.length !== 3) return '';
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10) - 1;
+    const d = parseInt(parts[2], 10);
+    if(isNaN(y) || isNaN(m) || isNaN(d)) return '';
+    const date = new Date(y, m + Number(months || 0), d);
+    if(isNaN(date.getTime())) return '';
+    const resY = date.getFullYear();
+    const resM = String(date.getMonth() + 1).padStart(2, '0');
+    const resD = String(date.getDate()).padStart(2, '0');
+    return `${resY}-${resM}-${resD}`;
+  } catch(e){
+    return '';
+  }
+}
+window.computeWarrantyEndDate = computeWarrantyEndDate;
+
 /* ---- Mapping between internal shape and flat sheet rows ---- */
 function receiptToRow(d){
   const cTitle = extractCustomerTitle(d);
@@ -691,6 +714,9 @@ function receiptToRow(d){
 
   const pass = (d.device && d.device.password) || d.password || '';
   const timeStr = d.time || formatReceiptTime(d) || '';
+  const wMonths = Number(d.warrantyMonths != null ? d.warrantyMonths : 3);
+  const wEnd = d.warrantyEnd || (d.deliveryDate || d.date ? computeWarrantyEndDate(d.deliveryDate || d.date, wMonths) : '');
+  const approvalJSON = d.customerApproval ? (typeof d.customerApproval === 'string' ? d.customerApproval : JSON.stringify(d.customerApproval)) : '';
 
   return {
     ID: d.id, ReceiptNumber: d.receiptNumber, TrackToken: d.trackToken || d.TrackToken || '', Date: d.date, Time: timeStr,
@@ -704,6 +730,9 @@ function receiptToRow(d){
     InspectionFee: d.inspectionFee != null ? d.inspectionFee : '',
     EstimateTime: d.estimateTime || '',
     Warranty: d.warranty || '',
+    WarrantyMonths: wMonths,
+    WarrantyEnd: wEnd,
+    CustomerApprovalJSON: approvalJSON,
     ServiceItems: (Array.isArray(d.serviceItems) && d.serviceItems.length) ? JSON.stringify(d.serviceItems) : '',
     Devices: (Array.isArray(d.devices) && d.devices.length) ? JSON.stringify(d.devices) : '',
     Photos: (Array.isArray(d.photos) && d.photos.length) ? JSON.stringify(d.photos) : '',
@@ -778,6 +807,16 @@ function rowToReceipt(row){
     inspectionFee: (row.InspectionFee != null && row.InspectionFee !== '') ? Number(row.InspectionFee) : ((row.inspectionFee != null && row.inspectionFee !== '') ? Number(row.inspectionFee) : null),
     estimateTime: row.EstimateTime || row.estimateTime || '',
     warranty: row.Warranty || row.warranty || '',
+    warrantyMonths: Number(row.WarrantyMonths != null ? row.WarrantyMonths : (row.warrantyMonths != null ? row.warrantyMonths : 3)),
+    warrantyEnd: row.WarrantyEnd || row.warrantyEnd || ((row.DeliveryDate || row.Date || row.date) ? computeWarrantyEndDate(row.DeliveryDate || row.Date || row.date, Number(row.WarrantyMonths != null ? row.WarrantyMonths : (row.warrantyMonths != null ? row.warrantyMonths : 3))) : ''),
+    customerApproval: (()=>{
+      const rawA = row.CustomerApprovalJSON || row.customerApprovalJSON || row.CustomerApproval || row.customerApproval;
+      if(rawA && typeof rawA === 'object') return rawA;
+      if(typeof rawA === 'string' && rawA.trim()){
+        try { const p = JSON.parse(rawA); if(p && typeof p === 'object') return p; }catch(e){}
+      }
+      return null;
+    })(),
     serviceItems: sItems,
     otherAccountDesc: row.OtherAccountDesc || row.otherAccountDesc || '',
     otherAccountAmount: Number(row.OtherAccountAmount != null ? row.OtherAccountAmount : (row.otherAccountAmount || 0)),
@@ -1001,24 +1040,65 @@ function normalizeReceipt(r){
   }
   r.devices = rawDevs;
 
-  // Keep first device mirrored to top-level for 100% backward compatibility
-  if(r.devices.length > 0){
-    const d0 = r.devices[0];
-    r.device.category = d0.category;
-    r.device.brand = d0.brand;
-    r.device.brandOther = d0.brandOther;
-    r.device.model = d0.model;
-    r.device.accessories = d0.accessories;
-    r.device.password = d0.password;
-    if(r.devices.length === 1){
-      r.faults = d0.faults;
-      r.faultNotes = d0.faultNotes;
-      if(d0.photos && d0.photos.length && (!r.photos || !r.photos.length)){
-        r.photos = d0.photos;
-      } else if(r.photos && r.photos.length && (!d0.photos || !d0.photos.length)){
-        d0.photos = r.photos;
+  // Unify Device Model: r.devices is the single source of truth
+  if(r.activeDeviceIndex == null || r.activeDeviceIndex < 0 || r.activeDeviceIndex >= r.devices.length){
+    r.activeDeviceIndex = 0;
+  }
+  try {
+    Object.defineProperty(r, 'device', {
+      configurable: true,
+      enumerable: true,
+      get() {
+        if(!this.devices || !this.devices.length) return {};
+        const idx = (this.activeDeviceIndex != null && this.activeDeviceIndex >= 0 && this.activeDeviceIndex < this.devices.length) ? this.activeDeviceIndex : 0;
+        return this.devices[idx] || this.devices[0] || {};
+      },
+      set(val) {
+        if(!this.devices) this.devices = [];
+        const idx = (this.activeDeviceIndex != null && this.activeDeviceIndex >= 0) ? this.activeDeviceIndex : 0;
+        this.devices[idx] = val;
       }
+    });
+  } catch(e){}
+
+  if(r.devices.length === 1){
+    const d0 = r.devices[0];
+    if(Array.isArray(d0.faults) && d0.faults.length && (!r.faults || !r.faults.length)){
+      r.faults = [...d0.faults];
     }
+    if(d0.faultNotes && !r.faultNotes) r.faultNotes = d0.faultNotes;
+    if(d0.photos && d0.photos.length && (!r.photos || !r.photos.length)){
+      r.photos = d0.photos;
+    } else if(r.photos && r.photos.length && (!d0.photos || !d0.photos.length)){
+      d0.photos = r.photos;
+    }
+  }
+
+  // Normalize Warranty
+  r.warrantyMonths = Number(r.warrantyMonths != null ? r.warrantyMonths : (r.WarrantyMonths != null ? r.WarrantyMonths : 3));
+  if(isNaN(r.warrantyMonths) || r.warrantyMonths < 0) r.warrantyMonths = 3;
+  r.WarrantyMonths = r.warrantyMonths;
+
+  r.warrantyEnd = r.warrantyEnd || r.WarrantyEnd || computeWarrantyEndDate(r.deliveryDate || r.date, r.warrantyMonths);
+  r.WarrantyEnd = r.warrantyEnd;
+
+  // Normalize Customer Approval
+  if(!r.customerApproval){
+    const rawA = r.CustomerApprovalJSON || r.customerApprovalJSON || r.CustomerApproval;
+    if(rawA && typeof rawA === 'object'){
+      r.customerApproval = rawA;
+    } else if(typeof rawA === 'string' && rawA.trim()){
+      try { const p = JSON.parse(rawA); if(p && typeof p === 'object') r.customerApproval = p; } catch(e){}
+    }
+  }
+  if(r.customerApproval && typeof r.customerApproval === 'object'){
+    r.customerApproval.approved = r.customerApproval.approved !== false;
+    r.customerApproval.approverName = String(r.customerApproval.approverName || (r.customer && r.customer.name) || '');
+    r.customerApproval.channel = String(r.customerApproval.channel || 'هاتف');
+    r.customerApproval.approvedCost = Number(r.customerApproval.approvedCost != null ? r.customerApproval.approvedCost : (r.cost || 0));
+    r.customerApproval.approvedAt = String(r.customerApproval.approvedAt || r.updatedAt || r.date || '');
+    r.customerApproval.recordedBy = String(r.customerApproval.recordedBy || (state.user && state.user.name) || 'نظام');
+    r.customerApproval.notes = String(r.customerApproval.notes || '');
   }
 
   return r;

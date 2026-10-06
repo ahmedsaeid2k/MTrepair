@@ -1909,7 +1909,7 @@ function getAllRows(sheetName) {
 function ensureHeaders(sh, obj) {
   // Whitelist of allowed column names per sheet to prevent schema pollution attacks
   const ALLOWED_HEADERS = {
-    'Receipts': ['ID','ReceiptNumber','TrackToken','Date','CustomerTitle','CustomerName','CustomerPhone','CustomerEmail','Category','Brand','Model','Accessories','Faults','FaultNotes','Technician','Cost','Deposit','Refunded','RefundMethod','RefundReason','PartsCost','PartsUsed','DeliveryDate','Status','Paid','Bonus','CreatedBy','UpdatedBy','UpdatedAt'],
+    'Receipts': ['ID','ReceiptNumber','TrackToken','Date','Time','ReceivedAt','CustomerTitle','CustomerName','CustomerPhone','CustomerEmail','Category','Brand','Model','Accessories','Password','Faults','FaultNotes','Technician','Cost','Deposit','Refunded','RefundMethod','RefundReason','PartsCost','PartsUsed','PartsJSON','InspectionFee','EstimateTime','Warranty','WarrantyMonths','WarrantyEnd','CustomerApprovalJSON','ServiceItems','Devices','Photos','OtherAccountDesc','OtherAccountAmount','DeliveryDate','Status','Paid','Bonus','CreatedBy','UpdatedBy','UpdatedAt','PreviousReceiptID','PreviousReceiptNumber','RootReceiptID','ReIntakeReason','ServiceCycle','NextReceiptID','NextReceiptNumber'],
     'Customers': ['Name','Phone','Email','Address','TaxNumber','Debt','Notes'],
     'Technicians': ['Name'],
     'Settings': ['Key','Value'],

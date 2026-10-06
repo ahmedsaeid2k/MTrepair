@@ -706,6 +706,121 @@ function promptPaymentDeliveryStatus(r, amt, onProceed){
   };
 }
 
+/* ---------------- Customer Approval Modal ---------------- */
+function openCustomerApprovalModal(rawR, onApproved, onCancelled){
+  if(!rawR) return;
+  const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'customerApprovalModalOverlay';
+  overlay.style.zIndex = '10005';
+
+  const cFullName = (typeof formatCustomerFullName === 'function') ? formatCustomerFullName(r) : ((r.customer && r.customer.name) || extractCustomerName(r) || 'العميل');
+  const dCat = escapeHtml((r.device && r.device.category) || 'جهاز');
+  const dBrand = escapeHtml(r.device ? (r.device.brand==='أخرى' ? r.device.brandOther : r.device.brand) : '');
+  const dModel = escapeHtml((r.device && r.device.model) || '');
+  const rNum = escapeHtml(String(r.receiptNumber || ''));
+
+  const currentApproval = r.customerApproval || {};
+  const defApprover = currentApproval.approverName || cFullName;
+  const defChannel = currentApproval.channel || 'واتساب';
+  const defCost = currentApproval.approvedCost != null ? Number(currentApproval.approvedCost) : (Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0));
+  const defNotes = currentApproval.notes || (r.faultNotes || '');
+
+  overlay.innerHTML = `
+    <div class="modal-content" style="max-width:480px;padding:22px;border-radius:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
+        <h3 style="margin:0;font-size:16px;display:flex;align-items:center;gap:7px;color:#047857;">
+          <span>${getSvgIcon('check', 16)}</span> <span>توثيق واعتماد موافقة العميل على الصيانة</span>
+        </h3>
+        <button class="btn btn-ghost btn-xs" id="closeCustApprovalModal" style="font-size:16px;line-height:1;padding:4px 8px;">&times;</button>
+      </div>
+
+      <div style="background:var(--paper3);padding:10px 12px;border-radius:var(--radius-sm);margin-bottom:14px;font-size:12.5px;line-height:1.6;">
+        <div><b>الإيصال:</b> <span class="mono" style="color:var(--primary);font-weight:700;">#${rNum}</span> | <b>العميل:</b> ${escapeHtml(cFullName)}</div>
+        <div><b>الجهاز:</b> ${dCat} - ${dBrand} ${dModel}</div>
+        <div style="margin-top:4px;color:#b45309;font-weight:700;font-size:11.5px;">
+          ⚠️ يشترط توثيق موافقة العميل وقناة التواصل والتكلفة المتفق عليها قبل الانتقال لمرحلة "الصيانة".
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px;">
+        <div class="field" style="margin-bottom:0;">
+          <label style="font-weight:700;font-size:12px;">اسم صاحب الموافقة / المستلم:</label>
+          <input type="text" id="custApprovalApprover" value="${escapeHtml(defApprover)}" placeholder="اسم العميل أو الشخص المعتمد" style="font-weight:700;">
+        </div>
+
+        <div class="grid2" style="gap:10px;">
+          <div class="field" style="margin-bottom:0;">
+            <label style="font-weight:700;font-size:12px;">قناة التواصل / الاعتماد:</label>
+            <select id="custApprovalChannel" style="font-weight:700;">
+              <option value="واتساب" ${defChannel==='واتساب'?'selected':''}>واتساب (محادثة موثقة)</option>
+              <option value="مكالمة هاتفية" ${defChannel==='مكالمة هاتفية'?'selected':''}>مكالمة هاتفية مسجلة</option>
+              <option value="حضور شخصي بالمركز" ${defChannel==='حضور شخصي بالمركز'?'selected':''}>حضور شخصي بالمركز</option>
+              <option value="اعتماد مقايسة النظام (واتساب)" ${defChannel==='اعتماد مقايسة النظام (واتساب)'?'selected':''}>اعتماد مقايسة النظام (واتساب)</option>
+              <option value="أخرى" ${defChannel==='أخرى'?'selected':''}>أخرى</option>
+            </select>
+          </div>
+          <div class="field" style="margin-bottom:0;">
+            <label style="font-weight:700;font-size:12px;">التكلفة المعتمدة (ج.م):</label>
+            <input type="number" id="custApprovalCost" value="${defCost}" min="0" step="10" placeholder="0" style="font-weight:800;color:#047857;">
+          </div>
+        </div>
+
+        <div class="field" style="margin-bottom:0;">
+          <label style="font-weight:700;font-size:12px;">ملاحظات وشروط الموافقة:</label>
+          <textarea id="custApprovalNotes" rows="2" placeholder="أي تفاصيل اتفق عليها مع العميل (نوع القطع، المهلة...)" style="font-size:12px;">${escapeHtml(defNotes)}</textarea>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding-top:12px;">
+        <button class="btn btn-ghost btn-sm" id="cancelCustApprovalModal">إلغاء</button>
+        <button class="btn btn-green btn-sm" id="confirmCustApprovalBtn" style="font-weight:800;padding:7px 16px;">
+          ${getSvgIcon('check', 14)} تأكيد واعتماد الموافقة
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const close = ()=>{ overlay.remove(); };
+
+  overlay.querySelector('#closeCustApprovalModal').onclick = ()=>{
+    close();
+    if(typeof onCancelled === 'function') onCancelled();
+  };
+  overlay.querySelector('#cancelCustApprovalModal').onclick = ()=>{
+    close();
+    if(typeof onCancelled === 'function') onCancelled();
+  };
+
+  overlay.querySelector('#confirmCustApprovalBtn').onclick = ()=>{
+    const approverName = (overlay.querySelector('#custApprovalApprover').value || '').trim() || cFullName;
+    const channel = overlay.querySelector('#custApprovalChannel').value;
+    const approvedCost = Number(overlay.querySelector('#custApprovalCost').value || 0);
+    const notes = (overlay.querySelector('#custApprovalNotes').value || '').trim();
+
+    const approvalData = {
+      approved: true,
+      approverName,
+      channel,
+      approvedCost,
+      approvedAt: new Date().toISOString(),
+      recordedBy: (state.user && state.user.name) || 'نظام',
+      notes
+    };
+
+    r.customerApproval = approvalData;
+    if(approvedCost > 0 && Number(r.cost || 0) === 0 && Number(r.partsCost || 0) === 0){
+      r.cost = approvedCost;
+    }
+
+    close();
+    if(typeof onApproved === 'function') onApproved(approvalData);
+  };
+}
+
 /* ---------------- Quick Status Changer Modal ---------------- */
 function openQuickStatusModal(rawR){
   if(!rawR) return;
@@ -775,6 +890,29 @@ function openQuickStatusModal(rawR){
   if(quickStatusCostEstBtn) quickStatusCostEstBtn.onclick = ()=>{ overlay.remove(); openCostEstimateModal(r); };
 
   let isQuickStatusBusy = false;
+
+  async function applyQuickStatusChange(statusToSet, techToSet, shouldSendWa){
+    r.status = statusToSet;
+    if(techToSet) r.technician = techToSet;
+    r.updatedBy = state.user.name;
+    r.updatedAt = new Date().toISOString();
+    recordAuditLog('تغيير حالة جهاز', 'صيانة', `تم تغيير حالة الجهاز للإيصال #${r.receiptNumber} إلى "${statusToSet}" للعميل (${r.customer ? r.customer.name : extractCustomerName(r)})`, r.id);
+
+    showToast(`تم تحديث حالة الإيصال محلياً: ${statusToSet}`, 'info');
+    overlay.remove();
+    renderMain();
+
+    try{
+      await saveReceiptRemote(r);
+      showToast(`تم حفظ وتحديث حالة الجهاز بنجاح: ${statusToSet} `, 'success');
+      if(shouldSendWa){
+        setTimeout(()=>sendWhatsappByStatus(r, statusToSet), 400);
+      }
+    }catch(e){
+      showToast('تم الحفظ محلياً (وضع غير متصل)', 'info');
+    }
+  }
+
   overlay.querySelectorAll('[data-setstatus]').forEach(btn=>{
     btn.onclick = async ()=>{
       if(isQuickStatusBusy) return;
@@ -782,6 +920,17 @@ function openQuickStatusModal(rawR){
       const newTech = overlay.querySelector('#quickTechSelect').value;
       const sendWa = overlay.querySelector('#sendWaAfterStatus').checked;
       const remaining = Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0) - Number(r.deposit||0) + Number(r.refunded||0);
+
+      // إذا كان الانتقال إلى "الصيانة" بدون توثيق موافقة العميل
+      if(newStatus === 'الصيانة' && (!r.customerApproval || !r.customerApproval.approved)){
+        openCustomerApprovalModal(r, async (approval)=>{
+          recordAuditLog('اعتماد موافقة العميل', 'صيانة', `تم تسجيل موافقة العميل (${approval.approverName}) عبر [${approval.channel}] بتكلفة ${approval.approvedCost} ج.م للإيصال #${r.receiptNumber}`, r.id);
+          await applyQuickStatusChange('الصيانة', newTech, sendWa);
+        }, ()=>{
+          showToast('تم إلغاء الانتقال إلى الصيانة لعدم توثيق موافقة العميل', 'warning');
+        });
+        return;
+      }
 
       // إذا كان التغيير إلى "تم التسليم" وهناك مبلغ متبقي غير مسدد
       if(newStatus === 'تم التسليم' && remaining > 0){
@@ -839,25 +988,7 @@ function openQuickStatusModal(rawR){
         return;
       }
 
-      r.status = newStatus;
-      if(newTech) r.technician = newTech;
-      r.updatedBy = state.user.name;
-      r.updatedAt = new Date().toISOString();
-      recordAuditLog('تغيير حالة جهاز', 'صيانة', `تم تغيير حالة الجهاز للإيصال #${r.receiptNumber} إلى "${newStatus}" للعميل (${r.customer.name})`, r.id);
-
-      showToast(`تم تحديث حالة الإيصال محلياً: ${newStatus}`, 'info');
-      overlay.remove();
-      renderMain();
-
-      try{
-        await saveReceiptRemote(r);
-        showToast(`تم حفظ وتحديث حالة الجهاز بنجاح: ${newStatus} `, 'success');
-        if(sendWa){
-          setTimeout(()=>sendWhatsappByStatus(r, newStatus), 400);
-        }
-      }catch(e){
-        showToast('تم الحفظ محلياً (وضع غير متصل)', 'info');
-      }
+      await applyQuickStatusChange(newStatus, newTech, sendWa);
     };
   });
 }
@@ -890,9 +1021,13 @@ function getStatusCustomMessage(rawR, status){
   else if(s === 'تم التسليم' || s === 'delivered') key = 'delivered';
   else if(s === 'الصيانة' || s === 'repair') key = 'repair';
   else if(s === 'قيد الفحص' || s === 'check') key = 'check';
+  else if(s === 'بانتظار موافقة العميل' || s === 'await_approval') key = 'await_approval';
+  else if(s === 'بانتظار قطعة غيار' || s === 'await_parts') key = 'await_parts';
   else if(s === 'overdue_reminder' || s === 'overdue' || s === 'متروكة') key = 'overdue';
+  else if(s === 'unclaimed' || s === 'غير مطالب' || s === 'لم تطالب' || s === 'لم تُطالَب') key = 'unclaimed';
   else if(s === 'تعذرت الصيانة' || s === 'unrepairable') key = 'unrepairable';
   else if(s === 'رفض العميل' || s === 'rejected') key = 'rejected';
+  else if(s === 'ملغي' || s === 'canceled' || s === 'cancelled') key = 'canceled';
   else if(s === 'intake' || s === 'استلام جديد' || s === 'استلام') key = 'intake';
   else if(s === 'معلق' || s === 'pending') key = 'pending';
   else if(s === 'ضمان' || s === 'تحت الضمان' || s === 'warranty') key = 'warranty';
@@ -975,9 +1110,13 @@ function openWhatsappStatusNotificationModal(rawR, statusOrKey, onSent){
   else if(s === 'تم التسليم' || s === 'delivered') currentKey = 'delivered';
   else if(s === 'الصيانة' || s === 'repair') currentKey = 'repair';
   else if(s === 'قيد الفحص' || s === 'check') currentKey = 'check';
+  else if(s === 'بانتظار موافقة العميل' || s === 'await_approval') currentKey = 'await_approval';
+  else if(s === 'بانتظار قطعة غيار' || s === 'await_parts') currentKey = 'await_parts';
   else if(s === 'overdue_reminder' || s === 'overdue' || s === 'متروكة') currentKey = 'overdue';
+  else if(s === 'unclaimed' || s === 'غير مطالب' || s === 'لم تطالب' || s === 'لم تُطالَب') currentKey = 'unclaimed';
   else if(s === 'تعذرت الصيانة' || s === 'unrepairable') currentKey = 'unrepairable';
   else if(s === 'رفض العميل' || s === 'rejected') currentKey = 'rejected';
+  else if(s === 'ملغي' || s === 'canceled' || s === 'cancelled') currentKey = 'canceled';
   else if(s === 'intake' || s === 'استلام جديد' || s === 'استلام') currentKey = 'intake';
   else if(s === 'معلق' || s === 'pending') currentKey = 'pending';
   else if(s === 'ضمان' || s === 'تحت الضمان' || s === 'warranty') currentKey = 'warranty';
@@ -986,14 +1125,18 @@ function openWhatsappStatusNotificationModal(rawR, statusOrKey, onSent){
   const templateOptions = [
     { k: 'intake', icon: getSvgIcon('download', 14), label: 'استلام جديد' },
     { k: 'check', icon: getSvgIcon('search', 14), label: 'قيد الفحص' },
+    { k: 'await_approval', icon: getSvgIcon('clock', 14), label: 'بانتظار الموافقة' },
     { k: 'repair', icon: getSvgIcon('tool', 14), label: 'الصيانة' },
+    { k: 'await_parts', icon: getSvgIcon('tool', 14), label: 'بانتظار قطعة غيار' },
     { k: 'done', icon: getSvgIcon('check', 14), label: 'جاهز للاستلام' },
     { k: 'delivered', icon: getSvgIcon('truck', 14), label: 'تم التسليم' },
     { k: 'pending', icon: getSvgIcon('pause', 14), label: 'معلق' },
     { k: 'warranty', icon: getSvgIcon('shield', 14), label: 'تحت الضمان' },
     { k: 'overdue', icon: getSvgIcon('clock', 14), label: 'تذكير (+7 أيام)' },
+    { k: 'unclaimed', icon: getSvgIcon('alert', 14), label: 'لم يُطالَب (+30 يوم)' },
     { k: 'unrepairable', icon: getSvgIcon('alert', 14), label: 'تعذر الإصلاح' },
-    { k: 'rejected', icon: getSvgIcon('x', 14), label: 'رفض الصيانة' }
+    { k: 'rejected', icon: getSvgIcon('x', 14), label: 'رفض الصيانة' },
+    { k: 'canceled', icon: getSvgIcon('x', 14), label: 'ملغي' }
   ];
 
   const cFullName = (typeof formatCustomerFullName === 'function') ? formatCustomerFullName(r) : ((r.customer && r.customer.name) || extractCustomerName(r) || 'عميل');
@@ -1370,21 +1513,22 @@ function openBulkOverdueWhatsappModal(initialDays){
         <!-- Header -->
         <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:14px;">
           <div>
-            <h3 style="margin:0;font-size:17px;display:flex;align-items:center;gap:7px;color:#d97706;">
-              ${WA_ICON} <span>إرسال تذكيرات واتساب للأجهزة المتروكة (+7 أيام)</span>
+            <h3 style="margin:0;font-size:17px;display:flex;align-items:center;gap:7px;color:${daysThreshold>=30?'#b45309':'#d97706'};">
+              ${WA_ICON} <span>${daysThreshold>=30 ? 'إرسال إشعارات واتساب للأجهزة غير المطالب بها (+30 يوم)' : 'إرسال تذكيرات واتساب للأجهزة المتروكة (+7 أيام)'}</span>
             </h3>
-            <p style="margin:4px 0 0 0;font-size:12px;color:var(--ink-secondary);">تذكير العملاء باستلام أجهزتهم الجاهزة والمكتملة وسداد المستحقات المتبقية</p>
+            <p style="margin:4px 0 0 0;font-size:12px;color:var(--ink-secondary);">${daysThreshold>=30 ? 'إشعار نهائي للعملاء بالاستلام وسداد المستحقات قبل تطبيق سياسة الأجهزة المهملة' : 'تذكير العملاء باستلام أجهزتهم الجاهزة والمكتملة وسداد المستحقات المتبقية'}</p>
           </div>
           <button class="btn btn-ghost btn-xs" id="closeBulkOverdueModal" style="font-size:16px;line-height:1;padding:4px 8px;">&times;</button>
         </div>
 
         <!-- Filter Pills & Summary -->
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
-          <div style="display:flex;gap:6px;align-items:center;">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
             <span style="font-size:12px;font-weight:700;">فترة الانتظار:</span>
             <button type="button" class="btn btn-xs ${daysThreshold===3?'btn-primary':'btn-ghost'}" id="filterDays3Btn">أكثر من 3 أيام</button>
             <button type="button" class="btn btn-xs ${daysThreshold===7?'btn-primary':'btn-ghost'}" id="filterDays7Btn">أكثر من 7 أيام (أسبوع)</button>
             <button type="button" class="btn btn-xs ${daysThreshold===14?'btn-primary':'btn-ghost'}" id="filterDays14Btn">أكثر من 14 يوم (أسبوعين)</button>
+            <button type="button" class="btn btn-xs ${daysThreshold===30?'btn-primary':'btn-ghost'}" id="filterDays30Btn" style="${daysThreshold===30?'background:#b45309;border-color:#b45309;':''}">أكثر من 30 يوم (شهر)</button>
           </div>
           <div style="font-size:12.5px;background:var(--amber-bg);color:var(--amber-text);padding:4px 10px;border-radius:6px;font-weight:700;">
             ${overdue.length} أجهزة متأخرة | ${selectedIds.size} محددة (${totalRemaining.toLocaleString()} ج.م متبقي)
@@ -1487,9 +1631,11 @@ function openBulkOverdueWhatsappModal(initialDays){
     const d3 = overlay.querySelector('#filterDays3Btn');
     const d7 = overlay.querySelector('#filterDays7Btn');
     const d14 = overlay.querySelector('#filterDays14Btn');
+    const d30 = overlay.querySelector('#filterDays30Btn');
     if(d3) d3.onclick = () => { daysThreshold = 3; selectedIds = new Set(getOverdueList().map(x=>x.id)); renderContent(); };
     if(d7) d7.onclick = () => { daysThreshold = 7; selectedIds = new Set(getOverdueList().map(x=>x.id)); renderContent(); };
     if(d14) d14.onclick = () => { daysThreshold = 14; selectedIds = new Set(getOverdueList().map(x=>x.id)); renderContent(); };
+    if(d30) d30.onclick = () => { daysThreshold = 30; selectedIds = new Set(getOverdueList().map(x=>x.id)); renderContent(); };
 
     const selectAll = overlay.querySelector('#selectAllOverdue');
     if(selectAll){
@@ -1515,7 +1661,7 @@ function openBulkOverdueWhatsappModal(initialDays){
     overlay.querySelectorAll('.row-send-overdue-wa').forEach(btn => {
       btn.onclick = () => {
         const r = overdue.find(x => x.id === btn.dataset.rid);
-        if(r) openWhatsappStatusNotificationModal(r, 'overdue');
+        if(r) openWhatsappStatusNotificationModal(r, daysThreshold >= 30 ? 'unclaimed' : 'overdue');
       };
     });
 
@@ -1571,7 +1717,7 @@ function openBulkOverdueWhatsappModal(initialDays){
       runnerNext.onclick = () => {
         const cur = runnerList[runnerIndex];
         if(cur){
-          const msg = getStatusCustomMessage(cur, 'overdue');
+          const msg = getStatusCustomMessage(cur, daysThreshold >= 30 ? 'unclaimed' : 'overdue');
           sendWhatsapp(cur, msg);
         }
         runnerIndex++;
@@ -2026,6 +2172,15 @@ function openCostEstimateModal(rawR){
         r.faultNotes = vals.faultsReport;
       }
       r.status = 'الصيانة';
+      r.customerApproval = {
+        approved: true,
+        approverName: (r.customer && r.customer.name) || extractCustomerName(r) || 'العميل',
+        channel: 'اعتماد مقايسة النظام (واتساب)',
+        approvedCost: vals.cost,
+        approvedAt: new Date().toISOString(),
+        recordedBy: (state.user && state.user.name) || 'نظام',
+        notes: vals.faultsReport || 'تم اعتماد المقايسة والتكلفة عبر نافذة مقايسة النظام'
+      };
       r.quotationStatus = 'approved';
       r.quotationDecidedAt = new Date().toISOString();
       r.updatedBy = (state.user && state.user.name) || 'نظام';
@@ -3293,6 +3448,50 @@ async function openReceiptDetail(rawR){
         </div>
     </div>
 
+    <!-- كارت توثيق موافقة العميل وفترة الضمان -->
+    <div class="card" style="background:var(--paper3);padding:12px;border-radius:var(--radius-sm);margin-top:10px;border:1px solid var(--line);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
+        <div style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;">
+          <span>${r.customerApproval && r.customerApproval.approved ? '✅' : '⚠️'}</span>
+          <span>توثيق موافقة العميل على الصيانة:</span>
+          ${r.customerApproval && r.customerApproval.approved ?
+            `<span class="badge" style="background:var(--green-bg);color:var(--green-text);font-weight:700;font-size:11px;">معتمد (${escapeHtml(r.customerApproval.channel || 'موثق')})</span>` :
+            `<span class="badge" style="background:var(--amber-bg);color:var(--amber-text);font-weight:700;font-size:11px;">غير معتمد بعد</span>`
+          }
+        </div>
+        <button type="button" class="btn btn-ghost btn-xs" id="detailCustomerApprovalBtn" style="border:1px solid var(--line);background:var(--surface);font-weight:700;">
+          ${r.customerApproval && r.customerApproval.approved ? 'تعديل بيانات الموافقة' : 'تسجيل موافقة العميل الآن'}
+        </button>
+      </div>
+      ${r.customerApproval && r.customerApproval.approved ? `
+        <div style="font-size:11.5px;color:var(--ink-secondary);line-height:1.6;background:var(--surface);padding:6px 10px;border-radius:6px;border:1px dashed var(--line);margin-bottom:8px;">
+          <b>المعتمد:</b> ${escapeHtml(r.customerApproval.approverName || '-')} | 
+          <b>القناة:</b> ${escapeHtml(r.customerApproval.channel || '-')} | 
+          <b>التكلفة المعتمدة:</b> <b class="mono" style="color:var(--green);">${Number(r.customerApproval.approvedCost||0).toLocaleString()} ج.م</b> | 
+          <b>التاريخ:</b> ${cleanDate(r.customerApproval.approvedAt)}
+          ${r.customerApproval.notes ? `<br><b>ملاحظات:</b> ${escapeHtml(r.customerApproval.notes)}` : ''}
+        </div>
+      ` : ''}
+
+      <!-- حقول مدة الضمان وتاريخ الانتهاء -->
+      <div class="grid2" style="margin-top:6px;gap:8px;">
+        <div class="field" style="margin-bottom:0;">
+          <label style="font-size:11.5px;font-weight:700;">مدة الضمان بعد الإصلاح:</label>
+          <select id="eWarrantyMonths" style="font-weight:700;padding:5px 8px;font-size:12px;">
+            <option value="0" ${Number(r.warrantyMonths)===0 ? 'selected' : ''}>بدون ضمان</option>
+            <option value="1" ${Number(r.warrantyMonths)===1 ? 'selected' : ''}>شهر واحد (30 يوم)</option>
+            <option value="3" ${Number(r.warrantyMonths)===3 || r.warrantyMonths == null ? 'selected' : ''}>3 شهور (الافتراضي)</option>
+            <option value="6" ${Number(r.warrantyMonths)===6 ? 'selected' : ''}>6 شهور</option>
+            <option value="12" ${Number(r.warrantyMonths)===12 ? 'selected' : ''}>سنة كاملة (12 شهر)</option>
+          </select>
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label style="font-size:11.5px;font-weight:700;">تاريخ انتهاء الضمان المعتمد:</label>
+          <input type="text" id="eWarrantyEnd" value="${escapeHtml(r.warrantyEnd || (typeof computeWarrantyEndDate === 'function' ? computeWarrantyEndDate(r.date, r.warrantyMonths || 3) : ''))}" placeholder="YYYY-MM-DD" style="font-family:monospace;font-size:12px;font-weight:700;">
+        </div>
+      </div>
+    </div>
+
     <!-- توثيق صور وفيديوهات حالة الجهاز (الاستلام والتسليم) -->
     <div class="card" style="background:var(--paper3);padding:12px;border-radius:var(--radius-sm);margin-top:10px;border:1px solid var(--line);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
@@ -3801,6 +4000,30 @@ async function openReceiptDetail(rawR){
   const eOtherInp = overlay.querySelector('#eOtherAmount');
   if(eOtherInp) eOtherInp.oninput = recalcDetailFinances;
 
+  const custApprBtn = overlay.querySelector('#detailCustomerApprovalBtn');
+  if(custApprBtn){
+    custApprBtn.onclick = ()=>{
+      openCustomerApprovalModal(r, (newAppr)=>{
+        showToast('تم تسجيل وتحديث موافقة العميل بنجاح', 'success');
+        overlay.remove();
+        openReceiptDetail(r);
+      });
+    };
+  }
+
+  const wMonthsInp = overlay.querySelector('#eWarrantyMonths');
+  const wEndInp = overlay.querySelector('#eWarrantyEnd');
+  if(wMonthsInp && wEndInp){
+    wMonthsInp.onchange = ()=>{
+      const m = Number(wMonthsInp.value || 0);
+      if(m <= 0){
+        wEndInp.value = '';
+      } else {
+        wEndInp.value = typeof computeWarrantyEndDate === 'function' ? computeWarrantyEndDate(r.date, m) : '';
+      }
+    };
+  }
+
   // Detail Photos (Intake & Delivery) State & Handlers
   let detailPhotos = Array.isArray(r.photos) && r.photos.length 
     ? JSON.parse(JSON.stringify(r.photos)) 
@@ -4031,12 +4254,32 @@ async function openReceiptDetail(rawR){
     r.otherAccountDesc = (overlay.querySelector('#eOtherDesc')?.value || '').trim();
     r.otherAccountAmount = Number(overlay.querySelector('#eOtherAmount')?.value || 0);
     r.cost = Number(overlay.querySelector('#eCost').value || 0);
+    const wMonthsVal = Number(overlay.querySelector('#eWarrantyMonths')?.value != null ? overlay.querySelector('#eWarrantyMonths').value : 3);
+    r.warrantyMonths = wMonthsVal;
+    r.warrantyEnd = overlay.querySelector('#eWarrantyEnd')?.value || '';
+    if(wMonthsVal > 0){
+      r.warranty = `${wMonthsVal} شهور`;
+    } else {
+      r.warranty = 'بدون ضمان';
+    }
     r.updatedBy = state.user.name;
     r.updatedAt = new Date().toISOString();
   }
 
   overlay.querySelector('#saveEditBtn').onclick = async ()=>{
     collectEdits();
+
+    // التحقق: منع التحويل إلى الصيانة بدون توثيق موافقة العميل
+    if(r.status === 'الصيانة' && (!r.customerApproval || !r.customerApproval.approved)){
+      openCustomerApprovalModal(r, async (appr)=>{
+        recordAuditLog('اعتماد موافقة العميل', 'صيانة', `تم تسجيل موافقة العميل (${appr.approverName}) عبر [${appr.channel}] بتكلفة ${appr.approvedCost} ج.م للإيصال #${r.receiptNumber}`, r.id);
+        showToast('تم تسجيل موافقة العميل بنجاح، جاري استكمال الحفظ...', 'info');
+        overlay.querySelector('#saveEditBtn').click();
+      }, ()=>{
+        showToast('لا يمكن تحويل الجهاز إلى "الصيانة" دون توثيق موافقة العميل المعتمدة', 'warning');
+      });
+      return;
+    }
 
     // Deduct un-deducted inventory parts
     for(const p of detailSpareParts){

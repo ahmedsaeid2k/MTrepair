@@ -748,6 +748,26 @@ function stepFinance(body,d){
       </div>
       <div class="field"><label>أو حدد تاريخ التسليم</label><input id="finDate" type="date" value="${d.deliveryDate}"></div>
     </div>
+
+    <div class="card">
+      <h3>${getSvgIcon("shield", 18)} فترة وضمان الصيانة</h3>
+      <div class="grid2">
+        <div class="field" style="margin-bottom:0;">
+          <label>مدة الضمان المعتمدة</label>
+          <select id="draftWarrantyMonthsSelect">
+            <option value="0" ${Number(d.warrantyMonths)===0?'selected':''}>بدون ضمان</option>
+            <option value="1" ${Number(d.warrantyMonths)===1?'selected':''}>شهر واحد (30 يوماً)</option>
+            <option value="3" ${Number(d.warrantyMonths)===3||d.warrantyMonths==null?'selected':''}>3 شهور (الافتراضي)</option>
+            <option value="6" ${Number(d.warrantyMonths)===6?'selected':''}>6 شهور</option>
+            <option value="12" ${Number(d.warrantyMonths)===12?'selected':''}>سنة كاملة (12 شهراً)</option>
+          </select>
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label>تاريخ نهاية الضمان التقديري</label>
+          <input id="draftWarrantyEndDisplay" type="text" readonly disabled class="mono" style="background:var(--paper3);font-weight:bold;color:var(--primary);" value="${d.warrantyEnd || (typeof computeWarrantyEndDate === 'function' ? computeWarrantyEndDate(d.deliveryDate || d.date, d.warrantyMonths || 3) : '')}">
+        </div>
+      </div>
+    </div>
   `;
 
   function renderDraftServiceItems(){
@@ -863,11 +883,26 @@ function stepFinance(body,d){
 
   renderDraftServiceItems();
 
+  const updateWarrantyEndPreview = () => {
+    const wmSel = document.getElementById('draftWarrantyMonthsSelect');
+    const fDate = document.getElementById('finDate');
+    const disp = document.getElementById('draftWarrantyEndDisplay');
+    if(!wmSel || !disp) return;
+    const months = Number(wmSel.value);
+    const startDate = (fDate && fDate.value) ? fDate.value : (d.deliveryDate || d.date);
+    disp.value = (typeof computeWarrantyEndDate === 'function') ? computeWarrantyEndDate(startDate, months) : '';
+  };
+  const wmSelEl = document.getElementById('draftWarrantyMonthsSelect');
+  if(wmSelEl) wmSelEl.onchange = updateWarrantyEndPreview;
+  const finDateEl = document.getElementById('finDate');
+  if(finDateEl) finDateEl.onchange = updateWarrantyEndPreview;
+
   document.querySelectorAll('[data-days]').forEach(c=>{
     c.onclick = ()=>{
       const days = Number(c.dataset.days);
       if(days<0){ document.getElementById('finDate').value=''; }
       else { const dt = new Date(); dt.setDate(dt.getDate()+days); document.getElementById('finDate').value = dt.toISOString().slice(0,10); }
+      updateWarrantyEndPreview();
     };
   });
   document.getElementById('draftUsePartBtn').onclick = ()=>{
@@ -914,6 +949,10 @@ function stepFinance(body,d){
     if(!d.depositPaymentMethod) d.depositPaymentMethod = 'cash';
     const finDateEl = document.getElementById('finDate');
     d.deliveryDate = finDateEl ? finDateEl.value : '';
+    const wmSel = document.getElementById('draftWarrantyMonthsSelect');
+    d.warrantyMonths = wmSel ? Number(wmSel.value) : (d.warrantyMonths != null ? d.warrantyMonths : 3);
+    d.warrantyEnd = (typeof computeWarrantyEndDate === 'function') ? computeWarrantyEndDate(d.deliveryDate || d.date, d.warrantyMonths) : '';
+    d.warranty = d.warrantyMonths > 0 ? `${d.warrantyMonths} شهور ضد عيوب الصناعة` : 'بدون ضمان';
   };
   stepNav(body, true, ()=>{
     currentStepCollector();
@@ -966,6 +1005,7 @@ function stepReview(body,d){
         ` : `<div><b>الدفعة المقدمة:</b> 0 ج.م</div>`}
         <div><b style="color:var(--primary);">المبلغ المتبقي المطلوب:</b> <span class="mono" style="font-size:17px;font-weight:900;color:var(--primary);">${remaining}</span> ج.م</div>
         <div><b>موعد التسليم:</b> ${escapeHtml(d.deliveryDate||'غير محدد')}</div>
+        <div><b>فترة الضمان:</b> <span class="badge" style="background:#ecfdf5;color:#047857;font-weight:700;">${d.warrantyMonths ? d.warrantyMonths + ' شهور (حتى: ' + (d.warrantyEnd || (typeof computeWarrantyEndDate === 'function' ? computeWarrantyEndDate(d.deliveryDate || d.date, d.warrantyMonths) : '')) + ')' : 'بدون ضمان'}</span></div>
       </div>
 
       ${isMultiDev ? `
@@ -1093,11 +1133,13 @@ async function saveReceipt(d, printA5, sendWa, printSticker){
 /* ---------------- Archive & Overdue Reminders ---------------- */
 const STATUS_GROUPS = {
   all: {label:'الكل', statuses:null},
-  active: {label:'قيد العمل', statuses:['قيد الفحص','الصيانة']},
+  active: {label:'قيد العمل', statuses:['قيد الفحص','بانتظار موافقة العميل','بانتظار قطعة غيار','الصيانة']},
   done: {label:'جاهزة للاستلام', statuses:['مكتمل']},
   delivered: {label:'تم التسليم', statuses:['تم التسليم']},
   overdue: {label:'متروكة +7 أيام', statuses:null},
-  rejected: {label:'تعذرت / مرفوضة', statuses:['رفض العميل','تعذرت الصيانة']}
+  unclaimed: {label:'أجهزة لم تُطالَب (+30 يوم)', statuses:null},
+  warranty: {label:'إصلاحات داخل الضمان', statuses:null},
+  rejected: {label:'تعذرت / مرفوضة / ملغية', statuses:['رفض العميل','تعذرت الصيانة','ملغي']}
 };
 
 /* Global direct handlers for receipt row actions - 100% immune to listener drops */
@@ -3220,6 +3262,8 @@ function archiveTable(list){
       <td>${r.technician ? `<span style="font-weight:600;">${escapeHtml(r.technician)}</span>` : '<span style="color:var(--slate-400);">-</span>'}</td>
       <td style="text-align:center;">
         <button class="btn-status-quick" onclick="openQuickStatusModalDirect('${safeTargetId}', '${rNum}'); event.stopPropagation();" title="اضغط لتغيير حالة الجهاز فورًا"><span class="status-badge ${st.cls}">${escapeHtml(r.status)}</span></button>
+        ${(r.customerApproval && r.customerApproval.approved) ? `<div style="font-size:10px;color:#7c3aed;font-weight:700;margin-top:2px;" title="موافقة معتمدة من ${escapeHtml(r.customerApproval.approverName)}">✅ معتمد (${Number(r.customerApproval.approvedCost||r.cost).toLocaleString()} ج.م)</div>` : ''}
+        ${(r.warrantyEnd && r.warrantyEnd >= (typeof localDateStr === 'function' ? localDateStr() : new Date().toISOString().slice(0,10))) ? `<div style="font-size:9.5px;color:#047857;font-weight:700;margin-top:2px;" title="ضمان ساري حتى ${cleanDate(r.warrantyEnd)}">🛡️ ضمان: ${cleanDate(r.warrantyEnd)}</div>` : ''}
       </td>
       <td class="mono" style="font-weight:700;color:var(--ink);text-align:center;">
         ${totalDue.toLocaleString()} ج.م
@@ -3348,6 +3392,11 @@ function renderArchive(main){
 
   if(f.group==='overdue'){
     list = list.filter(r=>r.status==='مكتمل' && (Date.now()-new Date(r.updatedAt||r.date).getTime())/86400000 > 7);
+  } else if(f.group==='unclaimed'){
+    list = list.filter(r=>r.status!=='تم التسليم' && r.status!=='ملغي' && (Date.now()-new Date(r.updatedAt||r.deliveryDate||r.date).getTime())/86400000 > 30);
+  } else if(f.group==='warranty'){
+    const todayStr = (typeof localDateStr === 'function') ? localDateStr() : new Date().toISOString().slice(0, 10);
+    list = list.filter(r => r.previousReceiptId || r.reIntakeReason || (r.warrantyEnd && r.warrantyEnd >= todayStr) || r.isUnderWarranty);
   } else {
     const groupStatuses = STATUS_GROUPS[f.group].statuses;
     if(groupStatuses) list = list.filter(r=>groupStatuses.includes(r.status));
@@ -3378,7 +3427,8 @@ function renderArchive(main){
           <button type="button" class="view-mode-btn ${state.maintenanceViewMode!=='cards'?'active':''}" id="archViewTableBtn" title="عرض جدول">${getSvgIcon("fileText", 13)} جدول</button>
           <button type="button" class="view-mode-btn ${state.maintenanceViewMode==='cards'?'active':''}" id="archViewCardsBtn" title="عرض بطاقات ذكية">${getSvgIcon("folder", 13)} بطاقات ذكية</button>
         </div>
-        <button class="btn btn-whatsapp btn-sm" id="archBulkOverdueBtn" title="إرسال تذكيرات واتساب دفعة واحدة للأجهزة المتروكة">${WA_ICON} تذكير المتروكة</button>
+        <button class="btn btn-whatsapp btn-sm" id="archBulkOverdueBtn" title="إرسال تذكيرات واتساب دفعة واحدة للأجهزة المتروكة (+7 أيام)">${WA_ICON} تذكير المتروكة (+7)</button>
+        <button class="btn btn-whatsapp btn-sm" id="archBulkUnclaimedBtn" style="background:#b45309;" title="تذكير وإشعار العملاء بالأجهزة غير المطالب بها (+30 يوم)">${WA_ICON} لم تُطالَب (+30 يوم)</button>
         <button class="btn btn-ghost btn-sm" id="archRecoverPhonesBtn" style="color:var(--primary);font-weight:800;" title="فحص كافة السجلات واسترداد أرقام الهواتف التائهة">${getSvgIcon("refresh", 13)} استرداد الهواتف</button>
         <button class="btn btn-ghost btn-sm" id="archGotoCustBtn">${getSvgIcon("users", 13)} دليل العملاء</button>
         <button class="btn btn-ghost btn-sm" id="exportArchiveExcelBtn">${getSvgIcon("download", 13)} تصدير Excel</button>
@@ -3417,6 +3467,11 @@ function renderArchive(main){
 
   const archBulkWa = document.getElementById('archBulkOverdueBtn');
   if(archBulkWa) archBulkWa.onclick = ()=>openBulkOverdueWhatsappModal(7);
+
+  const archBulkUncl = document.getElementById('archBulkUnclaimedBtn');
+  if(archBulkUncl) archBulkUncl.onclick = ()=>{
+    if(typeof openBulkOverdueWhatsappModal === 'function') openBulkOverdueWhatsappModal(30);
+  };
 
   document.getElementById('archNewReceiptBtn').onclick = ()=>{ state.tab='new'; startNewDraft(); };
   document.getElementById('exportArchiveExcelBtn').onclick = ()=>exportReceiptsToExcel(list);

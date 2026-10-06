@@ -177,6 +177,7 @@ function newDraft(){
   const ampm = hours >= 12 ? 'م' : 'ص';
   const h12 = hours % 12 || 12;
   const currentTimeStr = `${h12}:${minutes} ${ampm}`;
+  const todayStr = (typeof localDateStr === 'function') ? localDateStr(now) : now.toISOString().slice(0, 10);
 
   const initialDev = {
     id: 'dev_' + now.getTime() + '_1',
@@ -188,20 +189,30 @@ function newDraft(){
     password: '',
     faults: [],
     faultNotes: '',
-    technician: ''
+    technician: '',
+    photos: []
   };
 
-  return {
-    id: 'r_'+now.getTime(),
+  const draft = {
+    id: 'r_' + now.getTime(),
     receiptNumber: '',
-    date: now.toISOString().slice(0,10),
+    date: todayStr,
     time: currentTimeStr,
     createdAt: now.toISOString(),
     receivedAt: now.toISOString(),
-    customer: {name:'', phone:'', email:''},
+    customer: { title: '', name: '', phone: '', email: '' },
     devices: [ initialDev ],
     activeDeviceIndex: 0,
-    device: initialDev,
+    get device() {
+      if(!this.devices || this.devices.length === 0) return null;
+      const idx = (this.activeDeviceIndex != null && this.activeDeviceIndex >= 0 && this.activeDeviceIndex < this.devices.length) ? this.activeDeviceIndex : 0;
+      return this.devices[idx];
+    },
+    set device(val) {
+      if(!this.devices) this.devices = [];
+      const idx = (this.activeDeviceIndex != null && this.activeDeviceIndex >= 0) ? this.activeDeviceIndex : 0;
+      this.devices[idx] = val;
+    },
     password: '',
     faults: [],
     faultNotes: '',
@@ -214,7 +225,11 @@ function newDraft(){
     serviceItems: [],
     otherAccountDesc: '',
     otherAccountAmount: 0,
-    deliveryDate: now.toISOString().slice(0,10),
+    deliveryDate: todayStr,
+    warranty: '3 شهور ضد عيوب الصناعة',
+    warrantyMonths: 3,
+    warrantyEnd: '',
+    customerApproval: null,
     status: 'قيد الفحص',
     paid: false,
     previousReceiptId: '',
@@ -229,6 +244,8 @@ function newDraft(){
     updatedBy: '',
     updatedAt: ''
   };
+
+  return draft;
 }
 
 async function nextReceiptNumber(){

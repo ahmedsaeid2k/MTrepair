@@ -83,8 +83,25 @@
 
 | **U14** | تنظيف الديون التقنية وموثوقية الكود: القضاء التام على النوافذ المنبثقة الأصلية (Zero Native Dialogs)، محلل CSV قياسي RFC-4180، التحويل المخزني الذري، وإزالة الدوال الميتة | `06-config-defaults.js`, `03-utils-and-mappings.js`, `04-chart-of-accounts.js`, `05-auth-and-audit.js`, `09-shell-and-router.js`, `10-receipts-maintenance.js`, `11-customers-crm.js`, `12-invoices-quotes.js`, `13-treasury-expenses.js`, `14-inventory-warehouse.js`, `15-pos-retail.js`, `16-suppliers-purchases.js`, `17-accounting-finance.js`, `18-settings-admin.js`, `21-cctv-projects.js`, `files(11)/GoogleAppsScript_Backend.gs.txt`, `audit/MIGRATIONS.md`, `audit/FIXES.md` | PASSED | القضاء الجذري على 100% من النوافذ المنبثقة التابعة للمتصفح (`confirm`, `prompt`, `alert`) عبر كامل الكود المصدري واستبدالها بنوافذ النظام المركزية المصممة (`openConfirmModal`, `openPromptModal`, `openAlertModal`, `showToast`) مع دعم كامل للغة العربية واتجاه RTL ولوحة المفاتيح؛ تطبيق محلل CSV قياسي متوافق مع مواصفة RFC-4180 يدعم علامات التنصيص والفواصل المدمجة والأعمدة المتعددة الأسطر وبادئة UTF-8 BOM؛ ترقية استيراد الأصناف مع فحص ازدواجية الباركود تلقائياً وتصحيح القيم الرقمية السالبة؛ توفير إجراء التحويل المخزني الذري `transferWarehouseStock` تحت قفل `LockService` مع تسجيل ورقة `Warehouse_Transfers` وتوثيق التدقيق الرقابي؛ إزالة وتطهير كافة الدوال الميتة والمهملة (`parseSafeNumber`, `formatReceiptDateTime`, `refreshInventory`, `refreshSales`, `refreshExpenses`, `renderExpensesPage`, `getOrCreateUnifiedSelectionBar`)؛ توحيد صيغ حساب تكاليف ومتبقي الصيانة المركزية (`getReceiptTotalDue`, `getReceiptRemaining`) مع تسريع الفلترة بتسجيل علم `_isNormalized` وتخفيف عبء مزامنة هواتف العملاء عبر debounce؛ إضافة معايير الوصول `aria-label="إغلاق"` لكافة أزرار إغلاق النوافذ وتوحيد تسميات التصدير إلى "تصدير CSV (Excel)". التحقق: `npm run verify` ناجح (100% بدون أخطاء). |
 
-## المراحل اللاحقة (تُحدَّث بعد كل بند):
-- **المرحلة 4: الجودة والصيانة (P3) — Q1 إلى Q5**
+## المرحلة 4 — الجودة والاختبارات والصيانة (P3)
+
+| البند | الوصف | الملفات المعنية | حالة البناء | التحقق |
+|---|---|---|---|---|
+| **Q1** | تفكيك الملفات الأحادية الضخمة (Monolithic Files Splitting) إلى 22 وحدة وموديول وظيفي فرعي متخصص | `10a`..`10e`, `11a`..`11e`, `17a`..`17f`, `18a`..`18f`, `build.js` | PASSED | تقسيم 4 ملفات عملاقة (~20,000 سطر) إلى موديولات نظيفة متخصصة: الصيانة (معالج الاستلام، الأرشيف، الإجراءات الموحدة، التفاصيل، الطباعة والباركود)، العملاء (الدليل، السجل التراكمي، الواتساب، الذكاء الاصطناعي، الفواتير والتقارير)، الحسابات (شجرة الحسابات، دفتر القيود، ميزان المراجعة، قائمة الدخل، الكشوفات، المستخدمين والرقابة)، الإعدادات (المظهر، الطابعات، القوالب، المزامنة، استوديو الباركود، النسخ الاحتياطي). التحقق: مطابقة الحجم والأكواد بنسبة 100%، نجاح `node -c` لكافة الـ 22 ملفاً، واجتياز `npm run verify` لـ 40 موديولاً. |
+| **Q2** | إنشاء محرك الحسابات المالي المستقل (09-finance-engine.js) وتثبيت Vitest وإنشاء حزمة اختبارات الوحدة | `app-modular/js/core/09-finance-engine.js`, `tests/*.test.js`, `package.json`, `build.js` | PASSED | استخلاص المنطق الحسابي والمالي في محرك مستقل خالٍ من الـ DOM؛ تثبيت `vitest` وإضافة سكربت `"test": "vitest run"`؛ كتابة 6 ملفات اختبار آلية شاملة (`money.test.js`, `journal.test.js`, `cogs.test.js`, `vat.test.js`, `permissions.test.js`, `numbers.test.js`) تغطي 64 اختبار وحدة. التحقق: `npm test` ناجح 100% (6/6 ملفات، 64/64 اختباراً ناجحاً). |
+| **Q3** | تثبيت وضبط أداة التدقيق النظيف (ESLint Quality Hardening) وتصحيح كافة الملاحظات | `eslint.config.mjs`, `package.json`, `09-shell-and-router.js`, `10c-receipt-actions.js`, `10e-printing-labels.js`, `11b-customer-history.js`, `11d-ai-assistant.js`, `11e-customer-reports.js`, `15-pos-retail.js`, `16-suppliers-purchases.js`, `18e-barcode-studio.js`, `19-login.js`, `main.js` | PASSED | تثبيت `eslint` وضبط ملف الإعداد الحديث `eslint.config.mjs`؛ استكشاف وتوفير كافة المعرفات العامة للنظام الموديولي؛ كشف وتصحيح 14 متغيراً غير معرف وتطهير 13 متغيراً مهملاً في الكود؛ إضافة سكربت `"lint": "eslint ."`. التحقق: `npm run lint` يمر بنجاح تام (0 أخطاء و 0 تحذيرات). |
+| **Q4** | إنشاء خط أنابيب التكامل المستمر الآلي (GitHub Actions CI Workflow) | `.github/workflows/ci.yml` | PASSED | إنشاء مسار عمل CI مؤتمت بالكامل يعمل عند كل دفع (Push) أو طلب دمج (PR) ليقوم بفحص الكود ثلاثي المراحل: 1) `npm run verify`، 2) `npm run lint`، 3) `npm test`. |
+| **Q5** | تحديث الدليل المعماري، سجلات التدقيق والترحيل، وإصدار التقرير النهائي الشامل | `app-modular/README.md`, `audit/FIXES.md`, `audit/fixes-report.md` | PASSED | تحديث دليل الهيكلية الموديولية ليعكس الـ 41 ملفاً، توثيق أوامر الجودة والاختبارات، وإصدار التقرير النهائي الشامل للإصلاحات. |
+
+---
+
+## 🏆 النتيجة الإجمالية لخطة التدقيق والإصلاح:
+- **المرحلة 0 (شبكة الأمان):** مكتملة بنسبة 100% (5/5).
+- **المرحلة 1 (P0 الأمان):** مكتملة بنسبة 100% (16/16).
+- **المرحلة 2 (P1 السلامة المالية):** مكتملة بنسبة 100% (11/11).
+- **المرحلة 3 (P2 الوظائف الناقصة):** مكتملة بنسبة 100% (14/14).
+- **المرحلة 4 (P3 الجودة والصيانة):** مكتملة بنسبة 100% (5/5).
+- **الإجمالي العام:** 51 بنداً منفذاً ومختبراً وموثقاً بنسبة نجاح 100%.
 
 
 

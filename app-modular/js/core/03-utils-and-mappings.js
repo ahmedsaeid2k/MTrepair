@@ -705,6 +705,54 @@ function computeWarrantyEndDate(startDateStr, months = 3){
 }
 window.computeWarrantyEndDate = computeWarrantyEndDate;
 
+/**
+ * Formats photos for Google Sheets storage [U8].
+ * Enforces a strict 40,000 character maximum limit (Google Sheets limit is 50,000 chars)
+ * and maximum 6 photos per receipt. Prefers Google Drive URLs over base64 strings.
+ */
+function formatPhotosForSheet(photos){
+  if (!Array.isArray(photos) || !photos.length) return '';
+  const cappedPhotos = photos.slice(0, 6);
+  const cleanList = cappedPhotos.map(p => {
+    if (typeof p === 'string') {
+      return p.startsWith('http') ? { url: p } : { data: p.slice(0, 4000) };
+    }
+    const item = {
+      id: p.id || ('p_' + Date.now()),
+      angle: p.angle || 'عام',
+      stage: p.stage || 'intake',
+      timestamp: p.timestamp || new Date().toISOString()
+    };
+    if (p.url && p.url.startsWith('http')) {
+      item.url = p.url;
+    } else if (p.url && p.url.startsWith('data:')) {
+      item.thumb = p.url;
+    } else if (p.thumb) {
+      item.thumb = p.thumb;
+    }
+    return item;
+  });
+
+  let serialized = JSON.stringify(cleanList);
+  if (serialized.length <= 40000) {
+    return serialized;
+  }
+
+  // If base64 blobs cause length > 40,000 chars, strip inline data URLs and keep cloud URLs or offline flag
+  const minimalList = cleanList.map(p => {
+    if (p.url && p.url.startsWith('http')) return p;
+    return {
+      id: p.id,
+      angle: p.angle,
+      stage: p.stage,
+      timestamp: p.timestamp,
+      offlineStored: true
+    };
+  });
+  let minimalSerialized = JSON.stringify(minimalList);
+  return minimalSerialized.length <= 40000 ? minimalSerialized : minimalSerialized.slice(0, 40000);
+}
+
 /* ---- Mapping between internal shape and flat sheet rows ---- */
 function receiptToRow(d){
   const cTitle = extractCustomerTitle(d);
@@ -735,7 +783,7 @@ function receiptToRow(d){
     CustomerApprovalJSON: approvalJSON,
     ServiceItems: (Array.isArray(d.serviceItems) && d.serviceItems.length) ? JSON.stringify(d.serviceItems) : '',
     Devices: (Array.isArray(d.devices) && d.devices.length) ? JSON.stringify(d.devices) : '',
-    Photos: (Array.isArray(d.photos) && d.photos.length) ? JSON.stringify(d.photos) : '',
+    Photos: formatPhotosForSheet(d.photos),
     OtherAccountDesc: d.otherAccountDesc || '',
     OtherAccountAmount: Number(d.otherAccountAmount || 0),
     DeliveryDate: d.deliveryDate, Status: d.status, Paid: d.paid ? 'TRUE' : 'FALSE',

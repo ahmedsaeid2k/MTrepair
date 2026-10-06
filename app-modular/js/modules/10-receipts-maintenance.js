@@ -352,25 +352,52 @@ function stepDevice(body,d){
 
   const handleFilesSelected = async (files) => {
     if(!files || !files.length) return;
+    if(!Array.isArray(currDev.photos)) currDev.photos = [];
+    if(currDev.photos.length >= 6){
+      showToast('⚠️ الحد الأقصى للصور هو 6 صور للجهاز الواحد', 'warning');
+      return;
+    }
     const countBadge = document.getElementById('intakePhotosCountBadge');
-    if(countBadge) countBadge.innerText = 'جارٍ معالجة وضغط الصور...';
+    if(countBadge) countBadge.innerText = 'جارٍ معالجة وضغط ورفع الصور...';
     try {
+      let added = 0;
       for(let i=0; i<files.length; i++){
+        if(currDev.photos.length >= 6){
+          showToast('تم الوصول للحد الأقصى (6 صور) وتجاوز الصور الإضافية', 'info');
+          break;
+        }
         const file = files[i];
         if(!file.type.startsWith('image/')) continue;
         const compressedUrl = await compressImageFile(file, 900, 900, 0.72);
-        if(!Array.isArray(currDev.photos)) currDev.photos = [];
+        const photoId = 'p_' + Date.now() + '_' + Math.floor(Math.random()*1000);
+
+        // Save to durable local IndexedDB
+        savePhotoToIndexedDB(photoId, compressedUrl);
+
+        let finalUrl = compressedUrl;
+        let driveInfo = null;
+        if(navigator.onLine){
+          driveInfo = await uploadPhotoToServer(compressedUrl, d.receiptNumber || 'intake', file.name || 'photo.jpg');
+          if(driveInfo && driveInfo.url){
+            finalUrl = driveInfo.url;
+          }
+        }
+
         currDev.photos.push({
-          id: 'p_' + Date.now() + '_' + Math.floor(Math.random()*1000),
-          url: compressedUrl,
+          id: photoId,
+          url: finalUrl,
           thumb: compressedUrl,
+          fileId: driveInfo ? driveInfo.fileId : null,
           angle: selectedAngle,
           stage: 'intake',
           timestamp: new Date().toISOString()
         });
+        added++;
       }
       d.photos = (d.devices || []).flatMap(x => x.photos || []);
-      showToast('تمت إضافة الصور الموثقة للجهاز بنجاح', 'success');
+      if(added > 0){
+        showToast(`تمت إضافة ${added} صور موثقة للجهاز بنجاح`, 'success');
+      }
       updatePhotosGrid();
     } catch(err){
       showToast('خطأ أثناء معالجة الصور: ' + err.message, 'error');

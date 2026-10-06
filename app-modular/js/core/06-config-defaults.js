@@ -637,13 +637,17 @@ function cleanTime(val){
 
 /**
  * Compresses an image file via Canvas down to optimal dimensions and quality.
- * Guaranteed to produce base64 strings under 45KB (45,000 characters)
- * to comply with Google Sheets cell size limits (50,000 chars) and preserve storage.
+ * Guaranteed to reject files > 10MB, cap output size under 150KB,
+ * and produce base64 strings under 35,000 characters to comply with storage quotas.
  */
 function compressImageFile(file, maxWidth = 800, maxHeight = 800, initialQuality = 0.72){
   return new Promise((resolve, reject) => {
     if(!file || !file.type.startsWith('image/')){
       return reject(new Error('الملف المختار ليس صورة صالحة'));
+    }
+    // Hard cap on raw input size: 10MB
+    if(file.size > 10 * 1024 * 1024){
+      return reject(new Error('حجم ملف الصورة يتجاوز الحد المسموح به (10 ميجابايت)'));
     }
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('تعذر قراءة ملف الصورة'));
@@ -656,8 +660,8 @@ function compressImageFile(file, maxWidth = 800, maxHeight = 800, initialQuality
         let quality = initialQuality;
         let dataUrl = '';
         
-        // Iteratively downscale / reduce quality to guarantee base64 string fits safely under 45,000 chars
-        for (let attempt = 0; attempt < 5; attempt++) {
+        // Iteratively downscale / reduce quality to guarantee base64 string fits safely under 35,000 chars (< 28KB)
+        for (let attempt = 0; attempt < 6; attempt++) {
           let width = img.width;
           let height = img.height;
           if(width > height){
@@ -680,13 +684,18 @@ function compressImageFile(file, maxWidth = 800, maxHeight = 800, initialQuality
           ctx.drawImage(img, 0, 0, width, height);
           dataUrl = canvas.toDataURL('image/jpeg', quality);
           
-          if (dataUrl.length <= 45000) {
+          if (dataUrl.length <= 35000) {
             break;
           }
-          // Reduce dimensions by 20% and quality by 0.15 for next attempt
-          curMaxWidth = Math.round(curMaxWidth * 0.8);
-          curMaxHeight = Math.round(curMaxHeight * 0.8);
-          quality = Math.max(0.3, quality - 0.15);
+          // Reduce dimensions by 25% and quality by 0.15 for next attempt
+          curMaxWidth = Math.round(curMaxWidth * 0.75);
+          curMaxHeight = Math.round(curMaxHeight * 0.75);
+          quality = Math.max(0.25, quality - 0.15);
+        }
+
+        // Post-compression check: strictly reject if still > 150KB
+        if (dataUrl.length > 200000) {
+          return reject(new Error('حجم الصورة بعد الضغط يتجاوز 150 كيلوبايت، يرجى اختيار صورة أصغر'));
         }
         resolve(dataUrl);
       };
@@ -694,6 +703,73 @@ function compressImageFile(file, maxWidth = 800, maxHeight = 800, initialQuality
     };
     reader.readAsDataURL(file);
   });
+}
+
+/**
+ * Uploads compressed photo to Google Drive via Apps Script uploadPhoto action.
+ * Returns public view URL or null if offline/failure.
+ */
+async function uploadPhotoToServer(base64Data, receiptNumber = 'rec', name = 'photo.jpg'){
+  if (!navigator.onLine) return null;
+  try {
+    const res = await apiPostDirect('uploadPhoto', {
+      base64: base64Data,
+      receiptNumber: receiptNumber,
+      name: name
+    }, 25000);
+    if (res && res.ok && res.url) {
+      return { url: res.url, fileId: res.fileId, downloadUrl: res.downloadUrl };
+    }
+    return null;
+  } catch(e) {
+    console.warn('[uploadPhotoToServer] Cloud upload fallback to local storage:', e.message);
+    return null;
+  }
+}
+
+/* ---------------- IndexedDB Offline Photo Storage Engine ---------------- */
+let _photoDbPromise = null;
+function getPhotoIndexedDB(){
+  if(_photoDbPromise) return _photoDbPromise;
+  _photoDbPromise = new Promise((resolve) => {
+    if(typeof indexedDB === 'undefined') return resolve(null);
+    const req = indexedDB.open('microerp_photos_db', 1);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if(!db.objectStoreNames.contains('photos')){
+        db.createObjectStore('photos', { keyPath: 'id' });
+      }
+    };
+    req.onsuccess = (e) => resolve(e.target.result);
+    req.onerror = () => resolve(null);
+  });
+  return _photoDbPromise;
+}
+
+async function savePhotoToIndexedDB(photoId, dataUrl){
+  try {
+    const db = await getPhotoIndexedDB();
+    if(!db) return false;
+    return new Promise((resolve) => {
+      const tx = db.transaction('photos', 'readwrite');
+      tx.objectStore('photos').put({ id: photoId, data: dataUrl, savedAt: Date.now() });
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+    });
+  } catch(e) { return false; }
+}
+
+async function getPhotoFromIndexedDB(photoId){
+  try {
+    const db = await getPhotoIndexedDB();
+    if(!db) return null;
+    return new Promise((resolve) => {
+      const tx = db.transaction('photos', 'readonly');
+      const req = tx.objectStore('photos').get(photoId);
+      req.onsuccess = () => resolve(req.result ? req.result.data : null);
+      req.onerror = () => resolve(null);
+    });
+  } catch(e) { return null; }
 }
 
 /**

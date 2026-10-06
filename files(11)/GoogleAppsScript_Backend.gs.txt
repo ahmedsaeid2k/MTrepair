@@ -241,6 +241,7 @@ function verifyAdminRole(body, session) {
 
 const ACTION_ROLES = {
   nextDocumentNumber: ['admin','cashier','accountant','technician'],
+  uploadPhoto:        ['admin','technician','cashier'],
   saveReceipt:        ['admin','technician','cashier'],
   deleteReceipt:      ['admin'],
   savePayment:        ['admin','cashier','accountant'],
@@ -904,6 +905,38 @@ function doPost(e) {
       const year = body.year || new Date().getFullYear();
       const nextNum = getNextServerDocNumber(docType, year);
       return jsonOut({ ok: true, type: docType, number: nextNum });
+    }
+
+    if (action === 'uploadPhoto') {
+      const b64Data = body.base64 || body.image || '';
+      const recNum = body.receiptNumber || 'rec';
+      const fileName = body.name || ('photo_' + recNum + '_' + Date.now() + '.jpg');
+      if (!b64Data) return jsonOut({ error: 'بيانات الصورة مفقودة' }, 400);
+
+      try {
+        const folderName = 'microERP_Device_Photos';
+        let folder;
+        const folders = DriveApp.getFoldersByName(folderName);
+        if (folders.hasNext()) {
+          folder = folders.next();
+        } else {
+          folder = DriveApp.createFolder(folderName);
+        }
+
+        const pureB64 = b64Data.replace(/^data:image\/\w+;base64,/, '');
+        const decoded = Utilities.base64Decode(pureB64);
+        const blob = Utilities.newBlob(decoded, 'image/jpeg', fileName);
+        const file = folder.createFile(blob);
+        file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+        const fileId = file.getId();
+        const viewUrl = 'https://drive.google.com/uc?export=view&id=' + fileId;
+        const downloadUrl = file.getDownloadUrl();
+
+        return jsonOut({ ok: true, fileId: fileId, url: viewUrl, downloadUrl: downloadUrl });
+      } catch (err) {
+        return jsonOut({ error: 'فشل رفع الصورة إلى Google Drive: ' + err.message }, 500);
+      }
     }
 
     if (action === 'saveReceipt') {

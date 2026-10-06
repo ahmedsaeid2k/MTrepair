@@ -186,7 +186,6 @@ window.convertMultipleReceiptsToInvoice = async function(receiptIds){
   const firstCustName = extractCustomerName(receipts[0]) || 'عميل';
   const firstCustTitle = extractCustomerTitle(receipts[0]) || '';
   const firstCustPhone = extractCustomerPhone(receipts[0]) || '';
-  const firstCustEmail = extractCustomerEmail(receipts[0]) || '';
 
   const differentCusts = receipts.filter(r => (extractCustomerName(r) || '').trim().toLowerCase() !== firstCustName.trim().toLowerCase());
   if(differentCusts.length > 0){

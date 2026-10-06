@@ -1173,6 +1173,13 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
 
   // Complete Sale Logic
   async function processSale(isTaxInvoice){
+    const discountVal = Number(ps.discountValue || 0);
+    const discountAmount = ps.discountType === 'percent' 
+      ? Math.round(subtotal * (discountVal / 100))
+      : Math.min(subtotal, discountVal);
+    const afterDiscount = Math.max(0, subtotal - discountAmount);
+    const taxAmount = (posSettings.applyTax && isTaxInvoice) ? Math.round(afterDiscount * (Number(posSettings.taxPercent || 14) / 100)) : 0;
+
     if(!state.activeShift){
       showToast('لا يمكن إتمام البيع دون فتح وردية نشطة. يرجى فتح الوردية أولاً.', 'error');
       if(typeof openStartShiftModal === 'function'){

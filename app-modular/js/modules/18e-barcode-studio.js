@@ -111,7 +111,6 @@ function renderBarcodeStudioContent(main){
     return renderBarcodeStudioInvoiceView(main);
   }
 
-  const shopName = (state.settings && state.settings.shopName) || 'صيانة ميكروتك';
   const invList = state.inventory || [];
   const recList = state.receipts || [];
 

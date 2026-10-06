@@ -240,7 +240,6 @@ function attachLogin(){
     const btnIcon = document.getElementById('loginBtnIcon');
     const nameEl = document.getElementById('loginName');
     const passEl = document.getElementById('loginPass');
-    const rememberEl = document.getElementById('loginRemember');
     const err = document.getElementById('loginErr');
 
     const name = (nameEl ? nameEl.value : '').trim();

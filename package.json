@@ -6,6 +6,7 @@
   "author": "MicroTech",
   "scripts": {
     "verify": "node app-modular/build.js",
+    "lint": "eslint .",
     "test": "vitest run",
     "start": "node app-modular/build.js && electron .",
     "bundle": "node app-modular/build.js",
@@ -71,8 +72,11 @@
     }
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "electron": "^33.2.1",
     "electron-builder": "^25.1.8",
+    "eslint": "^10.12.0",
+    "globals": "^17.13.0",
     "vitest": "^5.0.3"
   }
 }

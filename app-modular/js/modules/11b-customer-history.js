@@ -335,7 +335,7 @@ function openReIntakeDeviceModal(previousReceipt){
       const newReceipt = {
         id: 'r_' + now.getTime(),
         receiptNumber: newRecNum,
-        date: (typeof todayISO === 'function') ? todayISO() : now.toISOString().slice(0, 10),
+        date: (typeof localDateStr === 'function') ? localDateStr() : now.toISOString().slice(0, 10),
         time: currentTimeStr,
         receivedAt: now.toISOString(),
         status: 'قيد الفحص',

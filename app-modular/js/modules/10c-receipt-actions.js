@@ -363,8 +363,8 @@ window.startNewReceiptForCustomer = function(name, phone, title=''){
 window.startNewInvoiceForCustomer = function(name, phone, title=''){
   const newInv = {
     InvoiceNumber: typeof nextInvoiceNumber === 'function' ? nextInvoiceNumber() : '',
-    Date: typeof todayISO === 'function' ? todayISO() : new Date().toISOString().slice(0, 10),
-    DueDate: typeof todayISO === 'function' ? todayISO() : new Date().toISOString().slice(0, 10),
+    Date: typeof localDateStr === 'function' ? localDateStr() : new Date().toISOString().slice(0, 10),
+    DueDate: typeof localDateStr === 'function' ? localDateStr() : new Date().toISOString().slice(0, 10),
     CustomerTitle: title || '',
     CustomerName: name || '',
     CustomerPhone: phone || '',

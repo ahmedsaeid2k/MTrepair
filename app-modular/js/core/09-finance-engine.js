@@ -9,8 +9,6 @@
 (function (root, factory) {
   if (typeof exports === 'object' && typeof module !== 'undefined') {
     module.exports = factory();
-  } else if (typeof define === 'function' && define.amd) {
-    define([], factory);
   } else {
     const exports = factory();
     Object.assign(root, exports);

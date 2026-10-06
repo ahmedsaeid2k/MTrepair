@@ -272,7 +272,6 @@ function openAiDiagnosisModal(rawR){
   const prevModal = document.getElementById('aiDiagnosisModal');
   if(prevModal) prevModal.remove();
 
-  const safeTargetId = String(r.id != null ? r.id : (r.ID != null ? r.ID : r.receiptNumber));
   const rNum = String(r.receiptNumber || r.ReceiptNumber || '');
   const cName = (typeof formatCustomerFullName === 'function') ? formatCustomerFullName(r) : ((r.customer && r.customer.name) || extractCustomerName(r) || 'عميل');
   const dCat = (r.device && r.device.category) || 'جهاز';

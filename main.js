@@ -29,7 +29,7 @@ function isSafeExternalUrl(rawUrl) {
   try {
     const parsed = new URL(rawUrl);
     return ['https:', 'http:', 'tel:', 'mailto:'].includes(parsed.protocol);
-  } catch (e) {
+  } catch {
     return /^(tel|mailto):/.test(rawUrl);
   }
 }

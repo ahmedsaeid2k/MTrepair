@@ -82,7 +82,7 @@ function renderSuppliers(main){
     const notes = document.getElementById('newSupNotes').value.trim();
     if(!name){ showToast('اكتب اسم المورد', 'error'); return; }
     try{
-      const res = await saveSupplierRemote({ID:'', Title:title, Name:name, Phone:phone, Notes:notes});
+      await saveSupplierRemote({ID:'', Title:title, Name:name, Phone:phone, Notes:notes});
       showToast('تمت إضافة المورد بنجاح', 'success');
       renderSuppliers(main);
     }catch(e){ showToast('تمت الإضافة محلياً', 'info'); }

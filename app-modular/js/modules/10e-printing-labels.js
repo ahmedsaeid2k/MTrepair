@@ -106,7 +106,6 @@ function openReceiptPrint(rawR, kind){
   const mount = document.createElement('div');
   mount.id = 'printMount';
 
-  const titles = {receipt:'إيصال استلام جهاز للصيانة', invoice:'فاتورة صيانة نهائية', workorder:'أمر شغل داخلي للفني'};
   const trackUrl = getReceiptTrackingUrl(r);
   const qrSvgHtml = QRCodeGenerator.toSvg(trackUrl, 30);
 

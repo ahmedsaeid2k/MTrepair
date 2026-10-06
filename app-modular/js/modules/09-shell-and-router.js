@@ -596,7 +596,6 @@ function renderExecutiveCommandCenter(app){
   const expandBtn = document.getElementById("sidebarExpandBtn");
   if(expandBtn) expandBtn.classList.remove("visible");
   normalizeUserSections(state.user);
-  const sections = state.user.sections || [];
   const logoUrl = state.settings.logoUrl;
   const today = new Date().toISOString().slice(0, 10);
 
@@ -610,13 +609,10 @@ function renderExecutiveCommandCenter(app){
   const inProgressRepairs = (state.receipts || []).filter(r => r.status === 'قيد الفحص' || r.status === 'الصيانة').length;
   const readyRepairs = (state.receipts || []).filter(r => r.status === 'مكتمل').length;
   const deliveredToday = (state.receipts || []).filter(r => r.status === 'تم التسليم' && String(r.updatedAt||r.date||'').slice(0,10) === today).length;
-  const overdueRepairs = (state.receipts || []).filter(r => r.status === 'مكتمل' && (Date.now()-new Date(r.updatedAt||r.date).getTime())/86400000 > 7).length;
 
   const todaySales = (state.sales || []).filter(s => String(s.Date||'').slice(0,10) === today);
   const todaySalesTotal = todaySales.reduce((s,x) => s + Number(x.Total||0), 0);
-  const totalSalesSum = (state.sales || []).reduce((s,x) => s + Number(x.Total||0), 0);
 
-  const lowStockCount = (state.inventory || []).filter(i => Number(i.Quantity||0) <= 2).length;
   const unpaidInvoices = (state.invoices || []).filter(i => !i.isPaid);
   const receivablesTotal = unpaidInvoices.reduce((s, i) => s + (Number(i.total||i.Total||0) - Number(i.paidAmount||0)), 0);
   const pendingAuthsCount = (state.authRequests || []).filter(r => r.status === 'pending').length;
@@ -633,8 +629,6 @@ function renderExecutiveCommandCenter(app){
     const sCount = (state.sales||[]).filter(s => String(s.Date||'').slice(0,10) === iso).length;
     weekData.push({ iso, name, count: rCount + sCount, rCount, sCount });
   }
-  const maxWeekCount = Math.max(...weekData.map(w => w.count), 5);
-  const peakItem = weekData.reduce((max, cur) => cur.count > max.count ? cur : max, weekData[0]);
 
   // Unified recent operations history filtered by permissions
   const opsList = [];
@@ -1424,7 +1418,6 @@ function logout(){
 /* ---------------- Maintenance Section ---------------- */
 function renderMaintenanceApp(app){
   const hasFinanceNav = canUserAccessSection('invoices') || canUserAccessSection('cashdrawer') || canUserAccessSection('daily');
-  const hasToolsNav = canUserAccessSection('inventory') || canUserAccessSection('barcode');
   const hasAdminNav = canUserAccessSection('audit') || canUserAccessSection('users') || canUserAccessSection('settings');
 
   app.innerHTML = `

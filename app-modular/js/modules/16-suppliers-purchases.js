@@ -470,6 +470,7 @@ function renderPurchases(main){
         <div class="subtitle">${state.purchases.length} فاتورة مسجلة</div>
       </div>
       <div style="display:flex;gap:8px;">
+        <button class="btn btn-warning btn-sm" id="btnPurchasesReturns">${getSvgIcon('refresh', 14)} مرتجعات المشتريات</button>
         <button class="btn btn-purple btn-sm" id="btnPurchasesBatchBarcode">${getSvgIcon('barcode', 14)} طباعة باركود من فاتورة</button>
         <button class="btn btn-primary btn-sm" id="btnNewPurchaseInvoice">${getSvgIcon('plus', 14)} فاتورة شراء وتوريد جديدة</button>
       </div>
@@ -518,6 +519,14 @@ function renderPurchases(main){
       </div>`}
     </div>
   `;
+  const btnRet = document.getElementById('btnPurchasesReturns');
+  if(btnRet) btnRet.onclick = () => {
+    if(typeof openPurchaseReturnModal === 'function') openPurchaseReturnModal();
+    else if(typeof renderPurchaseReturns === 'function') {
+      state.invHubTab = 'purchase_returns';
+      refreshInventorySectionOrTab();
+    }
+  };
   const btnBatch = document.getElementById('btnPurchasesBatchBarcode');
   if(btnBatch) btnBatch.onclick = () => openInvoiceBarcodePrintModal('purchase');
   const btnNewPur = document.getElementById('btnNewPurchaseInvoice');

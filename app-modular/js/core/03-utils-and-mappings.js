@@ -2255,3 +2255,386 @@ async function deleteInvoiceRemote(id){
 
   return apiPost('deleteInvoice', {id, role: state.user ? state.user.role : 'admin'});
 }
+
+/* ============================================================
+   Serials, Warranty, Stocktake, BOM & Purchase Returns Engine (U12)
+   ============================================================ */
+
+/* ---------------- Serials & Warranty Lifecycle ---------------- */
+async function loadSerials(){
+  const rows = await apiGet('getSerials');
+  state.serials = Array.isArray(rows) ? rows : [];
+  setCache('serials', state.serials);
+  return state.serials;
+}
+
+async function saveSerialRemote(serialObj){
+  if(!serialObj.ID) serialObj.ID = 'sn_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+  serialObj.Serial = String(serialObj.Serial || '').trim();
+  serialObj.Status = serialObj.Status || 'In Stock';
+  if(!serialObj.WarrantyEnd && serialObj.WarrantyMonths && serialObj.SoldDate) {
+    const d = new Date(serialObj.SoldDate);
+    d.setMonth(d.getMonth() + Number(serialObj.WarrantyMonths || 0));
+    serialObj.WarrantyEnd = d.toISOString().slice(0, 10);
+  }
+
+  const idx = (state.serials || []).findIndex(x => String(x.ID) === String(serialObj.ID));
+  if(idx > -1) state.serials[idx] = serialObj;
+  else (state.serials = state.serials || []).push(serialObj);
+  setCache('serials', state.serials);
+
+  recordAuditLog('رقم تسلسلي', 'المخزن', `حفظ رقم تسلسلي (${serialObj.Serial}) للصنف (${serialObj.ItemName || serialObj.ItemID})`, serialObj.ID);
+
+  return apiPost('saveSerial', {
+    id: serialObj.ID,
+    itemId: serialObj.ItemID,
+    itemName: serialObj.ItemName,
+    serial: serialObj.Serial,
+    purchaseId: serialObj.PurchaseID || '',
+    supplierId: serialObj.SupplierID || '',
+    warrantyMonths: serialObj.WarrantyMonths || '',
+    warrantyEnd: serialObj.WarrantyEnd || '',
+    status: serialObj.Status,
+    soldRef: serialObj.SoldRef || '',
+    soldDate: serialObj.SoldDate || '',
+    projectId: serialObj.ProjectID || '',
+    notes: serialObj.Notes || ''
+  });
+}
+
+async function markSerialSoldRemote(serialIdOrSerial, soldRef = '', soldDate = '', warrantyEnd = ''){
+  const target = String(serialIdOrSerial || '').trim();
+  const serialRow = (state.serials || []).find(x => String(x.ID) === target || String(x.Serial) === target);
+  const nowStr = soldDate || new Date().toISOString().slice(0, 10);
+
+  if(serialRow){
+    serialRow.Status = 'Sold';
+    serialRow.SoldRef = soldRef;
+    serialRow.SoldDate = nowStr;
+    if(warrantyEnd) {
+      serialRow.WarrantyEnd = warrantyEnd;
+    } else if(serialRow.WarrantyMonths) {
+      const d = new Date(nowStr);
+      d.setMonth(d.getMonth() + Number(serialRow.WarrantyMonths));
+      serialRow.WarrantyEnd = d.toISOString().slice(0, 10);
+    }
+    setCache('serials', state.serials);
+    recordAuditLog('تخصيص سيريال مبيع', 'المخزن', `بيع وتخصيص الرقم التسلسلي (${serialRow.Serial}) للعملية (${soldRef})`, serialRow.ID);
+  }
+
+  return apiPost('markSerialSold', {
+    serialId: serialRow ? serialRow.ID : target,
+    serial: target,
+    soldRef,
+    soldDate: nowStr,
+    warrantyEnd: serialRow ? (serialRow.WarrantyEnd || '') : warrantyEnd
+  });
+}
+
+function getSerialsForItem(itemId){
+  return (state.serials || []).filter(s => String(s.ItemID) === String(itemId));
+}
+
+function getAvailableSerialsForItem(itemId){
+  return (state.serials || []).filter(s => String(s.ItemID) === String(itemId) && (s.Status === 'In Stock' || !s.Status));
+}
+
+function findSerialInfo(serialNumber){
+  if(!serialNumber) return null;
+  const sClean = String(serialNumber).trim().toLowerCase();
+  return (state.serials || []).find(s => String(s.Serial || '').trim().toLowerCase() === sClean) || null;
+}
+
+function isSerialUnderWarranty(serialObj){
+  if(!serialObj) return false;
+  if(serialObj.WarrantyEnd) {
+    const end = new Date(serialObj.WarrantyEnd);
+    return end >= new Date(new Date().toISOString().slice(0, 10));
+  }
+  if(serialObj.SoldDate && serialObj.WarrantyMonths) {
+    const end = new Date(serialObj.SoldDate);
+    end.setMonth(end.getMonth() + Number(serialObj.WarrantyMonths));
+    return end >= new Date(new Date().toISOString().slice(0, 10));
+  }
+  return false;
+}
+
+/* ---------------- BOM & Bundle Kits Engine ---------------- */
+async function loadBundleItems(){
+  const rows = await apiGet('getBundleItems');
+  state.bundleItems = Array.isArray(rows) ? rows : [];
+  setCache('bundle_items', state.bundleItems);
+  return state.bundleItems;
+}
+
+async function saveBundleItemRemote(bundleItemObj){
+  if(!bundleItemObj.ID) bundleItemObj.ID = 'bnd_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+  bundleItemObj.Quantity = Number(bundleItemObj.Quantity || 1);
+
+  const idx = (state.bundleItems || []).findIndex(x => String(x.ID) === String(bundleItemObj.ID));
+  if(idx > -1) state.bundleItems[idx] = bundleItemObj;
+  else (state.bundleItems = state.bundleItems || []).push(bundleItemObj);
+  setCache('bundle_items', state.bundleItems);
+
+  recordAuditLog('تجميعة صنف BOM', 'المخزن', `ربط مكون (${bundleItemObj.ComponentName || bundleItemObj.ComponentItemID}) بالطقم #${bundleItemObj.BundleItemID}`, bundleItemObj.ID);
+
+  return apiPost('saveBundleItem', {
+    id: bundleItemObj.ID,
+    bundleItemId: bundleItemObj.BundleItemID,
+    componentItemId: bundleItemObj.ComponentItemID,
+    componentName: bundleItemObj.ComponentName || '',
+    quantity: bundleItemObj.Quantity,
+    notes: bundleItemObj.Notes || ''
+  });
+}
+
+async function deleteBundleItemRemote(bundleItemId){
+  state.bundleItems = (state.bundleItems || []).filter(x => String(x.ID) !== String(bundleItemId));
+  setCache('bundle_items', state.bundleItems);
+  recordAuditLog('حذف مكون BOM', 'المخزن', `حذف مكون تجميعة #${bundleItemId}`, bundleItemId);
+  return apiPost('deleteBundleItem', { id: bundleItemId });
+}
+
+function getBundleComponents(bundleItemId){
+  return (state.bundleItems || []).filter(b => String(b.BundleItemID) === String(bundleItemId));
+}
+
+function calculateBundleCost(bundleItemId){
+  const components = getBundleComponents(bundleItemId);
+  if(!components.length) {
+    const inv = (state.inventory || []).find(x => String(x.ID) === String(bundleItemId));
+    return Number(inv ? (inv.PurchasePrice || 0) : 0);
+  }
+  let totalCost = 0;
+  components.forEach(comp => {
+    const inv = (state.inventory || []).find(x => String(x.ID) === String(comp.ComponentItemID));
+    const unitCost = Number(inv ? (inv.PurchasePrice || 0) : 0);
+    totalCost += unitCost * Number(comp.Quantity || 1);
+  });
+  return round2(totalCost);
+}
+
+function deductBundleComponentsStock(bundleItemId, multiplier = 1){
+  const components = getBundleComponents(bundleItemId);
+  if(!components.length) return false;
+  components.forEach(comp => {
+    const inv = (state.inventory || []).find(x => String(x.ID) === String(comp.ComponentItemID));
+    if(inv){
+      const deductQty = Number(comp.Quantity || 1) * Number(multiplier || 1);
+      inv.Quantity = Math.max(0, Number(inv.Quantity || 0) - deductQty);
+    }
+  });
+  setCache('inventory', state.inventory);
+  return true;
+}
+
+/* ---------------- Stocktake Sessions & Adjustments Engine ---------------- */
+async function loadStocktakeSessions(){
+  const rows = await apiGet('getStocktakeSessions');
+  state.stocktakeSessions = Array.isArray(rows) ? rows : [];
+  setCache('stocktake_sessions', state.stocktakeSessions);
+  return state.stocktakeSessions;
+}
+
+async function commitStocktakeSessionRemote(sessionData){
+  if(!sessionData.id) sessionData.id = 'stk_' + Date.now();
+  if(!sessionData.sessionNumber) sessionData.sessionNumber = 'STK-' + new Date().getFullYear() + '-' + Math.floor(Math.random() * 10000);
+  if(!sessionData.date) sessionData.date = new Date().toISOString().slice(0, 10);
+  sessionData.title = sessionData.title || 'جلسة جرد مخزني دوري';
+  sessionData.status = 'Committed';
+  sessionData.createdBy = sessionData.createdBy || (state.user ? state.user.name : 'مسؤول');
+  sessionData.committedBy = state.user ? state.user.name : 'مسؤول';
+
+  const lines = Array.isArray(sessionData.lines) ? sessionData.lines : [];
+  let totalDeficitCost = 0;
+  let totalSurplusCost = 0;
+  let netDifferenceQty = 0;
+
+  // Apply physical counts to local inventory state immediately
+  lines.forEach(l => {
+    const exp = Number(l.expectedQty || 0);
+    const cnt = Number(l.countedQty || 0);
+    const diff = cnt - exp;
+    const unitCost = Number(l.unitCost || 0);
+    const diffCost = round2(diff * unitCost);
+
+    l.differenceQty = diff;
+    l.totalDifferenceCost = diffCost;
+    netDifferenceQty += diff;
+
+    if(diffCost < 0) totalDeficitCost += Math.abs(diffCost);
+    else if(diffCost > 0) totalSurplusCost += diffCost;
+
+    const inv = (state.inventory || []).find(x => String(x.ID) === String(l.itemId));
+    if(inv){
+      inv.Quantity = cnt;
+    }
+  });
+  setCache('inventory', state.inventory);
+
+  sessionData.totalDiscrepancyCost = round2(totalSurplusCost - totalDeficitCost);
+  sessionData.netDifferenceQty = netDifferenceQty;
+
+  // Save session & lines to local cache
+  const sessIdx = (state.stocktakeSessions || []).findIndex(x => String(x.ID) === String(sessionData.id));
+  if(sessIdx > -1) state.stocktakeSessions[sessIdx] = sessionData;
+  else (state.stocktakeSessions = state.stocktakeSessions || []).unshift(sessionData);
+  setCache('stocktake_sessions', state.stocktakeSessions);
+
+  if(!state.stocktakeLines) state.stocktakeLines = [];
+  lines.forEach(l => {
+    l.SessionID = sessionData.id;
+    state.stocktakeLines.push(l);
+  });
+  setCache('stocktake_lines', state.stocktakeLines);
+
+  // Financial Double-Entry Auto Journal Entry:
+  // Shortage/Deficit (عجز الجرد): Dr 5209 (عجز وفروق الجرد المخزني), Cr 1104 (مخزون البضائع ومستلزمات الصيانة)
+  // Surplus (زيادة الجرد): Dr 1104 (مخزون البضائع ومستلزمات الصيانة), Cr 4201 (إيرادات وأرباح متنوعة وزيادة الجرد)
+  const journalLines = [];
+  if(totalDeficitCost > 0){
+    journalLines.push({
+      AccountCode: '5209',
+      AccountName: 'عجز وفروق الجرد المخزني',
+      Debit: round2(totalDeficitCost),
+      Credit: 0,
+      Notes: `إثبات عجز وفروق الجرد الدفتري لجلسة #${sessionData.sessionNumber}`
+    });
+    journalLines.push({
+      AccountCode: '1104',
+      AccountName: 'مخزون البضائع وقطع الغيار',
+      Debit: 0,
+      Credit: round2(totalDeficitCost),
+      Notes: `تخفيض قيمة المخزون لمطابقة الجرد الفعلي جلسة #${sessionData.sessionNumber}`
+    });
+  }
+  if(totalSurplusCost > 0){
+    journalLines.push({
+      AccountCode: '1104',
+      AccountName: 'مخزون البضائع وقطع الغيار',
+      Debit: round2(totalSurplusCost),
+      Credit: 0,
+      Notes: `زيادة قيمة المخزون بموجب فائض الجرد الفعلي جلسة #${sessionData.sessionNumber}`
+    });
+    journalLines.push({
+      AccountCode: '4201',
+      AccountName: 'إيرادات وأرباح متنوعة وزيادة الجرد',
+      Debit: 0,
+      Credit: round2(totalSurplusCost),
+      Notes: `إثبات فائض وزيادة الجرد المخزني جلسة #${sessionData.sessionNumber}`
+    });
+  }
+
+  let je = null;
+  if(journalLines.length > 0){
+    je = await recordAutoJournalEntry(
+      `تسوية فروق جرد مخزني #${sessionData.sessionNumber}`,
+      'Stocktake_Adjustment',
+      sessionData.id,
+      journalLines
+    ).catch(e => console.warn('Stocktake journal error:', e));
+  }
+
+  recordAuditLog('اعتماد جرد مخزني', 'المخزن', `اعتماد وترحيل جلسة جرد مخزني #${sessionData.sessionNumber} - فروق القيمة: ${sessionData.totalDiscrepancyCost} ج.م`, sessionData.id);
+
+  return apiPost('commitStocktakeSession', {
+    id: sessionData.id,
+    sessionNumber: sessionData.sessionNumber,
+    date: sessionData.date,
+    title: sessionData.title,
+    status: sessionData.status,
+    totalDiscrepancyCost: sessionData.totalDiscrepancyCost,
+    netDifferenceQty: sessionData.netDifferenceQty,
+    createdBy: sessionData.createdBy,
+    committedBy: sessionData.committedBy,
+    notes: sessionData.notes || '',
+    lines,
+    journalEntry: je,
+    user: state.user ? state.user.name : 'مسؤول'
+  });
+}
+
+/* ---------------- Purchase Returns Engine ---------------- */
+async function loadPurchaseReturns(){
+  const rows = await apiGet('getPurchaseReturns');
+  state.purchaseReturns = Array.isArray(rows) ? rows : [];
+  setCache('purchase_returns', state.purchaseReturns);
+  return state.purchaseReturns;
+}
+
+async function savePurchaseReturnRemote(pret, itemsList = []){
+  if(!pret.ID) pret.ID = 'pret_' + Date.now();
+  if(!pret.ReturnNumber) pret.ReturnNumber = 'PR-' + new Date().getFullYear() + '-' + Math.floor(Math.random() * 10000);
+  if(!pret.Date) pret.Date = new Date().toISOString().slice(0, 10);
+  pret.By = state.user ? state.user.name : 'نظام';
+  pret.Total = Number(pret.Total || 0);
+  pret.TaxAmount = Number(pret.TaxAmount || 0);
+  pret.RefundMethod = pret.RefundMethod || 'نقدي';
+
+  const idx = (state.purchaseReturns || []).findIndex(x => String(x.ID) === String(pret.ID));
+  if(idx > -1) state.purchaseReturns[idx] = pret;
+  else (state.purchaseReturns = state.purchaseReturns || []).unshift(pret);
+  setCache('purchase_returns', state.purchaseReturns);
+
+  // Decrement local inventory stock
+  if(Array.isArray(itemsList) && itemsList.length > 0){
+    itemsList.forEach(it => {
+      if(!it.itemId) return;
+      const inv = (state.inventory || []).find(x => String(x.ID) === String(it.itemId));
+      if(inv){
+        const deductQty = Number(it.qty || 0);
+        inv.Quantity = Math.max(0, Number(inv.Quantity || 0) - deductQty);
+      }
+    });
+    setCache('inventory', state.inventory);
+  }
+
+  // Deduct supplier debt if refund is on credit/balance
+  if(pret.SupplierID && (pret.RefundMethod === 'آجل' || pret.RefundMethod === 'خصم من الرصيد' || pret.RefundMethod === 'رصيد مورد')){
+    const sup = (state.suppliers || []).find(x => String(x.ID) === String(pret.SupplierID) || String(x.Name) === String(pret.SupplierName));
+    if(sup){
+      sup.Debt = Math.max(0, Number(sup.Debt || 0) - pret.Total);
+      setCache('suppliers', state.suppliers);
+    }
+  }
+
+  // Double-Entry Auto Journal:
+  // Dr 1101 (Cash) / 1102 (Bank) / 2101 (Supplier Account)
+  // Cr 1104 (Inventory)
+  const debitAccount = (pret.RefundMethod === 'بنكي' || pret.RefundMethod === 'شبكة') ? '1102' :
+                       (pret.RefundMethod === 'نقدي' ? '1101' : '2101');
+  const debitName = (debitAccount === '1101') ? 'الخزينة الرئيسية (النقدية)' :
+                    (debitAccount === '1102') ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الموردون والدائنون';
+
+  const journalLines = [
+    { AccountCode: debitAccount, AccountName: debitName, Debit: pret.Total, Credit: 0, Notes: `استرداد قيمة مرتجع مشتريات #${pret.ReturnNumber} من المورد ${pret.SupplierName}` },
+    { AccountCode: '1104', AccountName: 'مخزون البضائع وقطع الغيار', Debit: 0, Credit: pret.Total, Notes: `إخراج بضاعة مرتجعة لمورد فاتورة #${pret.ReturnNumber}` }
+  ];
+
+  const je = await recordAutoJournalEntry(
+    `مرتجع مشتريات للمورد ${pret.SupplierName} #${pret.ReturnNumber}`,
+    'Purchase_Return',
+    pret.ID,
+    journalLines
+  ).catch(e => console.warn('Purchase return journal error:', e));
+
+  recordAuditLog('مرتجع مشتريات', 'المخزن', `تسجيل مرتجع مشتريات للمورد (${pret.SupplierName}) بقيمة ${pret.Total} ج.م طريقة رد: ${pret.RefundMethod}`, pret.ID);
+
+  return apiPost('savePurchaseReturn', {
+    id: pret.ID,
+    returnNumber: pret.ReturnNumber,
+    purchaseId: pret.PurchaseID || '',
+    supplierId: pret.SupplierID || '',
+    supplierName: pret.SupplierName || '',
+    date: pret.Date,
+    itemsSummary: pret.ItemsSummary || '',
+    itemsJSON: JSON.stringify(itemsList),
+    total: pret.Total,
+    taxAmount: pret.TaxAmount,
+    refundMethod: pret.RefundMethod,
+    items: itemsList,
+    journalEntry: je,
+    notes: pret.Notes || '',
+    user: pret.By
+  });
+}

@@ -866,8 +866,16 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
         const code = barcodeInp.value.trim();
         if(!code) return;
         
-        // Exact barcode match first
-        const it = (state.inventory||[]).find(x => String(x.Barcode||'').trim() === code || String(x.ID||x.id) === code);
+        // Exact barcode match or serial number match
+        let it = (state.inventory||[]).find(x => String(x.Barcode||'').trim() === code || String(x.ID||x.id) === code);
+        let matchedSerial = null;
+        if(!it && typeof findSerialInfo === 'function'){
+          matchedSerial = findSerialInfo(code);
+          if(matchedSerial && matchedSerial.ItemID){
+            it = (state.inventory||[]).find(x => String(x.ID) === String(matchedSerial.ItemID));
+          }
+        }
+
         if(it){
           if(Number(it.Quantity) <= 0 && !posSettings.allowNegativeStock){
             showToast('الصنف غير متاح في المخزون', 'error');
@@ -875,7 +883,13 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
           }
           ps.searchQuery = '';
           await addItemToCart(it.ID||it.id, 1, main);
-          showToast(`تم مسح وإضافة: ${it.Name}`, 'success');
+          if(matchedSerial){
+            const lastCart = state.cart[state.cart.length - 1];
+            if(lastCart) lastCart.serialNumber = matchedSerial.Serial;
+            showToast(`تم مسح السيريال (${matchedSerial.Serial}) وإضافة: ${it.Name}`, 'success');
+          } else {
+            showToast(`تم مسح وإضافة: ${it.Name}`, 'success');
+          }
         } else {
           // If 1 item filtered
           const filtered = (state.inventory||[]).filter(x => (x.Name&&x.Name.toLowerCase().includes(code.toLowerCase())));
@@ -884,7 +898,7 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
             await addItemToCart(filtered[0].ID||filtered[0].id, 1, main);
             showToast(`تمت إضافة: ${filtered[0].Name}`, 'success');
           } else {
-            showToast('لا يوجد صنف مطابق لهذا الباركود', 'error');
+            showToast('لا يوجد صنف مطابق لهذا الباركود أو السيريال', 'error');
           }
         }
       }
@@ -1298,6 +1312,14 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
             if (allowNegative && (currentQ - deductQ < 0)) {
               recordAuditLog('تجاوز رصيد مخزون سالب', 'المبيعات', `تم بيع صنف (${it.Name}) برصيد سالب. الرصيد بعد البيع: ${it.Quantity}`, customerName);
             }
+          }
+          // U12: BOM Bundle components deduction
+          if(typeof deductBundleComponentsStock === 'function'){
+            deductBundleComponentsStock(c.itemId, Number(c.qty || 1));
+          }
+          // U12: Mark serial sold if serial was tracked/selected
+          if(c.serialNumber && typeof markSerialSoldRemote === 'function'){
+            markSerialSoldRemote(c.serialNumber, 'POS Sale', new Date().toISOString().slice(0, 10));
           }
         }
       }

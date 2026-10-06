@@ -208,3 +208,18 @@
   - `Journal`: ID, Date, EntryNumber, Description, ReferenceType, ReferenceID, LinesJSON, TotalDebit, TotalCredit, CreatedBy, CreatedAt
   - `Invoices`: ID, Date, InvoiceNumber, CustomerName, CustomerPhone, ItemsJSON, Subtotal, TaxRate, TaxAmount, Discount, Total, AmountPaid, Remaining, Status, Notes, By
   - `Users`: ID, Name, Password, Role, Sections, Superuser, Notes
+### الترحيل 14 [U12] — إضافة أوراق وأعمدة تتبع السيريالات، جلسات الجرد، أطقم BOM، ومرتجعات المشتريات
+- **التاريخ:** 2026-10-06
+- **الهدف:** توفير بنية قاعدة البيانات الكاملة للتعامل مع السيريالات وتاريخ انتهاء الضمان، وجلسات الجرد المخزني وتسوية العجز والفائض محاسبياً، وتجميعات الأطقم المركبة (BOM)، ومرتجعات المشتريات إلى الموردين.
+- **التغييرات في شيتات Google Apps Script (`ALLOWED_HEADERS`):**
+  - ورقة `Serials`: تحديث الأعمدة لتصبح: `['ID','ItemID','ItemName','Serial','PurchaseID','SupplierID','WarrantyMonths','WarrantyEnd','Status','SoldRef','SoldDate','ProjectID','Notes']`.
+  - إضافة ورقة `PurchaseReturns`: `['ID','ReturnNumber','PurchaseID','SupplierID','SupplierName','Date','ItemsSummary','ItemsJSON','Total','TaxAmount','RefundMethod','By','Notes']`.
+  - إضافة ورقة `BundleItems`: `['ID','BundleItemID','ComponentItemID','ComponentName','Quantity','Notes']`.
+  - إضافة ورقة `StocktakeSessions`: `['ID','SessionNumber','Date','Title','Status','TotalDiscrepancyCost','NetDifferenceQty','CreatedBy','CommittedBy','Notes']`.
+  - إضافة ورقة `StocktakeLines`: `['ID','SessionID','ItemID','ItemName','ExpectedQty','CountedQty','DifferenceQty','UnitCost','TotalDifferenceCost','Notes']`.
+- **شجرة الحسابات (`DEFAULT_ACCOUNTS`):**
+  - إضافة حساب `5209`: "عجز وفروق الجرد المخزني" (المصروفات - مدين).
+  - إضافة حساب `4201`: "إيرادات وأرباح متنوعة وزيادة الجرد" (الإيرادات - دائن).
+- **القيود المحاسبية الآلية (`AUTOPOST_REFS`):**
+  - إضافة نوعي المرجع `Stocktake_Adjustment` و `Purchase_Return` للترحيل المحاسبي المزدوج الآلي.
+- **آلية الترحيل:** تقوم دالة `ensureHeaders` بإضافة الشيتات والأعمدة تلقائياً عند أول عملية، مع الحفاظ الكامل على البيانات القائمة.

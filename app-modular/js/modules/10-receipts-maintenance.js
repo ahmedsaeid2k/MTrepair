@@ -260,8 +260,9 @@ function stepDevice(body,d){
       <div class="grid3">
         <div class="field"><label>الماركة</label><select id="devBrand"></select></div>
         <div class="field" id="brandOtherWrap" style="display:none"><label>اكتب الماركة يدويًا</label><input id="devBrandOther" value="${escapeHtml(currDev.brandOther||'')}"></div>
-        <div class="field"><label>الموديل / السيريال</label><input id="devModel" value="${escapeHtml(currDev.model||'')}" placeholder="مثال: Dell G15 5515"></div>
+        <div class="field"><label>الموديل / السيريال</label><input id="devModel" value="${escapeHtml(currDev.model||'')}" placeholder="مثال: Dell G15 5515 أو سيريال الجهاز"></div>
       </div>
+      <div id="serialWarrantyAlertBox" style="display:none;margin-top:4px;margin-bottom:10px;padding:8px 12px;border:1.5px solid var(--line);border-radius:4px;font-size:12px;"></div>
       <div class="grid2">
         <div class="field"><label>الملحقات المستلمة مع هذا الجهاز</label><input id="devAcc" placeholder="شاحن أصلي، كابل باور، حقيبة، ماوس..." value="${escapeHtml(currDev.accessories||'')}"></div>
         <div class="field"><label>كلمة المرور / الباسورد (اختياري)</label><input id="devPassword" type="text" placeholder="باسورد الجهاز أو رمز القفل للفحص إن وجد..." value="${escapeHtml(currDev.password||'')}"></div>
@@ -322,7 +323,67 @@ function stepDevice(body,d){
   document.getElementById('devCat').onchange = fillBrands;
   document.getElementById('devBrand').onchange = ()=>{ document.getElementById('brandOtherWrap').style.display = document.getElementById('devBrand').value==='أخرى'?'':'none'; };
 
-  // Photo Angle Presets & Upload Logic
+  // Live Serial & Warranty Auto-Detection (U12)
+  const devModelInp = document.getElementById('devModel');
+  const alertBox = document.getElementById('serialWarrantyAlertBox');
+  const checkWarranty = () => {
+    if(!devModelInp || !alertBox) return;
+    const val = devModelInp.value.trim();
+    if(!val || val.length < 3){ alertBox.style.display = 'none'; return; }
+    
+    const serialMatch = typeof findSerialInfo === 'function' ? findSerialInfo(val) : null;
+    if(serialMatch){
+      const isUnder = typeof isSerialUnderWarranty === 'function' ? isSerialUnderWarranty(serialMatch) : false;
+      alertBox.style.display = 'flex';
+      if(isUnder){
+        alertBox.style.background = '#ecfdf5';
+        alertBox.style.borderColor = '#10b981';
+        alertBox.style.color = '#065f46';
+        alertBox.innerHTML = `
+          <div style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:10px;flex-wrap:wrap;">
+            <div>
+              <b>🛡️ هذا الجهاز تحت الضمان الساري من مبيعات المركز!</b>
+              <div style="font-size:11.5px;margin-top:2px;">
+                السيريال: <span class="mono font-bold">${escapeHtml(serialMatch.Serial)}</span> | ينتهي في: <b>${cleanDate(serialMatch.WarrantyEnd)}</b> | الصنف: ${escapeHtml(serialMatch.ItemName||'')}
+              </div>
+            </div>
+            <button type="button" class="btn btn-green btn-xs" id="applyWarrantyIntakeBtn" style="white-space:nowrap;font-weight:700;">
+              تطبيق استلام تحت الضمان مجاناً
+            </button>
+          </div>
+        `;
+        const applyBtn = alertBox.querySelector('#applyWarrantyIntakeBtn');
+        if(applyBtn){
+          applyBtn.onclick = () => {
+            d.cost = 0;
+            d.deposit = 0;
+            d.inspectionFee = 0;
+            d.reIntakeReason = 'صيانة تحت ضمان مبيعات المركز';
+            d.warrantyNotes = `جهاز تحت الضمان من مبيعات المركز (سيريال: ${serialMatch.Serial})`;
+            showToast('تم تعيين الإيصال تحت الضمان وتصفير رسوم الفحص', 'success');
+          };
+        }
+      } else {
+        alertBox.style.background = '#fef2f2';
+        alertBox.style.borderColor = '#ef4444';
+        alertBox.style.color = '#991b1b';
+        alertBox.innerHTML = `
+          <div>
+            <b>⚠️ انتهت فترة الضمان لهذا الجهاز</b>
+            <div style="font-size:11.5px;margin-top:2px;">
+              السيريال: <span class="mono font-bold">${escapeHtml(serialMatch.Serial)}</span> انتهى في: ${cleanDate(serialMatch.WarrantyEnd)}
+            </div>
+          </div>
+        `;
+      }
+    } else {
+      alertBox.style.display = 'none';
+    }
+  };
+  if(devModelInp){
+    devModelInp.oninput = checkWarranty;
+    checkWarranty();
+  }
   let selectedAngle = 'الشاشة والواجهة';
   body.querySelectorAll('.photo-angle-preset-btn').forEach(btn => {
     btn.onclick = () => {

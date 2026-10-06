@@ -29,10 +29,22 @@ function renderInventoryHubApp(app){
         <div class="nav-item ${state.invHubTab==='إكسسوار'?'active':''}" data-invhubtab="إكسسوار">
           <span class="nav-item-icon">${getSvgIcon('headphones', 16)}</span><span>الإكسسوارات</span>
         </div>
+        <div class="nav-item ${state.invHubTab==='serials'?'active':''}" data-invhubtab="serials">
+          <span class="nav-item-icon">${getSvgIcon('barcode', 16)}</span><span>الأرقام التسلسلية والضمان</span>
+        </div>
+        <div class="nav-item ${state.invHubTab==='stocktake'?'active':''}" data-invhubtab="stocktake">
+          <span class="nav-item-icon">${getSvgIcon('receipt', 16)}</span><span>جلسات الجرد المخزني</span>
+        </div>
+        <div class="nav-item ${state.invHubTab==='bundles'?'active':''}" data-invhubtab="bundles">
+          <span class="nav-item-icon">${getSvgIcon('package', 16)}</span><span>الأطقم والتجميعات (BOM)</span>
+        </div>
 
         <div class="nav-section">المشتريات والموردين</div>
         <div class="nav-item ${state.invHubTab==='purchases'?'active':''}" data-invhubtab="purchases">
           <span class="nav-item-icon">${getSvgIcon('download', 16)}</span><span>فواتير الشراء</span>
+        </div>
+        <div class="nav-item ${state.invHubTab==='purchase_returns'?'active':''}" data-invhubtab="purchase_returns">
+          <span class="nav-item-icon">${getSvgIcon('refresh', 16)}</span><span>مرتجعات المشتريات</span>
         </div>
         <div class="nav-item ${state.invHubTab==='suppliers'?'active':''}" data-invhubtab="suppliers">
           <span class="nav-item-icon">${getSvgIcon('users', 16)}</span><span>سجل الموردين</span>
@@ -71,7 +83,11 @@ function renderInventoryHubApp(app){
 
   const main = document.getElementById('main');
   if(state.invHubTab==='purchases') renderPurchases(main);
+  else if(state.invHubTab==='purchase_returns') renderPurchaseReturns(main);
   else if(state.invHubTab==='suppliers') renderSuppliers(main);
+  else if(state.invHubTab==='serials') renderSerialsView(main);
+  else if(state.invHubTab==='stocktake') renderStocktakeView(main);
+  else if(state.invHubTab==='bundles') renderBundlesView(main);
   else renderInventory(main, state.invHubTab, state.invHubTab==='all' ? 'كل أصناف الشركة' : `مخزون: ${state.invHubTab}`);
 }
 
@@ -80,7 +96,11 @@ function refreshInventorySectionOrTab(){
   if(!main) return;
   if(state.currentSection === 'inventory'){
     if(state.invHubTab === 'purchases') renderPurchases(main);
+    else if(state.invHubTab === 'purchase_returns') renderPurchaseReturns(main);
     else if(state.invHubTab === 'suppliers') renderSuppliers(main);
+    else if(state.invHubTab === 'serials') renderSerialsView(main);
+    else if(state.invHubTab === 'stocktake') renderStocktakeView(main);
+    else if(state.invHubTab === 'bundles') renderBundlesView(main);
     else renderInventory(main, state.invHubTab || 'all', (state.invHubTab === 'all' || !state.invHubTab) ? 'كل أصناف الشركة' : `مخزون: ${state.invHubTab}`);
   } else if(state.currentSection === 'maintenance' && state.tab === 'inventory'){
     renderInventory(main, 'صيانة', 'مخزن قطع الغيار');
@@ -570,8 +590,18 @@ function openInventoryItemModal(editItem, cloneMode=false, defaultCategory='صي
         </div>
 
         <!-- Modal Actions -->
-        <div class="actions-row" style="margin-top:16px;">
-          <button class="btn btn-ghost" id="cancelItemModalBtn" type="button">إلغاء</button>
+        <div class="actions-row" style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;">
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-ghost" id="cancelItemModalBtn" type="button">إلغاء</button>
+            ${isEdit ? `
+              <button class="btn btn-purple btn-sm" id="modalOpenItemSerialsBtn" type="button">
+                ${getSvgIcon('barcode', 14)} السيريالات (${(state.serials||[]).filter(s=>String(s.ItemID)===String(item.ID)).length})
+              </button>
+              <button class="btn btn-amber btn-sm" id="modalOpenItemBomBtn" type="button">
+                ${getSvgIcon('package', 14)} مكونات BOM (${(state.bundleItems||[]).filter(b=>String(b.BundleItemID)===String(item.ID)).length})
+              </button>
+            ` : ''}
+          </div>
           <div style="display:flex;gap:8px;">
             ${!isEdit ? `<button class="btn btn-green" id="saveAndNewItemBtn" type="button">${getSvgIcon('plus', 14)} حفظ وإضافة صنف آخر</button>` : ''}
             <button class="btn btn-primary" id="saveItemMasterBtn" type="button">${getSvgIcon('check', 14)} حفظ الصنف</button>
@@ -585,6 +615,23 @@ function openInventoryItemModal(editItem, cloneMode=false, defaultCategory='صي
     // Close handlers
     overlay.querySelector('#closeItemModal').onclick = ()=>overlay.remove();
     overlay.querySelector('#cancelItemModalBtn').onclick = ()=>overlay.remove();
+
+    const serBtn = overlay.querySelector('#modalOpenItemSerialsBtn');
+    if(serBtn){
+      serBtn.onclick = () => {
+        overlay.remove();
+        state.invHubTab = 'serials';
+        state.serialsSearchQ = item.Name;
+        refreshInventorySectionOrTab();
+      };
+    }
+    const bomBtn = overlay.querySelector('#modalOpenItemBomBtn');
+    if(bomBtn){
+      bomBtn.onclick = () => {
+        overlay.remove();
+        openBundleComponentsModal(item);
+      };
+    }
 
     // Category change updates subcategory datalist
     overlay.querySelector('#mItemCategory').onchange = (e)=>{
@@ -1138,5 +1185,1451 @@ function openWarehouseTransferModal(preselectedItem=null){
   }
 
   renderModal();
+  document.body.appendChild(overlay);
+}
+
+/* ============================================================
+   Serials & Warranty Tracking Views (U12)
+   ============================================================ */
+function renderSerialsView(main){
+  if(!state.serialsSearchQ) state.serialsSearchQ = '';
+  if(!state.serialsStatusFilter) state.serialsStatusFilter = 'all';
+
+  const rawList = state.serials || [];
+  const totalCount = rawList.length;
+  const inStockCount = rawList.filter(s => (s.Status || 'In Stock') === 'In Stock').length;
+  const soldCount = rawList.filter(s => s.Status === 'Sold').length;
+  const installedCount = rawList.filter(s => s.Status === 'Installed').length;
+  const activeWarrantyCount = rawList.filter(s => typeof isSerialUnderWarranty === 'function' && isSerialUnderWarranty(s)).length;
+
+  const q = (state.serialsSearchQ || '').trim().toLowerCase();
+  let list = rawList.filter(s => {
+    if(state.serialsStatusFilter === 'In Stock') return (s.Status || 'In Stock') === 'In Stock';
+    if(state.serialsStatusFilter === 'Sold') return s.Status === 'Sold';
+    if(state.serialsStatusFilter === 'Installed') return s.Status === 'Installed';
+    if(state.serialsStatusFilter === 'active_warranty') return typeof isSerialUnderWarranty === 'function' && isSerialUnderWarranty(s);
+    if(state.serialsStatusFilter === 'expired_warranty') return typeof isSerialUnderWarranty === 'function' && !isSerialUnderWarranty(s);
+    return true;
+  });
+
+  if(q){
+    list = list.filter(s => 
+      String(s.Serial||'').toLowerCase().includes(q) ||
+      String(s.ItemName||'').toLowerCase().includes(q) ||
+      String(s.SoldRef||'').toLowerCase().includes(q) ||
+      String(s.Notes||'').toLowerCase().includes(q)
+    );
+  }
+
+  main.innerHTML = `
+    <div class="top-header">
+      <div>
+        <h2 class="page-title">${getSvgIcon('barcode', 20)} تتبع الأرقام التسلسلية والضمان (Serials & Warranty)</h2>
+        <div class="subtitle">إدارة وتتبع السيريالات، تاريخ انتهاء الضمان، وربط الأجهزة المباعة والمركبة بالمشاريع</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost btn-sm" id="refreshSerialsBtn">${getSvgIcon('refresh', 14)} تحديث</button>
+        <button class="btn btn-primary btn-sm" id="addNewSerialBtn">${getSvgIcon('plus', 14)} إضافة سيريال جديد</button>
+      </div>
+    </div>
+
+    <!-- KPIs Row -->
+    <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;margin-bottom:14px;">
+      <div class="card" style="padding:12px 14px;background:var(--paper2);border:1px solid var(--line);">
+        <div style="font-size:11.5px;color:var(--ink-secondary);">إجمالي السيريالات المسجلة</div>
+        <div style="font-size:22px;font-weight:900;color:var(--ink);">${totalCount.toLocaleString()}</div>
+      </div>
+      <div class="card" style="padding:12px 14px;background:var(--paper2);border:1px solid var(--line);">
+        <div style="font-size:11.5px;color:var(--ink-secondary);">متوفر بالمخزن (In Stock)</div>
+        <div style="font-size:22px;font-weight:900;color:var(--blue);">${inStockCount.toLocaleString()}</div>
+      </div>
+      <div class="card" style="padding:12px 14px;background:var(--paper2);border:1px solid var(--line);">
+        <div style="font-size:11.5px;color:var(--ink-secondary);">مباع للعملاء (Sold)</div>
+        <div style="font-size:22px;font-weight:900;color:var(--green);">${soldCount.toLocaleString()}</div>
+      </div>
+      <div class="card" style="padding:12px 14px;background:var(--paper2);border:1px solid var(--line);">
+        <div style="font-size:11.5px;color:var(--ink-secondary);">مركب بمشاريع كاميرات</div>
+        <div style="font-size:22px;font-weight:900;color:var(--purple);">${installedCount.toLocaleString()}</div>
+      </div>
+      <div class="card" style="padding:12px 14px;background:var(--paper2);border:1px solid var(--line);">
+        <div style="font-size:11.5px;color:var(--ink-secondary);">ضمان ساري ونشط</div>
+        <div style="font-size:22px;font-weight:900;color:var(--emerald, #059669);">${activeWarrantyCount.toLocaleString()}</div>
+      </div>
+    </div>
+
+    <!-- Filter & Search Controls -->
+    <div class="card" style="padding:12px 16px;margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+          <span style="font-size:12px;font-weight:700;color:var(--ink-secondary);">الحالة:</span>
+          ${[
+            { id: 'all', label: 'الكل' },
+            { id: 'In Stock', label: 'في المخزن' },
+            { id: 'Sold', label: 'مباع' },
+            { id: 'Installed', label: 'مركب بمشروع' },
+            { id: 'active_warranty', label: 'ضمان ساري 🛡️' },
+            { id: 'expired_warranty', label: 'منتهي الضمان' }
+          ].map(f => `
+            <button class="btn btn-xs ${state.serialsStatusFilter===f.id?'btn-primary':'btn-ghost'}" data-serialfilter="${f.id}" style="font-size:11.5px;padding:3px 10px;">${f.label}</button>
+          `).join('')}
+        </div>
+        <div style="display:flex;gap:8px;min-width:260px;">
+          <input type="text" id="serialsSearchInp" value="${escapeHtml(state.serialsSearchQ)}" placeholder="بحث برقم السيريال، الصنف، مرجع البيع..." style="font-size:12.5px;padding:6px 12px;border:1px solid var(--line);border-radius:4px;flex:1;">
+        </div>
+      </div>
+    </div>
+
+    <!-- Serials Table -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <h3 style="margin:0;font-size:14px;font-weight:800;">سجل السيريالات والضمان (${list.length})</h3>
+      </div>
+      ${list.length === 0 ? '<div class="empty">لا توجد أرقام تسلسلية مطابقة لشروط البحث.</div>' : `
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:160px;">الرقم التسلسلي (SN)</th>
+                <th style="min-width:200px;">الصنف المرتبط</th>
+                <th style="width:110px;text-align:center;">الحالة</th>
+                <th style="width:140px;text-align:center;">فترة الضمان</th>
+                <th style="width:130px;">تاريخ البيع / التركيب</th>
+                <th style="width:140px;">مرجع العملية</th>
+                <th style="width:110px;text-align:center;">إجراءات</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${list.map(s => {
+                const isUnderWar = typeof isSerialUnderWarranty === 'function' ? isSerialUnderWarranty(s) : false;
+                const statusBadge = s.Status === 'Sold' 
+                  ? '<span class="badge" style="background:#ecfdf5;color:#047857;font-weight:700;">مباع</span>'
+                  : (s.Status === 'Installed'
+                    ? '<span class="badge" style="background:#f3e8ff;color:#7e22ce;font-weight:700;">مركب</span>'
+                    : '<span class="badge" style="background:#eff6ff;color:#1d4ed8;font-weight:700;">في المخزن</span>');
+                
+                return `
+                  <tr>
+                    <td>
+                      <div style="display:flex;align-items:center;gap:6px;">
+                        <span class="mono font-bold" style="font-size:13px;letter-spacing:0.5px;color:var(--primary);">${escapeHtml(s.Serial||'')}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <b style="font-size:13px;">${escapeHtml(s.ItemName||'')}</b>
+                      ${s.Notes ? `<div style="font-size:11px;color:var(--ink-secondary);margin-top:2px;">${escapeHtml(s.Notes)}</div>` : ''}
+                    </td>
+                    <td style="text-align:center;">${statusBadge}</td>
+                    <td style="text-align:center;">
+                      ${s.WarrantyEnd ? `
+                        <div style="font-size:11.5px;font-weight:700;color:${isUnderWar?'var(--emerald, #059669)':'var(--red)'};">
+                          ${cleanDate(s.WarrantyEnd)}
+                        </div>
+                        <span class="badge" style="font-size:10px;padding:1px 6px;margin-top:2px;${isUnderWar?'background:#ecfdf5;color:#047857;':'background:#fee2e2;color:#991b1b;'}">
+                          ${isUnderWar ? '🛡️ ضمان ساري' : 'منتهي الضمان'}
+                        </span>
+                      ` : (s.WarrantyMonths ? `<span style="font-size:12px;">${s.WarrantyMonths} شهور</span>` : '<span style="color:var(--ink-secondary);font-size:11px;">-</span>')}
+                    </td>
+                    <td style="font-size:12px;">${cleanDate(s.SoldDate)}</td>
+                    <td style="font-size:12px;">
+                      ${s.SoldRef ? `<span class="mono font-bold" style="background:var(--paper3);padding:2px 6px;border-radius:4px;">${escapeHtml(s.SoldRef)}</span>` : '<span style="color:var(--ink-secondary);">-</span>'}
+                    </td>
+                    <td style="text-align:center;">
+                      <button class="btn btn-ghost btn-xs edit-serial-btn" data-serial-id="${escapeHtml(s.ID)}" title="تعديل بيانات السيريال">${getSvgIcon('edit', 13)} تعديل</button>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      `}
+    </div>
+  `;
+
+  // Attach Handlers
+  document.querySelectorAll('[data-serialfilter]').forEach(b => {
+    b.onclick = () => { state.serialsStatusFilter = b.dataset.serialfilter; renderSerialsView(main); };
+  });
+
+  const sInp = document.getElementById('serialsSearchInp');
+  if(sInp){
+    sInp.oninput = () => { state.serialsSearchQ = sInp.value; };
+    sInp.onkeydown = (e) => { if(e.key === 'Enter') renderSerialsView(main); };
+  }
+
+  const addBtn = document.getElementById('addNewSerialBtn');
+  if(addBtn) addBtn.onclick = () => openAddSerialModal();
+
+  const refBtn = document.getElementById('refreshSerialsBtn');
+  if(refBtn) refBtn.onclick = async () => {
+    refBtn.disabled = true; refBtn.textContent = 'جارٍ التحديث...';
+    await loadSerials();
+    renderSerialsView(main);
+  };
+
+  main.querySelectorAll('.edit-serial-btn').forEach(btn => {
+    btn.onclick = () => {
+      const sObj = (state.serials || []).find(x => String(x.ID) === btn.dataset.serialId);
+      if(sObj) openAddSerialModal(sObj);
+    };
+  });
+}
+
+function openAddSerialModal(editSerial = null){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  const isEdit = !!editSerial;
+
+  const itemOptions = (state.inventory || []).map(it => `
+    <option value="${it.ID}" ${editSerial && String(editSerial.ItemID) === String(it.ID) ? 'selected' : ''}>
+      ${escapeHtml(it.Name)} (${it.Category || ''}) - ${it.Quantity || 0} متوفر
+    </option>
+  `).join('');
+
+  overlay.innerHTML = `
+    <div class="modal-content" style="max-width:560px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
+        <h3 style="margin:0;font-size:16px;font-weight:900;">
+          ${isEdit ? 'تعديل بيانات الرقم التسلسلي' : 'إضافة رقم تسلسلي جديد (Serial Number)'}
+        </h3>
+        <button class="btn btn-ghost btn-xs" id="closeSerialModal">&times; إغلاق</button>
+      </div>
+
+      <div class="field" style="margin-bottom:12px;">
+        <label>الصنف المرتبط من المخزن *</label>
+        <select id="modalSerialItemId">
+          <option value="">-- اختر الصنف من المخزن --</option>
+          ${itemOptions}
+        </select>
+      </div>
+
+      <div class="field" style="margin-bottom:12px;">
+        <label>الرقم التسلسلي (Serial Number / S/N) *</label>
+        <div style="display:flex;gap:6px;">
+          <input type="text" id="modalSerialValue" class="mono font-bold" value="${editSerial ? escapeHtml(editSerial.Serial||'') : ''}" placeholder="أدخل السيريال أو امسح الباركود..." style="flex:1;">
+          <button type="button" class="btn btn-ghost btn-sm" id="genSerialValBtn" style="white-space:nowrap;">توليد آلي</button>
+        </div>
+      </div>
+
+      <div class="grid2" style="margin-bottom:12px;">
+        <div class="field">
+          <label>مدة الضمان (بالشهور)</label>
+          <input type="number" id="modalSerialWarrantyMonths" min="0" value="${editSerial ? (editSerial.WarrantyMonths||0) : 12}">
+        </div>
+        <div class="field">
+          <label>تاريخ انتهاء الضمان (اختياري)</label>
+          <input type="date" id="modalSerialWarrantyEnd" value="${editSerial ? (editSerial.WarrantyEnd||'') : ''}">
+        </div>
+      </div>
+
+      <div class="grid2" style="margin-bottom:12px;">
+        <div class="field">
+          <label>حالة السيريال</label>
+          <select id="modalSerialStatus">
+            <option value="In Stock" ${!editSerial || editSerial.Status === 'In Stock' ? 'selected' : ''}>في المخزن (In Stock)</option>
+            <option value="Sold" ${editSerial && editSerial.Status === 'Sold' ? 'selected' : ''}>مباع (Sold)</option>
+            <option value="Installed" ${editSerial && editSerial.Status === 'Installed' ? 'selected' : ''}>مركب بمشروع (Installed)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>مرجع البيع / الفاتورة / المشروع</label>
+          <input type="text" id="modalSerialSoldRef" value="${editSerial ? escapeHtml(editSerial.SoldRef||'') : ''}" placeholder="مثال: فاتورة #1042 أو مشروع #PRJ-5">
+        </div>
+      </div>
+
+      <div class="field" style="margin-bottom:16px;">
+        <label>ملاحظات إضافية</label>
+        <input type="text" id="modalSerialNotes" value="${editSerial ? escapeHtml(editSerial.Notes||'') : ''}" placeholder="أي ملاحظات حول السيريال، موقع التركيب، المورد...">
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--line);padding-top:12px;">
+        <button class="btn btn-ghost" id="cancelSerialModalBtn">إلغاء</button>
+        <button class="btn btn-primary" id="saveSerialModalBtn">حفظ الرقم التسلسلي</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  overlay.querySelector('#closeSerialModal').onclick = close;
+  overlay.querySelector('#cancelSerialModalBtn').onclick = close;
+
+  const genBtn = overlay.querySelector('#genSerialValBtn');
+  if(genBtn){
+    genBtn.onclick = () => {
+      const rnd = Math.floor(100000 + Math.random() * 900000);
+      overlay.querySelector('#modalSerialValue').value = `SN-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}-${rnd}`;
+    };
+  }
+
+  // Auto-fill warranty months if item changes
+  const itemSel = overlay.querySelector('#modalSerialItemId');
+  itemSel.onchange = () => {
+    const it = (state.inventory || []).find(x => String(x.ID) === itemSel.value);
+    if(it && it.WarrantyMonths && !isEdit){
+      overlay.querySelector('#modalSerialWarrantyMonths').value = it.WarrantyMonths;
+    }
+  };
+
+  const saveBtn = overlay.querySelector('#saveSerialModalBtn');
+  saveBtn.onclick = async () => {
+    const itemId = itemSel.value;
+    const serialVal = overlay.querySelector('#modalSerialValue').value.trim();
+    if(!itemId){ showToast('يرجى اختيار الصنف المرتبط', 'error'); return; }
+    if(!serialVal){ showToast('يرجى إدخال الرقم التسلسلي', 'error'); return; }
+
+    const it = (state.inventory || []).find(x => String(x.ID) === itemId);
+    const itemName = it ? it.Name : '';
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'جارٍ الحفظ...';
+
+    const serialObj = {
+      ID: editSerial ? editSerial.ID : ('sn_' + Date.now() + '_' + Math.floor(Math.random()*1000)),
+      ItemID: itemId,
+      ItemName: itemName,
+      Serial: serialVal,
+      WarrantyMonths: Number(overlay.querySelector('#modalSerialWarrantyMonths').value || 0),
+      WarrantyEnd: overlay.querySelector('#modalSerialWarrantyEnd').value || '',
+      Status: overlay.querySelector('#modalSerialStatus').value || 'In Stock',
+      SoldRef: overlay.querySelector('#modalSerialSoldRef').value.trim(),
+      Notes: overlay.querySelector('#modalSerialNotes').value.trim()
+    };
+
+    try {
+      await saveSerialRemote(serialObj);
+      showToast(`تم حفظ السيريال (${serialVal}) بنجاح`, 'success');
+      overlay.remove();
+      refreshInventorySectionOrTab();
+    } catch(err){
+      showToast('خطأ أثناء حفظ السيريال: ' + err.message, 'error');
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'حفظ الرقم التسلسلي';
+    }
+  };
+}
+
+/* ============================================================
+   Stocktake Sessions & Discrepancies View (U12)
+   ============================================================ */
+function renderStocktakeView(main){
+  const sessions = state.stocktakeSessions || [];
+
+  let totalDeficitCost = 0;
+  let totalSurplusCost = 0;
+  sessions.forEach(s => {
+    const cost = Number(s.TotalDiscrepancyCost || 0);
+    if(cost < 0) totalDeficitCost += Math.abs(cost);
+    else if(cost > 0) totalSurplusCost += cost;
+  });
+
+  main.innerHTML = `
+    <div class="top-header">
+      <div>
+        <h2 class="page-title">${getSvgIcon('receipt', 20)} جلسات الجرد المخزني وتسوية الفروق (Stocktake Sessions)</h2>
+        <div class="subtitle">مطابقة الرصيد الدفتري مع الجرد الفعلي للمخزن وتسوية العجز أو الفائض محاسبياً ومخزنياً</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost btn-sm" id="refreshStocktakeBtn">${getSvgIcon('refresh', 14)} تحديث</button>
+        <button class="btn btn-primary btn-sm" id="startNewStocktakeBtn">${getSvgIcon('plus', 14)} بدء جلسة جرد جديدة</button>
+      </div>
+    </div>
+
+    <!-- KPIs Row -->
+    <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;margin-bottom:14px;">
+      <div class="card" style="padding:12px 14px;background:var(--paper2);border:1px solid var(--line);">
+        <div style="font-size:11.5px;color:var(--ink-secondary);">إجمالي جلسات الجرد</div>
+        <div style="font-size:22px;font-weight:900;color:var(--ink);">${sessions.length.toLocaleString()} جلسة</div>
+      </div>
+      <div class="card" style="padding:12px 14px;background:var(--paper2);border:1px solid var(--line);">
+        <div style="font-size:11.5px;color:var(--ink-secondary);">إجمالي عجز الجرد المسجل (حساب 5209)</div>
+        <div style="font-size:22px;font-weight:900;color:var(--red);">${totalDeficitCost.toLocaleString()} ج.م</div>
+      </div>
+      <div class="card" style="padding:12px 14px;background:var(--paper2);border:1px solid var(--line);">
+        <div style="font-size:11.5px;color:var(--ink-secondary);">إجمالي فائض وزيادة الجرد (حساب 4201)</div>
+        <div style="font-size:22px;font-weight:900;color:var(--green);">${totalSurplusCost.toLocaleString()} ج.م</div>
+      </div>
+      <div class="card" style="padding:12px 14px;background:var(--paper2);border:1px solid var(--line);">
+        <div style="font-size:11.5px;color:var(--ink-secondary);">آخر جلسة جرد</div>
+        <div style="font-size:14px;font-weight:800;color:var(--ink);margin-top:6px;">
+          ${sessions.length > 0 ? `${cleanDate(sessions[0].Date)} (${sessions[0].SessionNumber})` : 'لا يوجد جلسات سابقة'}
+        </div>
+      </div>
+    </div>
+
+    <!-- Sessions History Table -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <h3 style="margin:0;font-size:14px;font-weight:800;">سجل جلسات الجرد المخزني</h3>
+      </div>
+      ${sessions.length === 0 ? `
+        <div class="empty">
+          لم يتم تنفيذ جلسات جرد سابقة بعد.<br>
+          اضغط على <b>"بدء جلسة جرد جديدة"</b> لعد الأصناف وتعديل الأرصدة وترحيل الفروق آلياً.
+        </div>
+      ` : `
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:140px;">رقم الجلسة</th>
+                <th style="width:110px;">التاريخ</th>
+                <th style="min-width:200px;">البيان والعنوان</th>
+                <th style="width:120px;text-align:center;">الحالة</th>
+                <th style="width:140px;text-align:center;">صافي الفروق المالية</th>
+                <th style="width:120px;">المنفذ</th>
+                <th style="width:100px;text-align:center;">التفاصيل</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${sessions.map(s => {
+                const diffCost = Number(s.TotalDiscrepancyCost || 0);
+                const costBadge = diffCost === 0 
+                  ? '<span class="badge" style="background:#f3f4f6;color:#374151;font-weight:700;">مطابقة تامة</span>'
+                  : (diffCost < 0 
+                    ? `<span class="badge" style="background:#fee2e2;color:#991b1b;font-weight:700;">عجز: ${Math.abs(diffCost).toLocaleString()} ج.م</span>`
+                    : `<span class="badge" style="background:#ecfdf5;color:#047857;font-weight:700;">فائض: +${diffCost.toLocaleString()} ج.م</span>`);
+
+                return `
+                  <tr>
+                    <td><span class="mono font-bold" style="color:var(--primary);">${escapeHtml(s.SessionNumber||s.ID)}</span></td>
+                    <td>${cleanDate(s.Date)}</td>
+                    <td>
+                      <b>${escapeHtml(s.Title||'جلسة جرد')}</b>
+                      ${s.Notes ? `<div style="font-size:11px;color:var(--ink-secondary);">${escapeHtml(s.Notes)}</div>` : ''}
+                    </td>
+                    <td style="text-align:center;">
+                      <span class="badge" style="background:#ecfdf5;color:#047857;font-weight:700;">معتمدة ومرحلة</span>
+                    </td>
+                    <td style="text-align:center;">${costBadge}</td>
+                    <td style="font-size:12px;">${escapeHtml(s.CommittedBy || s.CreatedBy || '')}</td>
+                    <td style="text-align:center;">
+                      <button class="btn btn-ghost btn-xs view-stocktake-btn" data-stk-id="${escapeHtml(s.ID)}" title="عرض بنود وتفاصيل الجلسة">
+                        ${getSvgIcon('eye', 13)} تفاصيل
+                      </button>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      `}
+    </div>
+  `;
+
+  const startBtn = document.getElementById('startNewStocktakeBtn');
+  if(startBtn) startBtn.onclick = () => openStartStocktakeModal();
+
+  const refBtn = document.getElementById('refreshStocktakeBtn');
+  if(refBtn) refBtn.onclick = async () => {
+    refBtn.disabled = true; refBtn.textContent = 'جارٍ التحديث...';
+    await loadStocktakeSessions();
+    renderStocktakeView(main);
+  };
+
+  main.querySelectorAll('.view-stocktake-btn').forEach(btn => {
+    btn.onclick = () => {
+      const sess = (state.stocktakeSessions || []).find(x => String(x.ID) === btn.dataset.stkId);
+      if(sess) openViewStocktakeDetailsModal(sess);
+    };
+  });
+}
+
+function openStartStocktakeModal(){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+
+  const inventoryItems = (state.inventory || []).slice();
+  if(!inventoryItems.length){
+    showToast('المخزن فارغ حالياً، لا توجد أصناف لجردها', 'warning');
+    return;
+  }
+
+  // Initialize counted quantities to current book expected quantities
+  const draftLines = inventoryItems.map(it => ({
+    itemId: it.ID,
+    itemName: it.Name,
+    barcode: it.Barcode || '',
+    category: it.Category || '',
+    expectedQty: Number(it.Quantity || 0),
+    countedQty: Number(it.Quantity || 0),
+    unitCost: Number(it.PurchasePrice || 0)
+  }));
+
+  function renderModal(){
+    let totalDeficit = 0;
+    let totalSurplus = 0;
+    let itemsCount = draftLines.length;
+    let discrepancyItemsCount = 0;
+
+    draftLines.forEach(l => {
+      const diff = l.countedQty - l.expectedQty;
+      const diffCost = round2(diff * l.unitCost);
+      if(diffCost < 0) { totalDeficit += Math.abs(diffCost); discrepancyItemsCount++; }
+      else if(diffCost > 0) { totalSurplus += diffCost; discrepancyItemsCount++; }
+    });
+
+    const netImpact = round2(totalSurplus - totalDeficit);
+
+    overlay.innerHTML = `
+      <div class="modal-content" style="max-width:920px;max-height:92vh;display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:12px;">
+          <div>
+            <h3 style="margin:0;font-size:16px;font-weight:900;">
+              بدء جلسة جرد مخزني وتسوية الفروق (Stocktake Execution)
+            </h3>
+            <div style="font-size:11.5px;color:var(--ink-secondary);margin-top:2px;">
+              أدخل الكميات الفعلية المحصورة لكل صنف. سيتم تعديل كميات المخزن فورياً وترحيل قيد تسوية العجز أو الزيادة آلياً.
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-xs" id="closeStkModal">&times; إلغاء</button>
+        </div>
+
+        <div class="grid3" style="gap:10px;margin-bottom:10px;">
+          <div class="field">
+            <label>عنوان الجلسة *</label>
+            <input type="text" id="stkSessionTitle" value="جرد مخزني دوري - ${new Date().toLocaleDateString('ar-EG')}" style="font-weight:700;">
+          </div>
+          <div class="field">
+            <label>تاريخ الجلسة</label>
+            <input type="date" id="stkSessionDate" value="${new Date().toISOString().slice(0, 10)}">
+          </div>
+          <div class="field">
+            <label>ملاحظات الجلسة</label>
+            <input type="text" id="stkSessionNotes" placeholder="سبب الجرد، القائمين بالجرد...">
+          </div>
+        </div>
+
+        <!-- Discrepancy KPI Summary Banner -->
+        <div style="display:flex;gap:12px;padding:10px 14px;background:var(--paper3);border:1px solid var(--line);border-radius:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center;justify-content:space-between;">
+          <div style="display:flex;gap:14px;align-items:center;">
+            <div>
+              <span style="font-size:11px;color:var(--ink-secondary);">إجمالي البنود:</span>
+              <b style="margin-right:4px;">${itemsCount} صنف</b>
+            </div>
+            <div>
+              <span style="font-size:11px;color:var(--ink-secondary);">الأصناف ذات الفروق:</span>
+              <b style="margin-right:4px;color:${discrepancyItemsCount>0?'var(--amber)':'var(--green)'};">${discrepancyItemsCount} صنف</b>
+            </div>
+            <div>
+              <span style="font-size:11px;color:var(--ink-secondary);">إجمالي العجز (مدين 5209):</span>
+              <b style="margin-right:4px;color:var(--red);">${totalDeficit.toLocaleString()} ج.م</b>
+            </div>
+            <div>
+              <span style="font-size:11px;color:var(--ink-secondary);">إجمالي الفائض (دائن 4201):</span>
+              <b style="margin-right:4px;color:var(--green);">${totalSurplus.toLocaleString()} ج.م</b>
+            </div>
+          </div>
+          <div>
+            <span style="font-size:11px;color:var(--ink-secondary);">صافي الأثر المالي:</span>
+            <span class="badge" style="font-size:12px;font-weight:800;padding:2px 8px;${netImpact < 0 ? 'background:#fee2e2;color:#991b1b;' : (netImpact > 0 ? 'background:#ecfdf5;color:#047857;' : 'background:#f3f4f6;color:#374151;')}">
+              ${netImpact > 0 ? `+${netImpact.toLocaleString()} ج.م (فائض)` : (netImpact < 0 ? `${netImpact.toLocaleString()} ج.م (عجز)` : '0 ج.م')}
+            </span>
+          </div>
+        </div>
+
+        <!-- Items Table Scrollable Area -->
+        <div style="flex:1;overflow-y:auto;border:1px solid var(--line);border-radius:4px;margin-bottom:12px;">
+          <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+            <thead style="position:sticky;top:0;background:var(--paper2);z-index:2;box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+              <tr>
+                <th style="padding:8px 10px;text-align:right;">الصنف والباركود</th>
+                <th style="padding:8px 10px;text-align:center;width:95px;">الرصيد الدفتري</th>
+                <th style="padding:8px 10px;text-align:center;width:130px;">الرصيد الفعلي (العد)</th>
+                <th style="padding:8px 10px;text-align:center;width:90px;">الفرق</th>
+                <th style="padding:8px 10px;text-align:center;width:95px;">سعر التكلفة</th>
+                <th style="padding:8px 10px;text-align:center;width:115px;">أثر الفرق المالي</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${draftLines.map((l, idx) => {
+                const diff = l.countedQty - l.expectedQty;
+                const diffCost = round2(diff * l.unitCost);
+                const diffBadge = diff === 0
+                  ? '<span style="color:var(--ink-secondary);font-weight:bold;">0</span>'
+                  : (diff < 0 
+                    ? `<span class="badge" style="background:#fee2e2;color:#991b1b;font-weight:800;">${diff} (عجز)</span>`
+                    : `<span class="badge" style="background:#ecfdf5;color:#047857;font-weight:800;">+${diff} (زيادة)</span>`);
+                
+                return `
+                  <tr style="border-bottom:1px solid var(--line);${diff!==0?'background:rgba(245,158,11,0.04);':''}">
+                    <td style="padding:8px 10px;">
+                      <b>${escapeHtml(l.itemName)}</b>
+                      ${l.barcode ? `<span class="mono" style="font-size:10.5px;color:var(--ink-secondary);margin-right:6px;">[${escapeHtml(l.barcode)}]</span>` : ''}
+                    </td>
+                    <td style="padding:8px 10px;text-align:center;" class="mono font-bold">${l.expectedQty}</td>
+                    <td style="padding:6px 10px;text-align:center;">
+                      <div style="display:flex;align-items:center;justify-content:center;gap:4px;">
+                        <button type="button" class="btn btn-ghost btn-xs stk-dec-btn" data-idx="${idx}" style="padding:1px 6px;">-</button>
+                        <input type="number" class="stk-count-inp mono font-bold" data-idx="${idx}" value="${l.countedQty}" style="width:64px;text-align:center;padding:4px;border:1px solid var(--line);border-radius:4px;">
+                        <button type="button" class="btn btn-ghost btn-xs stk-inc-btn" data-idx="${idx}" style="padding:1px 6px;">+</button>
+                      </div>
+                    </td>
+                    <td style="padding:8px 10px;text-align:center;">${diffBadge}</td>
+                    <td style="padding:8px 10px;text-align:center;" class="mono">${l.unitCost.toLocaleString()} ج.م</td>
+                    <td style="padding:8px 10px;text-align:center;" class="mono font-bold" style="color:${diffCost<0?'var(--red)':(diffCost>0?'var(--green)':'inherit')};">
+                      ${diffCost !== 0 ? (diffCost > 0 ? `+${diffCost.toLocaleString()}` : diffCost.toLocaleString()) + ' ج.م' : '-'}
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding-top:12px;">
+          <div style="font-size:12px;color:var(--ink-secondary);display:flex;align-items:center;gap:6px;">
+            <span>ℹ️</span>
+            <span>سيتم تسجيل قيد يومية آلي تحت مرجع Stocktake_Adjustment</span>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-ghost" id="cancelStkModalBtn">إلغاء</button>
+            <button class="btn btn-primary" id="commitStkModalBtn">
+              ${getSvgIcon('check', 14)} اعتماد وترحيل الجلسة محاسبياً ومخزنياً
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    overlay.querySelector('#closeStkModal').onclick = () => overlay.remove();
+    overlay.querySelector('#cancelStkModalBtn').onclick = () => overlay.remove();
+
+    overlay.querySelectorAll('.stk-count-inp').forEach(inp => {
+      inp.onchange = () => {
+        const idx = Number(inp.dataset.idx);
+        draftLines[idx].countedQty = Math.max(0, Number(inp.value || 0));
+        renderModal();
+      };
+    });
+
+    overlay.querySelectorAll('.stk-dec-btn').forEach(btn => {
+      btn.onclick = () => {
+        const idx = Number(btn.dataset.idx);
+        draftLines[idx].countedQty = Math.max(0, draftLines[idx].countedQty - 1);
+        renderModal();
+      };
+    });
+
+    overlay.querySelectorAll('.stk-inc-btn').forEach(btn => {
+      btn.onclick = () => {
+        const idx = Number(btn.dataset.idx);
+        draftLines[idx].countedQty = draftLines[idx].countedQty + 1;
+        renderModal();
+      };
+    });
+
+    const commitBtn = overlay.querySelector('#commitStkModalBtn');
+    commitBtn.onclick = async () => {
+      const title = overlay.querySelector('#stkSessionTitle').value.trim();
+      const date = overlay.querySelector('#stkSessionDate').value;
+      const notes = overlay.querySelector('#stkSessionNotes').value.trim();
+
+      if(!title){ showToast('يرجى إدخال عنوان جلسة الجرد', 'error'); return; }
+
+      const confirmMsg = `هل أنت متأكد من رغبتك في اعتماد وترحيل جلسة الجرد؟\n\n` +
+        `• سيتم تعديل كميات الأصناف بالمخزن إلى الرصيد الفعلي فورياً.\n` +
+        `• سيتم إنشاء قيد تسوية فروق الجرد (مدين 5209 / دائن 4201).\n` +
+        `• صافي الأثر المالي: ${netImpact} ج.م`;
+
+      if(!confirm(confirmMsg)) return;
+
+      commitBtn.disabled = true;
+      commitBtn.textContent = 'جارٍ الاعتماد والترحيل...';
+
+      const sessionData = {
+        title,
+        date,
+        notes,
+        lines: draftLines.map(l => ({
+          itemId: l.itemId,
+          itemName: l.itemName,
+          expectedQty: l.expectedQty,
+          countedQty: l.countedQty,
+          differenceQty: l.countedQty - l.expectedQty,
+          unitCost: l.unitCost,
+          totalDifferenceCost: round2((l.countedQty - l.expectedQty) * l.unitCost)
+        }))
+      };
+
+      try {
+        await commitStocktakeSessionRemote(sessionData);
+        showToast('تم اعتماد جلسة الجرد وتسوية المخزون والقيد المحاسبي بنجاح', 'success');
+        playNotificationChime();
+        overlay.remove();
+        refreshInventorySectionOrTab();
+      } catch(err){
+        showToast('خطأ أثناء اعتماد جلسة الجرد: ' + err.message, 'error');
+        commitBtn.disabled = false;
+        commitBtn.textContent = 'اعتماد وترحيل الجلسة محاسبياً ومخزنياً';
+      }
+    };
+  }
+
+  renderModal();
+  document.body.appendChild(overlay);
+}
+
+function openViewStocktakeDetailsModal(session){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+
+  const sessionLines = (state.stocktakeLines || []).filter(l => String(l.SessionID) === String(session.ID));
+
+  overlay.innerHTML = `
+    <div class="modal-content" style="max-width:820px;max-height:90vh;display:flex;flex-direction:column;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
+        <div>
+          <h3 style="margin:0;font-size:16px;font-weight:900;">
+            تفاصيل جلسة الجرد: ${escapeHtml(session.SessionNumber || session.ID)}
+          </h3>
+          <div style="font-size:11.5px;color:var(--ink-secondary);margin-top:2px;">
+            تاريخ الجلسة: ${cleanDate(session.Date)} | المعتمد: ${escapeHtml(session.CommittedBy || session.CreatedBy || '')}
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-xs" id="closeStkDetailsModal">&times; إغلاق</button>
+      </div>
+
+      <div class="card" style="padding:10px 14px;background:var(--paper3);border:1px solid var(--line);margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+          <div><b>العنوان:</b> ${escapeHtml(session.Title || 'جلسة جرد')}</div>
+          <div>
+            <b>صافي الفروق:</b> 
+            <span class="mono font-bold" style="color:${Number(session.TotalDiscrepancyCost)<0?'var(--red)':'var(--green)'};">
+              ${Number(session.TotalDiscrepancyCost || 0).toLocaleString()} ج.م
+            </span>
+          </div>
+          <div><b>الحالة:</b> <span class="badge" style="background:#ecfdf5;color:#047857;font-weight:700;">معتمدة</span></div>
+        </div>
+        ${session.Notes ? `<div style="font-size:12px;color:var(--ink-secondary);margin-top:6px;"><b>ملاحظات:</b> ${escapeHtml(session.Notes)}</div>` : ''}
+      </div>
+
+      <div style="flex:1;overflow-y:auto;border:1px solid var(--line);border-radius:4px;">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead style="position:sticky;top:0;background:var(--paper2);z-index:2;">
+            <tr>
+              <th style="padding:8px 10px;text-align:right;">الصنف</th>
+              <th style="padding:8px 10px;text-align:center;width:90px;">الرصيد الدفتري</th>
+              <th style="padding:8px 10px;text-align:center;width:90px;">الرصيد الفعلي</th>
+              <th style="padding:8px 10px;text-align:center;width:80px;">الفرق</th>
+              <th style="padding:8px 10px;text-align:center;width:95px;">سعر التكلفة</th>
+              <th style="padding:8px 10px;text-align:center;width:110px;">أثر الفرق المالي</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${sessionLines.length === 0 ? '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--ink-secondary);">لا توجد بنود تفصيلية مسجلة لهذه الجلسة.</td></tr>' : sessionLines.map(l => {
+              const diff = Number(l.DifferenceQty || 0);
+              const cost = Number(l.TotalDifferenceCost || 0);
+              return `
+                <tr style="border-bottom:1px solid var(--line);">
+                  <td style="padding:8px 10px;"><b>${escapeHtml(l.ItemName || l.ItemID)}</b></td>
+                  <td style="padding:8px 10px;text-align:center;" class="mono">${l.ExpectedQty || 0}</td>
+                  <td style="padding:8px 10px;text-align:center;" class="mono font-bold">${l.CountedQty || 0}</td>
+                  <td style="padding:8px 10px;text-align:center;">
+                    ${diff === 0 ? '0' : (diff < 0 ? `<span class="badge" style="background:#fee2e2;color:#991b1b;font-weight:700;">${diff}</span>` : `<span class="badge" style="background:#ecfdf5;color:#047857;font-weight:700;">+${diff}</span>`)}
+                  </td>
+                  <td style="padding:8px 10px;text-align:center;" class="mono">${Number(l.UnitCost || 0).toLocaleString()} ج.م</td>
+                  <td style="padding:8px 10px;text-align:center;" class="mono font-bold" style="color:${cost<0?'var(--red)':(cost>0?'var(--green)':'inherit')};">
+                    ${cost !== 0 ? (cost > 0 ? `+${cost.toLocaleString()}` : cost.toLocaleString()) + ' ج.م' : '-'}
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;border-top:1px solid var(--line);padding-top:12px;margin-top:12px;">
+        <button class="btn btn-ghost" id="closeStkDetailsBtn">إغلاق</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+  overlay.querySelector('#closeStkDetailsModal').onclick = () => overlay.remove();
+  overlay.querySelector('#closeStkDetailsBtn').onclick = () => overlay.remove();
+}
+
+/* ============================================================
+   BOM Bundles & Kits Management View (U12)
+   ============================================================ */
+function renderBundlesView(main){
+  const bundlesList = state.bundleItems || [];
+  
+  // Group bundle items by BundleItemID
+  const bundleMap = {};
+  bundlesList.forEach(b => {
+    if(!bundleMap[b.BundleItemID]) bundleMap[b.BundleItemID] = [];
+    bundleMap[b.BundleItemID].push(b);
+  });
+
+  const bundleIds = Object.keys(bundleMap);
+
+  main.innerHTML = `
+    <div class="top-header">
+      <div>
+        <h2 class="page-title">${getSvgIcon('package', 20)} الأطقم والتجميعات المركبة (Bill of Materials - BOM)</h2>
+        <div class="subtitle">تعريف الأطقم والمجموعات، واحتساب تكلفتها تلقائياً من مكوناتها، وخصم المكونات آلياً عند البيع بالـ POS</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost btn-sm" id="refreshBundlesBtn">${getSvgIcon('refresh', 14)} تحديث</button>
+        <button class="btn btn-primary btn-sm" id="createBundleBtn">${getSvgIcon('plus', 14)} تكوين طقم / تجميعة جديدة</button>
+      </div>
+    </div>
+
+    <!-- Explanatory Banner -->
+    <div class="card" style="padding:12px 16px;background:var(--paper3);border:1px solid var(--line-strong);margin-bottom:14px;">
+      <div style="display:flex;align-items:flex-start;gap:10px;">
+        <div style="font-size:20px;">📦</div>
+        <div>
+          <b style="font-size:13.5px;color:var(--ink);">كيف تعمل تجميعات الـ BOM في ميكروتك؟</b>
+          <div style="font-size:12px;color:var(--ink-secondary);line-height:1.6;margin-top:3px;">
+            عند اختيار صنف من المخزن ليكون <b>"طقم مجمع"</b> (مثل: طقم كاميرات هيكفيجن 4 قنوات، كيسة جيمنج مجمعة)، يمكنك ربط مكوناته الفردية وكمية كل مكون. يقوم النظام بحساب سعر تكلفة الطقم فورياً من مجموع أسعار شراء مكوناته. وعند إتمام بيع الطقم عبر الـ POS، يتم خصم المكونات الفردية تلقائياً من أرصدتها بالمخزن.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bundles List -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3 style="margin:0;font-size:14px;font-weight:800;">الأطقم المعرفة (${bundleIds.length})</h3>
+      </div>
+      ${bundleIds.length === 0 ? `
+        <div class="empty">
+          لا توجد أطقم مجمعة معرفة بعد.<br>
+          اضغط على <b>"تكوين طقم / تجميعة جديدة"</b> لاختيار صنف وربط مكوناته.
+        </div>
+      ` : `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(360px, 1fr));gap:14px;">
+          ${bundleIds.map(bId => {
+            const parentItem = (state.inventory || []).find(x => String(x.ID) === String(bId));
+            const components = bundleMap[bId] || [];
+            const bomCost = typeof calculateBundleCost === 'function' ? calculateBundleCost(bId) : 0;
+            const sellPrice = parentItem ? Number(parentItem.SellPrice || 0) : 0;
+            const margin = sellPrice > 0 ? round2(sellPrice - bomCost) : 0;
+            const marginPct = sellPrice > 0 ? Math.round((margin / sellPrice) * 100) : 0;
+
+            return `
+              <div class="card" style="border:1.5px solid var(--line);background:var(--paper2);padding:14px 16px;display:flex;flex-direction:column;justify-content:space-between;">
+                <div>
+                  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+                    <div>
+                      <span class="badge badge-primary" style="font-size:10.5px;padding:1px 6px;">طقم مجمع (BOM)</span>
+                      <h4 style="margin:4px 0 0;font-size:15px;font-weight:800;">${escapeHtml(parentItem ? parentItem.Name : bId)}</h4>
+                      <div style="font-size:11px;color:var(--ink-secondary);">كود الصنف: <span class="mono">${bId}</span></div>
+                    </div>
+                    <button class="btn btn-ghost btn-xs manage-bundle-btn" data-bundle-id="${escapeHtml(bId)}" title="إدارة المكونات">
+                      ${getSvgIcon('edit', 13)} تعديل المكونات
+                    </button>
+                  </div>
+
+                  <!-- Financial Metrics -->
+                  <div style="display:flex;gap:10px;padding:8px 10px;background:var(--paper3);border-radius:4px;margin:8px 0 12px;font-size:12px;justify-content:space-between;">
+                    <div>
+                      <span style="color:var(--ink-secondary);font-size:10.5px;">تكلفة المكونات:</span>
+                      <div class="mono font-bold" style="color:var(--primary);">${bomCost.toLocaleString()} ج.م</div>
+                    </div>
+                    <div>
+                      <span style="color:var(--ink-secondary);font-size:10.5px;">سعر البيع:</span>
+                      <div class="mono font-bold" style="color:var(--green);">${sellPrice.toLocaleString()} ج.م</div>
+                    </div>
+                    <div>
+                      <span style="color:var(--ink-secondary);font-size:10.5px;">هامش الربح:</span>
+                      <div class="mono font-bold" style="color:${margin>=0?'var(--emerald, #059669)':'var(--red)'};">${margin.toLocaleString()} ج.م (${marginPct}%)</div>
+                    </div>
+                  </div>
+
+                  <!-- Components Table -->
+                  <div style="font-size:11.5px;font-weight:700;color:var(--ink);margin-bottom:4px;">المكونات الفردية (${components.length}):</div>
+                  <div style="border:1px solid var(--line);border-radius:4px;overflow:hidden;background:var(--surface);">
+                    <table style="width:100%;font-size:11.5px;border-collapse:collapse;">
+                      <tbody>
+                        ${components.map(comp => {
+                          const compInv = (state.inventory || []).find(x => String(x.ID) === String(comp.ComponentItemID));
+                          const compCost = compInv ? Number(compInv.PurchasePrice || 0) : 0;
+                          return `
+                            <tr style="border-bottom:1px solid var(--line);">
+                              <td style="padding:5px 8px;"><b>${escapeHtml(comp.ComponentName || (compInv ? compInv.Name : comp.ComponentItemID))}</b></td>
+                              <td style="padding:5px 8px;text-align:center;" class="mono font-bold">× ${comp.Quantity || 1}</td>
+                              <td style="padding:5px 8px;text-align:center;" class="mono text-muted">${compCost.toLocaleString()} ج.م</td>
+                              <td style="padding:5px 8px;text-align:center;">
+                                <button type="button" class="btn btn-ghost btn-xs del-bundle-comp-btn" data-comp-id="${escapeHtml(comp.ID)}" style="color:var(--red);padding:1px 5px;" title="حذف المكون">&times;</button>
+                              </td>
+                            </tr>
+                          `;
+                        }).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:8px;display:flex;justify-content:flex-end;">
+                  <button class="btn btn-outline btn-xs manage-bundle-btn" data-bundle-id="${escapeHtml(bId)}">
+                    ${getSvgIcon('plus', 12)} إضافة مكون جديد للطقم
+                  </button>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `}
+    </div>
+  `;
+
+  const createBtn = document.getElementById('createBundleBtn');
+  if(createBtn) createBtn.onclick = () => openCreateBundleModal();
+
+  const refBtn = document.getElementById('refreshBundlesBtn');
+  if(refBtn) refBtn.onclick = async () => {
+    refBtn.disabled = true; refBtn.textContent = 'جارٍ التحديث...';
+    await loadBundleItems();
+    renderBundlesView(main);
+  };
+
+  main.querySelectorAll('.manage-bundle-btn').forEach(btn => {
+    btn.onclick = () => {
+      const bId = btn.dataset.bundleId;
+      const parentItem = (state.inventory || []).find(x => String(x.ID) === bId) || { ID: bId, Name: bId };
+      openBundleComponentsModal(parentItem);
+    };
+  });
+
+  main.querySelectorAll('.del-bundle-comp-btn').forEach(btn => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      if(!confirm('هل أنت متأكد من حذف هذا المكون من الطقم؟')) return;
+      await deleteBundleItemRemote(btn.dataset.compId);
+      showToast('تم حذف المكون من الطقم بنجاح', 'info');
+      refreshInventorySectionOrTab();
+    };
+  });
+}
+
+function openCreateBundleModal(){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+
+  const inventoryOptions = (state.inventory || []).map(it => `
+    <option value="${it.ID}">${escapeHtml(it.Name)} (${it.Category || ''}) - سعر بيع: ${it.SellPrice || 0} ج.م</option>
+  `).join('');
+
+  overlay.innerHTML = `
+    <div class="modal-content" style="max-width:520px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;">
+        <h3 style="margin:0;font-size:16px;font-weight:900;">اختيار صنف ليكون طقماً مجمعاً (BOM Kit)</h3>
+        <button class="btn btn-ghost btn-xs" id="closeCreateBundleModal">&times; إغلاق</button>
+      </div>
+
+      <div class="field" style="margin-bottom:14px;">
+        <label>اختر الصنف من المخزن لتعريفه كطقم مجمع *</label>
+        <select id="selectParentBundleItem">
+          <option value="">-- اختر الصنف --</option>
+          ${inventoryOptions}
+        </select>
+        <div style="font-size:11px;color:var(--ink-secondary);margin-top:4px;">
+          ملاحظة: يمكنك لاحقاً إضافة مكونات هذا الطقم وتحديد الكمية المطلوبة من كل مكون.
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--line);padding-top:12px;">
+        <button class="btn btn-ghost" id="cancelCreateBundleBtn">إلغاء</button>
+        <button class="btn btn-primary" id="confirmCreateBundleBtn">متابعة وإضافة المكونات</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  overlay.querySelector('#closeCreateBundleModal').onclick = close;
+  overlay.querySelector('#cancelCreateBundleBtn').onclick = close;
+
+  overlay.querySelector('#confirmCreateBundleBtn').onclick = () => {
+    const selId = overlay.querySelector('#selectParentBundleItem').value;
+    if(!selId){ showToast('يرجى اختيار صنف أولاً', 'error'); return; }
+    const parentItem = (state.inventory || []).find(x => String(x.ID) === selId);
+    overlay.remove();
+    openBundleComponentsModal(parentItem);
+  };
+}
+
+function openBundleComponentsModal(parentItem){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+
+  function renderInner(){
+    const currentComponents = (state.bundleItems || []).filter(b => String(b.BundleItemID) === String(parentItem.ID));
+    const bomCost = typeof calculateBundleCost === 'function' ? calculateBundleCost(parentItem.ID) : 0;
+
+    // Available components to add (excluding the parent item itself)
+    const availableComponentOptions = (state.inventory || [])
+      .filter(it => String(it.ID) !== String(parentItem.ID))
+      .map(it => `
+        <option value="${it.ID}">
+          ${escapeHtml(it.Name)} - سعر تكلفة: ${it.PurchasePrice || 0} ج.م (متوفر: ${it.Quantity || 0})
+        </option>
+      `).join('');
+
+    overlay.innerHTML = `
+      <div class="modal-content" style="max-width:680px;max-height:90vh;display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:12px;">
+          <div>
+            <h3 style="margin:0;font-size:16px;font-weight:900;">
+              إدارة مكونات الطقم: ${escapeHtml(parentItem.Name)}
+            </h3>
+            <div style="font-size:11.5px;color:var(--ink-secondary);margin-top:2px;">
+              تكلفة المكونات المحسوبة: <b class="mono" style="color:var(--primary);">${bomCost.toLocaleString()} ج.م</b>
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-xs" id="closeBundleModal">&times; إغلاق</button>
+        </div>
+
+        <!-- Add Component Form Card -->
+        <div class="card" style="padding:12px 14px;background:var(--paper3);border:1px solid var(--line);margin-bottom:14px;">
+          <h4 style="margin:0 0 10px;font-size:13px;font-weight:800;">إضافة مكون جديد لهذا الطقم</h4>
+          <div style="display:grid;grid-template-columns:1.8fr 100px 1fr auto;gap:8px;align-items:end;">
+            <div class="field">
+              <label>الصنف المكون *</label>
+              <select id="newCompItemId">
+                <option value="">-- اختر الصنف --</option>
+                ${availableComponentOptions}
+              </select>
+            </div>
+            <div class="field">
+              <label>الكمية للطقم *</label>
+              <input type="number" id="newCompQty" min="1" value="1" class="mono font-bold">
+            </div>
+            <div class="field">
+              <label>ملاحظات (اختياري)</label>
+              <input type="text" id="newCompNotes" placeholder="ملاحظة...">
+            </div>
+            <button class="btn btn-primary btn-sm" id="addNewCompBtn" style="height:36px;">
+              ${getSvgIcon('plus', 14)} إضافة
+            </button>
+          </div>
+        </div>
+
+        <!-- Current Components List -->
+        <div style="flex:1;overflow-y:auto;border:1px solid var(--line);border-radius:4px;margin-bottom:12px;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead style="position:sticky;top:0;background:var(--paper2);z-index:2;">
+              <tr>
+                <th style="padding:8px 10px;text-align:right;">اسم المكون</th>
+                <th style="padding:8px 10px;text-align:center;width:90px;">الكمية المطلوبة</th>
+                <th style="padding:8px 10px;text-align:center;width:100px;">تكلفة الوحدة</th>
+                <th style="padding:8px 10px;text-align:center;width:110px;">إجمالي التكلفة</th>
+                <th style="padding:8px 10px;text-align:center;width:60px;">حذف</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${currentComponents.length === 0 ? `
+                <tr><td colspan="5" style="text-align:center;padding:24px;color:var(--ink-secondary);">لا توجد مكونات مرتبطة بهذا الطقم بعد. استخدم النموذج أعلاه لإضافة مكونات.</td></tr>
+              ` : currentComponents.map(comp => {
+                const compInv = (state.inventory || []).find(x => String(x.ID) === String(comp.ComponentItemID));
+                const unitCost = compInv ? Number(compInv.PurchasePrice || 0) : 0;
+                const totCost = unitCost * Number(comp.Quantity || 1);
+                return `
+                  <tr style="border-bottom:1px solid var(--line);">
+                    <td style="padding:8px 10px;"><b>${escapeHtml(comp.ComponentName || (compInv ? compInv.Name : comp.ComponentItemID))}</b></td>
+                    <td style="padding:8px 10px;text-align:center;" class="mono font-bold">× ${comp.Quantity || 1}</td>
+                    <td style="padding:8px 10px;text-align:center;" class="mono">${unitCost.toLocaleString()} ج.م</td>
+                    <td style="padding:8px 10px;text-align:center;" class="mono font-bold" style="color:var(--primary);">${totCost.toLocaleString()} ج.م</td>
+                    <td style="padding:8px 10px;text-align:center;">
+                      <button type="button" class="btn btn-ghost btn-xs remove-comp-btn" data-comp-id="${escapeHtml(comp.ID)}" style="color:var(--red);" title="حذف">&times;</button>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;border-top:1px solid var(--line);padding-top:12px;">
+          <button class="btn btn-primary" id="finishBundleModalBtn">تم وإغلاق</button>
+        </div>
+      </div>
+    `;
+
+    overlay.querySelector('#closeBundleModal').onclick = () => { overlay.remove(); refreshInventorySectionOrTab(); };
+    overlay.querySelector('#finishBundleModalBtn').onclick = () => { overlay.remove(); refreshInventorySectionOrTab(); };
+
+    overlay.querySelector('#addNewCompBtn').onclick = async () => {
+      const cItemId = overlay.querySelector('#newCompItemId').value;
+      const cQty = Number(overlay.querySelector('#newCompQty').value || 1);
+      const cNotes = overlay.querySelector('#newCompNotes').value.trim();
+
+      if(!cItemId){ showToast('يرجى اختيار الصنف المكون', 'error'); return; }
+      if(cQty <= 0){ showToast('الكمية يجب أن تكون أكبر من صفر', 'error'); return; }
+
+      const cInv = (state.inventory || []).find(x => String(x.ID) === cItemId);
+      const compObj = {
+        BundleItemID: parentItem.ID,
+        ComponentItemID: cItemId,
+        ComponentName: cInv ? cInv.Name : '',
+        Quantity: cQty,
+        Notes: cNotes
+      };
+
+      try {
+        await saveBundleItemRemote(compObj);
+        showToast(`تمت إضافة (${compObj.ComponentName}) إلى الطقم`, 'success');
+        renderInner();
+      } catch(err){
+        showToast('خطأ أثناء إضافة المكون: ' + err.message, 'error');
+      }
+    };
+
+    overlay.querySelectorAll('.remove-comp-btn').forEach(btn => {
+      btn.onclick = async () => {
+        if(!confirm('هل تريد حذف هذا المكون من الطقم؟')) return;
+        try {
+          await deleteBundleItemRemote(btn.dataset.compId);
+          showToast('تم حذف المكون', 'info');
+          renderInner();
+        } catch(err){
+          showToast('خطأ أثناء حذف المكون: ' + err.message, 'error');
+        }
+      };
+    });
+  }
+
+  renderInner();
+  document.body.appendChild(overlay);
+}
+
+/* ============================================================
+   Purchase Returns Views (U12)
+   ============================================================ */
+function renderPurchaseReturns(main){
+  const returns = state.purchaseReturns || [];
+
+  let totalReturnsAmt = 0;
+  returns.forEach(r => totalReturnsAmt += Number(r.Total || 0));
+
+  main.innerHTML = `
+    <div class="top-header">
+      <div>
+        <h2 class="page-title">${getSvgIcon('refresh', 20)} مرتجعات المشتريات إلى الموردين (Purchase Returns)</h2>
+        <div class="subtitle">إعادة بضاعة تالفة أو غير مطابقة إلى المورد، خصم المخزون، واسترداد النقدية أو تسوية حساب المورد</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost btn-sm" id="refreshPRBtn">${getSvgIcon('refresh', 14)} تحديث</button>
+        <button class="btn btn-primary btn-sm" id="newPurchaseReturnBtn">${getSvgIcon('plus', 14)} تسجيل مرتجع مشتريات جديد</button>
+      </div>
+    </div>
+
+    <!-- KPIs Row -->
+    <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;margin-bottom:14px;">
+      <div class="card" style="padding:12px 14px;background:var(--paper2);border:1px solid var(--line);">
+        <div style="font-size:11.5px;color:var(--ink-secondary);">إجمالي عمليات المرتجع</div>
+        <div style="font-size:22px;font-weight:900;color:var(--ink);">${returns.length.toLocaleString()} عملية</div>
+      </div>
+      <div class="card" style="padding:12px 14px;background:var(--paper2);border:1px solid var(--line);">
+        <div style="font-size:11.5px;color:var(--ink-secondary);">إجمالي مبالغ المرتجعات المستردة</div>
+        <div style="font-size:22px;font-weight:900;color:var(--red);">${totalReturnsAmt.toLocaleString()} ج.م</div>
+      </div>
+      <div class="card" style="padding:12px 14px;background:var(--paper2);border:1px solid var(--line);">
+        <div style="font-size:11.5px;color:var(--ink-secondary);">آخر مرتجع مشتريات</div>
+        <div style="font-size:14px;font-weight:800;color:var(--ink);margin-top:6px;">
+          ${returns.length > 0 ? `${cleanDate(returns[0].Date)} (${returns[0].ReturnNumber})` : 'لا يوجد مرتجعات'}
+        </div>
+      </div>
+    </div>
+
+    <!-- Returns Table -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <h3 style="margin:0;font-size:14px;font-weight:800;">سجل مرتجعات المشتريات</h3>
+      </div>
+      ${returns.length === 0 ? `
+        <div class="empty">
+          لا توجد مرتجعات مشتريات مسجلة بعد.<br>
+          اضغط على <b>"تسجيل مرتجع مشتريات جديد"</b> لإرجاع بضاعة إلى مورد.
+        </div>
+      ` : `
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:140px;">رقم المرتجع</th>
+                <th style="width:110px;">التاريخ</th>
+                <th style="width:160px;">المورد</th>
+                <th style="min-width:220px;">الأصناف المرتجعة</th>
+                <th style="width:120px;text-align:center;">إجمالي المبلغ</th>
+                <th style="width:130px;text-align:center;">طريقة الرد</th>
+                <th style="width:110px;">المسجل</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${returns.map(r => {
+                const methodBadge = (r.RefundMethod === 'نقدي') 
+                  ? '<span class="badge" style="background:#ecfdf5;color:#047857;font-weight:700;">نقدي (خزينة)</span>'
+                  : ((r.RefundMethod === 'بنكي' || r.RefundMethod === 'شبكة')
+                    ? '<span class="badge" style="background:#eff6ff;color:#1d4ed8;font-weight:700;">بنكي / محفظة</span>'
+                    : '<span class="badge" style="background:#fef3c7;color:#92400e;font-weight:700;">خصم رصيد مورد</span>');
+
+                return `
+                  <tr>
+                    <td><span class="mono font-bold" style="color:var(--primary);">${escapeHtml(r.ReturnNumber||r.ID)}</span></td>
+                    <td>${cleanDate(r.Date)}</td>
+                    <td><b>${escapeHtml(r.SupplierName||'')}</b></td>
+                    <td style="font-size:12px;color:var(--ink-secondary);">${escapeHtml(r.ItemsSummary||'')}</td>
+                    <td style="text-align:center;" class="mono font-bold" style="color:var(--red);">
+                      ${Number(r.Total||0).toLocaleString()} ج.م
+                    </td>
+                    <td style="text-align:center;">${methodBadge}</td>
+                    <td style="font-size:12px;">${escapeHtml(r.By||'')}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      `}
+    </div>
+  `;
+
+  const newBtn = document.getElementById('newPurchaseReturnBtn');
+  if(newBtn) newBtn.onclick = () => openPurchaseReturnModal();
+
+  const refBtn = document.getElementById('refreshPRBtn');
+  if(refBtn) refBtn.onclick = async () => {
+    refBtn.disabled = true; refBtn.textContent = 'جارٍ التحديث...';
+    await loadPurchaseReturns();
+    renderPurchaseReturns(main);
+  };
+}
+
+function openPurchaseReturnModal(optionalPurchase = null){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+
+  const suppliersOptions = (state.suppliers || []).map(s => `
+    <option value="${escapeHtml(s.Name)}" data-sup-id="${escapeHtml(s.ID||'')}" ${optionalPurchase && optionalPurchase.Supplier === s.Name ? 'selected' : ''}>
+      ${escapeHtml(s.Name)} ${(s.Phone ? `(${s.Phone})` : '')}
+    </option>
+  `).join('');
+
+  const purchasesOptions = (state.purchases || []).map(p => `
+    <option value="${p.ID}" data-sup="${escapeHtml(p.Supplier||'')}" ${optionalPurchase && String(optionalPurchase.ID) === String(p.ID) ? 'selected' : ''}>
+      ${p.ID} - ${cleanDate(p.Date)} - ${escapeHtml(p.Supplier||'')} (${Number(p.Total||0).toLocaleString()} ج.م)
+    </option>
+  `).join('');
+
+  let returnItems = [
+    { itemId: '', itemName: '', qty: 1, price: 0 }
+  ];
+
+  function renderInner(){
+    const subtotal = returnItems.reduce((acc, it) => acc + (Number(it.qty||1) * Number(it.price||0)), 0);
+
+    overlay.innerHTML = `
+      <div class="modal-content" style="max-width:720px;max-height:90vh;display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:12px;">
+          <h3 style="margin:0;font-size:16px;font-weight:900;">
+            تسجيل مرتجع مشتريات إلى مورد (Return to Supplier)
+          </h3>
+          <button class="btn btn-ghost btn-xs" id="closePRModal">&times; إغلاق</button>
+        </div>
+
+        <div class="grid3" style="gap:10px;margin-bottom:12px;">
+          <div class="field">
+            <label>المورد *</label>
+            <select id="prSupplierSelect">
+              <option value="">-- اختر المورد --</option>
+              ${suppliersOptions}
+            </select>
+          </div>
+          <div class="field">
+            <label>فاتورة الشراء الأصلية (اختياري)</label>
+            <select id="prPurchaseSelect">
+              <option value="">-- بدون ربط بفاتورة شراء محددة --</option>
+              ${purchasesOptions}
+            </select>
+          </div>
+          <div class="field">
+            <label>تاريخ المرتجع</label>
+            <input type="date" id="prDateInput" value="${new Date().toISOString().slice(0, 10)}">
+          </div>
+        </div>
+
+        <div class="grid2" style="gap:10px;margin-bottom:14px;">
+          <div class="field">
+            <label>طريقة استرداد القيمة *</label>
+            <select id="prRefundMethod">
+              <option value="نقدي">نقدي (رد للخزينة الرئيسية 1101)</option>
+              <option value="بنكي">بنكي / محفظة إلكترونية (1102)</option>
+              <option value="آجل">خصم من رصيد المورد / آجل (2101)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>ملاحظات وسبب الارتجاع</label>
+            <input type="text" id="prNotesInput" placeholder="تلف بالبضاعة، خطأ في المواصفات...">
+          </div>
+        </div>
+
+        <!-- Items Table -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <h4 style="margin:0;font-size:13px;font-weight:800;">الأصناف المرتجعة من المخزن</h4>
+          <button type="button" class="btn btn-ghost btn-xs" id="addPrItemRowBtn">
+            ${getSvgIcon('plus', 13)} إضافة صنف آخر
+          </button>
+        </div>
+
+        <div style="flex:1;overflow-y:auto;border:1px solid var(--line);border-radius:4px;margin-bottom:12px;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead style="position:sticky;top:0;background:var(--paper2);z-index:2;">
+              <tr>
+                <th style="padding:6px 8px;text-align:right;">الصنف</th>
+                <th style="padding:6px 8px;text-align:center;width:90px;">الكمية</th>
+                <th style="padding:6px 8px;text-align:center;width:110px;">سعر الوحدة</th>
+                <th style="padding:6px 8px;text-align:center;width:120px;">الإجمالي</th>
+                <th style="padding:6px 8px;text-align:center;width:50px;">حذف</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${returnItems.map((it, idx) => `
+                <tr style="border-bottom:1px solid var(--line);">
+                  <td style="padding:6px 8px;">
+                    <select class="pr-item-sel" data-idx="${idx}" style="width:100%;padding:4px;font-size:12px;">
+                      <option value="">-- اختر الصنف --</option>
+                      ${(state.inventory || []).map(inv => `
+                        <option value="${inv.ID}" ${it.itemId===inv.ID?'selected':''}>${escapeHtml(inv.Name)} (رصيد: ${inv.Quantity||0})</option>
+                      `).join('')}
+                    </select>
+                  </td>
+                  <td style="padding:6px 8px;text-align:center;">
+                    <input type="number" min="1" class="pr-qty-inp mono font-bold" data-idx="${idx}" value="${it.qty||1}" style="width:65px;text-align:center;padding:3px;">
+                  </td>
+                  <td style="padding:6px 8px;text-align:center;">
+                    <input type="number" min="0" step="any" class="pr-price-inp mono" data-idx="${idx}" value="${it.price||0}" style="width:85px;text-align:center;padding:3px;">
+                  </td>
+                  <td style="padding:6px 8px;text-align:center;" class="mono font-bold" style="color:var(--red);">
+                    ${round2((it.qty||1) * (it.price||0)).toLocaleString()} ج.م
+                  </td>
+                  <td style="padding:6px 8px;text-align:center;">
+                    ${returnItems.length > 1 ? `
+                      <button type="button" class="btn btn-ghost btn-xs del-pr-row" data-idx="${idx}" style="color:var(--red);">&times;</button>
+                    ` : ''}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Total Summary Footer -->
+        <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding-top:12px;">
+          <div>
+            <span style="font-size:12px;color:var(--ink-secondary);">إجمالي قيمة المرتجع:</span>
+            <span class="mono font-bold" style="font-size:17px;color:var(--red);margin-right:6px;">
+              ${round2(subtotal).toLocaleString()} ج.م
+            </span>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-ghost" id="cancelPRModalBtn">إلغاء</button>
+            <button class="btn btn-primary" id="savePRModalBtn">
+              ${getSvgIcon('check', 14)} حفظ وترحيل المرتجع
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    overlay.querySelector('#closePRModal').onclick = () => overlay.remove();
+    overlay.querySelector('#cancelPRModalBtn').onclick = () => overlay.remove();
+
+    overlay.querySelector('#addPrItemRowBtn').onclick = () => {
+      returnItems.push({ itemId: '', itemName: '', qty: 1, price: 0 });
+      renderInner();
+    };
+
+    overlay.querySelectorAll('.pr-item-sel').forEach(sel => {
+      sel.onchange = () => {
+        const idx = Number(sel.dataset.idx);
+        const inv = (state.inventory || []).find(x => String(x.ID) === sel.value);
+        if(inv){
+          returnItems[idx].itemId = inv.ID;
+          returnItems[idx].itemName = inv.Name;
+          returnItems[idx].price = Number(inv.PurchasePrice || 0);
+        }
+        renderInner();
+      };
+    });
+
+    overlay.querySelectorAll('.pr-qty-inp').forEach(inp => {
+      inp.onchange = () => {
+        const idx = Number(inp.dataset.idx);
+        returnItems[idx].qty = Math.max(1, Number(inp.value || 1));
+        renderInner();
+      };
+    });
+
+    overlay.querySelectorAll('.pr-price-inp').forEach(inp => {
+      inp.onchange = () => {
+        const idx = Number(inp.dataset.idx);
+        returnItems[idx].price = Math.max(0, Number(inp.value || 0));
+        renderInner();
+      };
+    });
+
+    overlay.querySelectorAll('.del-pr-row').forEach(btn => {
+      btn.onclick = () => {
+        const idx = Number(btn.dataset.idx);
+        returnItems.splice(idx, 1);
+        renderInner();
+      };
+    });
+
+    overlay.querySelector('#savePRModalBtn').onclick = async () => {
+      const supName = overlay.querySelector('#prSupplierSelect').value.trim();
+      if(!supName){ showToast('يرجى اختيار المورد', 'error'); return; }
+
+      const validItems = returnItems.filter(it => it.itemId && it.qty > 0);
+      if(!validItems.length){ showToast('يرجى اختيار صنف واحد على الأقل للمرتجع', 'error'); return; }
+
+      const supObj = (state.suppliers || []).find(s => s.Name === supName);
+      const totalAmt = round2(validItems.reduce((acc, it) => acc + (it.qty * it.price), 0));
+      const method = overlay.querySelector('#prRefundMethod').value;
+      const purId = overlay.querySelector('#prPurchaseSelect').value;
+      const date = overlay.querySelector('#prDateInput').value;
+      const notes = overlay.querySelector('#prNotesInput').value.trim();
+
+      const itemsSummary = validItems.map(it => `${it.itemName} × ${it.qty}`).join('، ');
+
+      const pret = {
+        PurchaseID: purId || '',
+        SupplierID: supObj ? supObj.ID : '',
+        SupplierName: supName,
+        Date: date,
+        ItemsSummary: itemsSummary,
+        Total: totalAmt,
+        TaxAmount: 0,
+        RefundMethod: method,
+        Notes: notes
+      };
+
+      const saveBtn = overlay.querySelector('#savePRModalBtn');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'جارٍ الحفظ والترحيل...';
+
+      try {
+        await savePurchaseReturnRemote(pret, validItems);
+        showToast('تم تسجيل وترحيل مرتجع المشتريات بنجاح', 'success');
+        playNotificationChime();
+        overlay.remove();
+        refreshInventorySectionOrTab();
+      } catch(err){
+        showToast('خطأ أثناء حفظ المرتجع: ' + err.message, 'error');
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'حفظ وترحيل المرتجع';
+      }
+    };
+  }
+
+  renderInner();
   document.body.appendChild(overlay);
 }

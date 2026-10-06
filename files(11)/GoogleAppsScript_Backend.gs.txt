@@ -70,6 +70,10 @@ const SHEET_SERVICE_VISITS = 'ServiceVisits';
 const SHEET_MAINTENANCE_CONTRACTS = 'MaintenanceContracts';
 const SHEET_PROJECT_MILESTONES = 'ProjectMilestones';
 const SHEET_IDEMPOTENCY = 'Idempotency';
+const SHEET_PURCHASE_RETURNS = 'PurchaseReturns';
+const SHEET_BUNDLE_ITEMS = 'BundleItems';
+const SHEET_STOCKTAKE_SESSIONS = 'StocktakeSessions';
+const SHEET_STOCKTAKE_LINES = 'StocktakeLines';
 /* أضف ورقة عمل جديدة باسم Invoices لإدارة الفواتير الضريبية والرسمية:
       أعمدة: ID | InvoiceNumber | Date | DueDate | CustomerName | CustomerPhone | CustomerTaxNumber | CustomerAddress |
               ItemsSummary | ItemsJSON | Subtotal | TaxPercent | TaxAmount | Discount | Total |
@@ -256,10 +260,14 @@ const ACTION_ROLES = {
   deleteInventoryItem:['admin'],
   adjustInventoryQty: ['admin','accountant'],
   savePurchase:       ['admin','accountant'],
+  savePurchaseReturn: ['admin','accountant'],
   settlePurchaseDebt: ['admin','accountant'],
   saveSupplier:       ['admin','accountant'],
   saveSerial:         ['admin','technician','accountant'],
   markSerialSold:     ['admin','cashier','accountant'],
+  commitStocktakeSession: ['admin','accountant'],
+  saveBundleItem:     ['admin','accountant'],
+  deleteBundleItem:   ['admin','accountant'],
   saveExpense:        ['admin','accountant'],
   deleteExpense:      ['admin'],
   saveAccount:        ['admin'],
@@ -306,7 +314,8 @@ const AUTOPOST_REFS = [
   'Receipt_Payment', 'Receipt_Payment_Void', 'Receipt_Delivery', 'Receipt_Revenue', 'Receipt_Void',
   'Invoice', 'Invoice_Void', 'Invoice_Adjustment', 'Quotation_Payment', 'Quotation_Delivery', 'Quotation',
   'Project_Milestone', 'Project_Delivery', 'CCTV_Project',
-  'CashIn', 'CashOut', 'Shift_Open', 'Shift_Close', 'Shift_Variance', 'Opening_Balance'
+  'CashIn', 'CashOut', 'Shift_Open', 'Shift_Close', 'Shift_Variance', 'Opening_Balance',
+  'Stocktake_Adjustment', 'Purchase_Return'
 ];
 
 function postAutoJournal(desc, refType, refId, lines, actorUser) {
@@ -531,6 +540,10 @@ function executeReadAction(action, session, params) {
     const cctvVisits = getAllRows(SHEET_SERVICE_VISITS);
     const cctvContracts = getAllRows(SHEET_MAINTENANCE_CONTRACTS);
     const cctvMilestones = getAllRows(SHEET_PROJECT_MILESTONES);
+    const purchaseReturns = getAllRows(SHEET_PURCHASE_RETURNS);
+    const bundleItems = getAllRows(SHEET_BUNDLE_ITEMS);
+    const stocktakeSessions = getAllRows(SHEET_STOCKTAKE_SESSIONS);
+    const stocktakeLines = getAllRows(SHEET_STOCKTAKE_LINES);
 
     return jsonOut({
       ok: true,
@@ -559,7 +572,11 @@ function executeReadAction(action, session, params) {
       cctvDevices,
       cctvVisits,
       cctvContracts,
-      cctvMilestones
+      cctvMilestones,
+      purchaseReturns,
+      bundleItems,
+      stocktakeSessions,
+      stocktakeLines
     });
   }
 
@@ -608,6 +625,14 @@ function executeReadAction(action, session, params) {
     let rows = getAllRows(SHEET_SERIALS);
     if (params && params.itemId) rows = rows.filter(r => String(r.ItemID) === String(params.itemId));
     if (params && params.status) rows = rows.filter(r => r.Status === params.status);
+    return jsonOut(rows);
+  }
+  if (action === 'getPurchaseReturns') return jsonOut(getAllRows(SHEET_PURCHASE_RETURNS));
+  if (action === 'getBundleItems') return jsonOut(getAllRows(SHEET_BUNDLE_ITEMS));
+  if (action === 'getStocktakeSessions') return jsonOut(getAllRows(SHEET_STOCKTAKE_SESSIONS));
+  if (action === 'getStocktakeLines') {
+    let rows = getAllRows(SHEET_STOCKTAKE_LINES);
+    if (params && params.sessionId) rows = rows.filter(r => String(r.SessionID) === String(params.sessionId));
     return jsonOut(rows);
   }
   if (action === 'getSupplierPayments') return jsonOut(getAllRows(SHEET_SUPPLIER_PAYMENTS));
@@ -1704,6 +1729,94 @@ function doPost(e) {
       }
       return jsonOut({ error: 'فاتورة الشراء غير موجودة' }, 404);
     }
+    if (action === 'savePurchaseReturn') {
+      const clientRef = body.clientRef || body.ClientRef || '';
+      if (clientRef && checkIdempotency(clientRef, 'savePurchaseReturn', actorUser, 'Purchase return total ' + (body.total || 0))) {
+        return jsonOut({ ok: true, duplicateSuppressed: true, clientRef: clientRef });
+      }
+      const pret = {
+        ID: body.id || ('pret_' + new Date().getTime()),
+        ReturnNumber: body.returnNumber || ('PR-' + new Date().getFullYear() + '-' + Math.floor(Math.random() * 10000)),
+        PurchaseID: body.purchaseId || '',
+        SupplierID: body.supplierId || '',
+        SupplierName: body.supplierName || '',
+        Date: body.date || new Date().toISOString().slice(0, 10),
+        ItemsSummary: body.itemsSummary || '',
+        ItemsJSON: typeof body.itemsJSON === 'string' ? body.itemsJSON : JSON.stringify(body.items || []),
+        Total: Number(body.total || 0),
+        TaxAmount: Number(body.taxAmount || 0),
+        RefundMethod: body.refundMethod || 'نقدي',
+        By: body.user || actorUser || 'نظام',
+        Notes: body.notes || ''
+      };
+      appendRow(SHEET_PURCHASE_RETURNS, pret);
+
+      // Inventory decrement for returned items
+      if (Array.isArray(body.items) && body.items.length > 0) {
+        const shInv = getSheet(SHEET_INVENTORY);
+        const headers = shInv.getRange(1, 1, 1, shInv.getLastColumn()).getValues()[0];
+        const idCol = headers.indexOf('ID');
+        const qtyCol = headers.indexOf('Quantity');
+        const values = shInv.getDataRange().getValues();
+
+        for (const item of body.items) {
+          if (!item.itemId) continue;
+          for (let i = 1; i < values.length; i++) {
+            if (String(values[i][idCol]) === String(item.itemId)) {
+              const currentQty = Number(values[i][qtyCol] || 0);
+              const deductQty = Number(item.qty || 0);
+              const newQty = currentQty - deductQty;
+              values[i][qtyCol] = newQty;
+              shInv.getRange(i + 1, qtyCol + 1).setValue(newQty);
+              break;
+            }
+          }
+        }
+      }
+
+      // Update supplier debt if refundMethod is debt deduction / on account
+      if (pret.SupplierID && (pret.RefundMethod === 'آجل' || pret.RefundMethod === 'خصم من الرصيد' || pret.RefundMethod === 'رصيد مورد')) {
+        try {
+          const shSup = getSheet(SHEET_SUPPLIERS);
+          const headersSup = shSup.getRange(1, 1, 1, shSup.getLastColumn()).getValues()[0];
+          const supIdCol = headersSup.indexOf('ID');
+          const supDebtCol = headersSup.indexOf('Debt');
+          if (supIdCol >= 0 && supDebtCol >= 0) {
+            const supVals = shSup.getDataRange().getValues();
+            for (let s = 1; s < supVals.length; s++) {
+              if (String(supVals[s][supIdCol]) === String(pret.SupplierID)) {
+                const curDebt = safeNumber(supVals[s][supDebtCol], 0);
+                const newDebt = Math.max(0, curDebt - pret.Total);
+                shSup.getRange(s + 1, supDebtCol + 1).setValue(newDebt);
+                break;
+              }
+            }
+          }
+        } catch(e) {}
+      }
+
+      // Server-side auto journal entry for purchase return
+      if (body.journalEntry) {
+        const je = body.journalEntry;
+        const refType = String(je.ReferenceType || 'Purchase_Return');
+        const refId = String(je.ReferenceID || pret.ID || '');
+        const lines = je.LinesJSON || je.Lines || [];
+        postAutoJournal(je.Description || ('مرتجع مشتريات #' + pret.ReturnNumber), refType, refId, lines, actorUser);
+      } else {
+        const debitAccount = (pret.RefundMethod === 'بنكي' || pret.RefundMethod === 'شبكة') ? '1102' :
+                             (pret.RefundMethod === 'نقدي' ? '1101' : '2101');
+        const debitName = (debitAccount === '1101') ? 'الخزينة الرئيسية (النقدية)' :
+                          (debitAccount === '1102') ? 'البنك والحسابات الإلكترونية' : 'الموردون والدائنون';
+        const lines = [
+          { AccountCode: debitAccount, AccountName: debitName, Debit: pret.Total, Credit: 0, Notes: 'استرداد قيمة مرتجع مشتريات #' + pret.ReturnNumber },
+          { AccountCode: '1104', AccountName: 'مخزون البضائع ومستلزمات الصيانة', Debit: 0, Credit: pret.Total, Notes: 'إخراج بضاعة مرتجعة إلى مورد' }
+        ];
+        postAutoJournal('مرتجع مشتريات #' + pret.ReturnNumber, 'Purchase_Return', pret.ID, lines, actorUser);
+      }
+
+      logAudit(pret.ID, actorUser, 'تسجيل مرتجع مشتريات', 'PurchaseReturn', { supplier: pret.SupplierName, total: pret.Total, method: pret.RefundMethod });
+      return jsonOut({ ok: true, purchaseReturn: pret });
+    }
     if (action === 'saveSupplier') {
       const s = {
         ID: body.data.ID || ('sup_' + new Date().getTime()),
@@ -1714,32 +1827,152 @@ function doPost(e) {
     }
     if (action === 'saveSerial') {
       const s = {
-        ID: 'sn_' + new Date().getTime() + '_' + Math.floor(Math.random() * 1000),
-        ItemID: body.itemId, ItemName: body.itemName, Serial: body.serial,
-        PurchaseID: body.purchaseId || '', SupplierID: body.supplierId || '',
-        WarrantyMonths: body.warrantyMonths || '', Status: 'In Stock', SoldRef: '', SoldDate: ''
+        ID: body.id || (body.data && body.data.ID) || ('sn_' + new Date().getTime() + '_' + Math.floor(Math.random() * 1000)),
+        ItemID: body.itemId || (body.data && body.data.ItemID) || '',
+        ItemName: body.itemName || (body.data && body.data.ItemName) || '',
+        Serial: String(body.serial || (body.data && body.data.Serial) || '').trim(),
+        PurchaseID: body.purchaseId || (body.data && body.data.PurchaseID) || '',
+        SupplierID: body.supplierId || (body.data && body.data.SupplierID) || '',
+        WarrantyMonths: body.warrantyMonths || (body.data && body.data.WarrantyMonths) || '',
+        WarrantyEnd: body.warrantyEnd || (body.data && body.data.WarrantyEnd) || '',
+        Status: body.status || (body.data && body.data.Status) || 'In Stock',
+        SoldRef: body.soldRef || (body.data && body.data.SoldRef) || '',
+        SoldDate: body.soldDate || (body.data && body.data.SoldDate) || '',
+        ProjectID: body.projectId || (body.data && body.data.ProjectID) || '',
+        Notes: body.notes || (body.data && body.data.Notes) || ''
       };
-      appendRow(SHEET_SERIALS, s);
+      upsertRow(SHEET_SERIALS, s, 'ID');
+      logAudit(s.ID, actorUser, 'حفظ رقم تسلسلي ' + s.Serial, 'Serial', { serial: s.Serial, item: s.ItemName, status: s.Status });
       return jsonOut({ ok: true, serial: s });
     }
     if (action === 'markSerialSold') {
       const sh = getSheet(SHEET_SERIALS);
       const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
       const idCol = headers.indexOf('ID');
+      const serialCol = headers.indexOf('Serial');
       const statusCol = headers.indexOf('Status');
       const soldRefCol = headers.indexOf('SoldRef');
       const soldDateCol = headers.indexOf('SoldDate');
+      const warrantyEndCol = headers.indexOf('WarrantyEnd');
       const values = sh.getDataRange().getValues();
+      const targetId = String(body.serialId || body.id || '');
+      const targetSerial = String(body.serial || '').trim();
+
       for (let i = 1; i < values.length; i++) {
-        if (String(values[i][idCol]) === String(body.serialId)) {
+        const rowId = String(values[i][idCol]);
+        const rowSerial = String(values[i][serialCol]);
+        if ((targetId && rowId === targetId) || (targetSerial && rowSerial === targetSerial)) {
           sh.getRange(i + 1, statusCol + 1).setValue('Sold');
           sh.getRange(i + 1, soldRefCol + 1).setValue(body.soldRef || '');
-          sh.getRange(i + 1, soldDateCol + 1).setValue(body.soldDate || '');
-          logAudit(body.serialId, actorUser, 'بيع وتخصيص رقم تسلسلي', 'Serial', { soldRef: body.soldRef, soldDate: body.soldDate });
-          return jsonOut({ ok: true });
+          sh.getRange(i + 1, soldDateCol + 1).setValue(body.soldDate || new Date().toISOString().slice(0, 10));
+          if (body.warrantyEnd && warrantyEndCol >= 0) {
+            sh.getRange(i + 1, warrantyEndCol + 1).setValue(body.warrantyEnd);
+          }
+          logAudit(rowId, actorUser, 'بيع وتخصيص رقم تسلسلي', 'Serial', { soldRef: body.soldRef, soldDate: body.soldDate });
+          return jsonOut({ ok: true, serialId: rowId });
         }
       }
       return jsonOut({ error: 'الرقم التسلسلي غير موجود' }, 404);
+    }
+    if (action === 'commitStocktakeSession') {
+      const sessionRow = {
+        ID: body.id || ('stk_' + new Date().getTime()),
+        SessionNumber: body.sessionNumber || ('STK-' + new Date().getFullYear() + '-' + Math.floor(Math.random() * 10000)),
+        Date: body.date || new Date().toISOString().slice(0, 10),
+        Title: body.title || 'جلسة جرد مخزني',
+        Status: 'Committed',
+        TotalDiscrepancyCost: Number(body.totalDiscrepancyCost || 0),
+        NetDifferenceQty: Number(body.netDifferenceQty || 0),
+        CreatedBy: body.createdBy || actorUser || '',
+        CommittedBy: actorUser || body.user || '',
+        Notes: body.notes || ''
+      };
+      appendRow(SHEET_STOCKTAKE_SESSIONS, sessionRow);
+
+      const lines = Array.isArray(body.lines) ? body.lines : [];
+      if (lines.length > 0) {
+        const shInv = getSheet(SHEET_INVENTORY);
+        const invHeaders = shInv.getRange(1, 1, 1, shInv.getLastColumn()).getValues()[0];
+        const invIdCol = invHeaders.indexOf('ID');
+        const invQtyCol = invHeaders.indexOf('Quantity');
+        const invVals = shInv.getDataRange().getValues();
+
+        let totalDeficitCost = 0;
+        let totalSurplusCost = 0;
+
+        lines.forEach(line => {
+          const lRow = {
+            ID: 'stkl_' + new Date().getTime() + '_' + Math.floor(Math.random() * 10000),
+            SessionID: sessionRow.ID,
+            ItemID: line.itemId || '',
+            ItemName: line.itemName || '',
+            ExpectedQty: Number(line.expectedQty || 0),
+            CountedQty: Number(line.countedQty || 0),
+            DifferenceQty: Number(line.differenceQty || 0),
+            UnitCost: Number(line.unitCost || 0),
+            TotalDifferenceCost: Number(line.totalDifferenceCost || 0),
+            Notes: line.notes || ''
+          };
+          appendRow(SHEET_STOCKTAKE_LINES, lRow);
+
+          // Adjust inventory physical count
+          if (line.itemId) {
+            for (let v = 1; v < invVals.length; v++) {
+              if (String(invVals[v][invIdCol]) === String(line.itemId)) {
+                shInv.getRange(v + 1, invQtyCol + 1).setValue(lRow.CountedQty);
+                break;
+              }
+            }
+          }
+
+          if (lRow.TotalDifferenceCost < 0) {
+            totalDeficitCost += Math.abs(lRow.TotalDifferenceCost);
+          } else if (lRow.TotalDifferenceCost > 0) {
+            totalSurplusCost += lRow.TotalDifferenceCost;
+          }
+        });
+
+        // Auto Journal Entry for Inventory Differences
+        if (body.journalEntry) {
+          const je = body.journalEntry;
+          postAutoJournal(je.Description || ('تسوية فروق جرد مخزني #' + sessionRow.SessionNumber), 'Stocktake_Adjustment', sessionRow.ID, je.LinesJSON || je.Lines, actorUser);
+        } else {
+          const journalLines = [];
+          if (totalDeficitCost > 0) {
+            journalLines.push({ AccountCode: '5209', AccountName: 'عجز وفروق الجرد المخزني', Debit: round2(totalDeficitCost), Credit: 0, Notes: 'إثبات عجز جرد مخزني جلسة #' + sessionRow.SessionNumber });
+            journalLines.push({ AccountCode: '1104', AccountName: 'مخزون البضائع ومستلزمات الصيانة', Debit: 0, Credit: round2(totalDeficitCost), Notes: 'تخفيض المخزون الدفتري لمطابقة الجرد الفعلي' });
+          }
+          if (totalSurplusCost > 0) {
+            journalLines.push({ AccountCode: '1104', AccountName: 'مخزون البضائع ومستلزمات الصيانة', Debit: round2(totalSurplusCost), Credit: 0, Notes: 'إثبات زيادة مخزنية جلسة #' + sessionRow.SessionNumber });
+            journalLines.push({ AccountCode: '4201', AccountName: 'إيرادات وأرباح متنوعة وزيادة الجرد', Debit: 0, Credit: round2(totalSurplusCost), Notes: 'إيراد زيادة وفائض جرد مخزني' });
+          }
+          if (journalLines.length > 0) {
+            postAutoJournal('تسوية فروق جرد مخزني #' + sessionRow.SessionNumber, 'Stocktake_Adjustment', sessionRow.ID, journalLines, actorUser);
+          }
+        }
+      }
+
+      logAudit(sessionRow.ID, actorUser, 'اعتماد وترحيل جلسة جرد مخزني', 'Stocktake', { sessionNumber: sessionRow.SessionNumber, linesCount: lines.length, netCost: sessionRow.TotalDiscrepancyCost });
+      return jsonOut({ ok: true, session: sessionRow });
+    }
+    if (action === 'saveBundleItem') {
+      const b = {
+        ID: body.id || (body.data && body.data.ID) || ('bnd_' + new Date().getTime() + '_' + Math.floor(Math.random() * 1000)),
+        BundleItemID: body.bundleItemId || (body.data && body.data.BundleItemID) || '',
+        ComponentItemID: body.componentItemId || (body.data && body.data.ComponentItemID) || '',
+        ComponentName: body.componentName || (body.data && body.data.ComponentName) || '',
+        Quantity: Number(body.quantity || (body.data && body.data.Quantity) || 1),
+        Notes: body.notes || (body.data && body.data.Notes) || ''
+      };
+      upsertRow(SHEET_BUNDLE_ITEMS, b, 'ID');
+      logAudit(b.ID, actorUser, 'حفظ مكون طقم/تجميعة ' + b.ComponentName, 'BOM', { bundleId: b.BundleItemID, componentId: b.ComponentItemID, qty: b.Quantity });
+      return jsonOut({ ok: true, bundleItem: b });
+    }
+    if (action === 'deleteBundleItem') {
+      const bId = body.id || (body.data && body.data.ID);
+      deleteRow(SHEET_BUNDLE_ITEMS, bId, 'ID');
+      logAudit(bId, actorUser, 'حفظ مكون طقم/تجميعة', 'BOM', { id: bId });
+      return jsonOut({ ok: true });
     }
     if (action === 'saveExpense') {
       const clientRef = body.clientRef || body.ClientRef || (body.data && (body.data.clientRef || body.data.ClientRef)) || '';
@@ -2226,8 +2459,12 @@ function ensureHeaders(sh, obj) {
     'Quotations': ['ID','Date','ClientName','ClientPhone','ItemsSummary','LaborCost','Total','Status','By'],
     'Services': ['Name','DefaultPrice','Notes'],
     'Purchases': ['ID','Date','Supplier','SupplierID','ItemsSummary','Total','TaxAmount','AmountPaid','PaymentMethod','WarrantyMonths','By'],
+    'PurchaseReturns': ['ID','ReturnNumber','PurchaseID','SupplierID','SupplierName','Date','ItemsSummary','ItemsJSON','Total','TaxAmount','RefundMethod','By','Notes'],
     'Suppliers': ['ID','Name','Phone','Notes','Debt'],
-    'Serials': ['ID','ItemID','ItemName','Serial','PurchaseID','SupplierID','WarrantyMonths','Status','SoldRef','SoldDate'],
+    'Serials': ['ID','ItemID','ItemName','Serial','PurchaseID','SupplierID','WarrantyMonths','WarrantyEnd','Status','SoldRef','SoldDate','ProjectID','Notes'],
+    'BundleItems': ['ID','BundleItemID','ComponentItemID','ComponentName','Quantity','Notes'],
+    'StocktakeSessions': ['ID','SessionNumber','Date','Title','Status','TotalDiscrepancyCost','NetDifferenceQty','CreatedBy','CommittedBy','Notes'],
+    'StocktakeLines': ['ID','SessionID','ItemID','ItemName','ExpectedQty','CountedQty','DifferenceQty','UnitCost','TotalDifferenceCost','Notes'],
     'SupplierPayments': ['ID','SupplierID','PurchaseID','Date','Amount','Note','By'],
     'Expenses': ['ID','Date','Time','ShiftID','Category','Title','Amount','Type','PaymentMethod','Supplier','Reference','AccountCode','Notes','By'],
     'Accounts': ['Code','Name','Type','ParentCode','Nature','Description','Balance'],
@@ -2379,7 +2616,8 @@ function createSystemBackupPayload(actorUser) {
     'Purchases', 'Suppliers', 'Serials', 'SupplierPayments', 'Expenses',
     'Accounts', 'JournalEntries', 'Invoices', 'Users', 'AuditLog',
     'Sites', 'Projects', 'ProjectDevices', 'ServiceVisits',
-    'MaintenanceContracts', 'ProjectMilestones'
+    'MaintenanceContracts', 'ProjectMilestones',
+    'PurchaseReturns', 'BundleItems', 'StocktakeSessions', 'StocktakeLines'
   ];
 
   const backup = {

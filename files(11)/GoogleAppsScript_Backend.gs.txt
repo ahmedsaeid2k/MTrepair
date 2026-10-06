@@ -239,6 +239,7 @@ function verifyAdminRole(body, session) {
 }
 
 const ACTION_ROLES = {
+  nextDocumentNumber: ['admin','cashier','accountant','technician'],
   saveReceipt:        ['admin','technician','cashier'],
   deleteReceipt:      ['admin'],
   savePayment:        ['admin','cashier','accountant'],
@@ -364,6 +365,70 @@ function postAutoJournal(desc, refType, refId, lines, actorUser) {
   }
 }
 
+/**
+ * U3: Server-side sequential document number generator
+ * Guarantees uniqueness across all concurrent terminals and years.
+ */
+function getNextServerDocNumber(docType, year) {
+  const y = Number(year) || new Date().getFullYear();
+  let prefix = '';
+  let sheetName = '';
+  let colName = '';
+
+  const t = String(docType || 'Receipt').toLowerCase();
+  if (t === 'receipt' || t === 'receipts') {
+    prefix = 'MT-' + y + '-';
+    sheetName = SHEET_RECEIPTS;
+    colName = 'ReceiptNumber';
+  } else if (t === 'invoice' || t === 'invoices') {
+    prefix = 'INV-' + y + '-';
+    sheetName = SHEET_INVOICES;
+    colName = 'InvoiceNumber';
+  } else if (t === 'creditnote' || t === 'credit_note') {
+    prefix = 'CN-' + y + '-';
+    sheetName = SHEET_INVOICES;
+    colName = 'InvoiceNumber';
+  } else if (t === 'quotation' || t === 'quotations') {
+    prefix = 'QUO-' + y + '-';
+    sheetName = SHEET_QUOTATIONS;
+    colName = 'ID';
+  } else if (t === 'contract' || t === 'maintenancecontract') {
+    prefix = 'MC-' + y + '-';
+    sheetName = 'MaintenanceContracts';
+    colName = 'ContractNumber';
+  } else {
+    prefix = 'DOC-' + y + '-';
+    sheetName = SHEET_RECEIPTS;
+    colName = 'ReceiptNumber';
+  }
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(sheetName);
+  let maxSeq = 0;
+
+  if (sh && sh.getLastRow() > 1) {
+    const vals = sh.getDataRange().getValues();
+    const headers = vals[0].map(h => String(h || '').trim());
+    let targetCol = headers.indexOf(colName);
+    if (targetCol === -1 && (t === 'quotation' || t === 'quotations')) {
+      targetCol = headers.indexOf('QuotationNumber');
+    }
+    if (targetCol >= 0) {
+      for (let r = 1; r < vals.length; r++) {
+        const valStr = String(vals[r][targetCol] || '').trim();
+        if (valStr.startsWith(prefix)) {
+          const numPart = parseInt(valStr.slice(prefix.length), 10);
+          if (!isNaN(numPart) && numPart > maxSeq) {
+            maxSeq = numPart;
+          }
+        }
+      }
+    }
+  }
+
+  return prefix + String(maxSeq + 1).padStart(4, '0');
+}
+
 function renderAppHtml() {
   const candidateNames = ['Index', 'index', 'Index.html', 'index.html', 'ميكروERP', 'app'];
   for (let i = 0; i < candidateNames.length; i++) {
@@ -385,6 +450,13 @@ function renderAppHtml() {
  */
 function executeReadAction(action, session, params) {
   const isAdmin = (session.role === 'admin' || !!session.superuser);
+
+  if (action === 'nextDocumentNumber') {
+    const docType = params.type || params.docType || 'Receipt';
+    const year = params.year || new Date().getFullYear();
+    const nextNum = getNextServerDocNumber(docType, year);
+    return jsonOut({ ok: true, type: docType, number: nextNum });
+  }
 
   if (action === 'getMe') {
     return jsonOut({
@@ -816,8 +888,62 @@ function doPost(e) {
       }
     }
 
+    if (action === 'nextDocumentNumber') {
+      const docType = body.type || body.docType || 'Receipt';
+      const year = body.year || new Date().getFullYear();
+      const nextNum = getNextServerDocNumber(docType, year);
+      return jsonOut({ ok: true, type: docType, number: nextNum });
+    }
+
     if (action === 'saveReceipt') {
+      let renumberedRec = false;
+      let finalRecNum = '';
       if (body.data) {
+        const recId = String(body.data.ID || '');
+        const recNum = String(body.data.ReceiptNumber || '').trim();
+        finalRecNum = recNum;
+
+        // U3: Deduplication check on ReceiptNumber under LockService
+        if (recNum) {
+          const shRec = getSheet(SHEET_RECEIPTS);
+          if (shRec && shRec.getLastRow() > 1) {
+            const rVals = shRec.getDataRange().getValues();
+            const rHeaders = rVals[0].map(h => String(h || '').trim());
+            const idCol = rHeaders.indexOf('ID');
+            const numCol = rHeaders.indexOf('ReceiptNumber');
+            if (numCol >= 0) {
+              let duplicateFound = false;
+              for (let i = 1; i < rVals.length; i++) {
+                const existingNum = String(rVals[i][numCol] || '').trim();
+                const existingId = idCol >= 0 ? String(rVals[i][idCol] || '').trim() : '';
+                if (existingNum.toLowerCase() === recNum.toLowerCase() && existingId !== recId) {
+                  duplicateFound = true;
+                  break;
+                }
+              }
+
+              if (duplicateFound) {
+                const nextNum = getNextServerDocNumber('Receipt');
+                if (body.autoRenumber) {
+                  body.data.ReceiptNumber = nextNum;
+                  finalRecNum = nextNum;
+                  renumberedRec = true;
+                  logAudit(recId, actorUser, 'إعادة ترقيم إيصال لمنع تكرار رقم المستند: ' + recNum + ' -> ' + nextNum);
+                } else {
+                  return jsonOut({
+                    ok: false,
+                    duplicate: true,
+                    field: 'ReceiptNumber',
+                    attemptedNumber: recNum,
+                    suggestedNumber: nextNum,
+                    error: 'رقم الإيصال (' + recNum + ') مستخدم بالفعل لإيصال آخر. الرقم المتاح التالي: ' + nextNum
+                  }, 409);
+                }
+              }
+            }
+          }
+        }
+
         if (!body.data.TrackToken) {
           let existingToken = '';
           if (body.data.ID) {
@@ -874,7 +1000,7 @@ function doPost(e) {
         postAutoJournal(je.Description || 'إثبات مصاريف/قطع إيصال صيانة', refType, refId, lines, actorUser);
       }
 
-      return jsonOut({ ok: true });
+      return jsonOut({ ok: true, renumbered: renumberedRec, newReceiptNumber: finalRecNum });
     }
     if (action === 'deleteReceipt') {
       if (!verifyAdminRole(body, session)) return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);
@@ -1655,9 +1781,54 @@ function doPost(e) {
         }
       } catch(e) {}
 
+      // U3: Deduplication check on InvoiceNumber under LockService
+      const rawInvNum = String((body.data && body.data.InvoiceNumber) || '').trim();
+      let finalInvNum = rawInvNum;
+      let renumberedInv = false;
+
+      if (rawInvNum) {
+        const shInv = getSheet(SHEET_INVOICES);
+        if (shInv && shInv.getLastRow() > 1) {
+          const iVals = shInv.getDataRange().getValues();
+          const iHeaders = iVals[0].map(h => String(h || '').trim());
+          const idCol = iHeaders.indexOf('ID');
+          const numCol = iHeaders.indexOf('InvoiceNumber');
+          if (numCol >= 0) {
+            let duplicateFound = false;
+            for (let i = 1; i < iVals.length; i++) {
+              const existingNum = String(iVals[i][numCol] || '').trim();
+              const existingId = idCol >= 0 ? String(iVals[i][idCol] || '').trim() : '';
+              if (existingNum.toLowerCase() === rawInvNum.toLowerCase() && existingId !== String(invId)) {
+                duplicateFound = true;
+                break;
+              }
+            }
+
+            if (duplicateFound) {
+              const docType = rawInvNum.startsWith('CN-') ? 'CreditNote' : 'Invoice';
+              const nextNum = getNextServerDocNumber(docType);
+              if (body.autoRenumber) {
+                finalInvNum = nextNum;
+                renumberedInv = true;
+                logAudit(invId, actorUser, 'إعادة ترقيم فاتورة لمنع تكرار رقم المستند: ' + rawInvNum + ' -> ' + nextNum);
+              } else {
+                return jsonOut({
+                  ok: false,
+                  duplicate: true,
+                  field: 'InvoiceNumber',
+                  attemptedNumber: rawInvNum,
+                  suggestedNumber: nextNum,
+                  error: 'رقم الفاتورة (' + rawInvNum + ') مستخدم بالفعل لفاتورة أخرى. الرقم المتاح التالي: ' + nextNum
+                }, 409);
+              }
+            }
+          }
+        }
+      }
+
       const inv = {
         ID: invId,
-        InvoiceNumber: body.data.InvoiceNumber || ('INV-' + new Date().getFullYear() + '-' + String(new Date().getTime()).slice(-4)),
+        InvoiceNumber: finalInvNum || ('INV-' + new Date().getFullYear() + '-' + String(new Date().getTime()).slice(-4)),
         Date: body.data.Date || new Date().toISOString().slice(0, 10),
         DueDate: body.data.DueDate || body.data.Date || new Date().toISOString().slice(0, 10),
         CustomerName: body.data.CustomerName || '',
@@ -1692,7 +1863,7 @@ function doPost(e) {
       }
 
       logAudit(inv.ID, actorUser, 'حفظ/تعديل فاتورة ضريبية', 'Invoice', { invoiceNumber: inv.InvoiceNumber, customer: inv.CustomerName, total: inv.Total, paid: inv.AmountPaid, remaining: inv.Remaining });
-      return jsonOut({ ok: true, invoice: inv });
+      return jsonOut({ ok: true, invoice: inv, renumbered: renumberedInv, newInvoiceNumber: inv.InvoiceNumber });
     }
     if (action === 'deleteInvoice') {
       if (!verifyAdminRole(body, session)) return jsonOut({ error: 'الحذف متاح للمدير فقط' }, 403);

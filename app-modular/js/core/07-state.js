@@ -248,7 +248,23 @@ function newDraft(){
   return draft;
 }
 
-async function nextReceiptNumber(){
+/* ---------------- U3: Server & Local Document Numbering ---------------- */
+
+async function fetchServerNextDocNumber(docType = 'Receipt'){
+  if(typeof apiPost === 'function' && typeof navigator !== 'undefined' && navigator.onLine){
+    try {
+      const res = await apiPost('nextDocumentNumber', { type: docType, year: new Date().getFullYear() });
+      if(res && res.number) {
+        return res.number;
+      }
+    } catch(err) {
+      console.warn('fetchServerNextDocNumber offline/failed, using local fallback:', err);
+    }
+  }
+  return null;
+}
+
+function nextReceiptNumberLocal(){
   const list = state.receipts || [];
   const y = new Date().getFullYear();
   const prefix = 'MT-' + y + '-';
@@ -263,6 +279,12 @@ async function nextReceiptNumber(){
     }
   }
   return prefix + String(maxSeq + 1).padStart(4, '0');
+}
+
+async function nextReceiptNumber(){
+  const srvNum = await fetchServerNextDocNumber('Receipt');
+  if(srvNum) return srvNum;
+  return nextReceiptNumberLocal();
 }
 
 function nextInvoiceNumber(){
@@ -282,6 +304,12 @@ function nextInvoiceNumber(){
   return prefix + String(maxSeq + 1).padStart(4, '0');
 }
 
+async function nextInvoiceNumberAsync(){
+  const srvNum = await fetchServerNextDocNumber('Invoice');
+  if(srvNum) return srvNum;
+  return nextInvoiceNumber();
+}
+
 function nextCreditNoteNumber(){
   const list = state.invoices || [];
   const y = new Date().getFullYear();
@@ -297,6 +325,35 @@ function nextCreditNoteNumber(){
     }
   }
   return prefix + String(maxSeq + 1).padStart(4, '0');
+}
+
+async function nextCreditNoteNumberAsync(){
+  const srvNum = await fetchServerNextDocNumber('CreditNote');
+  if(srvNum) return srvNum;
+  return nextCreditNoteNumber();
+}
+
+function nextQuotationNumber(){
+  const list = state.quotations || [];
+  const y = new Date().getFullYear();
+  const prefix = 'QUO-' + y + '-';
+  let maxSeq = 0;
+  for(const q of list){
+    const num = String(q.ID || q.id || q.QuotationNumber || '');
+    if(num.startsWith(prefix)){
+      const part = parseInt(num.slice(prefix.length), 10);
+      if(!isNaN(part) && part > maxSeq){
+        maxSeq = part;
+      }
+    }
+  }
+  return prefix + String(maxSeq + 1).padStart(4, '0');
+}
+
+async function nextQuotationNumberAsync(){
+  const srvNum = await fetchServerNextDocNumber('Quotation');
+  if(srvNum) return srvNum;
+  return nextQuotationNumber();
 }
 
 

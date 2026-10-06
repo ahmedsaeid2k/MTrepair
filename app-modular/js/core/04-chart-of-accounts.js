@@ -1160,12 +1160,26 @@ async function saveReceiptRemote(d){
     }
   }
 
-  return apiPost('saveReceipt', {
+  const res = await apiPost('saveReceipt', {
     data: row,
     user: state.user?state.user.name:'نظام',
     partsToDeduct,
-    journalEntry
+    journalEntry,
+    autoRenumber: true
   });
+
+  if(res && res.renumbered && res.newReceiptNumber){
+    d.receiptNumber = res.newReceiptNumber;
+    row.ReceiptNumber = res.newReceiptNumber;
+    const recIdx = state.receipts.findIndex(x => x.id === d.id);
+    if(recIdx > -1) state.receipts[recIdx].receiptNumber = res.newReceiptNumber;
+    setCache('receipts', state.receipts);
+    if(typeof showToast === 'function') {
+      showToast(`تنبيه: تم تحديث رقم الإيصال تلقائياً إلى #${res.newReceiptNumber} لمنع التكرار`, 'warning');
+    }
+  }
+
+  return res;
 }
 async function deleteReceiptRemote(id){
   const r = state.receipts.find(x => x.id === id || String(x.receiptNumber) === String(id));

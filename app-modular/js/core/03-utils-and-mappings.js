@@ -2104,7 +2104,19 @@ async function saveInvoiceRemote(inv){
     ).catch(e => console.warn('Invoice journal posting error:', e));
   }
 
-  return apiPost('saveInvoice', {data: inv, journalEntry, user: inv.By});
+  const res = await apiPost('saveInvoice', {data: inv, journalEntry, user: inv.By, autoRenumber: true});
+
+  if(res && res.renumbered && res.newInvoiceNumber){
+    inv.InvoiceNumber = res.newInvoiceNumber;
+    const invIdx = state.invoices.findIndex(x => x.ID === inv.ID);
+    if(invIdx > -1) state.invoices[invIdx].InvoiceNumber = res.newInvoiceNumber;
+    setCache('invoices', state.invoices);
+    if(typeof showToast === 'function'){
+      showToast(`تنبيه: تم تحديث رقم الفاتورة تلقائياً إلى #${res.newInvoiceNumber} لمنع التكرار`, 'warning');
+    }
+  }
+
+  return res;
 }
 
 async function deleteInvoiceRemote(id){

@@ -54,7 +54,9 @@ const PROTECTED_STORAGE_KEYS = [
   'microerp_sidebar_collapsed',
   'microerp_maint_view_mode',
   'mterp_held_carts',
-  'microerp_barcode_studio'
+  'microerp_barcode_studio',
+  'microerp_draft_autosave',
+  'microerp_intake_draft'
 ];
 
 /**

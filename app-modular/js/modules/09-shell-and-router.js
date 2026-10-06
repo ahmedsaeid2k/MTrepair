@@ -192,6 +192,12 @@ function normalizeUserSections(u){
 function render(){
   const app = document.getElementById('app');
   if(!state.user){ app.innerHTML = loginScreen(); attachLogin(); return; }
+
+  // Check and display banner if an incomplete intake draft exists
+  if(typeof checkAndShowDraftBootBanner === 'function'){
+    checkAndShowDraftBootBanner();
+  }
+
   if(!state.currentSection){
     return renderSectionPicker(app);
   }

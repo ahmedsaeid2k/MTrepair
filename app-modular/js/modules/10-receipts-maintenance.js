@@ -1,7 +1,275 @@
+/* ---------------- U13: Intake Draft Auto-Save & Recovery Engine ---------------- */
+const DRAFT_AUTOSAVE_KEY = 'microerp_draft_autosave';
+let draftAutosaveTimer = null;
+
+function isDraftPopulated(d){
+  if(!d) return false;
+  // Has customer details?
+  if(d.customer && (d.customer.name || d.customer.phone || d.customer.email)) return true;
+  // Has any device model, password, accessories, faults or photos?
+  if(Array.isArray(d.devices)){
+    for(const dev of d.devices){
+      if(dev.model || (dev.faults && dev.faults.length) || (dev.photos && dev.photos.length) || dev.password || dev.accessories || dev.faultNotes){
+        return true;
+      }
+    }
+  }
+  if(d.device && (d.device.model || d.device.password || d.device.accessories)) return true;
+  if(Array.isArray(d.faults) && d.faults.length > 0) return true;
+  if(Array.isArray(d.photos) && d.photos.length > 0) return true;
+  if(Array.isArray(d.serviceItems) && d.serviceItems.length > 0) return true;
+  if(Number(d.cost || 0) > 0 || Number(d.deposit || 0) > 0 || Number(d.otherAccountAmount || 0) > 0) return true;
+  return false;
+}
+
+function saveIntakeDraftToStorage(draft = null, step = null){
+  const d = draft || state.draft;
+  if(!d) return false;
+  if(!isDraftPopulated(d)) return false;
+
+  try {
+    const curStep = (step != null) ? Number(step) : (state.formStep != null ? Number(state.formStep) : 0);
+    const payload = Object.assign({}, d, {
+      _savedStep: curStep,
+      _savedAt: new Date().toISOString()
+    });
+
+    if(Array.isArray(payload.devices)){
+      payload.devices = payload.devices.map(dev => Object.assign({}, dev));
+    }
+
+    const str = JSON.stringify(payload);
+    if(typeof safeLocalStorageSet === 'function'){
+      safeLocalStorageSet(DRAFT_AUTOSAVE_KEY, str);
+    } else {
+      localStorage.setItem(DRAFT_AUTOSAVE_KEY, str);
+    }
+    return true;
+  } catch(err){
+    console.warn('[DraftAutosave] save error:', err);
+    return false;
+  }
+}
+
+function loadIntakeDraftFromStorage(){
+  try {
+    const raw = localStorage.getItem(DRAFT_AUTOSAVE_KEY) || localStorage.getItem('microerp_intake_draft');
+    if(!raw) return null;
+    const d = JSON.parse(raw);
+    if(!d || typeof d !== 'object') return null;
+
+    if(!Array.isArray(d.devices) || d.devices.length === 0){
+      if(d.device){
+        d.devices = [Object.assign({}, d.device)];
+      } else {
+        d.devices = [{
+          id: 'dev_restored_' + Date.now(),
+          category: 'لابتوب',
+          brand: 'Apple',
+          brandOther: '',
+          model: '',
+          accessories: '',
+          password: '',
+          faults: [],
+          faultNotes: '',
+          technician: '',
+          photos: []
+        }];
+      }
+    }
+
+    if(d.activeDeviceIndex == null || d.activeDeviceIndex < 0 || d.activeDeviceIndex >= d.devices.length){
+      d.activeDeviceIndex = 0;
+    }
+
+    try {
+      delete d.device;
+      Object.defineProperty(d, 'device', {
+        get() {
+          if(!this.devices || this.devices.length === 0) return null;
+          const idx = (this.activeDeviceIndex != null && this.activeDeviceIndex >= 0 && this.activeDeviceIndex < this.devices.length) ? this.activeDeviceIndex : 0;
+          return this.devices[idx];
+        },
+        set(val) {
+          if(!this.devices) this.devices = [];
+          const idx = (this.activeDeviceIndex != null && this.activeDeviceIndex >= 0) ? this.activeDeviceIndex : 0;
+          this.devices[idx] = val;
+        },
+        configurable: true,
+        enumerable: true
+      });
+    } catch(e){}
+
+    if(!Array.isArray(d.serviceItems)) d.serviceItems = [];
+    if(!Array.isArray(d.faults)) d.faults = [];
+    if(!Array.isArray(d.photos)) d.photos = (d.devices || []).flatMap(x => x.photos || []);
+    if(!d.customer) d.customer = { title: '', name: '', phone: '', email: '' };
+
+    return d;
+  } catch(e){
+    console.warn('[DraftAutosave] load error:', e);
+    return null;
+  }
+}
+
+function clearIntakeDraftFromStorage(){
+  try {
+    localStorage.removeItem(DRAFT_AUTOSAVE_KEY);
+    localStorage.removeItem('microerp_intake_draft');
+  } catch(e){}
+  removeDraftBootBanner();
+}
+
+function triggerDraftAutosave(immediate = false){
+  if(!state.draft) return;
+  if(draftAutosaveTimer){
+    clearTimeout(draftAutosaveTimer);
+    draftAutosaveTimer = null;
+  }
+  const doSave = () => {
+    try {
+      if(typeof currentStepCollector === 'function'){
+        currentStepCollector();
+      }
+      if(state.draft && isDraftPopulated(state.draft)){
+        saveIntakeDraftToStorage(state.draft, state.formStep);
+        updateDraftStatusIndicator(true);
+      }
+    } catch(e){
+      console.warn('[triggerDraftAutosave] execution error:', e);
+    }
+  };
+
+  if(immediate){
+    doSave();
+  } else {
+    updateDraftStatusIndicator(false);
+    draftAutosaveTimer = setTimeout(doSave, 2000); // 2 seconds mechanical debounce
+  }
+}
+
+function updateDraftStatusIndicator(isSaved){
+  const badge = document.getElementById('draftAutosaveBadge');
+  const txt = document.getElementById('draftAutosaveText');
+  if(!badge) return;
+  if(isSaved){
+    const d = new Date();
+    const timeStr = d.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    if(txt) txt.textContent = `مسودة محفوظة تلقائياً (${timeStr})`;
+    badge.style.color = 'var(--green-text, #059669)';
+    badge.style.borderColor = 'rgba(16,185,129,0.3)';
+    badge.style.background = 'rgba(16,185,129,0.06)';
+  } else {
+    if(txt) txt.textContent = 'جارٍ الحفظ التلقائي...';
+    badge.style.color = 'var(--amber-text, #d97706)';
+    badge.style.borderColor = 'rgba(245,158,11,0.3)';
+    badge.style.background = 'rgba(245,158,11,0.06)';
+  }
+}
+
+function checkAndShowDraftBootBanner(){
+  if(typeof document === 'undefined' || !document.body) return;
+  if(state.currentSection === 'maintenance' && state.tab === 'new'){
+    removeDraftBootBanner();
+    return;
+  }
+  const saved = loadIntakeDraftFromStorage();
+  if(!saved || !isDraftPopulated(saved)){
+    removeDraftBootBanner();
+    return;
+  }
+  let banner = document.getElementById('draftBootBanner');
+  if(!banner){
+    banner = document.createElement('div');
+    banner.id = 'draftBootBanner';
+    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99998;background:linear-gradient(90deg, #1e293b, #0f172a);color:#fff;padding:8px 16px;border-bottom:2px solid var(--primary);font-size:12.5px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 4px 15px rgba(0,0,0,0.3);direction:rtl;flex-wrap:wrap;gap:8px;';
+    document.body.prepend(banner);
+  }
+  document.body.style.paddingTop = '42px';
+  const cName = (saved.customer && saved.customer.name) ? escapeHtml(saved.customer.name) : 'عميل غير مسمى';
+  const dModel = (saved.device && saved.device.model) ? escapeHtml(saved.device.model) : ((saved.devices && saved.devices[0] && saved.devices[0].model) ? escapeHtml(saved.devices[0].model) : 'جهاز');
+  const savedDate = saved.date || '';
+
+  banner.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="font-size:16px;">📋</span>
+      <span>
+        <b>توجد مسودة استلام غير مكتملة</b>
+        <span style="opacity:0.85;margin-right:6px;">(العميل: <b style="color:var(--primary-light, #34d399);">${cName}</b> — الجهاز: <b>${dModel}</b> ${savedDate ? '— ' + savedDate : ''})</span>
+      </span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button type="button" id="resumeDraftBootBtn" class="btn btn-primary btn-xs" style="font-weight:800;padding:4px 12px;font-size:12px;">
+        استئناف المسودة
+      </button>
+      <button type="button" id="deleteDraftBootBtn" class="btn btn-ghost btn-xs text-danger" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);padding:4px 10px;font-size:12px;">
+        حذف
+      </button>
+      <button type="button" id="dismissDraftBootBtn" style="background:transparent;border:none;color:#94a3b8;font-size:16px;cursor:pointer;padding:0 6px;" title="إغلاق الشريط">✕</button>
+    </div>
+  `;
+
+  banner.querySelector('#resumeDraftBootBtn').onclick = () => {
+    state.draft = saved;
+    state.formStep = (saved._savedStep != null) ? Number(saved._savedStep) : 0;
+    state.draft._isRestored = true;
+    state.currentSection = 'maintenance';
+    state.tab = 'new';
+    removeDraftBootBanner();
+    if(typeof render === 'function') render();
+    else if(typeof renderMain === 'function') renderMain();
+    if(typeof showToast === 'function') showToast('تم استئناف مسودة الاستلام بنجاح', 'success');
+  };
+
+  banner.querySelector('#deleteDraftBootBtn').onclick = () => {
+    clearIntakeDraftFromStorage();
+    if(state.draft === saved) state.draft = null;
+    removeDraftBootBanner();
+    if(typeof showToast === 'function') showToast('تم حذف مسودة الاستلام', 'info');
+  };
+
+  banner.querySelector('#dismissDraftBootBtn').onclick = () => {
+    removeDraftBootBanner();
+  };
+}
+
+function removeDraftBootBanner(){
+  const b = document.getElementById('draftBootBanner');
+  if(b) b.remove();
+  if(document.body && document.body.style.paddingTop === '42px'){
+    document.body.style.paddingTop = '';
+  }
+}
+
+// Global beforeunload warning to prevent accidental data loss when draft is active
+window.addEventListener('beforeunload', (e) => {
+  if(state.draft && typeof isDraftPopulated === 'function' && isDraftPopulated(state.draft)){
+    try {
+      if(typeof currentStepCollector === 'function') currentStepCollector();
+      if(typeof saveIntakeDraftToStorage === 'function') saveIntakeDraftToStorage(state.draft, state.formStep);
+    } catch(err){}
+    e.preventDefault();
+    e.returnValue = 'توجد مسودة استلام غير مكتملة، هل أنت متأكد من المغادرة؟';
+    return e.returnValue;
+  }
+});
+
 /* ---------------- New Receipt Form ---------------- */
-function startNewDraft(){
+function startNewDraft(forceFresh = false){
   state.tab = 'new';
   updateSidebarNav();
+  if(!forceFresh){
+    const saved = loadIntakeDraftFromStorage();
+    if(saved && isDraftPopulated(saved)){
+      state.draft = saved;
+      state.formStep = (saved._savedStep != null) ? Number(saved._savedStep) : 0;
+      state.draft._isRestored = true;
+      removeDraftBootBanner();
+      renderMain();
+      return;
+    }
+  }
+  clearIntakeDraftFromStorage();
   state.draft = newDraft();
   state.formStep = 0;
   nextReceiptNumber()
@@ -13,15 +281,42 @@ const STEPS = ['بيانات العميل','بيانات الجهاز','الأع
 let currentStepCollector = null;
 
 function renderForm(main){
-  if(!state.draft){ startNewDraft(); return; }
+  if(!state.draft){
+    const saved = loadIntakeDraftFromStorage();
+    if(saved && isDraftPopulated(saved)){
+      state.draft = saved;
+      state.formStep = (saved._savedStep != null) ? Number(saved._savedStep) : 0;
+      state.draft._isRestored = true;
+    } else {
+      startNewDraft(true);
+      return;
+    }
+  }
+  removeDraftBootBanner();
   const d = state.draft;
   main.innerHTML = `
-    <div class="top-header">
+    <div class="top-header" style="flex-wrap:wrap;gap:10px;">
       <div>
         <h2 class="page-title">${getSvgIcon("plus", 22)} إيصال استلام جهاز جديد</h2>
-        <div class="subtitle">رقم الإيصال: <b class="mono" style="color:var(--primary);">${d.receiptNumber}</b> — التاريخ: <b class="mono">${d.date}</b></div>
+        <div class="subtitle">رقم الإيصال: <b class="mono" style="color:var(--primary);">${d.receiptNumber || '...'}</b> — التاريخ: <b class="mono">${d.date}</b></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span id="draftAutosaveBadge" class="badge" style="background:var(--paper2);border:1px solid var(--line);color:var(--ink-secondary);font-size:11.5px;padding:4px 8px;display:inline-flex;align-items:center;gap:5px;">
+          ${getSvgIcon("check", 12)} <span id="draftAutosaveText">${d._savedAt ? 'مسودة محفوظة تلقائياً' : 'حفظ تلقائي مفعّل'}</span>
+        </span>
+        <button type="button" class="btn btn-ghost btn-xs" id="manualSaveDraftBtn" style="border:1px solid var(--line);">${getSvgIcon("save", 13)} حفظ المسودة</button>
+        <button type="button" class="btn btn-ghost btn-xs text-danger" id="discardDraftBtn" style="color:var(--red);border:1px solid rgba(239,68,68,0.25);">${getSvgIcon("trash", 13)} مسح المسودة والبدء من جديد</button>
       </div>
     </div>
+    ${d._isRestored ? `
+      <div id="draftRestoredAlert" style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);border-radius:6px;padding:8px 12px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+        <div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--green-text);">
+          <span>${getSvgIcon("check", 16)}</span>
+          <span><b>تمت استعادة المسودة المحفوظة تلقائياً بنجاح</b> (الخطوة ${state.formStep + 1} من ${STEPS.length})</span>
+        </div>
+        <button type="button" class="btn btn-ghost btn-xs" style="color:var(--ink-secondary);padding:2px 6px;" onclick="this.closest('#draftRestoredAlert').remove()">✕ إغلاق التنبيه</button>
+      </div>
+    ` : ''}
     <div class="stepper">
       ${STEPS.map((s,i)=>`<div class="step-dot ${i===state.formStep?'active':(i<state.formStep?'done':'')}" data-i="${i}">
         <span>${i<state.formStep?getSvgIcon("check", 12):(i+1)}</span><span>${s}</span>
@@ -29,9 +324,61 @@ function renderForm(main){
     </div>
     <div id="stepBody"></div>
   `;
+
+  // Attach autosave listeners to form inputs and changes via event delegation
+  main.oninput = () => {
+    updateDraftStatusIndicator(false);
+    triggerDraftAutosave(false);
+  };
+  main.onchange = () => {
+    triggerDraftAutosave(false);
+  };
+
+  // Wire manual save draft button
+  const saveBtn = document.getElementById('manualSaveDraftBtn');
+  if(saveBtn){
+    saveBtn.onclick = () => {
+      if(typeof currentStepCollector === 'function') currentStepCollector();
+      if(saveIntakeDraftToStorage(state.draft, state.formStep)){
+        updateDraftStatusIndicator(true);
+        if(typeof showToast === 'function') showToast('تم حفظ مسودة الاستلام بنجاح', 'success');
+      } else {
+        if(typeof showToast === 'function') showToast('لا توجد بيانات جديدة لحفظها في المسودة', 'info');
+      }
+    };
+  }
+
+  // Wire discard draft button
+  const discardBtn = document.getElementById('discardDraftBtn');
+  if(discardBtn){
+    discardBtn.onclick = () => {
+      const doDiscard = () => {
+        clearIntakeDraftFromStorage();
+        state.draft = null;
+        startNewDraft(true);
+        if(typeof showToast === 'function') showToast('تم مسح المسودة والبدء بإيصال جديد', 'info');
+      };
+      if(typeof openConfirmModal === 'function'){
+        openConfirmModal({
+          title: 'مسح مسودة الاستلام',
+          message: 'هل أنت متأكد من مسح كافة بيانات المسودة الحالية والبدء من جديد؟ سيتم حذف البيانات المدخلة في هذه المسودة.',
+          confirmText: 'نعم، مسح المسودة',
+          confirmClass: 'btn-danger',
+          onConfirm: doDiscard
+        });
+      } else {
+        if(confirm('هل أنت متأكد من مسح مسودة الاستلام والبدء من جديد؟')){
+          doDiscard();
+        }
+      }
+    };
+  }
+
   document.querySelectorAll('.step-dot').forEach(el=>el.onclick=()=>{
     if(typeof currentStepCollector==='function') currentStepCollector();
-    state.formStep = Number(el.dataset.i); renderMain();
+    state.formStep = Number(el.dataset.i);
+    triggerDraftAutosave(true);
+    renderMain();
   });
   const body = document.getElementById('stepBody');
   if(state.formStep===0) return stepCustomer(body,d);
@@ -49,7 +396,12 @@ function stepNav(body, canBack, canNext, nextLabel){
     <button class="btn btn-primary" id="nextBtn">${nextLabel||'التالي'}</button>
   `;
   body.appendChild(div);
-  if(canBack) div.querySelector('#backBtn').onclick = ()=>{ if(typeof currentStepCollector==='function') currentStepCollector(); state.formStep--; renderMain(); };
+  if(canBack) div.querySelector('#backBtn').onclick = ()=>{ 
+    if(typeof currentStepCollector==='function') currentStepCollector(); 
+    state.formStep--; 
+    triggerDraftAutosave(true);
+    renderMain(); 
+  };
   div.querySelector('#nextBtn').onclick = canNext;
 }
 
@@ -146,7 +498,9 @@ function stepCustomer(body,d){
   stepNav(body, false, ()=>{
     currentStepCollector();
     if(!d.customer.name || !d.customer.phone){ showToast('من فضلك أدخل اسم العميل ورقم الهاتف', 'error'); return; }
-    state.formStep=1; renderMain();
+    state.formStep=1;
+    triggerDraftAutosave(true);
+    renderMain();
   });
 }
 
@@ -406,6 +760,7 @@ function stepDevice(body,d){
         currDev.photos = updatedList;
         d.photos = (d.devices || []).flatMap(x => x.photos || []);
         if(countBadge) countBadge.innerText = `${currDev.photos.length} صور`;
+        triggerDraftAutosave(true);
       }
     });
   };
@@ -458,6 +813,7 @@ function stepDevice(body,d){
       d.photos = (d.devices || []).flatMap(x => x.photos || []);
       if(added > 0){
         showToast(`تمت إضافة ${added} صور موثقة للجهاز بنجاح`, 'success');
+        triggerDraftAutosave(true);
       }
       updatePhotosGrid();
     } catch(err){
@@ -508,6 +864,7 @@ function stepDevice(body,d){
       if(e.target.closest('.delete-dev-chip')) return;
       collectActiveDeviceFromDom();
       d.activeDeviceIndex = Number(el.dataset.idx);
+      triggerDraftAutosave(true);
       stepDevice(body, d);
     };
   });
@@ -532,6 +889,7 @@ function stepDevice(body,d){
       d.devices.push(newDev);
       d.activeDeviceIndex = d.devices.length - 1;
       showToast(`تمت إضافة جهاز جديد (${d.devices.length}) - أدخل بياناته الآن`, 'success');
+      triggerDraftAutosave(true);
       stepDevice(body, d);
     };
   }
@@ -551,6 +909,7 @@ function stepDevice(body,d){
         d.activeDeviceIndex = d.devices.length - 1;
       }
       showToast('تم حذف الجهاز من الإيصال', 'info');
+      triggerDraftAutosave(true);
       stepDevice(body, d);
     };
   });
@@ -593,6 +952,7 @@ function stepDevice(body,d){
         badge.querySelector('b').textContent = '#' + picked.receiptNumber;
       }
       showToast(`تم استيراد بيانات الجهاز وربطه بالإيصال السابق #${picked.receiptNumber} بنجاح`, 'success');
+      triggerDraftAutosave(true);
     };
   });
 
@@ -607,6 +967,7 @@ function stepDevice(body,d){
       const badge = document.getElementById('priorDeviceLinkedBadge');
       if(badge) badge.style.display = 'none';
       showToast('تم إلغاء ربط الإيصال السابق', 'info');
+      triggerDraftAutosave(true);
     };
   }
 
@@ -617,6 +978,7 @@ function stepDevice(body,d){
   stepNav(body, true, ()=>{
     currentStepCollector();
     state.formStep = 2;
+    triggerDraftAutosave(true);
     renderMain();
   });
 }
@@ -730,6 +1092,7 @@ function stepFaults(body,d){
       if(idx > -1) currDev.faults.splice(idx, 1);
       else currDev.faults.push(f);
       c.classList.toggle('sel');
+      triggerDraftAutosave(false);
     };
   });
 
@@ -738,6 +1101,7 @@ function stepFaults(body,d){
     btn.onclick = ()=>{
       collectActiveFaultsFromDom();
       d.activeDeviceIndex = Number(btn.dataset.fidx);
+      triggerDraftAutosave(true);
       stepFaults(body, d);
     };
   });
@@ -749,6 +1113,7 @@ function stepFaults(body,d){
   stepNav(body, true, ()=>{
     currentStepCollector();
     state.formStep = 3;
+    triggerDraftAutosave(true);
     renderMain();
   });
 }
@@ -1061,7 +1426,9 @@ function stepFinance(body,d){
       return;
     }
 
-    state.formStep=4; renderMain();
+    state.formStep=4;
+    triggerDraftAutosave(true);
+    renderMain();
   }, 'مراجعة وحفظ');
 }
 
@@ -1162,7 +1529,11 @@ function stepReview(body,d){
     renderDevicePhotosThumbnails(d.photos, revPhotosGrid, { canDelete: false });
   }
 
-  document.getElementById('backBtn').onclick = ()=>{ state.formStep=3; renderMain(); };
+  document.getElementById('backBtn').onclick = ()=>{ 
+    state.formStep=3; 
+    triggerDraftAutosave(true);
+    renderMain(); 
+  };
   document.getElementById('saveOnlyBtn').onclick = ()=>saveReceipt(d,false,false,false);
   document.getElementById('saveWaBtn').onclick = ()=>saveReceipt(d,false,true,false);
   document.getElementById('saveStickerBtn').onclick = ()=>saveReceipt(d,false,false,true);
@@ -1205,6 +1576,8 @@ async function saveReceipt(d, printA5, sendWa, printSticker){
       await refreshPayments();
     }
     // Customer saving is now handled inside saveReceiptRemote automatically
+    // U13: Clear auto-saved draft only after successful receipt creation
+    clearIntakeDraftFromStorage();
     state.draft = null;
     state.tab = 'archive';
     showToast(`تم حفظ الإيصال ${d.receiptNumber} بنجاح!`, 'success');
@@ -1585,11 +1958,12 @@ window.openReceiptRefundModal = function(receiptId, receiptNum){
    ========================================================================== */
 
 window.startNewReceiptForCustomer = function(name, phone, title=''){
-  startNewDraft();
+  startNewDraft(true);
   state.draft.customer.title = title || '';
   state.draft.customer.name = name || '';
   state.draft.customer.phone = phone || '';
   state.tab = 'new';
+  triggerDraftAutosave(true);
   renderMain();
 };
 

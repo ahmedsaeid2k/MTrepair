@@ -19,3 +19,14 @@
 
 
 init();
+
+// U13: Check and display boot banner if an unfinished intake draft exists in localStorage
+(function checkBootDraft(){
+  try {
+    if(typeof checkAndShowDraftBootBanner === 'function'){
+      setTimeout(checkAndShowDraftBootBanner, 300);
+    }
+  } catch(e){
+    console.warn('[boot] checkBootDraft error:', e);
+  }
+})();

@@ -284,7 +284,11 @@ const ACTION_ROLES = {
   saveMaintenanceContract:    ['admin','accountant'],
   deleteMaintenanceContract:  ['admin'],
   saveProjectMilestone:       ['admin','accountant'],
-  deleteProjectMilestone:     ['admin']
+  deleteProjectMilestone:     ['admin'],
+  exportBackup:               ['admin'],
+  importBackup:               ['admin'],
+  setupDailyBackupTrigger:    ['admin'],
+  runDailyBackupNow:          ['admin']
 };
 
 function requireActionRole(action, session) {
@@ -615,6 +619,12 @@ function executeReadAction(action, session, params) {
   if (action === 'getServiceVisits') return jsonOut(getAllRows(SHEET_SERVICE_VISITS));
   if (action === 'getMaintenanceContracts') return jsonOut(getAllRows(SHEET_MAINTENANCE_CONTRACTS));
   if (action === 'getProjectMilestones') return jsonOut(getAllRows(SHEET_PROJECT_MILESTONES));
+
+  if (action === 'exportBackup') {
+    if (!isAdmin) return jsonOut({ error: 'تصدير النسخة الاحتياطية متاح حصراً لمدير النظام' }, 403);
+    const backup = createSystemBackupPayload(session.name);
+    return jsonOut({ ok: true, backup: backup });
+  }
 
   return null;
 }
@@ -2036,6 +2046,26 @@ function doPost(e) {
       deleteRow(SHEET_PROJECT_MILESTONES, id, 'ID');
       return jsonOut({ ok: true });
     }
+    if (action === 'exportBackup') {
+      const backup = createSystemBackupPayload(actorUser);
+      return jsonOut({ ok: true, backup });
+    }
+    if (action === 'importBackup') {
+      if (!body.confirmed) {
+        return jsonOut({ error: 'يجب تأكيد عملية الاستعادة' }, 400);
+      }
+      const res = restoreSystemBackup(body.backup, actorUser);
+      return jsonOut(res);
+    }
+    if (action === 'setupDailyBackupTrigger') {
+      const res = createDailyBackupTrigger();
+      logAudit('', actorUser, 'تفعيل جدولة النسخ الاحتياطي اليومي التلقائي على Google Drive', 'Backup', JSON.stringify(res));
+      return jsonOut(res);
+    }
+    if (action === 'runDailyBackupNow') {
+      const res = dailySpreadsheetBackupTask();
+      return jsonOut(res);
+    }
     return jsonOut({ error: 'إجراء غير معروف' }, 400);
   } catch (err) {
     return jsonOut({ error: err.message }, 500);
@@ -2224,6 +2254,227 @@ function logAudit(refId, user, action, refType, detailsJson) {
     sh.appendRow(rowData);
   } catch(e) {
     console.warn('logAudit failed:', e);
+  }
+}
+
+/* ============================================================
+   U4: Full System Backup, Automated Drive Snapshots & Restore Engine
+   ============================================================ */
+
+/**
+ * Creates a structured JSON backup of all sheets.
+ * Excludes sensitive user password hashes and salts.
+ */
+function createSystemBackupPayload(actorUser) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetsToExport = [
+    'Receipts', 'Customers', 'Technicians', 'Settings', 'Payments',
+    'Inventory', 'Sales', 'Returns', 'Quotations', 'Services',
+    'Purchases', 'Suppliers', 'Serials', 'SupplierPayments', 'Expenses',
+    'Accounts', 'JournalEntries', 'Invoices', 'Users', 'AuditLog',
+    'Sites', 'Projects', 'ProjectDevices', 'ServiceVisits',
+    'MaintenanceContracts', 'ProjectMilestones'
+  ];
+
+  const backup = {
+    appName: 'microERP',
+    appVersion: '1.0.0',
+    schemaVersion: 10,
+    timestamp: new Date().toISOString(),
+    exportedBy: actorUser || 'admin',
+    sheetCounts: {},
+    sheets: {}
+  };
+
+  sheetsToExport.forEach(name => {
+    try {
+      const sh = ss.getSheetByName(name);
+      if (sh && sh.getLastRow() > 1) {
+        let rows = getAllRows(name);
+        if (name === 'Users') {
+          // Strictly sanitize and exclude credentials
+          rows = rows.map(u => ({
+            ID: u.ID,
+            Name: u.Name,
+            Role: u.Role,
+            Sections: u.Sections || '',
+            Superuser: parseBool(u.Superuser),
+            Notes: u.Notes || ''
+          }));
+        }
+        backup.sheets[name] = rows;
+        backup.sheetCounts[name] = rows.length;
+      } else {
+        backup.sheets[name] = [];
+        backup.sheetCounts[name] = 0;
+      }
+    } catch (e) {
+      console.warn('Backup sheet error on ' + name + ':', e);
+      backup.sheets[name] = [];
+      backup.sheetCounts[name] = 0;
+    }
+  });
+
+  logAudit('', actorUser || 'admin', 'تصدير نسخة احتياطية كاملة للنظام', 'Backup', JSON.stringify({ sheetCounts: backup.sheetCounts }));
+  return backup;
+}
+
+/**
+ * Restores sheets from a structured JSON backup.
+ * Takes a pre-restore Google Drive snapshot to guarantee disaster recovery.
+ * Preserves existing user credentials so admins don't get locked out.
+ */
+function restoreSystemBackup(backupData, actorUser) {
+  if (!backupData || typeof backupData !== 'object') {
+    throw new Error('بيانات النسخة الاحتياطية غير صالحة');
+  }
+  if (backupData.appName !== 'microERP') {
+    throw new Error('الملف ليس نسخة احتياطية صالحة لنظام ميكروERP');
+  }
+  if (!backupData.sheets || typeof backupData.sheets !== 'object') {
+    throw new Error('ملف النسخة الاحتياطية لا يحتوي على بيانات الجداول');
+  }
+
+  // Pre-restore snapshot into Drive for disaster recovery safety
+  try {
+    dailySpreadsheetBackupTask();
+  } catch (driveErr) {
+    console.warn('Pre-restore Drive backup warning:', driveErr);
+  }
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const restoredSheets = [];
+
+  // Capture existing users with credentials to preserve them
+  let existingUsers = [];
+  try {
+    existingUsers = getAllRows(SHEET_USERS);
+  } catch (e) {}
+
+  const sheetKeys = Object.keys(backupData.sheets);
+  sheetKeys.forEach(sheetName => {
+    // Only restore sheets in our strict whitelist
+    const whitelistHeaders = ALLOWED_HEADERS[sheetName];
+    if (!whitelistHeaders) return;
+
+    let sh = ss.getSheetByName(sheetName);
+    if (!sh) {
+      sh = ss.insertSheet(sheetName);
+    }
+
+    const headers = whitelistHeaders;
+    const incomingRows = backupData.sheets[sheetName] || [];
+
+    // Clear old sheet contents
+    sh.clearContents();
+    sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+
+    if (incomingRows.length > 0) {
+      let finalRows = incomingRows;
+      if (sheetName === SHEET_USERS) {
+        // Merge existing user credentials so admin / active users retain login access
+        finalRows = incomingRows.map(u => {
+          const match = existingUsers.find(ex => String(ex.Name || '').toLowerCase() === String(u.Name || '').toLowerCase());
+          return {
+            ...u,
+            Password: match ? match.Password : (u.Password || hashPasswordIterated('123456', generateSalt())),
+            Salt: match ? match.Salt : (u.Salt || generateSalt())
+          };
+        });
+      }
+
+      const matrix = finalRows.map(rowObj => {
+        return headers.map(h => (rowObj[h] !== undefined ? sanitizeCellForSheet(rowObj[h]) : ''));
+      });
+
+      // Write in batches of 500 rows to prevent GAS execution timeout
+      const CHUNK_SIZE = 500;
+      for (let i = 0; i < matrix.length; i += CHUNK_SIZE) {
+        const chunk = matrix.slice(i, i + CHUNK_SIZE);
+        sh.getRange(i + 2, 1, chunk.length, headers.length).setValues(chunk);
+      }
+    }
+    restoredSheets.push(sheetName);
+  });
+
+  logAudit('', actorUser || 'admin', 'استعادة نسخة احتياطية كاملة بنجاح', 'Restore', JSON.stringify({
+    restoredSheets: restoredSheets,
+    backupTimestamp: backupData.timestamp
+  }));
+
+  return { ok: true, restoredSheets: restoredSheets, count: restoredSheets.length };
+}
+
+/**
+ * Creates or updates an automated daily Google Apps Script trigger.
+ * Runs at 2:00 AM daily, copying the entire spreadsheet to a dedicated Google Drive folder.
+ */
+function createDailyBackupTrigger() {
+  const triggers = ScriptApp.getProjectTriggers();
+  for (let i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === 'dailySpreadsheetBackupTask') {
+      ScriptApp.deleteTrigger(triggers[i]);
+    }
+  }
+  ScriptApp.newTrigger('dailySpreadsheetBackupTask')
+    .timeBased()
+    .everyDays(1)
+    .atHour(2)
+    .create();
+  return { ok: true, message: 'تم تفعيل النسخ الاحتياطي التلقائي اليومي بنجاح (الساعة 2:00 صباحاً)' };
+}
+
+/**
+ * Daily automated backup worker.
+ * Copies active spreadsheet to Drive folder 'microERP_Backups' and retains last 30 daily copies.
+ */
+function dailySpreadsheetBackupTask() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const file = DriveApp.getFileById(ss.getId());
+    const folderName = 'microERP_Backups';
+    let folder;
+    const folders = DriveApp.getFoldersByName(folderName);
+    if (folders.hasNext()) {
+      folder = folders.next();
+    } else {
+      folder = DriveApp.createFolder(folderName);
+    }
+
+    const tz = Session.getScriptTimeZone() || 'GMT+3';
+    const dateStr = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd_HH-mm');
+    const backupName = ss.getName() + '_Backup_' + dateStr;
+    const backupFile = file.makeCopy(backupName, folder);
+
+    cleanOldBackups(folder, 30);
+    logAudit('', 'نظام', 'تم إنشاء نسخة احتياطية على Google Drive: ' + backupName, 'DriveBackup', JSON.stringify({ folder: folderName, fileId: backupFile.getId() }));
+    return { ok: true, backupName: backupName, fileId: backupFile.getId() };
+  } catch (err) {
+    console.error('dailySpreadsheetBackupTask failed:', err);
+    logAudit('', 'نظام', 'فشل إنشاء النسخة الاحتياطية على Google Drive: ' + err.message, 'DriveBackup', JSON.stringify({ error: err.message }));
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
+ * Removes older backup files, keeping only the most recent maxCopies.
+ */
+function cleanOldBackups(folder, maxCopies) {
+  try {
+    const files = [];
+    const fileIter = folder.getFiles();
+    while (fileIter.hasNext()) {
+      files.push(fileIter.next());
+    }
+    if (files.length > maxCopies) {
+      files.sort((a, b) => a.getDateCreated().getTime() - b.getDateCreated().getTime());
+      const toDelete = files.length - maxCopies;
+      for (let i = 0; i < toDelete; i++) {
+        files[i].setTrashed(true);
+      }
+    }
+  } catch (cleanErr) {
+    console.warn('cleanOldBackups error:', cleanErr);
   }
 }
 

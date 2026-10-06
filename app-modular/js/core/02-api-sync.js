@@ -307,6 +307,45 @@ async function apiPost(action, data){
   });
 }
 
+/**
+ * Direct API POST request (bypasses offline sync queue and SWR cache).
+ * Used for critical administrative operations like backups, restores, and snapshots
+ * where failures should throw directly to the caller without queuing large payloads locally.
+ */
+async function apiPostDirect(action, data, timeoutMs = 45000) {
+  if (!navigator.onLine) {
+    throw new Error('لا يوجد اتصال بالإنترنت حالياً لتنفيذ هذا الإجراء المباشر');
+  }
+  return networkThrottler.schedule(async () => {
+    const token = getSessionToken();
+    const payload = { action, ...(token ? {sessionToken: token} : {}), ...(data || {}) };
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: {'Content-Type': 'text/plain;charset=utf-8'},
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+      const json = await res.json();
+      if (json && json.sessionExpired) {
+        handleSessionExpired();
+        throw new Error(json.error || 'انتهت صلاحية جلسة العمل');
+      }
+      if (json && json.error) throw new Error(json.error);
+      return json;
+    } catch(err) {
+      clearTimeout(timeout);
+      if (err.name === 'AbortError') {
+        throw new Error('انتهت مهلة انتظار استجابة الخادم (' + Math.round(timeoutMs / 1000) + ' ثانية)');
+      }
+      throw err;
+    }
+  });
+}
+
 /* Background Synchronization */
 let isSyncingNow = false;
 async function syncOfflineQueue(isManual = false){

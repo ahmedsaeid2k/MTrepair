@@ -54,15 +54,39 @@ const jsFiles = [
   'js/core/07-state.js',
   'js/core/08-public-tracking.js',
   'js/modules/09-shell-and-router.js',
-  'js/modules/10-receipts-maintenance.js',
-  'js/modules/11-customers-crm.js',
+  // Module 10: Receipts & Maintenance
+  'js/modules/10a-intake-wizard.js',
+  'js/modules/10b-receipts-list.js',
+  'js/modules/10c-receipt-actions.js',
+  'js/modules/10d-receipt-detail.js',
+  'js/modules/10e-printing-labels.js',
+  // Module 11: Customers CRM
+  'js/modules/11a-customers-directory.js',
+  'js/modules/11b-customer-history.js',
+  'js/modules/11c-whatsapp.js',
+  'js/modules/11d-ai-assistant.js',
+  'js/modules/11e-customer-reports.js',
+  // Modules 12 to 16
   'js/modules/12-invoices-quotes.js',
   'js/modules/13-treasury-expenses.js',
   'js/modules/14-inventory-warehouse.js',
   'js/modules/15-pos-retail.js',
   'js/modules/16-suppliers-purchases.js',
-  'js/modules/17-accounting-finance.js',
-  'js/modules/18-settings-admin.js',
+  // Module 17: Accounting & Finance
+  'js/modules/17a-chart-accounts.js',
+  'js/modules/17b-journal.js',
+  'js/modules/17c-trial-balance.js',
+  'js/modules/17d-income-statement.js',
+  'js/modules/17e-statements.js',
+  'js/modules/17f-users-audit.js',
+  // Module 18: Settings & Administration
+  'js/modules/18a-appearance.js',
+  'js/modules/18b-printers.js',
+  'js/modules/18c-templates.js',
+  'js/modules/18d-system-sync.js',
+  'js/modules/18e-barcode-studio.js',
+  'js/modules/18f-backup.js',
+  // Login, Projects & Boot
   'js/modules/19-login.js',
   'js/modules/21-cctv-projects.js',
   'js/modules/20-app-boot.js'

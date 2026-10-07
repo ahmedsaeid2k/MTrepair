@@ -228,7 +228,7 @@ function renderMaintenanceView(list){
   return mode === 'cards' ? archiveCards(list) : archiveTable(list);
 }
 
-function renderArchive(main){
+function getFilteredArchiveReceipts(){
   const f = state.archiveFilter;
   if(!f.group) f.group = 'all';
   let list = [...state.receipts];
@@ -275,17 +275,33 @@ function renderArchive(main){
       const rTitle = extractCustomerTitle(r).toLowerCase();
       const rPhone = extractCustomerPhone(r);
       const rModel = String(r.device && r.device.model ? r.device.model : '').toLowerCase();
-      return rNum.includes(qTerm) || rName.includes(qTerm) || rTitle.includes(qTerm) || rPhone.includes(qTerm) || rModel.includes(qTerm);
+      const rBrand = String(r.device && r.device.brand ? (r.device.brand==='أخرى' ? r.device.brandOther : r.device.brand) : '').toLowerCase();
+      return rNum.includes(qTerm) || rName.includes(qTerm) || rTitle.includes(qTerm) || rPhone.includes(qTerm) || rModel.includes(qTerm) || rBrand.includes(qTerm);
     });
   }
   if(f.status) list = list.filter(r=>r.status===f.status);
   if(f.tech) list = list.filter(r=>r.technician===f.tech);
 
+  return list;
+}
+
+function renderArchive(main){
+  const f = state.archiveFilter;
+  if(!f.group) f.group = 'all';
+
+  // Preserve focus & cursor position if fq input was active prior to full re-render
+  const activeEl = document.activeElement;
+  const wasFqActive = (activeEl && activeEl.id === 'fq');
+  const selStart = wasFqActive ? activeEl.selectionStart : null;
+  const selEnd = wasFqActive ? activeEl.selectionEnd : null;
+
+  const list = getFilteredArchiveReceipts();
+
   main.innerHTML = `
     <div class="top-header">
       <div>
         <h2 class="page-title">${getSvgIcon("archive", 22)} أرشيف إيصالات الصيانة</h2>
-        <div class="subtitle mono" style="font-size:12px;color:var(--ink-secondary);">${list.length} إيصال مطابق</div>
+        <div class="subtitle mono" id="archCountBadge" style="font-size:12px;color:var(--ink-secondary);">${list.length} إيصال مطابق</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
         <div class="view-mode-toggle" style="margin-left:4px;">
@@ -306,28 +322,90 @@ function renderArchive(main){
     </div>
 
     <div class="filters-bar">
-      <input id="fq" placeholder="بحث برقم الإيصال / اسم العميل / الهاتف / الموديل" value="${f.q}" style="flex:1;">
+      <input id="fq" placeholder="بحث برقم الإيصال / اسم العميل / الهاتف / الموديل" value="${f.q || ''}" style="flex:1;">
       <select id="fstatus"><option value="">كل الحالات</option>${STATUSES.map(s=>`<option ${f.status===s.v?'selected':''}>${s.icon} ${s.v}</option>`).join('')}</select>
       <select id="ftech"><option value="">كل الفنيين</option>${state.technicians.map(t=>`<option ${f.tech===t?'selected':''}>${t}</option>`).join('')}</select>
-      ${(f.q||f.status||f.tech||f.group!=='all') ? `<button class="btn btn-ghost btn-sm" id="clearFiltersBtn">مسح الفلاتر</button>` : ''}
+      <span id="clearFiltersSlot">${(f.q||f.status||f.tech||f.group!=='all') ? `<button class="btn btn-ghost btn-sm" id="clearFiltersBtn">مسح الفلاتر</button>` : ''}</span>
     </div>
 
     <div id="unifiedSelectionTopSlot"></div>
 
-    ${list.length===0 ? '<div class="empty">لا توجد نتائج مطابقة لخيارات البحث.</div>' : renderMaintenanceView(list.slice().reverse())}
+    <div id="archListContainer">
+      ${list.length===0 ? '<div class="empty">لا توجد نتائج مطابقة لخيارات البحث.</div>' : renderMaintenanceView(list.slice().reverse())}
+    </div>
   `;
+
+  // Restore focus if fq input was active prior to full re-render
+  if(wasFqActive){
+    const restoredFq = document.getElementById('fq');
+    if(restoredFq){
+      restoredFq.focus();
+      try { restoredFq.setSelectionRange(selStart, selEnd); } catch(err){}
+    }
+  }
+
+  // Live in-place update function: updates ONLY the list and counter without destroying inputs
+  const updateListOnly = () => {
+    const container = document.getElementById('archListContainer');
+    const badge = document.getElementById('archCountBadge');
+    const clearSlot = document.getElementById('clearFiltersSlot');
+    if(!container){
+      renderArchive(main);
+      return;
+    }
+    const filteredList = getFilteredArchiveReceipts();
+    if(badge) badge.textContent = `${filteredList.length} إيصال مطابق`;
+    container.innerHTML = filteredList.length === 0
+      ? '<div class="empty">لا توجد نتائج مطابقة لخيارات البحث.</div>'
+      : renderMaintenanceView(filteredList.slice().reverse());
+
+    if(clearSlot){
+      clearSlot.innerHTML = (f.q || f.status || f.tech || f.group !== 'all')
+        ? '<button class="btn btn-ghost btn-sm" id="clearFiltersBtn">مسح الفلاتر</button>'
+        : '';
+      const newClearBtn = document.getElementById('clearFiltersBtn');
+      if(newClearBtn) newClearBtn.onclick = handleClearFilters;
+    }
+
+    attachRowActions(container);
+    if(typeof window.renderUnifiedSelectionBar === 'function'){
+      window.renderUnifiedSelectionBar();
+    }
+  };
+
+  const handleClearFilters = () => {
+    f.q = '';
+    f.status = '';
+    f.tech = '';
+    f.group = 'all';
+    const fqEl = document.getElementById('fq');
+    if(fqEl) fqEl.value = '';
+    const fstEl = document.getElementById('fstatus');
+    if(fstEl) fstEl.value = '';
+    const ftEl = document.getElementById('ftech');
+    if(ftEl) ftEl.value = '';
+    document.querySelectorAll('#groupTabs .chip').forEach(ch => {
+      ch.classList.toggle('sel', ch.dataset.g === 'all');
+    });
+    updateListOnly();
+    if(fqEl) fqEl.focus();
+  };
 
   const btnTable = document.getElementById('archViewTableBtn');
   const btnCards = document.getElementById('archViewCardsBtn');
   if(btnTable) btnTable.onclick = ()=>{
     state.maintenanceViewMode = 'table';
     try{ localStorage.setItem('microerp_maint_view_mode', 'table'); }catch(e){}
-    renderArchive(main);
+    btnTable.classList.add('active');
+    if(btnCards) btnCards.classList.remove('active');
+    updateListOnly();
   };
   if(btnCards) btnCards.onclick = ()=>{
     state.maintenanceViewMode = 'cards';
     try{ localStorage.setItem('microerp_maint_view_mode', 'cards'); }catch(e){}
-    renderArchive(main);
+    btnCards.classList.add('active');
+    if(btnTable) btnTable.classList.remove('active');
+    updateListOnly();
   };
 
   const archBulkWa = document.getElementById('archBulkOverdueBtn');
@@ -339,21 +417,52 @@ function renderArchive(main){
   };
 
   document.getElementById('archNewReceiptBtn').onclick = ()=>{ state.tab='new'; startNewDraft(); };
-  document.getElementById('exportArchiveExcelBtn').onclick = ()=>exportReceiptsToExcel(list);
+  document.getElementById('exportArchiveExcelBtn').onclick = ()=>exportReceiptsToExcel(getFilteredArchiveReceipts());
   document.getElementById('archRecoverPhonesBtn').onclick = ()=>{
     recoverAndSyncAllCustomerPhones(true);
-    renderArchive(main);
+    updateListOnly();
   };
   document.getElementById('archGotoCustBtn').onclick = ()=>{
     state.tab = 'customers';
     renderMain();
   };
-  document.querySelectorAll('#groupTabs .chip').forEach(c=>{ c.onclick = ()=>{ f.group = c.dataset.g; renderMain(); }; });
-  document.getElementById('fq').oninput = e=>{ f.q=e.target.value; renderMain(); };
-  document.getElementById('fstatus').onchange = e=>{ f.status=e.target.value.replace(/^[^\s]+\s/, ''); renderMain(); };
-  document.getElementById('ftech').onchange = e=>{ f.tech=e.target.value; renderMain(); };
+
+  document.querySelectorAll('#groupTabs .chip').forEach(c=>{
+    c.onclick = ()=>{
+      f.group = c.dataset.g;
+      document.querySelectorAll('#groupTabs .chip').forEach(ch => {
+        ch.classList.toggle('sel', ch.dataset.g === f.group);
+      });
+      updateListOnly();
+    };
+  });
+
+  const fqInput = document.getElementById('fq');
+  if(fqInput){
+    fqInput.oninput = e => {
+      f.q = e.target.value;
+      updateListOnly();
+    };
+  }
+
+  const fStatusEl = document.getElementById('fstatus');
+  if(fStatusEl){
+    fStatusEl.onchange = e => {
+      f.status = e.target.value.replace(/^[^\s]+\s/, '');
+      updateListOnly();
+    };
+  }
+
+  const fTechEl = document.getElementById('ftech');
+  if(fTechEl){
+    fTechEl.onchange = e => {
+      f.tech = e.target.value;
+      updateListOnly();
+    };
+  }
+
   const clearBtn = document.getElementById('clearFiltersBtn');
-  if(clearBtn) clearBtn.onclick = ()=>{ f.q=''; f.status=''; f.tech=''; f.group='all'; renderMain(); };
+  if(clearBtn) clearBtn.onclick = handleClearFilters;
 
   attachRowActions(main);
   if(typeof window.renderUnifiedSelectionBar === 'function'){

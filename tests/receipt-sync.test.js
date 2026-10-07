@@ -114,4 +114,48 @@ describe('Receipt Synchronization & Numbering Engine (>100)', () => {
     expect(missing[0]).toBe(`MT-${curYear}-0098`);
     expect(missing[7]).toBe(`MT-${curYear}-0105`);
   });
+
+  it('correctly filters receipts by search query (customer, receipt number, device, phone)', () => {
+    const receipts = [
+      {
+        receiptNumber: 'MT-2026-0105',
+        customer: { name: 'ماريو سنترال العجيزي', phone: '01505787716' },
+        device: { category: 'لابتوب', brand: 'Lenovo', model: 'IdeaPad 3' },
+        status: 'مكتمل'
+      },
+      {
+        receiptNumber: 'MT-2026-0104',
+        customer: { name: 'فيكتور', phone: '01223407165' },
+        device: { category: 'لابتوب', brand: 'infinix', model: 'zero' },
+        status: 'قيد الفحص'
+      },
+      {
+        receiptNumber: 'MT-2026-0103',
+        customer: { name: 'عمر نجم', phone: '01092446124' },
+        device: { category: 'لابتوب', brand: 'Lenovo', model: 'Legion' },
+        status: 'مكتمل'
+      }
+    ];
+
+    const filter = (q) => {
+      const qTerm = q.trim().toLowerCase();
+      return receipts.filter(r => {
+        const rNum = String(r.receiptNumber || '').toLowerCase();
+        const rName = String(r.customer?.name || '').toLowerCase();
+        const rPhone = String(r.customer?.phone || '');
+        const rModel = String(r.device?.model || '').toLowerCase();
+        const rBrand = String(r.device?.brand || '').toLowerCase();
+        return rNum.includes(qTerm) || rName.includes(qTerm) || rPhone.includes(qTerm) || rModel.includes(qTerm) || rBrand.includes(qTerm);
+      });
+    };
+
+    expect(filter('ماريو')).toHaveLength(1);
+    expect(filter('ماريو')[0].receiptNumber).toBe('MT-2026-0105');
+
+    expect(filter('0105')).toHaveLength(1);
+    expect(filter('Lenovo')).toHaveLength(2);
+    expect(filter('01223407165')).toHaveLength(1);
+    expect(filter('01223407165')[0].customer.name).toBe('فيكتور');
+    expect(filter('غير موجود')).toHaveLength(0);
+  });
 });

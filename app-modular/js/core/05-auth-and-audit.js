@@ -865,7 +865,7 @@ async function loginRemote(name, password){
   // 1. If online, attempt direct authentication against Google Apps Script backend
   if(navigator.onLine){
     try {
-      const res = await apiPostDirect('login', { name: cleanName, password: cleanPass }, 6000);
+      const res = await apiPostDirect('login', { name: cleanName, password: cleanPass }, 25000);
       if(res && !res.error && res.name && res.name.toLowerCase() === cleanName.toLowerCase()){
         remoteSuccess = true;
         remoteRes = res;
@@ -883,7 +883,7 @@ async function loginRemote(name, password){
       state.sessionToken = remoteRes.sessionToken;
       try {
         sessionStorage.setItem('microerp_session_token', remoteRes.sessionToken);
-        localStorage.removeItem('microerp_session_token');
+        localStorage.setItem('microerp_session_token', remoteRes.sessionToken);
       } catch(e) {}
     }
 

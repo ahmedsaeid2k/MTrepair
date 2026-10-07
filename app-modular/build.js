@@ -54,6 +54,7 @@ const jsFiles = [
   'js/core/07-state.js',
   'js/core/08-public-tracking.js',
   'js/core/09-finance-engine.js',
+  'js/core/10-whatsapp-engine.js',
   'js/modules/09-shell-and-router.js',
   // Module 10: Receipts & Maintenance
   'js/modules/10a-intake-wizard.js',

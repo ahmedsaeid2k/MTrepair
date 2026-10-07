@@ -36,6 +36,7 @@ let state = {
     logoUrl: '',
     shopPhone: '',
     shopWhatsapp: '',
+    waCountryCode: '20',
     shopAddress: '',
     shopTaxNumber: '',
     printFooterText: 'شكراً لتعاملكم معنا • نسعد دائماً بخدمتكم',
@@ -114,7 +115,16 @@ let state = {
   theme: (function(){ try{ return localStorage.getItem('microerp_theme') || 'light'; }catch(e){ return 'light'; } })()
 };
 window.state = state;
-window.render = function(...args){ if(typeof render === 'function') return render(...args); };
+
+// Expose the renderer to late-bound callers (inline handlers, other scripts).
+// The real function reference is captured ONCE at load time: re-reading the global
+// `render` identifier inside the wrapper would resolve to this very wrapper in the
+// single-file bundle (function declarations are hoisted), recursing forever and
+// leaving the app with a blank screen.
+const _renderBridgeTarget = (typeof render === 'function') ? render : null;
+window.render = function(...args){
+  return _renderBridgeTarget ? _renderBridgeTarget.apply(this, args) : undefined;
+};
 
 function applyThemeAndAppearance(){
   const t = state.theme || 'light';

@@ -1,10 +1,261 @@
-/* ---------------- WhatsApp Messaging ---------------- */
+/* ---------------- WhatsApp Messaging (Free Official Click-to-Chat Channel) ----------------
+   Uses the official free wa.me deep link (no per-message fees, no ban risk).
+   All phone normalization / journaling logic lives in js/core/10-whatsapp-engine.js (unit tested).
+   ---------------------------------------------------------------------------------------- */
+
+const WA_NOTIFICATION_LOG_KEY = 'microerp_wa_log';
+let _waNotificationLog = null;
+
+/* Arabic titles for every notification template key */
+const WA_TEMPLATE_TITLES = {
+  intake: 'استلام جديد',
+  check: 'قيد الفحص',
+  await_approval: 'بانتظار موافقة العميل',
+  await_parts: 'بانتظار قطعة غيار',
+  repair: 'الصيانة',
+  done: 'جاهز للاستلام',
+  delivered: 'تم التسليم',
+  pending: 'معلق',
+  warranty: 'تحت الضمان',
+  overdue: 'تذكير بالاستلام (+7 أيام)',
+  unclaimed: 'إشعار جهاز لم يُطالَب (+30 يوم)',
+  unrepairable: 'تعذر الإصلاح',
+  rejected: 'رفض الصيانة',
+  canceled: 'ملغي',
+  cost_estimate: 'مقايسة التكلفة',
+  custom: 'رسالة واتساب'
+};
+
+function getWaTemplateTitle(key){
+  return WA_TEMPLATE_TITLES[key] || WA_TEMPLATE_TITLES.custom;
+}
+
+/* Country code used when the operator types a local number (e.g. 01012345678) */
+function getWaCountryCode(){
+  try {
+    const s = (typeof state !== 'undefined' && state && state.settings) || {};
+    return String(s.waCountryCode || WhatsappEngine.DEFAULT_WA_COUNTRY_CODE || '20');
+  } catch(e){
+    return '20';
+  }
+}
+
 function normalizePhoneForWa(phone){
-  let p = String(phone||'').replace(/[^0-9]/g,'');
-  if(p.startsWith('00')) p = p.slice(2);
-  if(p.startsWith('0')) p = '20' + p.slice(1);
-  else if(p.length===10 && !p.startsWith('20')) p = '20'+p;
-  return p;
+  return normalizeWaPhone(phone, getWaCountryCode());
+}
+
+/* ---------------- WhatsApp Notification Journal (duplicate-send protection) ---------------- */
+
+function getWaNotificationLog(){
+  if(Array.isArray(_waNotificationLog)) return _waNotificationLog;
+  let list = [];
+  try {
+    const raw = localStorage.getItem(WA_NOTIFICATION_LOG_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if(Array.isArray(parsed)) list = parsed;
+  } catch(e){ list = []; }
+  _waNotificationLog = trimWaLog(list);
+  return _waNotificationLog;
+}
+
+function saveWaNotificationLog(list){
+  _waNotificationLog = trimWaLog(Array.isArray(list) ? list : []);
+  try { localStorage.setItem(WA_NOTIFICATION_LOG_KEY, JSON.stringify(_waNotificationLog)); } catch(e){}
+  return _waNotificationLog;
+}
+
+function recordWaNotification(entry){
+  const log = getWaNotificationLog().slice();
+  const normalized = makeWaLogEntry(entry);
+  log.unshift(normalized);
+  saveWaNotificationLog(log);
+  return normalized;
+}
+
+function getLastWaNotificationFor(receiptId){
+  return getLastWaNotification(getWaNotificationLog(), receiptId);
+}
+
+function wasReceiptNotifiedWithin(receiptId, days){
+  return wasWaNotifiedWithin(getWaNotificationLog(), receiptId, days);
+}
+
+function getRecentlyNotifiedIds(days){
+  return collectRecentlyNotifiedIds(getWaNotificationLog(), days, Date.now());
+}
+
+function formatWaLastNotificationLine(receiptId){
+  const last = getLastWaNotificationFor(receiptId);
+  if(!last) return '<span style="color:var(--ink-secondary);">لم يُرسَل أي إشعار واتساب لهذا الإيصال بعد</span>';
+  const phone = last.phone ? ` • <span class="mono">${escapeHtml(last.phone)}</span>` : '';
+  const who = last.user ? ` • بواسطة ${escapeHtml(last.user)}` : '';
+  return `<span style="color:#047857;font-weight:700;">آخر إشعار: ${escapeHtml(last.label || getWaTemplateTitle(last.key))} — ${escapeHtml(formatWaElapsed(last.at))}</span>${phone}${who}`;
+}
+
+/* ---------------- Central WhatsApp Launcher ----------------
+   Opening strategy (never loses the message):
+   1) Electron desktop  -> secure main-process bridge (shell.openExternal)
+   2) Web / PWA build   -> window.open while the user gesture is still active
+   3) Blocked by policy -> manual fallback panel with the link + message to copy
+   ---------------------------------------------------------- */
+
+function showWaManualFallback(url, phone, msg, opts){
+  const o = opts || {};
+  const existing = document.getElementById('waManualFallbackOverlay');
+  if(existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'waManualFallbackOverlay';
+  overlay.innerHTML = `
+    <div class="modal-content" style="max-width:540px;padding:22px;border-radius:14px;max-height:92vh;overflow-y:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:12px;">
+        <h3 style="margin:0;font-size:16px;display:flex;align-items:center;gap:7px;color:#b45309;">
+          ${getSvgIcon('alert', 16)} <span>تعذّر فتح واتساب تلقائياً</span>
+        </h3>
+        <button class="btn btn-ghost btn-xs" id="closeWaFallback" style="font-size:16px;line-height:1;padding:4px 8px;">&times;</button>
+      </div>
+
+      <p style="font-size:12.5px;line-height:1.7;color:var(--ink);margin-bottom:10px;">
+        قام نظام التشغيل أو المتصفح بمنع الفتح التلقائي للنافذة. لا تقلق — الرسالة محفوظة بالكامل:
+        انسخ الرابط أو النص وأرسله يدوياً، ولم يضع شيء.
+      </p>
+
+      <div class="field" style="margin-bottom:10px;">
+        <label style="font-size:11.5px;font-weight:700;">رقم واتساب العميل:</label>
+        <input type="text" id="waFallbackPhone" class="mono" readonly value="${escapeHtml(phone || '')}">
+      </div>
+
+      <div class="field" style="margin-bottom:10px;">
+        <label style="font-size:11.5px;font-weight:700;">رابط المحادثة الجاهز:</label>
+        <input type="text" id="waFallbackUrl" class="mono" readonly value="${escapeHtml(url || '')}" style="direction:ltr;font-size:11px;">
+      </div>
+
+      <div class="field" style="margin-bottom:12px;">
+        <label style="font-size:11.5px;font-weight:700;">نص الرسالة:</label>
+        <textarea id="waFallbackMsg" rows="6" readonly style="font-size:12.5px;line-height:1.6;">${escapeHtml(msg || '')}</textarea>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding-top:12px;flex-wrap:wrap;gap:8px;">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="btn btn-ghost btn-sm" id="waFallbackCopyUrl">${getSvgIcon('copy', 13)} نسخ الرابط</button>
+          <button class="btn btn-ghost btn-sm" id="waFallbackCopyMsg">${getSvgIcon('copy', 13)} نسخ النص</button>
+        </div>
+        <a href="${escapeHtml(url || '#')}" target="_blank" rel="noopener" class="btn btn-whatsapp btn-sm" id="waFallbackOpenLink" style="font-weight:700;text-decoration:none;">${WA_ICON} فتح الرابط الآن</a>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const copyValue = (value, okMsg) => {
+    const done = () => showToast(okMsg, 'success');
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(value).then(done).catch(() => showToast('تعذر النسخ التلقائي', 'error'));
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = value;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); done(); } catch(e){ showToast('تعذر النسخ التلقائي', 'error'); }
+      ta.remove();
+    }
+  };
+
+  overlay.querySelector('#closeWaFallback').onclick = () => overlay.remove();
+  overlay.querySelector('#waFallbackCopyUrl').onclick = () => copyValue(url || '', 'تم نسخ رابط المحادثة');
+  overlay.querySelector('#waFallbackCopyMsg').onclick = () => copyValue(msg || '', 'تم نسخ نص الرسالة');
+  overlay.querySelector('#waFallbackOpenLink').onclick = () => {
+    if(o.receiptId){
+      recordWaNotification({
+        receiptId: o.receiptId,
+        receiptNumber: o.receiptNumber,
+        key: o.key,
+        label: o.label,
+        phone: phone,
+        user: (state.user && state.user.name) || ''
+      });
+    }
+    overlay.remove();
+  };
+  return overlay;
+}
+
+function openWhatsappChat(rawPhone, msg, opts){
+  const o = opts || {};
+  const normalized = normalizePhoneForWa(rawPhone);
+  const url = buildWaUrl(rawPhone, msg, getWaCountryCode());
+
+  if(!url){
+    showToast('رقم هاتف العميل غير صالح لإرسال واتساب، يرجى مراجعة الرقم وكود الدولة', 'error');
+    return { ok:false, reason:'invalid_phone' };
+  }
+
+  const finalize = (via) => {
+    if(o.receiptId){
+      recordWaNotification({
+        receiptId: o.receiptId,
+        receiptNumber: o.receiptNumber,
+        key: o.key,
+        label: o.label,
+        phone: normalized,
+        user: (state.user && state.user.name) || ''
+      });
+    }
+    if(o.auditDetails){
+      try { recordAuditLog('إرسال واتساب', o.auditSection || 'صيانة', o.auditDetails, o.receiptId); } catch(e){}
+    }
+    return { ok:true, via: via, url: url, phone: normalized };
+  };
+
+  // 1) Electron desktop bridge (most reliable, no popup blocking)
+  const bridge = (typeof window !== 'undefined') ? window.electronAPI : null;
+  if(bridge && typeof bridge.openExternal === 'function'){
+    try {
+      const res = bridge.openExternal(url);
+      if(res && typeof res.then === 'function'){
+        return res.then(ok => {
+          if(ok) return finalize('desktop');
+          showWaManualFallback(url, normalized, msg, o);
+          return { ok:false, reason:'open_failed', url: url };
+        }).catch(() => {
+          showWaManualFallback(url, normalized, msg, o);
+          return { ok:false, reason:'open_failed', url: url };
+        });
+      }
+    } catch(e){ /* fall through to the browser path below */ }
+  }
+
+  // 2) Browser / PWA build — keep the click gesture so blockers stay quiet
+  let win = null;
+  try { win = window.open(url, '_blank', 'noopener'); } catch(e){ win = null; }
+  if(win) return finalize('browser');
+
+  // 3) Blocked: hand the operator a copyable fallback instead of losing the message
+  showWaManualFallback(url, normalized, msg, o);
+  return { ok:false, reason:'blocked', url: url };
+}
+
+/* Single source of truth: maps any receipt status / template alias to a template key */
+function resolveWaTemplateKey(status){
+  const s = String(status || '').trim();
+  if(s === 'مكتمل' || s === 'done') return 'done';
+  if(s === 'تم التسليم' || s === 'delivered') return 'delivered';
+  if(s === 'الصيانة' || s === 'repair') return 'repair';
+  if(s === 'قيد الفحص' || s === 'check') return 'check';
+  if(s === 'بانتظار موافقة العميل' || s === 'await_approval') return 'await_approval';
+  if(s === 'بانتظار قطعة غيار' || s === 'await_parts') return 'await_parts';
+  if(s === 'overdue_reminder' || s === 'overdue' || s === 'متروكة') return 'overdue';
+  if(s === 'unclaimed' || s === 'غير مطالب' || s === 'لم تطالب' || s === 'لم تُطالَب') return 'unclaimed';
+  if(s === 'تعذرت الصيانة' || s === 'unrepairable') return 'unrepairable';
+  if(s === 'رفض العميل' || s === 'rejected') return 'rejected';
+  if(s === 'ملغي' || s === 'canceled' || s === 'cancelled') return 'canceled';
+  if(s === 'intake' || s === 'استلام جديد' || s === 'استلام') return 'intake';
+  if(s === 'معلق' || s === 'pending') return 'pending';
+  if(s === 'ضمان' || s === 'تحت الضمان' || s === 'warranty') return 'warranty';
+  if(DEFAULT_WA_TEMPLATES[s]) return s;
+  return 'check';
 }
 
 function getStatusCustomMessage(rawR, status){
@@ -20,24 +271,7 @@ function getStatusCustomMessage(rawR, status){
   const trackUrl = getReceiptTrackingUrl(r);
   const faultsStr = (Array.isArray(r.faults) ? r.faults.join('، ') : String(r.faults || '')) || r.faultNotes || '-';
 
-  let key = 'check';
-  const s = String(status || '').trim();
-  if(s === 'مكتمل' || s === 'done') key = 'done';
-  else if(s === 'تم التسليم' || s === 'delivered') key = 'delivered';
-  else if(s === 'الصيانة' || s === 'repair') key = 'repair';
-  else if(s === 'قيد الفحص' || s === 'check') key = 'check';
-  else if(s === 'بانتظار موافقة العميل' || s === 'await_approval') key = 'await_approval';
-  else if(s === 'بانتظار قطعة غيار' || s === 'await_parts') key = 'await_parts';
-  else if(s === 'overdue_reminder' || s === 'overdue' || s === 'متروكة') key = 'overdue';
-  else if(s === 'unclaimed' || s === 'غير مطالب' || s === 'لم تطالب' || s === 'لم تُطالَب') key = 'unclaimed';
-  else if(s === 'تعذرت الصيانة' || s === 'unrepairable') key = 'unrepairable';
-  else if(s === 'رفض العميل' || s === 'rejected') key = 'rejected';
-  else if(s === 'ملغي' || s === 'canceled' || s === 'cancelled') key = 'canceled';
-  else if(s === 'intake' || s === 'استلام جديد' || s === 'استلام') key = 'intake';
-  else if(s === 'معلق' || s === 'pending') key = 'pending';
-  else if(s === 'ضمان' || s === 'تحت الضمان' || s === 'warranty') key = 'warranty';
-  else if(s === 'cost_estimate') key = 'cost_estimate';
-  else if(DEFAULT_WA_TEMPLATES[s]) key = s;
+  const key = resolveWaTemplateKey(status);
 
   if(key === 'cost_estimate' && typeof buildCostEstimateWhatsappText === 'function'){
     return buildCostEstimateWhatsappText(r, {
@@ -87,15 +321,34 @@ function getStatusCustomMessage(rawR, status){
 
 function sendWhatsappByStatus(r, status){
   const msg = getStatusCustomMessage(r, status);
-  sendWhatsapp(r, msg);
+  const key = resolveWaTemplateKey(status);
+  sendWhatsapp(r, msg, key, getWaTemplateTitle(key));
 }
 
-function sendWhatsapp(rawR, msg){
+function sendWhatsapp(rawR, msg, key, label){
   const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
   const rawPhone = (r.customer && r.customer.phone) || extractCustomerPhone(r);
-  const phone = normalizePhoneForWa(rawPhone);
-  if(!phone || phone.length < 10){ showToast('رقم هاتف العميل غير صالح لإرسال واتساب', 'error'); return; }
-  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
+  const resolvedKey = key || 'custom';
+  const resolvedLabel = label || getWaTemplateTitle(resolvedKey);
+  const cName = (r.customer && r.customer.name) || (typeof extractCustomerName === 'function' ? extractCustomerName(r) : '') || 'عميل';
+
+  const res = openWhatsappChat(rawPhone, msg, {
+    receiptId: r.id,
+    receiptNumber: r.receiptNumber,
+    key: resolvedKey,
+    label: resolvedLabel,
+    auditDetails: `تم إرسال إشعار واتساب [${resolvedKey}] للإيصال #${r.receiptNumber} للعميل (${cName})`
+  });
+
+  // On the desktop build the launcher resolves asynchronously through the IPC bridge
+  if(res && typeof res.then === 'function'){
+    res.then(outcome => {
+      if(outcome && outcome.ok) showToast(`تم فتح واتساب لإرسال «${resolvedLabel}» للعميل`, 'success');
+    });
+  } else if(res && res.ok){
+    showToast(`تم فتح واتساب لإرسال «${resolvedLabel}» للعميل`, 'success');
+  }
+  return res;
 }
 
 function openWhatsapp(r){ openWhatsappChoice(r); }
@@ -109,23 +362,7 @@ function openWhatsappStatusNotificationModal(rawR, statusOrKey, onSent){
   }
 
   // Resolve initial key
-  let currentKey = 'check';
-  const s = String(statusOrKey || r.status || '').trim();
-  if(s === 'مكتمل' || s === 'done') currentKey = 'done';
-  else if(s === 'تم التسليم' || s === 'delivered') currentKey = 'delivered';
-  else if(s === 'الصيانة' || s === 'repair') currentKey = 'repair';
-  else if(s === 'قيد الفحص' || s === 'check') currentKey = 'check';
-  else if(s === 'بانتظار موافقة العميل' || s === 'await_approval') currentKey = 'await_approval';
-  else if(s === 'بانتظار قطعة غيار' || s === 'await_parts') currentKey = 'await_parts';
-  else if(s === 'overdue_reminder' || s === 'overdue' || s === 'متروكة') currentKey = 'overdue';
-  else if(s === 'unclaimed' || s === 'غير مطالب' || s === 'لم تطالب' || s === 'لم تُطالَب') currentKey = 'unclaimed';
-  else if(s === 'تعذرت الصيانة' || s === 'unrepairable') currentKey = 'unrepairable';
-  else if(s === 'رفض العميل' || s === 'rejected') currentKey = 'rejected';
-  else if(s === 'ملغي' || s === 'canceled' || s === 'cancelled') currentKey = 'canceled';
-  else if(s === 'intake' || s === 'استلام جديد' || s === 'استلام') currentKey = 'intake';
-  else if(s === 'معلق' || s === 'pending') currentKey = 'pending';
-  else if(s === 'ضمان' || s === 'تحت الضمان' || s === 'warranty') currentKey = 'warranty';
-  else if(DEFAULT_WA_TEMPLATES[s]) currentKey = s;
+  let currentKey = resolveWaTemplateKey(statusOrKey || r.status);
 
   const templateOptions = [
     { k: 'intake', icon: getSvgIcon('download', 14), label: 'استلام جديد' },
@@ -197,6 +434,9 @@ function openWhatsappStatusNotificationModal(rawR, statusOrKey, onSent){
           <label style="font-size:11.5px;font-weight:700;margin-bottom:0;color:var(--ink);">رقم هاتف واتساب:</label>
           <input type="text" id="waRecipientPhone" value="${escapeHtml(rawPhone)}" placeholder="مثال: 01012345678" style="padding:4px 8px;font-size:12px;width:150px;font-weight:700;" class="mono">
           <span id="waPhoneStatusMsg" style="font-size:11px;"></span>
+        </div>
+        <div id="waLastNotifyLine" style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--line);font-size:11.5px;">
+          ${formatWaLastNotificationLine(r.id)}
         </div>
       </div>
 
@@ -354,14 +594,32 @@ function openWhatsappStatusNotificationModal(rawR, statusOrKey, onSent){
     if(phoneInput.value.trim() !== rawPhone.trim()){
       if(!r.customer) r.customer = {};
       r.customer.phone = phoneInput.value.trim();
+      rawPhone = phoneInput.value.trim();
       try{ saveReceiptRemote(r); }catch(e){}
     }
     const finalMsg = msgTextarea.value;
-    window.open(`https://wa.me/${p}?text=${encodeURIComponent(finalMsg)}`, '_blank', 'noopener');
-    recordAuditLog('إرسال واتساب', 'صيانة', `تم إرسال إشعار واتساب [${currentKey}] للإيصال #${r.receiptNumber} للعميل (${r.customer.name})`, r.id);
+    const label = getWaTemplateTitle(currentKey);
+    const outcome = openWhatsappChat(rawPhone, finalMsg, {
+      receiptId: r.id,
+      receiptNumber: r.receiptNumber,
+      key: currentKey,
+      label: label,
+      auditDetails: `تم إرسال إشعار واتساب [${currentKey}] للإيصال #${r.receiptNumber} للعميل (${(r.customer && r.customer.name) || cFullName})`
+    });
     if(typeof onSent === 'function') onSent(finalMsg);
-    overlay.remove();
-    showToast('جاري فتح واتساب لإرسال الرسالة للعميل', 'success');
+
+    const settle = (res) => {
+      const lastLine = overlay.querySelector('#waLastNotifyLine');
+      if(lastLine) lastLine.innerHTML = formatWaLastNotificationLine(r.id);
+      if(!res) { overlay.remove(); return; }
+      if(res.reason === 'invalid_phone') return; // Toast already shown — keep the modal open for correction
+      if(res.ok) showToast(`تم فتح واتساب لإرسال «${label}» للعميل`, 'success');
+      // 'blocked' shows the manual fallback panel, which replaces this modal
+      overlay.remove();
+    };
+
+    if(outcome && typeof outcome.then === 'function') outcome.then(settle).catch(() => overlay.remove());
+    else settle(outcome);
   };
 
   overlay.querySelector('#closeWaStatusModal').onclick = () => overlay.remove();
@@ -503,11 +761,36 @@ function openBulkOverdueWhatsappModal(initialDays){
     }).sort((a,b) => new Date(a.updatedAt||a.date) - new Date(b.updatedAt||b.date));
   }
 
-  let overdue = getOverdueList();
+  /* Cooling-off window: never spam a customer who was already notified recently */
+  const NOTIFY_COOLDOWN_DAYS = 3;
+  let skipRecentlyNotified = true;
+
+  function getRecentlyNotifiedSet(){
+    return new Set(getRecentlyNotifiedIds(NOTIFY_COOLDOWN_DAYS));
+  }
+
+  function getDispatchList(){
+    const list = getOverdueList();
+    if(!skipRecentlyNotified) return list;
+    const recent = getRecentlyNotifiedSet();
+    return list.filter(r => !recent.has(String(r.id)));
+  }
+
+  /* Reminder-status cell renderer (also used to refresh one row in place during bulk dispatch) */
+  function renderNotifyStatus(receiptId, recentSet){
+    const last = getLastWaNotificationFor(receiptId);
+    if(!last) return '<span style="font-size:11px;color:var(--ink-secondary);">لم يُذكَّر بعد</span>';
+    const notifiedRecently = recentSet ? recentSet.has(String(receiptId)) : wasReceiptNotifiedWithin(receiptId, NOTIFY_COOLDOWN_DAYS);
+    return `<span class="badge ${notifiedRecently ? 'badge-amber' : ''}" style="font-size:10.5px;${notifiedRecently ? '' : 'background:var(--paper2);color:var(--ink-secondary);'}" title="${escapeHtml(last.label || '')} — ${escapeHtml(last.at)}">${notifiedRecently ? 'تم تذكيره ' : ''}${escapeHtml(formatWaElapsed(last.at))}</span>`;
+  }
+
+  let overdue = getDispatchList();
   let selectedIds = new Set(overdue.map(r => r.id));
 
   function renderContent(){
-    overdue = getOverdueList();
+    overdue = getDispatchList();
+    const recentSet = getRecentlyNotifiedSet();
+    const skippedCount = skipRecentlyNotified ? (getOverdueList().length - overdue.length) : 0;
     const totalRemaining = overdue.filter(r => selectedIds.has(r.id)).reduce((sum, r) => {
       const rem = (typeof getReceiptRemaining === 'function') ? getReceiptRemaining(r) : Math.max(0, Number(r.cost||0)+Number(r.partsCost||0)+Number(r.otherAccountAmount||0)-Number(r.deposit||0)+Number(r.refunded||0));
       return sum + rem;
@@ -535,8 +818,12 @@ function openBulkOverdueWhatsappModal(initialDays){
             <button type="button" class="btn btn-xs ${daysThreshold===14?'btn-primary':'btn-ghost'}" id="filterDays14Btn">أكثر من 14 يوم (أسبوعين)</button>
             <button type="button" class="btn btn-xs ${daysThreshold===30?'btn-primary':'btn-ghost'}" id="filterDays30Btn" style="${daysThreshold===30?'background:#b45309;border-color:#b45309;':''}">أكثر من 30 يوم (شهر)</button>
           </div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;color:var(--ink);margin:0;cursor:pointer;background:var(--paper2);padding:4px 9px;border-radius:6px;border:1px solid var(--line);" title="حماية العميل من تكرار الرسائل خلال فترة قصيرة">
+            <input type="checkbox" id="skipRecentlyNotifiedChk" ${skipRecentlyNotified?'checked':''} style="width:auto;">
+            استبعاد من تم تذكيرهم خلال ${NOTIFY_COOLDOWN_DAYS} أيام
+          </label>
           <div style="font-size:12.5px;background:var(--amber-bg);color:var(--amber-text);padding:4px 10px;border-radius:6px;font-weight:700;">
-            ${overdue.length} أجهزة متأخرة | ${selectedIds.size} محددة (${totalRemaining.toLocaleString()} ج.م متبقي)
+            ${overdue.length} أجهزة متأخرة${skippedCount > 0 ? ` (استُبعد ${skippedCount} لتنبيه سابق)` : ''} | ${selectedIds.size} محددة (${totalRemaining.toLocaleString()} ج.م متبقي)
           </div>
         </div>
 
@@ -553,12 +840,13 @@ function openBulkOverdueWhatsappModal(initialDays){
                 <th style="padding:8px 10px;">الجهاز</th>
                 <th style="padding:8px 10px;">تاريخ الإنجاز</th>
                 <th style="padding:8px 10px;">المتبقي</th>
+                <th style="padding:8px 10px;">حالة التذكير</th>
                 <th style="padding:8px 10px;text-align:center;">إجراء مباشر</th>
               </tr>
             </thead>
             <tbody>
               ${overdue.length === 0 ? `
-                <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--ink-secondary);">لا توجد أجهزة مكتملة متأخرة تتجاوز هذه المدة.</td></tr>
+                <tr><td colspan="8" style="text-align:center;padding:24px;color:var(--ink-secondary);">لا توجد أجهزة مكتملة متأخرة تتوافق مع هذه المدة${skippedCount > 0 ? ' (تم استبعاد ' + skippedCount + ' جهاز لتنبيه سابق)' : ''}.</td></tr>
               ` : overdue.map(r => {
                 const rem = (typeof getReceiptRemaining === 'function') ? getReceiptRemaining(r) : Math.max(0, Number(r.cost||0)+Number(r.partsCost||0)+Number(r.otherAccountAmount||0)-Number(r.deposit||0)+Number(r.refunded||0));
                 const cName = escapeHtml((r.customer && r.customer.name) || extractCustomerName(r) || 'عميل');
@@ -586,6 +874,9 @@ function openBulkOverdueWhatsappModal(initialDays){
                       <span class="badge badge-amber" style="font-size:11px;">منذ ${daysElapsed} يوم</span>
                     </td>
                     <td style="padding:8px 10px;font-weight:800;color:#047857;" class="mono">${rem.toLocaleString()} ج.م</td>
+                    <td style="padding:8px 10px;" data-notify-cell="${r.id}">
+                      ${renderNotifyStatus(r.id, recentSet)}
+                    </td>
                     <td style="padding:8px 10px;text-align:center;">
                       <button type="button" class="btn btn-whatsapp btn-xs row-send-overdue-wa" data-rid="${r.id}" style="padding:3px 8px;font-size:11px;font-weight:700;">
                         ${WA_ICON} إرسال
@@ -637,10 +928,20 @@ function openBulkOverdueWhatsappModal(initialDays){
     const d7 = overlay.querySelector('#filterDays7Btn');
     const d14 = overlay.querySelector('#filterDays14Btn');
     const d30 = overlay.querySelector('#filterDays30Btn');
-    if(d3) d3.onclick = () => { daysThreshold = 3; selectedIds = new Set(getOverdueList().map(x=>x.id)); renderContent(); };
-    if(d7) d7.onclick = () => { daysThreshold = 7; selectedIds = new Set(getOverdueList().map(x=>x.id)); renderContent(); };
-    if(d14) d14.onclick = () => { daysThreshold = 14; selectedIds = new Set(getOverdueList().map(x=>x.id)); renderContent(); };
-    if(d30) d30.onclick = () => { daysThreshold = 30; selectedIds = new Set(getOverdueList().map(x=>x.id)); renderContent(); };
+    const applyDays = (days) => { daysThreshold = days; selectedIds = new Set(getDispatchList().map(x=>x.id)); renderContent(); };
+    if(d3) d3.onclick = () => applyDays(3);
+    if(d7) d7.onclick = () => applyDays(7);
+    if(d14) d14.onclick = () => applyDays(14);
+    if(d30) d30.onclick = () => applyDays(30);
+
+    const cooldownChk = overlay.querySelector('#skipRecentlyNotifiedChk');
+    if(cooldownChk){
+      cooldownChk.onchange = () => {
+        skipRecentlyNotified = cooldownChk.checked;
+        selectedIds = new Set(getDispatchList().map(x=>x.id));
+        renderContent();
+      };
+    }
 
     const selectAll = overlay.querySelector('#selectAllOverdue');
     if(selectAll){
@@ -722,8 +1023,12 @@ function openBulkOverdueWhatsappModal(initialDays){
       runnerNext.onclick = () => {
         const cur = runnerList[runnerIndex];
         if(cur){
-          const msg = getStatusCustomMessage(cur, daysThreshold >= 30 ? 'unclaimed' : 'overdue');
-          sendWhatsapp(cur, msg);
+          const runnerKey = daysThreshold >= 30 ? 'unclaimed' : 'overdue';
+          const msg = getStatusCustomMessage(cur, runnerKey);
+          sendWhatsapp(cur, msg, runnerKey, getWaTemplateTitle(runnerKey));
+          // Refresh only this row's reminder-status cell (full re-render would reset the runner bar)
+          const cell = overlay.querySelector(`[data-notify-cell="${cur.id}"]`);
+          if(cell) cell.innerHTML = renderNotifyStatus(cur.id);
         }
         runnerIndex++;
         showRunnerStep();
@@ -1158,7 +1463,7 @@ function openCostEstimateModal(rawR){
     const msg = updatePreview();
     overlay.remove();
     await applyUpdatesToReceiptIfNeeded();
-    sendWhatsapp(r, msg);
+    sendWhatsapp(r, msg, 'cost_estimate', getWaTemplateTitle('cost_estimate'));
   };
 
   // Approve Customer Decision

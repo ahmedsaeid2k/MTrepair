@@ -49,10 +49,7 @@ async function init(){
         }
       }
     } catch(err) {
-      if(err && err.message && err.message.includes('جلسة العمل')){
-        logout();
-        return;
-      }
+      console.warn('[init] Server session check bypassed, continuing in local mode:', err.message);
     }
 
     try {
@@ -99,6 +96,18 @@ async function init(){
     }
   }
 
+  // Always trigger sequential receipts reconciliation to guarantee latest receipts (e.g. 98-105+) are present
+  if (navigator.onLine && typeof syncMissingReceiptsFromCloud === 'function') {
+    syncMissingReceiptsFromCloud().then(added => {
+      if (added > 0) {
+        console.log(`[init] Reconciled ${added} missing receipts from cloud.`);
+        if (typeof renderMain === 'function' && state.currentSection === 'maintenance') {
+          renderMain();
+        }
+      }
+    }).catch(()=>{});
+  }
+
   // Smart multi-device cloud synchronization (Every 3 min, throttled and paused when tab is hidden)
   setInterval(async ()=>{
     if(document.hidden) return; // Do not waste bandwidth/quota if tab is in background
@@ -106,6 +115,9 @@ async function init(){
       const pendingItems = getSyncQueue().filter(i => i.status !== 'failed_terminal');
       if(pendingItems.length > 0){
         await syncOfflineQueue();
+      }
+      if(typeof syncMissingReceiptsFromCloud === 'function'){
+        syncMissingReceiptsFromCloud().catch(()=>{});
       }
       // Pull fresh data from cloud only if offline queue has no pending items (conflict guard)
       const stillPending = getSyncQueue().filter(i => i.status !== 'failed_terminal');
@@ -1601,7 +1613,7 @@ function renderDashboard(main){
         <h2 class="page-title">لوحة التحكم — قسم الصيانة</h2>
       </div>
       <div style="display:flex;gap:8px;align-items:center;">
-        <div id="networkSyncPill" class="sync-pill online" onclick="syncOfflineQueue(true)"><span style="width:7px;height:7px;border-radius:50%;background:var(--primary);display:inline-block;"></span> متصل</div>
+        <div id="networkSyncPill" class="sync-pill online" onclick="syncOfflineQueue(true)"><span class="sync-dot"></span><span>متصل</span></div>
         <button class="btn btn-ghost btn-sm" id="exportExcelDashBtn">${getSvgIcon('invoices', 14)} تصدير CSV (Excel)</button>
         <button class="btn btn-primary btn-sm" id="dashNewReceiptBtn">${getSvgIcon('plus', 14)} استلام جهاز جديد</button>
       </div>

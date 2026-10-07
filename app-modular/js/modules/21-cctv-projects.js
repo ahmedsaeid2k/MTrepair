@@ -2697,7 +2697,6 @@ function openQuotationDetailModal(q){
 function shareQuotationWhatsapp(q){
   const phone = (q.ClientPhone||'').replace(/\D/g,'');
   if(!phone){ showToast('رقم هاتف العميل غير مسجل', 'error'); return; }
-  const phoneFormatted = phone.startsWith('0') ? '2'+phone : phone;
   const shopName = (state.settings && state.settings.shopName) || 'صيانة ميكروتك';
   const total = Number(q.Total||0).toLocaleString();
   const paid = Number(q.PaidAmount||0).toLocaleString();
@@ -2705,7 +2704,14 @@ function shareQuotationWhatsapp(q){
 
   const msg = `مرحبًا ${q.ClientName || 'عميلنا العزيز'}\nيسعدنا تقديم عرض سعر مشروع الكاميرات والشبكات من *${shopName}*\n\nرقم العرض: *#${String(q.ID).slice(-8)}*\nملخص البنود: ${q.ItemsSummary || ''}\nالإجمالي المطلوب: *${total} ج.م*\n${Number(q.PaidAmount||0)>0 ? `المسدد: ${paid} ج.م | المتبقي: ${remaining} ج.م\n` : ''}\nنسعد دائماً بخدمتكم والتواصل معكم عبر واتساب أو بالاتصال بنا.`;
 
-  window.open(`https://wa.me/${phoneFormatted}?text=${encodeURIComponent(msg)}`, '_blank');
+  openWhatsappChat(q.ClientPhone, msg, {
+    receiptId: 'cctv-quote:' + String(q.ID),
+    receiptNumber: String(q.ID).slice(-8),
+    key: 'quotation',
+    label: 'عرض سعر مشروع كاميرات',
+    auditSection: 'مشاريع',
+    auditDetails: `تم إرسال عرض سعر مشروع الكاميرات #${String(q.ID).slice(-8)} عبر واتساب للعميل (${q.ClientName || 'عميل'})`
+  });
 }
 
 function convertQuotationToInvoice(q){

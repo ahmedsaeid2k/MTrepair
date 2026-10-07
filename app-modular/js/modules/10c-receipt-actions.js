@@ -1384,9 +1384,14 @@ window.openInvoiceWhatsappDirect = function(invId){
   if(!inv){ showToast('لم يتم العثور على الفاتورة', 'error'); return; }
   const phone = (inv.CustomerPhone || '').replace(/\D/g, '');
   if(!phone){ showToast('لا يوجد رقم هاتف مسجل لهذه الفاتورة', 'warning'); return; }
-  const phoneFormatted = phone.startsWith('0') ? '2' + phone : phone;
   const msg = `مرحبًا ${inv.CustomerName}،\nفاتورة / بيان سعر رقم: ${inv.InvoiceNumber}\nإجمالي المستحق: ${inv.Total} ج.م\nالمدفوع: ${inv.AmountPaid} ج.م\nالمتبقي: ${inv.Remaining} ج.م\nشكرًا لتعاملكم مع ${state.settings.shopName || 'ميكروتك'}.`;
-  window.open(`https://wa.me/${phoneFormatted}?text=${encodeURIComponent(msg)}`, '_blank');
+  openWhatsappChat(inv.CustomerPhone, msg, {
+    receiptId: 'invoice:' + inv.ID,
+    receiptNumber: inv.InvoiceNumber,
+    key: 'invoice',
+    label: 'إرسال الفاتورة',
+    auditDetails: `تم إرسال الفاتورة #${inv.InvoiceNumber} عبر واتساب للعميل (${inv.CustomerName || 'عميل'})`
+  });
 };
 
 window.deleteInvoiceDirect = function(invId){
@@ -1499,9 +1504,14 @@ window.openSaleWhatsappDirect = function(saleId){
   if(!s){ showToast('لم يتم العثور على عملية البيع', 'error'); return; }
   const phone = (s.CustomerPhone || '').replace(/\D/g, '');
   if(!phone){ showToast('لا يوجد رقم هاتف مسجل لهذه العملية', 'warning'); return; }
-  const phoneFormatted = phone.startsWith('0') ? '2' + phone : phone;
   const msg = `مرحبًا ${s.CustomerName || 'عميلنا العزيز'}،\nإيصال مبيعات رقم: #${s.ID.slice(-8)}\nالأصناف: ${s.ItemsSummary}\nالإجمالي: ${s.Total} ج.م\nشكرًا لتعاملكم مع ${state.settings.shopName || 'ميكروتك'}.`;
-  window.open(`https://wa.me/${phoneFormatted}?text=${encodeURIComponent(msg)}`, '_blank');
+  openWhatsappChat(s.CustomerPhone, msg, {
+    receiptId: 'sale:' + s.ID,
+    receiptNumber: s.ID.slice(-8),
+    key: 'sale',
+    label: 'إرسال إيصال مبيعات',
+    auditDetails: `تم إرسال إيصال مبيعات #${s.ID.slice(-8)} عبر واتساب للعميل (${s.CustomerName || 'عميل'})`
+  });
 };
 
 // Quotation Direct Action & Selection Handlers
@@ -1644,9 +1654,13 @@ window.openSupplierHistoryDirect = function(supName){
 window.openSupplierWhatsappDirect = function(supPhone, supName){
   const phone = String(supPhone || '').replace(/\D/g, '');
   if(!phone){ showToast('لا يوجد رقم هاتف مسجل لهذا المورد', 'warning'); return; }
-  const phoneFormatted = phone.startsWith('0') ? '2' + phone : phone;
   const msg = `مرحبًا ${supName || 'موردنا العزيز'}،\nبخصوص تعاملات التوريد والحساب مع ${state.settings.shopName || 'ميكروتك'}.`;
-  window.open(`https://wa.me/${phoneFormatted}?text=${encodeURIComponent(msg)}`, '_blank');
+  openWhatsappChat(supPhone, msg, {
+    receiptId: 'supplier:' + String(supPhone),
+    key: 'supplier',
+    label: 'مراسلة مورد',
+    auditDetails: `تم مراسلة المورد (${supName || 'مورد'}) عبر واتساب`
+  });
 };
 
 // Purchase Invoice Direct Action & Selection Handlers

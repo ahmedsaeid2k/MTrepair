@@ -448,14 +448,23 @@ function attachLogin(){
       };
       normalizeUserSections(state.user);
 
-      // Session Security: Store in sessionStorage ONLY (prevent persistent tampering via localStorage)
+      // Session Security: Respect "Remember me" checkbox
+      const rememberCheckbox = document.getElementById('loginRemember');
+      const rememberMe = rememberCheckbox ? rememberCheckbox.checked : true;
       try {
-        localStorage.removeItem('microerp_session');
-        localStorage.removeItem('microerp_session_token');
         sessionStorage.setItem('microerp_session', JSON.stringify(state.user));
         if(res.sessionToken){
           sessionStorage.setItem('microerp_session_token', res.sessionToken);
           state.sessionToken = res.sessionToken;
+        }
+        if (rememberMe) {
+          localStorage.setItem('microerp_session', JSON.stringify(state.user));
+          if(res.sessionToken){
+            localStorage.setItem('microerp_session_token', res.sessionToken);
+          }
+        } else {
+          localStorage.removeItem('microerp_session');
+          localStorage.removeItem('microerp_session_token');
         }
       } catch(e){}
 

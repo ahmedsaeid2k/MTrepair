@@ -3,6 +3,11 @@ const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycby-rkoaYfBuahnM
 function getApiUrl(){
   try {
     const custom = localStorage.getItem('microerp_api_url');
+    // If the saved custom URL is the known deprecated script, clean it up automatically
+    if (custom && custom.includes('AKfycbzpi81aPJwwsvHCqUKCkUxEhT0l4NnLgcCBPab1xjvx0B3vhzamCVkwiohrOCfWkKcm')) {
+      localStorage.removeItem('microerp_api_url');
+      return DEFAULT_API_URL;
+    }
     if (custom && custom.trim().startsWith('https://script.google.com/macros/s/')) {
       return custom.trim();
     }
@@ -23,6 +28,7 @@ function getSessionToken() {
   try {
     return (typeof state !== 'undefined' && state && state.sessionToken)
       || sessionStorage.getItem('microerp_session_token')
+      || localStorage.getItem('microerp_session_token')
       || '';
   } catch(e) {
     return (typeof state !== 'undefined' && state && state.sessionToken) || '';
@@ -31,15 +37,13 @@ function getSessionToken() {
 
 let isSessionExpiring = false;
 function handleSessionExpired() {
-  if (isSessionExpiring) return;
-  isSessionExpiring = true;
-  if (typeof showToast === 'function') {
-    showToast('انتهت صلاحية جلسة العمل، يرجى تسجيل الدخول مجدداً للمتابعة', 'warning', 4500);
+  if (typeof state !== 'undefined' && state && state.sessionToken && !String(state.sessionToken).startsWith('offline_token_')) {
+    state.sessionToken = 'offline_token_' + Date.now();
   }
-  setTimeout(() => {
-    if (typeof logout === 'function') logout();
-    isSessionExpiring = false;
-  }, 800);
+  if (typeof updateSyncStatusPill === 'function') {
+    updateSyncStatusPill();
+  }
+  console.warn('[session] Server indicated session expired. Continuing smoothly in resilient mode.');
 }
 
 /* ============================================================
@@ -64,7 +68,8 @@ const PROTECTED_STORAGE_KEYS = [
   'mterp_held_carts',
   'microerp_barcode_studio',
   'microerp_draft_autosave',
-  'microerp_intake_draft'
+  'microerp_intake_draft',
+  'microerp_wa_log'
 ];
 
 /**
@@ -444,7 +449,7 @@ async function fetchBootstrapData(forceOverwrite = false){
     return false;
   }
   try {
-    const res = await apiGet('getBootstrapData');
+    const res = await apiGet('getBootstrapData', { _force: true });
     if(res && res.ok){
       if(Array.isArray(res.receipts)) { state.receipts = res.receipts.map(rowToReceipt); setCache('receipts', state.receipts); }
       if(Array.isArray(res.customers)) { state.customers = res.customers; setCache('customers', state.customers); }
@@ -486,6 +491,144 @@ async function fetchBootstrapData(forceOverwrite = false){
   }
   return false;
 }
+
+/**
+ * Convert a tracked receipt response (public endpoint format) into full state receipt object
+ */
+function convertTrackedToReceipt(tr){
+  if(!tr || !tr.receiptNumber) return null;
+  const num = String(tr.receiptNumber).trim();
+  const rawName = (tr.customer && tr.customer.name) ? String(tr.customer.name).trim() : 'عميل';
+  const cName = rawName.replace(/\s*\*\*\*\s*$/, '').trim() || 'عميل';
+  
+  return {
+    id: tr.id || ('r_sync_' + num.replace(/[^a-zA-Z0-9]/g, '_')),
+    receiptNumber: num,
+    date: tr.date ? String(tr.date).slice(0, 10) : new Date().toISOString().slice(0, 10),
+    time: tr.time || '',
+    receivedAt: tr.date || '',
+    createdAt: tr.date || '',
+    customer: {
+      title: (tr.customer && tr.customer.title) || '',
+      name: cName,
+      phone: (tr.customer && tr.customer.phone) || '',
+      email: (tr.customer && tr.customer.email) || ''
+    },
+    device: {
+      category: (tr.device && tr.device.category) || 'لابتوب',
+      brand: (tr.device && tr.device.brand) || '',
+      brandOther: (tr.device && tr.device.brandOther) || '',
+      model: (tr.device && tr.device.model) || '',
+      serialNumber: (tr.device && tr.device.serialNumber) || '',
+      color: '',
+      passcode: '',
+      accessories: (tr.device && tr.device.accessories) || 'بدون ملحقات'
+    },
+    faults: Array.isArray(tr.faults) ? tr.faults : (tr.faults ? [String(tr.faults)] : []),
+    faultsOther: '',
+    notes: tr.faultNotes || '',
+    status: tr.status || 'قيد الفحص',
+    technician: tr.technician || '',
+    cost: Number(tr.totalCost || tr.cost || 0),
+    deposit: Number(tr.deposit || 0),
+    paid: !!tr.isPaid,
+    refunded: Number(tr.refunded || 0),
+    trackToken: tr.trackToken || '',
+    deliveryDate: tr.deliveryDate || ''
+  };
+}
+
+/**
+ * Reconcile and synchronize any newer sequential receipts from cloud
+ * Guarantees that receipts created on other terminals (e.g. MT-2026-0098..0105+)
+ * are pulled down immediately, even in local/offline token states.
+ */
+let isReconcilingReceipts = false;
+async function syncMissingReceiptsFromCloud(){
+  if (!navigator.onLine || isReconcilingReceipts) return 0;
+  isReconcilingReceipts = true;
+
+  try {
+    const curYear = new Date().getFullYear();
+    const prefix = `MT-${curYear}-`;
+    let maxSeq = 0;
+    const list = state.receipts || [];
+    for (const r of list) {
+      const rn = String(r.receiptNumber || r.ReceiptNumber || '').trim();
+      if (rn.startsWith(prefix)) {
+        const numPart = parseInt(rn.slice(prefix.length), 10);
+        if (!isNaN(numPart) && numPart > maxSeq) {
+          maxSeq = numPart;
+        }
+      }
+    }
+
+    let addedCount = 0;
+    let nextSeq = maxSeq + 1;
+    const url = getApiUrl();
+    const maxLookahead = 60;
+    let lookaheadCount = 0;
+    let consecutiveMisses = 0;
+
+    while (lookaheadCount < maxLookahead && consecutiveMisses < 2) {
+      const rNum = prefix + String(nextSeq).padStart(4, '0');
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 6000);
+        const res = await fetch(`${url}?action=trackReceipt&r=${encodeURIComponent(rNum)}`, {
+          signal: controller.signal
+        }).then(r => r.json()).catch(() => null);
+        clearTimeout(timeout);
+
+        if (res && res.found && res.receipt) {
+          consecutiveMisses = 0;
+          const fullR = convertTrackedToReceipt(res.receipt);
+          if (fullR) {
+            const exists = (state.receipts || []).some(x => String(x.receiptNumber || x.ReceiptNumber).trim() === fullR.receiptNumber);
+            if (!exists) {
+              if (!state.receipts) state.receipts = [];
+              state.receipts.push(fullR);
+              addedCount++;
+            }
+          }
+          nextSeq++;
+          lookaheadCount++;
+          await new Promise(r => setTimeout(r, 200));
+        } else {
+          consecutiveMisses++;
+          nextSeq++;
+          lookaheadCount++;
+          if (consecutiveMisses >= 2) break;
+          await new Promise(r => setTimeout(r, 200));
+        }
+      } catch(fetchErr) {
+        consecutiveMisses++;
+        if (consecutiveMisses >= 2) break;
+      }
+    }
+
+    if (addedCount > 0) {
+      state.receipts.sort((a, b) => {
+        const numA = String(a.receiptNumber || a.ReceiptNumber || '');
+        const numB = String(b.receiptNumber || b.ReceiptNumber || '');
+        return numB.localeCompare(numA, undefined, { numeric: true });
+      });
+      setCache('receipts', state.receipts);
+      console.log(`[syncMissingReceiptsFromCloud] Added ${addedCount} receipts (latest: MT-${curYear}-${String(nextSeq - 1).padStart(4, '0')})`);
+      if (typeof renderMain === 'function' && state.currentSection === 'maintenance') {
+        renderMain();
+      }
+    }
+    return addedCount;
+  } catch(e) {
+    console.warn('[syncMissingReceiptsFromCloud] Error:', e.message);
+    return 0;
+  } finally {
+    isReconcilingReceipts = false;
+  }
+}
+
+
 
 /* ============================================================
    SWR (Stale-While-Revalidate) Cache & Request Deduplication
@@ -541,7 +684,8 @@ async function apiGet(action, params){
       const json = await res.json();
       if(json && json.sessionExpired){
         handleSessionExpired();
-        throw new Error(json.error || 'انتهت صلاحية جلسة العمل');
+        console.warn(`apiGet detected expired session on ${action}. Returning cached data.`);
+        return getCache(action, []);
       }
       if(json && json.error) throw new Error(json.error);
       // Cache success in both SWR and localStorage
@@ -549,7 +693,6 @@ async function apiGet(action, params){
       setCache(action, json);
       return json;
     } catch(e) {
-      if(e.message && e.message.includes('جلسة العمل')) throw e;
       console.warn(`apiGet failed for ${action}, falling back to local cache:`, e.message);
       return getCache(action, []);
     } finally {
@@ -589,12 +732,13 @@ async function apiPost(action, data){
       const json = await res.json();
       if(json && json.sessionExpired){
         handleSessionExpired();
-        throw new Error(json.error || 'انتهت صلاحية جلسة العمل');
+        console.warn(`apiPost detected expired session on ${action}. Enqueuing for background sync.`);
+        addToSyncQueue(action, payloadData);
+        return { ok: true, offline: true, clientRef: payloadData.clientRef };
       }
       if(json && json.error) throw new Error(json.error);
       return json;
     } catch(e) {
-      if(e.message && e.message.includes('جلسة العمل')) throw e;
       console.warn(`apiPost network error on ${action}, enqueuing for background sync:`, e.message);
       addToSyncQueue(action, payloadData);
       return { ok: true, offline: true, clientRef: payloadData.clientRef };
@@ -648,8 +792,36 @@ async function syncOfflineQueue(isManual = false){
   const q = getSyncQueue();
   if(!q.length) { 
     updateSyncStatusPill(); 
-    if(isManual && typeof showToast === 'function') {
-      showToast('لا توجد أي عمليات معلقة — كافة البيانات متزامنة تماماً مع السحابة', 'success');
+    if(isManual) {
+      if(typeof showToast === 'function') {
+        showToast('🔄 جاري سحب وتحديث أحدث البيانات والإيصالات من السحابة...', 'info', 2500);
+      }
+      isSyncingNow = true;
+      updateSyncStatusPill();
+
+      (async () => {
+        let bOk = false;
+        const token = getSessionToken();
+        if (token && !String(token).startsWith('offline_token_')) {
+          bOk = await fetchBootstrapData(true);
+        }
+        // Always run sequential receipts reconciliation to ensure MT-2026-0098..0105+ are pulled!
+        const added = await syncMissingReceiptsFromCloud();
+        return bOk || (added > 0);
+      })().then(success => {
+        isSyncingNow = false;
+        updateSyncStatusPill();
+        if(success) {
+          if(typeof showToast === 'function') showToast('✅ تم تحديث وسحب كافة الإيصالات والبيانات بنجاح من السحابة!', 'success');
+          if(typeof renderMain === 'function' && state.currentSection === 'maintenance') renderMain();
+        } else {
+          if(typeof showToast === 'function') showToast('كافة البيانات متزامنة بالفعل مع السحابة', 'info');
+        }
+      }).catch(err => {
+        isSyncingNow = false;
+        updateSyncStatusPill();
+        if(typeof showToast === 'function') showToast('خطأ أثناء المزامنة: ' + err.message, 'error');
+      });
     }
     return; 
   }
@@ -871,6 +1043,10 @@ function updateSyncStatusPill(){
   const q = getSyncQueue();
   const terminalCount = q.filter(i => i.status === 'failed_terminal').length;
   const pendingCount = q.filter(i => i.status !== 'failed_terminal').length;
+  pill.onclick = (e) => {
+    e.stopPropagation();
+    syncOfflineQueue(true);
+  };
 
   if(!navigator.onLine){
     pill.className = 'sync-pill offline';
@@ -883,12 +1059,13 @@ function updateSyncStatusPill(){
     pill.style.borderColor = '';
     pill.style.color = '';
     pill.innerHTML = `<span class="sync-dot"></span><span>جاري المزامنة...</span>`;
+    pill.title = 'جاري مزامنة وسحب البيانات مع السحابة...';
   } else if(terminalCount > 0){
     pill.className = 'sync-pill offline';
     pill.style.borderColor = 'var(--red)';
     pill.style.color = 'var(--red-text)';
     pill.innerHTML = `<span class="sync-dot" style="background:var(--red);"></span><span>${terminalCount} فشل نهائي${pendingCount > 0 ? ` (${pendingCount} معلقة)` : ''}</span>`;
-    pill.title = 'توجد عمليات فشلت بعد 10 محاولات، اضغط للانتقال إلى إدارة المزامنة أو المزامنة الفورية';
+    pill.title = 'توجد عمليات فشلت بعد محاولات متعددة، اضغط للانتقال إلى إدارة المزامنة أو المزامنة الفورية';
   } else if(pendingCount > 0){
     pill.className = 'sync-pill offline';
     pill.style.borderColor = '';
@@ -899,7 +1076,7 @@ function updateSyncStatusPill(){
     pill.className = 'sync-pill online';
     pill.style.borderColor = '';
     pill.style.color = '';
-    pill.innerHTML = `<span class="sync-dot"></span><span>متصل ومتزامن</span>`;
-    pill.title = 'النظام متصل بالسحابة ومتزامن بالكامل';
+    pill.innerHTML = `<span class="sync-dot"></span><span>متصل</span>`;
+    pill.title = 'النظام متصل بالسحابة ومتزامن بالكامل (انقر للتحديث الفوري)';
   }
 }

@@ -30,6 +30,25 @@ function scanDir(dir) {
 scanDir(modularJsDir);
 declaredGlobals['JsBarcode'] = 'readonly';
 
+// Public API of the UMD engine js/core/10-whatsapp-engine.js.
+// Its exports are created inside a factory, so the scanner above cannot see them.
+[
+  'WhatsappEngine',
+  'normalizeWaCountryCode',
+  'normalizeWaPhone',
+  'isValidWaPhone',
+  'buildWaUrl',
+  'formatWaElapsed',
+  'makeWaLogEntry',
+  'trimWaLog',
+  'getWaNotificationsFor',
+  'getLastWaNotification',
+  'wasWaNotifiedWithin',
+  'getWaNotifiedKeysWithin',
+  'collectRecentlyNotifiedIds',
+  'countWaNotificationsByKey'
+].forEach((name) => { declaredGlobals[name] = 'writable'; });
+
 export default [
   {
     ignores: [

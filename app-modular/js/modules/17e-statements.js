@@ -423,8 +423,14 @@ function shareCustomerStatementWhatsApp(data){
   });
   text += `\nشاكرين لتعاملكم ونسعد دائماً بخدمتكم`;
 
-  const url = `https://wa.me/${normalizePhoneForWa(data.custPhone)}?text=${encodeURIComponent(text)}`;
-  window.open(url, '_blank');
+  const url = buildWaUrl(data.custPhone, text, getWaCountryCode());
+  if(!url){ showToast('رقم هاتف العميل غير صالح لإرسال واتساب', 'error'); return; }
+  openWhatsappChat(data.custPhone, text, {
+    receiptId: 'statement:customer:' + String(data.custPhone),
+    key: 'statement',
+    label: 'كشف حساب عميل',
+    auditDetails: `تم إرسال كشف حساب العميل (${data.custName || ''}) عبر واتساب`
+  });
 }
 
 /* ---------------- Supplier Statement Modal & Views ---------------- */
@@ -718,8 +724,14 @@ function shareSupplierStatementWhatsApp(data){
   });
   text += `\nمع خالص الشكر والتقدير`;
 
-  const url = `https://wa.me/${normalizePhoneForWa(data.supPhone)}?text=${encodeURIComponent(text)}`;
-  window.open(url, '_blank');
+  const url = buildWaUrl(data.supPhone, text, getWaCountryCode());
+  if(!url){ showToast('رقم هاتف المورد غير صالح لإرسال واتساب', 'error'); return; }
+  openWhatsappChat(data.supPhone, text, {
+    receiptId: 'statement:supplier:' + String(data.supPhone),
+    key: 'statement',
+    label: 'كشف حساب مورد',
+    auditDetails: `تم إرسال كشف حساب المورد (${data.supName || ''}) عبر واتساب`
+  });
 }
 
 window.openCustomerStatementModal = openCustomerStatementModal;

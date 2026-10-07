@@ -94,7 +94,7 @@ function renderSettingsNavHeader(activeTabTitle, activeTabSubtitle){
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <button class="btn btn-ghost btn-sm" onclick="openCommandPalette()">بحث ⌘K</button>
-        <div id="networkSyncPill" class="sync-pill online" onclick="syncOfflineQueue(true)">متصل</div>
+        <div id="networkSyncPill" class="sync-pill online" onclick="syncOfflineQueue(true)"><span class="sync-dot"></span><span>متصل</span></div>
       </div>
     </div>
     <div class="chip-group" style="margin-bottom:18px;background:var(--paper2);padding:10px 14px;border-radius:var(--radius);border:1px solid var(--line);">
@@ -364,6 +364,16 @@ function renderCompanySettings(main){
 
       <div class="grid2">
         <div class="field">
+          <label>كود الدولة الافتراضي لأرقام واتساب</label>
+          <input id="setWaCountryCode" class="mono" value="${s.waCountryCode||'20'}" placeholder="20">
+          <div style="font-size:11px;color:var(--ink-secondary);margin-top:4px;line-height:1.5;">
+            يُستخدم تلقائياً عند كتابة رقم محلي بدون كود الدولة (مثال: 01012345678 ← 201012345678). اتركه <b class="mono">20</b> لمصر، و<b class="mono">966</b> للسعودية، و<b class="mono">971</b> للإمارات.
+          </div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="field">
           <label>عنوان المقر والفرع</label>
           <input id="setShopAddress" value="${s.shopAddress||''}" placeholder="مثال: 15 شارع التحرير، الدقي، الجيزة">
         </div>
@@ -391,6 +401,7 @@ function renderCompanySettings(main){
     s.logoUrl = document.getElementById('setLogoUrl').value.trim();
     s.shopPhone = document.getElementById('setShopPhone').value.trim();
     s.shopWhatsapp = document.getElementById('setShopWhatsapp').value.trim();
+    s.waCountryCode = (document.getElementById('setWaCountryCode').value || '20').replace(/[^0-9]/g, '') || '20';
     s.shopAddress = document.getElementById('setShopAddress').value.trim();
     s.shopTaxNumber = document.getElementById('setShopTaxNumber').value.trim();
     s.printFooterText = document.getElementById('setPrintFooterText').value.trim();
@@ -402,6 +413,7 @@ function renderCompanySettings(main){
       await saveSettingRemote('logoUrl', s.logoUrl);
       await saveSettingRemote('shopPhone', s.shopPhone);
       await saveSettingRemote('shopWhatsapp', s.shopWhatsapp);
+      await saveSettingRemote('waCountryCode', s.waCountryCode);
       await saveSettingRemote('shopAddress', s.shopAddress);
       await saveSettingRemote('shopTaxNumber', s.shopTaxNumber);
       await saveSettingRemote('printFooterText', s.printFooterText);

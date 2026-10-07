@@ -854,7 +854,10 @@ async function loadReceipts(params){
     const rows = await apiGet('getReceipts', params);
     if(Array.isArray(rows)){
       if(rows.length > 0){
-        state.receipts = rows.map(rowToReceipt);
+        const cloudReceipts = rows.map(rowToReceipt);
+        state.receipts = (typeof mergeCloudReceiptsWithLocal === 'function')
+          ? mergeCloudReceiptsWithLocal(cloudReceipts, state.receipts)
+          : cloudReceipts;
         setCache('receipts_raw', rows);
         setCache('receipts', state.receipts);
 
@@ -906,7 +909,6 @@ function _extractCustomersFromReceipts(){
       else if(rPhoneTrim && rPhoneTrim !== '0000000000' && (!dirPhone || dirPhone === '0000000000')){
         matched.phone = rPhoneTrim;
         if(matched.CustomerPhone !== undefined) matched.CustomerPhone = rPhoneTrim;
-        try { saveCustomerRemote(matched); } catch(e){}
       }
 
       // Case C: Canonicalize receipt name & title to directory canonical spelling
@@ -1146,9 +1148,18 @@ async function saveReceiptRemote(d){
   }
 
   const row = receiptToRow(d);
-  const idx = state.receipts.findIndex(x=>x.id===d.id);
-  if(idx>-1) state.receipts[idx] = d; else state.receipts.push(d);
+  const targetId = String(d.id || '');
+  const targetNum = String(d.receiptNumber || '');
+  const idx = state.receipts.findIndex(x => x && (
+    (targetId && (String(x.id) === targetId || String(x.receiptNumber) === targetId)) ||
+    (targetNum && (String(x.id) === targetNum || String(x.receiptNumber) === targetNum))
+  ));
+  if(idx > -1) state.receipts[idx] = d; else state.receipts.push(d);
   setCache('receipts', state.receipts);
+  if(typeof safeLocalStorageSet === 'function') safeLocalStorageSet('microerp_cache_receipts', state.receipts);
+  if(typeof markReceiptOptimisticallyUpdated === 'function'){
+    markReceiptOptimisticallyUpdated(d.id || d.receiptNumber, d.status);
+  }
   recoverAndSyncAllCustomerPhones(false);
 
   // Auto Journal Entry for Receipt Delivery Revenue (F2: recognize revenue once upon delivery)
@@ -1160,7 +1171,7 @@ async function saveReceiptRemote(d){
     }
   }
 
-  // Auto-ensure customer exists in directory
+  // Auto-ensure customer exists in directory (non-blocking to prevent server lock waits)
   if(d.customer && d.customer.name && d.customer.name !== 'عميل' && d.customer.name !== 'زبون'){
     const custName = d.customer.name.trim().toLowerCase();
     const custPhone = (d.customer.phone || '').trim();
@@ -1172,11 +1183,11 @@ async function saveReceiptRemote(d){
     if(!existing){
       state.customers.push({ title: d.customer.title||'', name: d.customer.name, phone: custPhone, email: d.customer.email||'' });
       setCache('customers', state.customers);
-      try { await saveCustomerRemote(d.customer); } catch(e){ console.warn('Auto-save customer:', e); }
+      saveCustomerRemote(d.customer).catch(e => console.warn('Auto-save customer:', e));
     } else if(custPhone && custPhone !== '0000000000' && (!existing.phone || existing.phone === '0000000000')){
       existing.phone = custPhone;
       setCache('customers', state.customers);
-      try { await saveCustomerRemote(existing); } catch(e){ console.warn('Auto-update customer phone:', e); }
+      saveCustomerRemote(existing).catch(e => console.warn('Auto-update customer phone:', e));
     }
   }
 

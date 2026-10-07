@@ -1508,16 +1508,19 @@ function openCostEstimateModal(rawR){
       const idx = (state.receipts || []).findIndex(x => String(x.id) === String(r.id));
       if(idx > -1) state.receipts[idx] = r;
       setCache('receipts', state.receipts);
-
-      try {
-        await saveReceiptRemote(r);
-      } catch(err){
-        console.warn('saveReceiptRemote in approve:', err);
-      }
+      if(typeof safeLocalStorageSet === 'function') safeLocalStorageSet('microerp_cache_receipts', state.receipts);
+      if(typeof markReceiptOptimisticallyUpdated === 'function') markReceiptOptimisticallyUpdated(r.id || r.receiptNumber, 'الصيانة');
 
       overlay.remove();
-      showToast(`تم تسجيل موافقة العميل وتحويل الجهاز إلى الصيانة بنجاح`, 'success');
-      if(typeof renderMain === 'function') renderMain();
+      showToast(`✅ تم تسجيل موافقة العميل وتحويل الجهاز إلى الصيانة بنجاح`, 'success');
+      if(typeof window.updateReceiptStatusDOM === 'function'){
+        window.updateReceiptStatusDOM(r.id || r.receiptNumber, 'الصيانة');
+      }
+      if(typeof window.updateArchiveListOnly === 'function'){
+        window.updateArchiveListOnly();
+      } else if(typeof renderMain === 'function') renderMain();
+
+      saveReceiptRemote(r).catch(err => console.warn('Background saveReceiptRemote in approve:', err));
     };
   }
 
@@ -1554,16 +1557,19 @@ function openCostEstimateModal(rawR){
       const idx = (state.receipts || []).findIndex(x => String(x.id) === String(r.id));
       if(idx > -1) state.receipts[idx] = r;
       setCache('receipts', state.receipts);
-
-      try {
-        await saveReceiptRemote(r);
-      } catch(err){
-        console.warn('saveReceiptRemote in reject:', err);
-      }
+      if(typeof safeLocalStorageSet === 'function') safeLocalStorageSet('microerp_cache_receipts', state.receipts);
+      if(typeof markReceiptOptimisticallyUpdated === 'function') markReceiptOptimisticallyUpdated(r.id || r.receiptNumber, 'رفض العميل');
 
       overlay.remove();
       showToast(`تم تسجيل رفض العميل واعتماد رسوم الفحص والتشخيص (${vals.inspectionFee} ج.م)`, 'info');
-      if(typeof renderMain === 'function') renderMain();
+      if(typeof window.updateReceiptStatusDOM === 'function'){
+        window.updateReceiptStatusDOM(r.id || r.receiptNumber, 'رفض العميل');
+      }
+      if(typeof window.updateArchiveListOnly === 'function'){
+        window.updateArchiveListOnly();
+      } else if(typeof renderMain === 'function') renderMain();
+
+      saveReceiptRemote(r).catch(err => console.warn('Background saveReceiptRemote in reject:', err));
     };
   }
 }

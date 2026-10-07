@@ -130,13 +130,19 @@ async function init(){
               loadReceipts({ _force: true }), loadCustomers({ _force: true })
             ]);
             if(freshReceipts && freshReceipts.length){
-              state.receipts = freshReceipts;
+              state.receipts = (typeof mergeCloudReceiptsWithLocal === 'function')
+                ? mergeCloudReceiptsWithLocal(freshReceipts, state.receipts)
+                : freshReceipts;
             }
             if(freshCustomers && freshCustomers.length){
               state.customers = freshCustomers;
             }
             if(state.currentSection === 'maintenance'){
-              renderMain();
+              if(state.tab === 'archive' && typeof window.updateArchiveListOnly === 'function'){
+                window.updateArchiveListOnly();
+              } else {
+                renderMain();
+              }
             }
           } catch(syncErr){}
         }

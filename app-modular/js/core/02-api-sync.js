@@ -451,7 +451,13 @@ async function fetchBootstrapData(forceOverwrite = false){
   try {
     const res = await apiGet('getBootstrapData', { _force: true });
     if(res && res.ok){
-      if(Array.isArray(res.receipts)) { state.receipts = res.receipts.map(rowToReceipt); setCache('receipts', state.receipts); }
+      if(Array.isArray(res.receipts)) {
+        const cloudReceipts = res.receipts.map(rowToReceipt);
+        state.receipts = (typeof mergeCloudReceiptsWithLocal === 'function')
+          ? mergeCloudReceiptsWithLocal(cloudReceipts, state.receipts)
+          : cloudReceipts;
+        setCache('receipts', state.receipts);
+      }
       if(Array.isArray(res.customers)) { state.customers = res.customers; setCache('customers', state.customers); }
       if(Array.isArray(res.technicians)) { 
         const names = res.technicians.map(r=>r.Name).filter(Boolean);

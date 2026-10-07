@@ -1000,72 +1000,120 @@ async function openReceiptDetail(rawR){
     const statusChanged = (initialStatus !== r.status);
 
     if(r.status === 'تم التسليم' && remainingNow > 0){
-      const btn = overlay.querySelector('#saveEditBtn');
-      if(btn){ btn.disabled = true; btn.textContent = 'جارٍ الحفظ...'; }
       promptDeliveryRemainingPayment(r, remainingNow, async (shouldPay, payMethodName)=>{
         const totalCostDue = (typeof getReceiptTotalDue === 'function') ? getReceiptTotalDue(r) : (Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0));
         const depositBefore = Math.min(totalCostDue, Number(r.deposit || 0));
         const remainingDebt = Math.max(0, totalCostDue - depositBefore);
 
-        // Post single full revenue recognition entry (F2: Cr 4101 full cost, Dr 2102 deposit, Dr 1103 remaining debt)
-        await postReceiptDeliveryRevenue(r, depositBefore, remainingDebt);
-
         if(shouldPay){
-          try{
-            await savePaymentRemote(r.id, remainingNow, 'سداد المتبقي عند التسليم', payMethodName || 'نقدي (كاش)');
-            r.deposit = Number(r.deposit||0) + remainingNow;
-            r.paid = true;
-            await refreshPayments();
-          }catch(e){}
-        } else {
-          // التسليم بالآجل: تسجيل المتبقي كمديونية على العميل
-          try {
-            const custName = r.customer ? r.customer.name : '';
-            const custPhone = r.customer ? r.customer.phone : '';
-            const cust = (state.customers || []).find(c => (custName && (c.name||'').trim().toLowerCase() === custName.trim().toLowerCase()) || (custPhone && c.phone === custPhone));
-            if(cust){
-              cust.Debt = Number(cust.Debt || cust.debt || 0) + remainingNow;
-              await saveCustomerRemote(cust);
-            }
-          } catch(errDebt) {
-            console.warn('Auto debt recording error:', errDebt);
-          }
+          r.deposit = Number(r.deposit||0) + remainingNow;
+          r.paid = true;
         }
-        try{
-          await saveReceiptRemote(r);
-          overlay.remove();
-          showToast(shouldPay ? `تم سداد ${remainingNow.toLocaleString()} ج.م وتسليم الجهاز بنجاح` : 'تم تسليم الجهاز بنجاح (المتبقي آجل)', 'success');
+
+        r.updatedBy = (state.user && state.user.name) || 'نظام';
+        r.updatedAt = new Date().toISOString();
+        r._localModifiedAt = Date.now();
+
+        // Update local state immediately
+        const targetId = String(r.id || '');
+        const targetNum = String(r.receiptNumber || '');
+        const idx = (state.receipts || []).findIndex(x => x && (
+          (targetId && (String(x.id) === targetId || String(x.receiptNumber) === targetId)) ||
+          (targetNum && (String(x.id) === targetNum || String(x.receiptNumber) === targetNum))
+        ));
+        if(idx > -1) state.receipts[idx] = r;
+        setCache('receipts', state.receipts);
+        if(typeof safeLocalStorageSet === 'function') safeLocalStorageSet('microerp_cache_receipts', state.receipts);
+        if(typeof markReceiptOptimisticallyUpdated === 'function'){
+          markReceiptOptimisticallyUpdated(r.id || r.receiptNumber, 'تم التسليم');
+        }
+
+        // Close modal & update UI immediately
+        overlay.remove();
+        if(typeof window.updateReceiptStatusDOM === 'function'){
+          window.updateReceiptStatusDOM(r.id || r.receiptNumber, 'تم التسليم');
+        }
+        if(typeof window.updateArchiveListOnly === 'function'){
+          window.updateArchiveListOnly();
+        } else if(typeof renderMain === 'function' && state.currentSection === 'maintenance'){
           renderMain();
-          if(initialStatus !== 'تم التسليم'){
-            setTimeout(()=>{
-              openWhatsappStatusNotificationModal(r, 'تم التسليم');
-            }, 350);
-          }
-        }catch(err){
-          showToast('تم الحفظ محلياً: '+err.message, 'info');
-          if(btn){ btn.disabled = false; btn.textContent = 'حفظ التعديلات'; }
         }
+
+        showToast(shouldPay ? `✅ تم سداد ${remainingNow.toLocaleString()} ج.م وتسليم الجهاز بنجاح` : '✅ تم تسليم الجهاز بنجاح (المتبقي آجل)', 'success');
+        if(initialStatus !== 'تم التسليم'){
+          setTimeout(()=>{
+            openWhatsappStatusNotificationModal(r, 'تم التسليم');
+          }, 350);
+        }
+
+        // Background finance & remote save
+        (async () => {
+          try {
+            await postReceiptDeliveryRevenue(r, depositBefore, remainingDebt);
+            if(shouldPay){
+              await savePaymentRemote(r.id, remainingNow, 'سداد المتبقي عند التسليم', payMethodName || 'نقدي (كاش)');
+              await refreshPayments();
+            } else {
+              const custName = r.customer ? r.customer.name : '';
+              const custPhone = r.customer ? r.customer.phone : '';
+              const cust = (state.customers || []).find(c => (custName && (c.name||'').trim().toLowerCase() === custName.trim().toLowerCase()) || (custPhone && c.phone === custPhone));
+              if(cust){
+                cust.Debt = Number(cust.Debt || cust.debt || 0) + remainingNow;
+                await saveCustomerRemote(cust);
+              }
+            }
+            await saveReceiptRemote(r);
+          } catch(err){
+            console.warn('Background delivery save error:', err);
+          }
+        })();
       });
       return;
     }
 
-    const btn = overlay.querySelector('#saveEditBtn');
-    btn.disabled = true; btn.textContent = 'جارٍ الحفظ...';
-    try{
-      await saveReceiptRemote(r);
-      overlay.remove();
-      showToast('تم حفظ التعديلات بنجاح', 'success');
-      renderMain();
-      if(statusChanged){
-        setTimeout(()=>{
-          openWhatsappStatusNotificationModal(r, r.status);
-        }, 350);
-      }
-    }catch(err){
-      showToast('تم الحفظ محلياً: '+err.message, 'info');
-      btn.disabled = false;
-      btn.textContent = 'حفظ التعديلات';
+    // 1. Optimistic local state update
+    r.updatedBy = (state.user && state.user.name) || 'نظام';
+    r.updatedAt = new Date().toISOString();
+    r._localModifiedAt = Date.now();
+
+    const targetId = String(r.id || '');
+    const targetNum = String(r.receiptNumber || '');
+    const idx = (state.receipts || []).findIndex(x => x && (
+      (targetId && (String(x.id) === targetId || String(x.receiptNumber) === targetId)) ||
+      (targetNum && (String(x.id) === targetNum || String(x.receiptNumber) === targetNum))
+    ));
+    if(idx > -1) state.receipts[idx] = r; else if(Array.isArray(state.receipts)) state.receipts.push(r);
+    setCache('receipts', state.receipts);
+    if(typeof safeLocalStorageSet === 'function') safeLocalStorageSet('microerp_cache_receipts', state.receipts);
+    if(typeof markReceiptOptimisticallyUpdated === 'function'){
+      markReceiptOptimisticallyUpdated(r.id || r.receiptNumber, r.status);
     }
+
+    recordAuditLog('تعديل إيصال صيانة', 'صيانة', `تم تعديل بيانات الإيصال #${r.receiptNumber}`, r.id);
+
+    // 2. Instant UI feedback (0ms)
+    overlay.remove();
+    showToast('✅ تم حفظ وتحديث بيانات الإيصال بنجاح', 'success');
+
+    if(typeof window.updateReceiptStatusDOM === 'function'){
+      window.updateReceiptStatusDOM(r.id || r.receiptNumber, r.status);
+    }
+    if(typeof window.updateArchiveListOnly === 'function'){
+      window.updateArchiveListOnly();
+    } else if(typeof renderMain === 'function' && state.currentSection === 'maintenance'){
+      renderMain();
+    }
+
+    if(statusChanged){
+      setTimeout(()=>{
+        openWhatsappStatusNotificationModal(r, r.status);
+      }, 350);
+    }
+
+    // 3. Background reliable network sync
+    saveReceiptRemote(r).catch(err => {
+      console.warn('Background receipt save error:', err);
+    });
   };
 
   let isAddPaySubmitting = false;

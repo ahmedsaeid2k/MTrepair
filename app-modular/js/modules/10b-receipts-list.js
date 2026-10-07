@@ -373,6 +373,21 @@ function renderArchive(main){
     }
   };
 
+  window.updateArchiveListOnly = updateListOnly;
+  window.updateReceiptStatusDOM = function(receiptIdOrNum, newStatus){
+    if(!receiptIdOrNum || !newStatus) return;
+    const qStr = String(receiptIdOrNum).trim().toLowerCase();
+    const st = STATUSES.find(s => s.v === newStatus) || STATUSES[0];
+    const elements = document.querySelectorAll(`[data-receipt-id="${qStr}"], [data-receipt-num="${qStr}"]`);
+    elements.forEach(el => {
+      const badge = el.querySelector('.status-badge');
+      if(badge){
+        badge.className = `status-badge ${st.cls}`;
+        badge.textContent = newStatus;
+      }
+    });
+  };
+
   const handleClearFilters = () => {
     f.q = '';
     f.status = '';

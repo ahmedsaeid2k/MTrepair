@@ -291,7 +291,14 @@ function recordAuditLog(action, section, details, refId, status = 'success'){
   } else {
     try { localStorage.setItem('microerp_audit_logs', JSON.stringify(state.auditLogs)); } catch(e){}
   }
-  try { apiPost('saveAuditLog', { data: log }).catch(()=>{}); } catch(e){}
+  // Only dispatch remote POST for server-whitelisted critical security events to avoid script lock contention
+  const serverAuditActions = [
+    'تسجيل دخول', 'تسجيل خروج', 'محاولة وصول غير مصرح', 'طلب تصريح مشرف',
+    'اعتماد تصريح حذف', 'رفض تصريح حذف', 'تصدير بيانات', 'تغيير كلمة المرور'
+  ];
+  if(serverAuditActions.includes(action)){
+    try { apiPost('saveAuditLog', { data: log }).catch(()=>{}); } catch(e){}
+  }
   return log;
 }
 

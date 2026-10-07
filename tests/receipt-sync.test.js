@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 
 // Emulate convertTrackedToReceipt logic
 function convertTrackedToReceipt(tr) {
@@ -157,5 +157,153 @@ describe('Receipt Synchronization & Numbering Engine (>100)', () => {
     expect(filter('01223407165')).toHaveLength(1);
     expect(filter('01223407165')[0].customer.name).toBe('فيكتور');
     expect(filter('غير موجود')).toHaveLength(0);
+  });
+
+  describe('Optimistic Status Updates & Conflict Protection Engine', () => {
+    // Mirror the merge logic implemented in 03-utils-and-mappings.js
+    const _optimisticReceiptLocks = new Map();
+    function markReceiptOptimisticallyUpdated(key, status) {
+      if (!key) return;
+      _optimisticReceiptLocks.set(String(key).trim().toLowerCase(), { status, timestamp: Date.now() });
+    }
+    function getOptimisticReceiptStatus(key) {
+      if (!key) return null;
+      const entry = _optimisticReceiptLocks.get(String(key).trim().toLowerCase());
+      if (!entry) return null;
+      if (Date.now() - entry.timestamp > 180000) return null;
+      return entry.status;
+    }
+    beforeEach(() => {
+      _optimisticReceiptLocks.clear();
+    });
+    function mergeCloudReceiptsWithLocal(cloudReceipts, localReceipts, syncQueue = []) {
+      if (!Array.isArray(cloudReceipts)) return localReceipts || [];
+      if (!Array.isArray(localReceipts) || localReceipts.length === 0) return cloudReceipts;
+
+      const localMap = new Map();
+      localReceipts.forEach(r => {
+        if (!r) return;
+        const k1 = r.id != null ? String(r.id).trim().toLowerCase() : '';
+        const k2 = r.receiptNumber != null ? String(r.receiptNumber).trim().toLowerCase() : '';
+        if (k1) localMap.set(k1, r);
+        if (k2) localMap.set(k2, r);
+      });
+
+      const merged = cloudReceipts.map(cloudR => {
+        if (!cloudR) return cloudR;
+        const k1 = cloudR.id != null ? String(cloudR.id).trim().toLowerCase() : '';
+        const k2 = cloudR.receiptNumber != null ? String(cloudR.receiptNumber).trim().toLowerCase() : '';
+        const localR = (k1 && localMap.get(k1)) || (k2 && localMap.get(k2));
+
+        if (!localR) return cloudR;
+
+        const optStatus = getOptimisticReceiptStatus(k1) || getOptimisticReceiptStatus(k2);
+        const isRecentLocal = localR._localModifiedAt && (Date.now() - localR._localModifiedAt < 180000);
+
+        const hasPendingSync = syncQueue.some(qItem => {
+          if (qItem.action !== 'saveReceipt') return false;
+          const d = qItem.data && (qItem.data.data || qItem.data);
+          if (!d) return false;
+          const qId = String(d.ID || d.id || '').trim().toLowerCase();
+          const qNum = String(d.ReceiptNumber || d.receiptNumber || '').trim().toLowerCase();
+          return (k1 && qId === k1) || (k2 && qNum === k2);
+        });
+
+        if (optStatus || isRecentLocal || hasPendingSync) {
+          return {
+            ...cloudR,
+            ...localR,
+            status: optStatus || localR.status || cloudR.status,
+            technician: localR.technician !== undefined ? localR.technician : cloudR.technician,
+            updatedAt: localR.updatedAt || cloudR.updatedAt,
+            cost: localR.cost != null ? localR.cost : cloudR.cost,
+            deposit: localR.deposit != null ? localR.deposit : cloudR.deposit,
+            _localModifiedAt: localR._localModifiedAt
+          };
+        }
+
+        return cloudR;
+      });
+
+      localReceipts.forEach(localR => {
+        if (!localR) return;
+        const k1 = localR.id != null ? String(localR.id).trim().toLowerCase() : '';
+        const k2 = localR.receiptNumber != null ? String(localR.receiptNumber).trim().toLowerCase() : '';
+        const inCloud = merged.some(m => {
+          if (!m) return false;
+          const m1 = m.id != null ? String(m.id).trim().toLowerCase() : '';
+          const m2 = m.receiptNumber != null ? String(m.receiptNumber).trim().toLowerCase() : '';
+          return (k1 && m1 === k1) || (k2 && m2 === k2);
+        });
+        if (!inCloud) {
+          merged.push(localR);
+        }
+      });
+
+      return merged;
+    }
+
+    it('prevents stale cloud pull from overwriting an optimistically updated status', () => {
+      const localReceipts = [
+        {
+          id: 'rec_105',
+          receiptNumber: 'MT-2026-0105',
+          status: 'مكتمل',
+          technician: 'أحمد فتحي',
+          _localModifiedAt: Date.now()
+        }
+      ];
+      markReceiptOptimisticallyUpdated('MT-2026-0105', 'مكتمل');
+
+      // Stale cloud response still showing "قيد الفحص"
+      const staleCloudReceipts = [
+        {
+          id: 'rec_105',
+          receiptNumber: 'MT-2026-0105',
+          status: 'قيد الفحص',
+          technician: ''
+        }
+      ];
+
+      const merged = mergeCloudReceiptsWithLocal(staleCloudReceipts, localReceipts);
+      expect(merged).toHaveLength(1);
+      expect(merged[0].status).toBe('مكتمل');
+      expect(merged[0].technician).toBe('أحمد فتحي');
+    });
+
+    it('preserves receipts created locally when not yet present in cloud', () => {
+      const localReceipts = [
+        { id: 'rec_104', receiptNumber: 'MT-2026-0104', status: 'مكتمل' },
+        { id: 'rec_105', receiptNumber: 'MT-2026-0105', status: 'قيد الفحص', _localModifiedAt: Date.now() }
+      ];
+      const cloudReceipts = [
+        { id: 'rec_104', receiptNumber: 'MT-2026-0104', status: 'مكتمل' }
+      ];
+
+      const merged = mergeCloudReceiptsWithLocal(cloudReceipts, localReceipts);
+      expect(merged).toHaveLength(2);
+      const r105 = merged.find(r => r.receiptNumber === 'MT-2026-0105');
+      expect(r105).toBeDefined();
+      expect(r105.status).toBe('قيد الفحص');
+    });
+
+    it('protects receipts that have pending offline sync queue entries', () => {
+      const localReceipts = [
+        { id: 'rec_105', receiptNumber: 'MT-2026-0105', status: 'تم التسليم' }
+      ];
+      const cloudReceipts = [
+        { id: 'rec_105', receiptNumber: 'MT-2026-0105', status: 'مكتمل' }
+      ];
+      const syncQueue = [
+        {
+          action: 'saveReceipt',
+          data: { data: { ID: 'rec_105', ReceiptNumber: 'MT-2026-0105', Status: 'تم التسليم' } }
+        }
+      ];
+
+      const merged = mergeCloudReceiptsWithLocal(cloudReceipts, localReceipts, syncQueue);
+      expect(merged).toHaveLength(1);
+      expect(merged[0].status).toBe('تم التسليم');
+    });
   });
 });

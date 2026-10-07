@@ -135,6 +135,10 @@ ${combinedJs}
 const outputPath = path.join(distDir, 'index.html');
 fs.writeFileSync(outputPath, distHtml);
 
+// Output to repository root for GitHub Pages web deployment
+const rootHtmlPath = path.join(rootDir, '..', 'index.html');
+fs.writeFileSync(rootHtmlPath, distHtml);
+
 // 4. Verify Bundle Syntax
 const tempJsFile = path.join(distDir, '_temp_verify.js');
 fs.writeFileSync(tempJsFile, combinedJs);

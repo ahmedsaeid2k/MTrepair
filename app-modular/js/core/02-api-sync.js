@@ -26,24 +26,212 @@ function refreshApiUrl(){
 // All private data requests must present this sessionToken.
 function getSessionToken() {
   try {
-    return (typeof state !== 'undefined' && state && state.sessionToken)
-      || sessionStorage.getItem('microerp_session_token')
-      || localStorage.getItem('microerp_session_token')
-      || '';
+    const candidates = [
+      (typeof state !== 'undefined' && state && state.sessionToken) || '',
+      sessionStorage.getItem('microerp_session_token') || '',
+      localStorage.getItem('microerp_session_token') || ''
+    ].map(t => String(t || '').trim()).filter(Boolean);
+
+    // Always prefer a real server-issued token over an offline placeholder token
+    const realToken = candidates.find(t => !t.startsWith('offline_token_'));
+    if (realToken) {
+      if (typeof state !== 'undefined' && state) state.sessionToken = realToken;
+      return realToken;
+    }
+    return candidates[0] || '';
   } catch(e) {
     return (typeof state !== 'undefined' && state && state.sessionToken) || '';
   }
 }
 
+let _silentReauthPromise = null;
+async function trySilentReauth() {
+  if (!navigator.onLine) return false;
+  if (_silentReauthPromise) return _silentReauthPromise;
+
+  _silentReauthPromise = (async () => {
+    try {
+      const userName = (typeof state !== 'undefined' && state && state.user && state.user.name)
+        ? String(state.user.name).trim()
+        : '';
+      if (!userName) return false;
+
+      const candidates = [];
+      try {
+        const rawVault = localStorage.getItem('microerp_auth_vault');
+        if (rawVault) {
+          const vault = JSON.parse(rawVault);
+          const entry = vault[userName.toLowerCase()];
+          if (entry) {
+            if (entry._cred) {
+              try {
+                const decoded = decodeURIComponent(escape(atob(entry._cred)));
+                if (decoded) candidates.push(decoded);
+              } catch(e) {}
+            }
+            if (entry.serverHash) candidates.push(entry.serverHash);
+          }
+        }
+      } catch(e) {}
+
+      // Also check any legacy stored user objects that might still hold Password
+      try {
+        const permRaw = localStorage.getItem('microerp_users_permanent');
+        if (permRaw) {
+          const permList = JSON.parse(permRaw);
+          if (Array.isArray(permList)) {
+            const u = permList.find(x => x && x.Name && String(x.Name).trim().toLowerCase() === userName.toLowerCase());
+            if (u && (u.Password || u.password)) candidates.push(String(u.Password || u.password).trim());
+          }
+        }
+      } catch(e) {}
+
+      const uniqueCreds = [...new Set(candidates.filter(Boolean))];
+      for (const cred of uniqueCreds) {
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 15000);
+          const res = await fetch(getApiUrl(), {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ action: 'login', name: userName, password: cred }),
+            signal: controller.signal
+          });
+          clearTimeout(timeout);
+          const json = await res.json();
+          if (json && json.ok && json.sessionToken) {
+            state.sessionToken = json.sessionToken;
+            try {
+              sessionStorage.setItem('microerp_session_token', json.sessionToken);
+              localStorage.setItem('microerp_session_token', json.sessionToken);
+            } catch(e) {}
+            console.log('[session] Silent background session token renewal succeeded.');
+            return true;
+          }
+        } catch(e) {}
+      }
+      return false;
+    } catch(e) {
+      return false;
+    } finally {
+      _silentReauthPromise = null;
+    }
+  })();
+
+  return _silentReauthPromise;
+}
+
+let _reauthModalShown = false;
+function promptCloudReauthModal() {
+  if (_reauthModalShown || typeof document === 'undefined' || !document.body) return;
+  if (!navigator.onLine || typeof state === 'undefined' || !state || !state.user) return;
+  if (document.getElementById('cloudReauthModalOverlay')) return;
+  _reauthModalShown = true;
+
+  const userName = state.user.name || 'admin';
+  const overlay = document.createElement('div');
+  overlay.id = 'cloudReauthModalOverlay';
+  overlay.className = 'modal-overlay';
+  overlay.style.zIndex = '15000';
+  overlay.innerHTML = `
+    <div class="modal-content" style="max-width:440px;border-radius:16px;padding:22px;direction:rtl;text-align:right;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:36px;height:36px;border-radius:50%;background:rgba(37,99,235,0.12);color:var(--primary);display:flex;align-items:center;justify-content:center;font-weight:900;">🔒</div>
+          <div>
+            <h3 style="margin:0;font-size:15.5px;font-weight:900;color:var(--ink);">تنشيط المزامنة السحابية وأرقام الهواتف</h3>
+            <div style="font-size:11.5px;color:var(--ink-secondary);">حساب المستخدم: <b>${typeof escapeHtml === 'function' ? escapeHtml(userName) : userName}</b></div>
+          </div>
+        </div>
+        <button type="button" class="btn btn-ghost btn-xs" id="closeCloudReauthBtn" style="font-size:18px;line-height:1;">&times;</button>
+      </div>
+      <div style="font-size:12.5px;color:var(--ink-secondary);line-height:1.6;margin-bottom:14px;">
+        انتهت صلاحية رمز جلسة الخادم السحابي (24 ساعة). يرجى إدخال كلمة المرور مرة واحدة لتنشيط سحب <b>أرقام هواتف العملاء وبيانات الإيصالات الكاملة</b> من السحابة تلقائياً دون الخروج من شاشتك الحالية:
+      </div>
+      <div class="field" style="margin-bottom:12px;">
+        <label style="font-size:12px;font-weight:700;margin-bottom:6px;display:block;">كلمة المرور:</label>
+        <input id="cloudReauthPassInp" type="password" placeholder="أدخل كلمة المرور..." autofocus style="width:100%;padding:10px 12px;font-size:14px;border-radius:8px;border:1px solid var(--line);">
+      </div>
+      <div id="cloudReauthErr" style="display:none;color:var(--red-text);background:var(--red-bg);padding:8px 10px;border-radius:6px;font-size:12px;font-weight:700;margin-bottom:12px;"></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--line);padding-top:12px;">
+        <button type="button" class="btn btn-sm btn-ghost" id="cancelCloudReauthBtn">لاحقاً</button>
+        <button type="button" class="btn btn-sm btn-primary" id="submitCloudReauthBtn" style="font-weight:800;padding:7px 16px;">تفعيل وسحب أرقام الهواتف الآن</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  overlay.querySelector('#closeCloudReauthBtn').onclick = close;
+  overlay.querySelector('#cancelCloudReauthBtn').onclick = close;
+
+  const passInp = overlay.querySelector('#cloudReauthPassInp');
+  const errBox = overlay.querySelector('#cloudReauthErr');
+  const submitBtn = overlay.querySelector('#submitCloudReauthBtn');
+
+  const doReauth = async () => {
+    const pass = (passInp ? passInp.value : '').trim();
+    if (!pass) {
+      errBox.textContent = 'يرجى إدخال كلمة المرور';
+      errBox.style.display = 'block';
+      return;
+    }
+    errBox.style.display = 'none';
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'جارٍ التوثيق وسحب البيانات...';
+    try {
+      const res = await loginRemote(userName, pass);
+      if (res && res.sessionToken && !String(res.sessionToken).startsWith('offline_token_')) {
+        close();
+        if (typeof showToast === 'function') {
+          showToast('🔄 تم توثيق الجلسة! جاري سحب الإيصالات وأرقام الهواتف الكاملة من السحابة...', 'info', 3000);
+        }
+        await fetchBootstrapData(true);
+        if (typeof recoverAndSyncAllCustomerPhones === 'function') {
+          recoverAndSyncAllCustomerPhones(false, true);
+        }
+        if (typeof render === 'function') render();
+        if (typeof syncOfflineQueue === 'function') syncOfflineQueue(false);
+        if (typeof showToast === 'function') {
+          showToast('✅ تم تحديث كافة الإيصالات وأرقام الهواتف من السحابة بنجاح!', 'success', 4000);
+        }
+      } else {
+        errBox.textContent = 'تعذر توثيق الجلسة مع الخادم السحابي. تأكد من صحة كلمة المرور.';
+        errBox.style.display = 'block';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'تفعيل وسحب أرقام الهواتف الآن';
+      }
+    } catch(e) {
+      errBox.textContent = e.message || 'كلمة المرور غير صحيحة';
+      errBox.style.display = 'block';
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'تفعيل وسحب أرقام الهواتف الآن';
+    }
+  };
+
+  submitBtn.onclick = doReauth;
+  if (passInp) {
+    passInp.onkeydown = (e) => { if (e.key === 'Enter') doReauth(); };
+    setTimeout(() => passInp.focus(), 50);
+  }
+}
+
 let isSessionExpiring = false;
-function handleSessionExpired() {
+async function handleSessionExpired() {
+  const renewed = await trySilentReauth();
+  if (renewed) {
+    if (typeof updateSyncStatusPill === 'function') updateSyncStatusPill();
+    return true;
+  }
   if (typeof state !== 'undefined' && state && state.sessionToken && !String(state.sessionToken).startsWith('offline_token_')) {
     state.sessionToken = 'offline_token_' + Date.now();
   }
   if (typeof updateSyncStatusPill === 'function') {
     updateSyncStatusPill();
   }
-  console.warn('[session] Server indicated session expired. Continuing smoothly in resilient mode.');
+  console.warn('[session] Server indicated session expired. Prompting non-destructive cloud re-auth if needed.');
+  promptCloudReauthModal();
+  return false;
 }
 
 /* ============================================================
@@ -442,15 +630,54 @@ const networkThrottler = new ClientRequestThrottler(3);
 async function fetchBootstrapData(forceOverwrite = false){
   const pendingQueue = getSyncQueue().filter(i => i.status !== 'failed_terminal');
   if (pendingQueue.length > 0 && !forceOverwrite) {
-    console.warn(`[fetchBootstrapData] State overwrite prevented: ${pendingQueue.length} pending items in offline queue.`);
-    if (typeof showToast === 'function') {
-      showToast(`⚠️ توجد ${pendingQueue.length} عمليات معلقة في طابور المزامنة. تم الاحتفاظ بالبيانات المحلية حتى اكتمال رفع العمليات.`, 'warning', 6000);
-    }
-    return false;
+    console.info(`[fetchBootstrapData] Merging cloud bootstrap data while preserving ${pendingQueue.length} pending items in offline queue.`);
   }
   try {
     const res = await apiGet('getBootstrapData', { _force: true });
     if(res && res.ok){
+      // 1. Populate auxiliary collections & normalize customer directory FIRST
+      // so rowToReceipt() can cross-pollinate phones/titles from customers, sales, invoices, and quotations.
+      if(Array.isArray(res.sales)) { state.sales = res.sales; setCache('sales', state.sales); }
+      if(Array.isArray(res.quotations)) { state.quotations = res.quotations; setCache('quotations', state.quotations); }
+      if(Array.isArray(res.invoices)) { state.invoices = res.invoices; setCache('invoices', state.invoices); }
+
+      if(Array.isArray(res.customers)) {
+        const normalizedCloudCustomers = res.customers.map(c => {
+          if (!c || typeof c !== 'object') return null;
+          const name = (typeof extractCustomerName === 'function')
+            ? extractCustomerName(c)
+            : String(c.name || c.Name || c.CustomerName || '').trim();
+          const phone = (typeof extractCustomerPhone === 'function')
+            ? extractCustomerPhone(c)
+            : String(c.phone || c.Phone || c.CustomerPhone || '').trim();
+          const title = (typeof extractCustomerTitle === 'function')
+            ? extractCustomerTitle(c)
+            : String(c.title || c.Title || '').trim();
+          const email = (typeof extractCustomerEmail === 'function')
+            ? extractCustomerEmail(c)
+            : String(c.email || c.Email || '').trim();
+          if (!name || name === 'عميل') return null;
+          return {
+            ...c,
+            title: title || '',
+            name,
+            phone: phone || '',
+            email: email || '',
+            address: String(c.address || c.Address || '').trim(),
+            taxNumber: String(c.taxNumber || c.TaxNumber || '').trim()
+          };
+        }).filter(Boolean);
+
+        const existingCustomers = Array.isArray(state.customers) ? state.customers : [];
+        state.customers = [...normalizedCloudCustomers, ...existingCustomers];
+        if (typeof deduplicateCustomerDirectory === 'function') {
+          deduplicateCustomerDirectory();
+        } else {
+          setCache('customers', state.customers);
+        }
+      }
+
+      // 2. Now map cloud receipts (with customer directory ready) and merge safely with local receipts
       if(Array.isArray(res.receipts)) {
         const cloudReceipts = res.receipts.map(rowToReceipt);
         state.receipts = (typeof mergeCloudReceiptsWithLocal === 'function')
@@ -458,24 +685,21 @@ async function fetchBootstrapData(forceOverwrite = false){
           : cloudReceipts;
         setCache('receipts', state.receipts);
       }
-      if(Array.isArray(res.customers)) { state.customers = res.customers; setCache('customers', state.customers); }
+
       if(Array.isArray(res.technicians)) { 
-        const names = res.technicians.map(r=>r.Name).filter(Boolean);
+        const names = res.technicians.map(r=>r.Name || r.name).filter(Boolean);
         state.technicians = names.length ? names : ['أحمد فتحي','محمود سيد','كريم عادل'];
         setCache('technicians', state.technicians); 
       }
       if(res.settings && typeof res.settings === 'object') { state.settings = res.settings; setCache('settings', res.settings); }
       if(Array.isArray(res.payments)) { state.payments = res.payments; setCache('payments', state.payments); }
       if(Array.isArray(res.inventory)) { state.inventory = res.inventory; setCache('inventory', state.inventory); }
-      if(Array.isArray(res.sales)) { state.sales = res.sales; setCache('sales', state.sales); }
-      if(Array.isArray(res.quotations)) { state.quotations = res.quotations; setCache('quotations', state.quotations); }
       if(Array.isArray(res.services)) { state.services = res.services; setCache('services', state.services); }
       if(Array.isArray(res.purchases)) { state.purchases = res.purchases; setCache('purchases', state.purchases); }
       if(Array.isArray(res.suppliers)) { state.suppliers = res.suppliers; setCache('suppliers', state.suppliers); }
       if(Array.isArray(res.expenses)) { state.expenses = res.expenses; setCache('expenses', state.expenses); }
       if(Array.isArray(res.accounts)) { state.accounts = res.accounts; setCache('accounts', state.accounts); }
-      if(Array.isArray(res.journalEntries)) { state.journalEntries = res.journalEntries; setCache('journal', res.journalEntries); }
-      if(Array.isArray(res.invoices)) { state.invoices = res.invoices; setCache('invoices', state.invoices); }
+      if(Array.isArray(res.journalEntries)) { state.journalEntries = res.journalEntries; setCache('journal', state.journalEntries); }
       if(Array.isArray(res.users)) { state.users = res.users; setCache('users', state.users); }
       if(Array.isArray(res.returns)) { state.returns = res.returns; setCache('returns', state.returns); }
       if(Array.isArray(res.serials)) { state.serials = res.serials; setCache('serials', state.serials); }
@@ -490,6 +714,14 @@ async function fetchBootstrapData(forceOverwrite = false){
       if(Array.isArray(res.bundleItems)) { state.bundleItems = res.bundleItems; setCache('bundle_items', state.bundleItems); }
       if(Array.isArray(res.stocktakeSessions)) { state.stocktakeSessions = res.stocktakeSessions; setCache('stocktake_sessions', state.stocktakeSessions); }
       if(Array.isArray(res.stocktakeLines)) { state.stocktakeLines = res.stocktakeLines; setCache('stocktake_lines', state.stocktakeLines); }
+
+      // 3. Cross-pollinate customer phones across receipts, customers, sales, invoices, and quotations
+      if (typeof _extractCustomersFromReceipts === 'function') {
+        _extractCustomersFromReceipts();
+      }
+      if (typeof recoverAndSyncAllCustomerPhones === 'function') {
+        recoverAndSyncAllCustomerPhones(false, true);
+      }
       return true;
     }
   } catch(e) {
@@ -505,7 +737,16 @@ function convertTrackedToReceipt(tr){
   if(!tr || !tr.receiptNumber) return null;
   const num = String(tr.receiptNumber).trim();
   const rawName = (tr.customer && tr.customer.name) ? String(tr.customer.name).trim() : 'عميل';
-  const cName = rawName.replace(/\s*\*\*\*\s*$/, '').trim() || 'عميل';
+  const cleanedRaw = rawName.replace(/\s*\*\*\*\s*$/, '').trim() || 'عميل';
+  const cTitle = (typeof extractCustomerTitle === 'function')
+    ? extractCustomerTitle({ CustomerName: cleanedRaw, customer: tr.customer })
+    : ((tr.customer && tr.customer.title) || '');
+  const cName = (typeof extractCustomerName === 'function')
+    ? extractCustomerName({ CustomerName: cleanedRaw, customer: { ...tr.customer, name: cleanedRaw } })
+    : cleanedRaw;
+  const cPhone = (typeof extractCustomerPhone === 'function')
+    ? extractCustomerPhone({ CustomerName: cName, CustomerPhone: (tr.customer && tr.customer.phone) || '', customer: { ...tr.customer, name: cName } })
+    : ((tr.customer && tr.customer.phone) || '');
   
   return {
     id: tr.id || ('r_sync_' + num.replace(/[^a-zA-Z0-9]/g, '_')),
@@ -515,9 +756,9 @@ function convertTrackedToReceipt(tr){
     receivedAt: tr.date || '',
     createdAt: tr.date || '',
     customer: {
-      title: (tr.customer && tr.customer.title) || '',
+      title: cTitle,
       name: cName,
-      phone: (tr.customer && tr.customer.phone) || '',
+      phone: cPhone,
       email: (tr.customer && tr.customer.email) || ''
     },
     device: {
@@ -614,6 +855,9 @@ async function syncMissingReceiptsFromCloud(){
     }
 
     if (addedCount > 0) {
+      if (typeof recoverAndSyncAllCustomerPhones === 'function') {
+        recoverAndSyncAllCustomerPhones(false, true);
+      }
       state.receipts.sort((a, b) => {
         const numA = String(a.receiptNumber || a.ReceiptNumber || '');
         const numB = String(b.receiptNumber || b.ReceiptNumber || '');
@@ -658,9 +902,10 @@ async function apiGet(action, params){
     return getCache(action, []);
   }
 
-  const forceRefresh = params && params._force;
-  if (forceRefresh) { delete params._force; }
-  const swrKey = _getSWRKey(action, params);
+  const cleanParams = params ? { ...params } : {};
+  const forceRefresh = !!cleanParams._force;
+  if (forceRefresh) { delete cleanParams._force; }
+  const swrKey = _getSWRKey(action, Object.keys(cleanParams).length ? cleanParams : undefined);
 
   // 1. SWR: Return fresh cached data if within TTL (skip for forced refreshes)
   if (!forceRefresh && _swrCache[swrKey] && (Date.now() - _swrCache[swrKey].timestamp < SWR_TTL_MS)) {
@@ -672,26 +917,46 @@ async function apiGet(action, params){
     return _inflightReqs[swrKey];
   }
 
-  // 3. Make the actual network request
+  // 3. Make the actual network request using HTTP GET (matching live GAS doGet)
   _inflightReqs[swrKey] = networkThrottler.schedule(async () => {
     try {
-      // S13: Send session token in POST payload to prevent token exposure in URL query strings
-      const token = getSessionToken();
-      const payload = { action, ...(token ? {sessionToken: token} : {}), ...(params||{}) };
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 20000);
-      const res = await fetch(getApiUrl(), {
-        method: 'POST',
-        headers: {'Content-Type': 'text/plain;charset=utf-8'},
-        body: JSON.stringify(payload),
-        signal: controller.signal
-      });
-      clearTimeout(timeout);
-      const json = await res.json();
+      let token = getSessionToken();
+      if (!token || String(token).startsWith('offline_token_')) {
+        await trySilentReauth();
+        token = getSessionToken();
+      }
+
+      const executeGet = async (activeToken) => {
+        const qObj = {
+          action,
+          ...(activeToken && !String(activeToken).startsWith('offline_token_') ? { sessionToken: activeToken } : {}),
+          ...cleanParams
+        };
+        const q = new URLSearchParams(qObj);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 20000);
+        try {
+          const res = await fetch(`${getApiUrl()}?${q.toString()}`, {
+            method: 'GET',
+            signal: controller.signal
+          });
+          clearTimeout(timeout);
+          return await res.json();
+        } catch (fetchErr) {
+          clearTimeout(timeout);
+          throw fetchErr;
+        }
+      };
+
+      let json = await executeGet(token);
       if(json && json.sessionExpired){
-        handleSessionExpired();
-        console.warn(`apiGet detected expired session on ${action}. Returning cached data.`);
-        return getCache(action, []);
+        const renewed = await handleSessionExpired();
+        if (renewed) {
+          json = await executeGet(getSessionToken());
+        } else {
+          console.warn(`apiGet detected expired session on ${action}. Returning cached data.`);
+          return getCache(action, []);
+        }
       }
       if(json && json.error) throw new Error(json.error);
       // Cache success in both SWR and localStorage
@@ -724,23 +989,40 @@ async function apiPost(action, data){
   }
   return networkThrottler.schedule(async () => {
     try {
-      const token = getSessionToken();
-      const payload = { action, ...(token ? {sessionToken: token} : {}), ...payloadData };
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 25000);
-      const res = await fetch(getApiUrl(), {
-        method: 'POST',
-        headers: {'Content-Type': 'text/plain;charset=utf-8'},
-        body: JSON.stringify(payload),
-        signal: controller.signal
-      });
-      clearTimeout(timeout);
-      const json = await res.json();
+      let token = getSessionToken();
+      if (!token || String(token).startsWith('offline_token_')) {
+        await trySilentReauth();
+        token = getSessionToken();
+      }
+      const executePost = async (activeToken) => {
+        const payload = { action, ...(activeToken && !String(activeToken).startsWith('offline_token_') ? {sessionToken: activeToken} : {}), ...payloadData };
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 25000);
+        try {
+          const res = await fetch(getApiUrl(), {
+            method: 'POST',
+            headers: {'Content-Type': 'text/plain;charset=utf-8'},
+            body: JSON.stringify(payload),
+            signal: controller.signal
+          });
+          clearTimeout(timeout);
+          return await res.json();
+        } catch (fetchErr) {
+          clearTimeout(timeout);
+          throw fetchErr;
+        }
+      };
+
+      let json = await executePost(token);
       if(json && json.sessionExpired){
-        handleSessionExpired();
-        console.warn(`apiPost detected expired session on ${action}. Enqueuing for background sync.`);
-        addToSyncQueue(action, payloadData);
-        return { ok: true, offline: true, clientRef: payloadData.clientRef };
+        const renewed = await handleSessionExpired();
+        if (renewed) {
+          json = await executePost(getSessionToken());
+        } else {
+          console.warn(`apiPost detected expired session on ${action}. Enqueuing for background sync.`);
+          addToSyncQueue(action, payloadData);
+          return { ok: true, offline: true, clientRef: payloadData.clientRef };
+        }
       }
       if(json && json.error) throw new Error(json.error);
       return json;
@@ -762,32 +1044,44 @@ async function apiPostDirect(action, data, timeoutMs = 45000) {
     throw new Error('لا يوجد اتصال بالإنترنت حالياً لتنفيذ هذا الإجراء المباشر');
   }
   return networkThrottler.schedule(async () => {
-    const token = getSessionToken();
-    const payload = { action, ...(token ? {sessionToken: token} : {}), ...(data || {}) };
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const res = await fetch(getApiUrl(), {
-        method: 'POST',
-        headers: {'Content-Type': 'text/plain;charset=utf-8'},
-        body: JSON.stringify(payload),
-        signal: controller.signal
-      });
-      clearTimeout(timeout);
-      const json = await res.json();
-      if (json && json.sessionExpired) {
-        handleSessionExpired();
+    let token = getSessionToken();
+    if (action !== 'login' && (!token || String(token).startsWith('offline_token_'))) {
+      await trySilentReauth();
+      token = getSessionToken();
+    }
+    const executeDirect = async (activeToken) => {
+      const payload = { action, ...(activeToken && !String(activeToken).startsWith('offline_token_') ? {sessionToken: activeToken} : {}), ...(data || {}) };
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await fetch(getApiUrl(), {
+          method: 'POST',
+          headers: {'Content-Type': 'text/plain;charset=utf-8'},
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        });
+        clearTimeout(timeout);
+        return await res.json();
+      } catch(err) {
+        clearTimeout(timeout);
+        if (err.name === 'AbortError') {
+          throw new Error('انتهت مهلة انتظار استجابة الخادم (' + Math.round(timeoutMs / 1000) + ' ثانية)');
+        }
+        throw err;
+      }
+    };
+
+    let json = await executeDirect(token);
+    if (json && json.sessionExpired && action !== 'login') {
+      const renewed = await handleSessionExpired();
+      if (renewed) {
+        json = await executeDirect(getSessionToken());
+      } else {
         throw new Error(json.error || 'انتهت صلاحية جلسة العمل');
       }
-      if (json && json.error) throw new Error(json.error);
-      return json;
-    } catch(err) {
-      clearTimeout(timeout);
-      if (err.name === 'AbortError') {
-        throw new Error('انتهت مهلة انتظار استجابة الخادم (' + Math.round(timeoutMs / 1000) + ' ثانية)');
-      }
-      throw err;
     }
+    if (json && json.error) throw new Error(json.error);
+    return json;
   });
 }
 
@@ -806,13 +1100,20 @@ async function syncOfflineQueue(isManual = false){
       updateSyncStatusPill();
 
       (async () => {
+        let token = getSessionToken();
+        if (!token || String(token).startsWith('offline_token_')) {
+          await handleSessionExpired();
+          token = getSessionToken();
+        }
         let bOk = false;
-        const token = getSessionToken();
         if (token && !String(token).startsWith('offline_token_')) {
           bOk = await fetchBootstrapData(true);
         }
         // Always run sequential receipts reconciliation to ensure MT-2026-0098..0105+ are pulled!
         const added = await syncMissingReceiptsFromCloud();
+        if (typeof recoverAndSyncAllCustomerPhones === 'function') {
+          recoverAndSyncAllCustomerPhones(false, true);
+        }
         return bOk || (added > 0);
       })().then(success => {
         isSyncingNow = false;
@@ -850,7 +1151,11 @@ async function syncOfflineQueue(isManual = false){
   }
 
   const remaining = [];
-  const currentToken = getSessionToken();
+  let currentToken = getSessionToken();
+  if (!currentToken || String(currentToken).startsWith('offline_token_')) {
+    await trySilentReauth();
+    currentToken = getSessionToken();
+  }
 
   for(const item of q){
     // In automatic mode, preserve items not yet eligible
@@ -860,24 +1165,37 @@ async function syncOfflineQueue(isManual = false){
     }
 
     try {
-      const payload = {
-        action: item.action,
-        ...(currentToken ? { sessionToken: currentToken } : {}),
-        ...item.data
-      };
-      if (!payload.sessionToken && currentToken) {
-        payload.sessionToken = currentToken;
-      }
-      if (!payload.clientRef && !payload.ClientRef && item.clientRef) {
-        payload.clientRef = item.clientRef;
-      }
+      const executeQueueItem = async (tok) => {
+        const payload = {
+          action: item.action,
+          ...(tok && !String(tok).startsWith('offline_token_') ? { sessionToken: tok } : {}),
+          ...item.data
+        };
+        if (!payload.sessionToken && tok && !String(tok).startsWith('offline_token_')) {
+          payload.sessionToken = tok;
+        }
+        if (!payload.clientRef && !payload.ClientRef && item.clientRef) {
+          payload.clientRef = item.clientRef;
+        }
 
-      const res = await fetch(API_URL, {
-        method: 'POST',
-        headers: {'Content-Type': 'text/plain;charset=utf-8'},
-        body: JSON.stringify(payload)
-      });
-      const json = await res.json();
+        const res = await fetch(getApiUrl(), {
+          method: 'POST',
+          headers: {'Content-Type': 'text/plain;charset=utf-8'},
+          body: JSON.stringify(payload)
+        });
+        return await res.json();
+      };
+
+      let json = await executeQueueItem(currentToken);
+      if (json && json.sessionExpired) {
+        const renewed = await handleSessionExpired();
+        if (renewed) {
+          currentToken = getSessionToken();
+          json = await executeQueueItem(currentToken);
+        } else {
+          throw new Error(json.error || 'انتهت صلاحية الجلسة');
+        }
+      }
       if(json && json.error) throw new Error(json.error);
 
       if(json && json.duplicateSuppressed){
@@ -913,7 +1231,7 @@ async function syncOfflineQueue(isManual = false){
     }
     // Refresh memory from cloud using unified bootstrap
     try {
-      await fetchBootstrapData();
+      await fetchBootstrapData(true);
       if(state.currentSection === 'maintenance' && !state.draft){
         const isTyping = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT');
         const modalOpen = !!document.querySelector('.modal-overlay, .modal-backdrop, .modal, [id*="Modal"]');

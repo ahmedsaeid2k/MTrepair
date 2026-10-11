@@ -891,10 +891,10 @@ function _extractCustomersFromReceipts(){
 
     if(matched){
       // Customer is already known in directory!
-      const dirPhone = (matched.phone || matched.CustomerPhone || '').trim();
+      const dirPhone = (typeof _getRawCustomerPhoneField === 'function' ? _getRawCustomerPhoneField(matched) : (matched.phone || matched.Phone || matched.CustomerPhone || '')).trim();
       const rPhoneTrim = (rawPhone || '').trim();
-      const dirName = (matched.name || matched.CustomerName || '').trim();
-      const dirTitle = (matched.title || matched.CustomerTitle || '').trim();
+      const dirName = (typeof _getRawCustomerNameField === 'function' ? _getRawCustomerNameField(matched) : (matched.name || matched.Name || matched.CustomerName || '')).trim();
+      const dirTitle = (typeof _getRawCustomerTitleField === 'function' ? _getRawCustomerTitleField(matched) : (matched.title || matched.Title || matched.CustomerTitle || '')).trim();
 
       let receiptChanged = false;
 
@@ -908,6 +908,7 @@ function _extractCustomersFromReceipts(){
       // Case B: Receipt has a phone but directory doesn't -> sync phone to directory!
       else if(rPhoneTrim && rPhoneTrim !== '0000000000' && (!dirPhone || dirPhone === '0000000000')){
         matched.phone = rPhoneTrim;
+        if(matched.Phone !== undefined) matched.Phone = rPhoneTrim;
         if(matched.CustomerPhone !== undefined) matched.CustomerPhone = rPhoneTrim;
       }
 

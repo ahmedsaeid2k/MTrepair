@@ -333,6 +333,35 @@ function isCustomerPhoneValid(p){
   return s.length >= 7 && s !== '0000000000' && s !== '00000' && s !== 'undefined' && s !== 'null';
 }
 
+function _getRawCustomerNameField(c){
+  if(!c || typeof c !== 'object') return '';
+  return String(
+    c.name ?? c.Name ?? c.CustomerName ?? c.customerName ?? c.clientName ?? c.ClientName ??
+    c['الاسم'] ?? c['اسم العميل'] ?? c['العميل'] ??
+    (c.customer ? (c.customer.name ?? c.customer.Name ?? c.customer.CustomerName) : '') ?? ''
+  ).trim();
+}
+
+function _getRawCustomerPhoneField(c){
+  if(!c || typeof c !== 'object') return '';
+  let val = c.phone ?? c.Phone ?? c.CustomerPhone ?? c.customerPhone ?? c.mobile ?? c.Mobile ??
+            c.clientPhone ?? c.ClientPhone ?? c.Tel ?? c.tel ??
+            c['الهاتف'] ?? c['رقم الهاتف'] ?? c['هاتف'] ?? c['الموبايل'] ?? c['موبايل'] ??
+            (c.customer ? (c.customer.phone ?? c.customer.Phone ?? c.customer.CustomerPhone) : '') ?? '';
+  let s = (typeof toEngDigits === 'function' ? toEngDigits(val) : String(val)).replace(/["']/g, '').trim();
+  if(s.length === 10 && /^[1][0125]\d{8}$/.test(s)) s = '0' + s;
+  return isCustomerPhoneValid(s) ? s : '';
+}
+
+function _getRawCustomerTitleField(c){
+  if(!c || typeof c !== 'object') return '';
+  return String(
+    c.title ?? c.Title ?? c.CustomerTitle ?? c.customerTitle ??
+    c['اللقب'] ?? c['صفة'] ?? c['صفة العميل'] ??
+    (c.customer ? (c.customer.title ?? c.customer.Title ?? c.customer.CustomerTitle) : '') ?? ''
+  ).replace(/["`]/g, '').trim();
+}
+
 function findCustomerInDirectory(rawName){
   if(!rawName || typeof rawName !== 'string') return null;
   if(typeof state === 'undefined' || !state || !Array.isArray(state.customers) || !state.customers.length) return null;
@@ -348,10 +377,11 @@ function findCustomerInDirectory(rawName){
   for(let i=0; i<list.length; i++){
     const c = list[i];
     if(!c) continue;
-    const cn = (c.name || c.CustomerName || '').trim().toLowerCase();
-    const cNorm = normalizeCustomerSearchName(c.name || c.CustomerName || '');
-    const cTitle = (c.title || c.CustomerTitle || '').trim();
-    const combinedNorm = normalizeCustomerSearchName((cTitle ? cTitle + ' ' : '') + (c.name || c.CustomerName || ''));
+    const rawCName = _getRawCustomerNameField(c);
+    const cn = rawCName.toLowerCase();
+    const cNorm = normalizeCustomerSearchName(rawCName);
+    const cTitle = _getRawCustomerTitleField(c);
+    const combinedNorm = normalizeCustomerSearchName((cTitle ? cTitle + ' ' : '') + rawCName);
 
     let score = 0;
     if(cn && cn === rawTrimmed) { score = 100; }
@@ -371,8 +401,8 @@ function findCustomerInDirectory(rawName){
 
   // Prioritize candidates with a valid phone number
   matches.sort((a, b) => {
-    const aHasPhone = isCustomerPhoneValid(a.c.phone || a.c.CustomerPhone);
-    const bHasPhone = isCustomerPhoneValid(b.c.phone || b.c.CustomerPhone);
+    const aHasPhone = !!_getRawCustomerPhoneField(a.c);
+    const bHasPhone = !!_getRawCustomerPhoneField(b.c);
     if(aHasPhone && !bHasPhone) return -1;
     if(!aHasPhone && bHasPhone) return 1;
     return b.score - a.score;
@@ -380,11 +410,20 @@ function findCustomerInDirectory(rawName){
 
   const best = matches[0].c;
 
+  // Ensure normalized lowercase properties are populated on best match
+  const bestName = _getRawCustomerNameField(best);
+  const bestPhone = _getRawCustomerPhoneField(best);
+  const bestTitle = _getRawCustomerTitleField(best);
+  if(bestName && !best.name) best.name = bestName;
+  if(bestPhone && !best.phone) best.phone = bestPhone;
+  if(bestTitle && !best.title) best.title = bestTitle;
+
   // Cross-pollinate phone if best match lacks it but another matched candidate has it
-  const matchWithPhone = matches.find(m => isCustomerPhoneValid(m.c.phone || m.c.CustomerPhone));
-  if(matchWithPhone && !isCustomerPhoneValid(best.phone || best.CustomerPhone)){
-    const ph = matchWithPhone.c.phone || matchWithPhone.c.CustomerPhone;
+  const matchWithPhone = matches.find(m => !!_getRawCustomerPhoneField(m.c));
+  if(matchWithPhone && !_getRawCustomerPhoneField(best)){
+    const ph = _getRawCustomerPhoneField(matchWithPhone.c);
     best.phone = ph;
+    if(best.Phone !== undefined) best.Phone = ph;
     if(best.CustomerPhone !== undefined) best.CustomerPhone = ph;
   }
 
@@ -392,18 +431,20 @@ function findCustomerInDirectory(rawName){
 }
 
 function deduplicateCustomerDirectory(){
-  if(typeof state === 'undefined' || !state || !Array.isArray(state.customers) || state.customers.length <= 1) return 0;
+  if(typeof state === 'undefined' || !state || !Array.isArray(state.customers) || state.customers.length === 0) return 0;
   const oldLen = state.customers.length;
   const mergedMap = new Map();
 
   state.customers.forEach(c => {
-    if(!c) return;
-    const rawName = (c.name || c.CustomerName || '').trim();
-    const phone = (c.phone || c.CustomerPhone || '').trim();
-    const title = (c.title || c.CustomerTitle || '').trim();
-    const email = (c.email || c.CustomerEmail || '').trim();
-    const taxNumber = (c.taxNumber || c.TaxNumber || '').trim();
-    const address = (c.address || c.Address || '').trim();
+    if(!c || typeof c !== 'object') return;
+    const rawNameField = _getRawCustomerNameField(c);
+    const parsed = (typeof parseCustomerTitleAndName === 'function') ? parseCustomerTitleAndName(rawNameField) : { title: '', name: rawNameField };
+    const rawName = (parsed.name || rawNameField || '').trim();
+    const phone = _getRawCustomerPhoneField(c);
+    const title = (_getRawCustomerTitleField(c) || parsed.title || '').trim();
+    const email = String(c.email ?? c.Email ?? c.CustomerEmail ?? c.customerEmail ?? '').trim();
+    const taxNumber = String(c.taxNumber ?? c.TaxNumber ?? '').trim();
+    const address = String(c.address ?? c.Address ?? '').trim();
 
     if(!rawName || rawName === 'عميل' || rawName === 'زبون') return;
 
@@ -443,6 +484,8 @@ function deduplicateCustomerDirectory(){
       if(npNorm === wpNorm || (typeof getLevenshteinDistance === 'function' && wpNorm.length >= 4 && getLevenshteinDistance(wpNorm, npNorm) <= 1)){
         if(!wp.title && np.title) wp.title = np.title;
         if(!wp.email && np.email) wp.email = np.email;
+        if(!wp.address && np.address) wp.address = np.address;
+        if(!wp.taxNumber && np.taxNumber) wp.taxNumber = np.taxNumber;
         handledEmpty.add(np);
       }
     });
@@ -457,7 +500,7 @@ function deduplicateCustomerDirectory(){
 
   state.customers = finalCustomers;
   setCache('customers', state.customers);
-  const removed = oldLen - finalCustomers.length;
+  const removed = Math.max(0, oldLen - finalCustomers.length);
   if(removed > 0){
     console.log(`Deduplicated customers: removed ${removed} duplicates, now ${finalCustomers.length} unique customers.`);
   }
@@ -494,7 +537,7 @@ function extractCustomerTitle(obj){
   if(typeof findCustomerInDirectory === 'function' && rawName){
     const matched = findCustomerInDirectory(rawName);
     if(matched){
-      const t = (matched.title || matched.CustomerTitle || (matched.customer && matched.customer.title) || '').trim();
+      const t = (_getRawCustomerTitleField(matched) || '').trim();
       if(t && CUSTOMER_TITLES.includes(t)) return t;
     }
   }
@@ -507,33 +550,47 @@ function extractCustomerPhone(obj){
   if(typeof obj === 'string'){
     let s = (typeof toEngDigits === 'function' ? toEngDigits(obj) : String(obj)).replace(/["']/g, '').trim();
     if(s.length === 10 && /^[1][0125]\d{8}$/.test(s)) s = '0' + s;
-    return s;
+    return isCustomerPhoneValid(s) ? s : '';
   }
   if(typeof obj !== 'object') return '';
-  let val = obj.CustomerPhone ?? obj.customerPhone ?? obj.Phone ?? obj.phone ?? obj.mobile ?? obj.Mobile ??
-            obj['الهاتف'] ?? obj['رقم الهاتف'] ?? obj['هاتف'] ?? obj['الموبايل'] ?? obj['موبايل'] ??
-            obj['تليفون'] ?? obj['رقم التليفون'] ?? obj.Tel ?? obj.tel ?? obj.ClientPhone ?? obj.clientPhone ??
-            (obj.customer ? (obj.customer.phone ?? obj.customer.Phone ?? obj.customer.CustomerPhone) : '') ?? '';
-  let str = (typeof toEngDigits === 'function' ? toEngDigits(val) : String(val)).replace(/["']/g, '').trim();
-  if(str.length === 10 && /^[1][0125]\d{8}$/.test(str)) str = '0' + str;
-
-  if(str && str !== '0000000000' && str !== '00000' && str !== 'undefined' && str !== 'null'){
-    return str;
+  const directPhone = _getRawCustomerPhoneField(obj);
+  if(directPhone){
+    return directPhone;
   }
 
-  // Fallback: Cross-reference with state.customers directory by customer name
-  const rawName = obj.CustomerName ?? obj.customerName ?? obj.Name ?? obj.name ?? obj.clientName ?? obj.ClientName ??
-                  obj['الاسم'] ?? obj['اسم العميل'] ?? obj['العميل'] ??
-                  (obj.customer ? (obj.customer.name ?? obj.customer.Name ?? obj.customer.CustomerName) : '') ?? '';
+  // Fallback 1: Cross-reference with state.customers directory by customer name
+  const rawName = _getRawCustomerNameField(obj);
   if(rawName && typeof findCustomerInDirectory === 'function'){
     const matched = findCustomerInDirectory(rawName);
     if(matched){
-      let p = (typeof toEngDigits === 'function' ? toEngDigits(matched.phone ?? matched.CustomerPhone ?? matched.Phone ?? '') : String(matched.phone || '')).replace(/["']/g, '').trim();
-      if(p.length === 10 && /^[1][0125]\d{8}$/.test(p)) p = '0' + p;
-      if(p && p !== '0000000000' && p !== '00000'){
+      const p = _getRawCustomerPhoneField(matched);
+      if(p){
         if(obj.customer && typeof obj.customer === 'object') obj.customer.phone = p;
         if(obj.CustomerPhone !== undefined) obj.CustomerPhone = p;
         return p;
+      }
+    }
+  }
+
+  // Fallback 2: Cross-reference across state.receipts, state.sales, state.invoices, state.quotations
+  if(rawName && typeof state !== 'undefined' && state){
+    const targetNorm = normalizeCustomerSearchName(rawName);
+    if(targetNorm && targetNorm !== 'عميل' && targetNorm !== 'زبون'){
+      const pools = [state.receipts, state.sales, state.invoices, state.quotations];
+      for(const pool of pools){
+        if(!Array.isArray(pool)) continue;
+        for(let i = 0; i < pool.length; i++){
+          const item = pool[i];
+          if(!item || item === obj) continue;
+          const itemPh = _getRawCustomerPhoneField(item);
+          if(!itemPh) continue;
+          const itemNorm = normalizeCustomerSearchName(_getRawCustomerNameField(item));
+          if(itemNorm && itemNorm === targetNorm){
+            if(obj.customer && typeof obj.customer === 'object') obj.customer.phone = itemPh;
+            if(obj.CustomerPhone !== undefined) obj.CustomerPhone = itemPh;
+            return itemPh;
+          }
+        }
       }
     }
   }
@@ -562,12 +619,31 @@ function extractCustomerEmail(obj){
 
 /* Safe customer normalizer - links receipts to Customer Directory & heals typos */
 let _lastSilentPhoneSyncTime = 0;
-function recoverAndSyncAllCustomerPhones(verbose = false){
+function recoverAndSyncAllCustomerPhones(verbose = false, forceRun = false){
   const now = Date.now();
-  if(!verbose && (now - _lastSilentPhoneSyncTime < 15000)){
+  const hasMissingPhones = Array.isArray(state.receipts) && state.receipts.some(r => r && !isCustomerPhoneValid(_getRawCustomerPhoneField(r)));
+  if(!verbose && !forceRun && !hasMissingPhones && (now - _lastSilentPhoneSyncTime < 15000)){
     return { recoveredCount: 0, namesSynced: 0, totalCustomers: (state.customers || []).length };
   }
   if(!verbose) _lastSilentPhoneSyncTime = now;
+
+  // Harvest any customer (name, phone) pairs from receipts, sales, invoices, and quotations into state.customers first
+  if(!Array.isArray(state.customers)) state.customers = [];
+  const harvestPools = [state.receipts, state.sales, state.invoices, state.quotations];
+  harvestPools.forEach(pool => {
+    if(!Array.isArray(pool)) return;
+    pool.forEach(item => {
+      if(!item) return;
+      const ph = _getRawCustomerPhoneField(item);
+      if(!ph) return;
+      const nm = extractCustomerName(item);
+      if(!nm || nm === 'عميل' || nm === 'زبون') return;
+      const tl = extractCustomerTitle(item);
+      const em = extractCustomerEmail(item);
+      state.customers.push({ title: tl || '', name: nm, phone: ph, email: em || '' });
+    });
+  });
+
   deduplicateCustomerDirectory();
   let matchedCount = 0;
   let namesSynced = 0;
@@ -587,9 +663,9 @@ function recoverAndSyncAllCustomerPhones(verbose = false){
     // Cross reference with Customer Directory
     const matched = (typeof findCustomerInDirectory === 'function' && rawName) ? findCustomerInDirectory(rawName) : null;
     if(matched){
-      const dirPhone = (matched.phone || matched.CustomerPhone || '').trim();
-      const dirName = (matched.name || matched.CustomerName || '').trim();
-      const dirTitle = (matched.title || matched.CustomerTitle || '').trim();
+      const dirPhone = _getRawCustomerPhoneField(matched);
+      const dirName = (_getRawCustomerNameField(matched) || '').trim();
+      const dirTitle = (_getRawCustomerTitleField(matched) || '').trim();
 
       if(dirName && (r.CustomerName !== dirName || r.customer.name !== dirName)){
         r.CustomerName = dirName;
@@ -602,19 +678,20 @@ function recoverAndSyncAllCustomerPhones(verbose = false){
         r.customer.title = dirTitle;
         changed = true;
       }
-      if(dirPhone && dirPhone !== '0000000000' && (!r.customer.phone || r.customer.phone === '0000000000')){
+      if(dirPhone && (!r.customer.phone || !isCustomerPhoneValid(r.customer.phone))){
         r.customer.phone = dirPhone;
         r.CustomerPhone = dirPhone;
         changed = true;
         matchedCount++;
       }
     } else {
-      if(!r.customer.phone && currentPhone && currentPhone !== '0000000000'){
+      if((!r.customer.phone || !isCustomerPhoneValid(r.customer.phone)) && isCustomerPhoneValid(currentPhone)){
         r.customer.phone = currentPhone;
+        r.CustomerPhone = currentPhone;
         changed = true;
         matchedCount++;
       }
-      if(r.customer.phone && !r.CustomerPhone){
+      if(isCustomerPhoneValid(r.customer.phone) && !isCustomerPhoneValid(r.CustomerPhone)){
         r.CustomerPhone = r.customer.phone;
         changed = true;
       }
@@ -633,6 +710,16 @@ function recoverAndSyncAllCustomerPhones(verbose = false){
 
   if(verbose){
     showToast(`تم ربط وتحديث جهات الاتصال (${matchedCount} رقم هاتف، ${namesSynced} اسم مصحح) بنجاح`, 'success');
+    // If online and some receipts still lack phones (e.g. tracked stubs), pull full bootstrap data from cloud
+    const stillMissing = (state.receipts || []).some(r => r && !isCustomerPhoneValid(_getRawCustomerPhoneField(r)));
+    if(stillMissing && navigator.onLine && typeof fetchBootstrapData === 'function'){
+      fetchBootstrapData(true).then(ok => {
+        if(ok){
+          recoverAndSyncAllCustomerPhones(false, true);
+          if(typeof renderMain === 'function') renderMain();
+        }
+      }).catch(() => {});
+    }
   }
 
   if(verbose && receiptsToPersist.length > 0){
@@ -1249,6 +1336,7 @@ function mergeCloudReceiptsWithLocal(cloudReceipts, localReceipts){
   });
 
   const syncQueue = (typeof getSyncQueue === 'function') ? getSyncQueue() : [];
+  let queueEnriched = false;
 
   const merged = cloudReceipts.map(cloudR => {
     if(!cloudR) return cloudR;
@@ -1258,24 +1346,80 @@ function mergeCloudReceiptsWithLocal(cloudReceipts, localReceipts){
 
     if(!localR) return cloudR;
 
+    const cloudPhone = _getRawCustomerPhoneField(cloudR);
+    const localPhone = _getRawCustomerPhoneField(localR);
+    const bestPhone = cloudPhone || localPhone || '';
+    const cloudTitle = _getRawCustomerTitleField(cloudR);
+    const localTitle = _getRawCustomerTitleField(localR);
+    const bestTitle = localTitle || cloudTitle || '';
+    const cloudName = _getRawCustomerNameField(cloudR);
+    const localName = _getRawCustomerNameField(localR);
+    const bestName = (cloudName && cloudName !== 'عميل') ? cloudName : (localName || 'عميل');
+
     const optStatus = getOptimisticReceiptStatus(k1) || getOptimisticReceiptStatus(k2);
     const isRecentLocal = localR._localModifiedAt && (Date.now() - localR._localModifiedAt < 180000);
 
-    const hasPendingSync = syncQueue.some(qItem => {
-      if(qItem.action !== 'saveReceipt') return false;
+    let hasPendingSync = false;
+    syncQueue.forEach(qItem => {
+      if(qItem.action !== 'saveReceipt') return;
       const d = qItem.data && (qItem.data.data || qItem.data);
-      if(!d) return false;
+      if(!d) return;
       const qId = String(d.ID || d.id || '').trim().toLowerCase();
       const qNum = String(d.ReceiptNumber || d.receiptNumber || '').trim().toLowerCase();
-      return (k1 && qId === k1) || (k2 && qNum === k2);
+      if((k1 && qId === k1) || (k2 && qNum === k2)){
+        hasPendingSync = true;
+        // Enrich queued item if it was created from a partial tracked stub so it doesn't wipe cloud fields on sync
+        if(bestPhone && !isCustomerPhoneValid(d.CustomerPhone)){
+          d.CustomerPhone = bestPhone;
+          queueEnriched = true;
+        }
+        if(bestTitle && !d.CustomerTitle){
+          d.CustomerTitle = bestTitle;
+          queueEnriched = true;
+        }
+        if(cloudR.technician && !d.Technician){
+          d.Technician = cloudR.technician;
+          queueEnriched = true;
+        }
+        if(cloudR.time && !d.Time){
+          d.Time = cloudR.time;
+          queueEnriched = true;
+        }
+      }
     });
 
     if(optStatus || isRecentLocal || hasPendingSync){
+      const mergedCustomer = {
+        ...(cloudR.customer || {}),
+        ...(localR.customer || {}),
+        title: bestTitle,
+        name: bestName,
+        phone: bestPhone,
+        email: (localR.customer && localR.customer.email) || (cloudR.customer && cloudR.customer.email) || ''
+      };
+      const mergedDevice = {
+        ...(cloudR.device || {}),
+        ...(localR.device || {}),
+        serialNumber: (localR.device && localR.device.serialNumber) || (cloudR.device && cloudR.device.serialNumber) || '',
+        color: (localR.device && localR.device.color) || (cloudR.device && cloudR.device.color) || '',
+        passcode: (localR.device && localR.device.passcode) || (cloudR.device && cloudR.device.passcode) || '',
+        accessories: (localR.device && localR.device.accessories && localR.device.accessories !== 'بدون ملحقات')
+          ? localR.device.accessories
+          : ((cloudR.device && cloudR.device.accessories) || 'بدون ملحقات')
+      };
       return {
         ...cloudR,
         ...localR,
+        id: (String(localR.id || '').startsWith('r_sync_') && cloudR.id) ? cloudR.id : (localR.id || cloudR.id),
+        customer: mergedCustomer,
+        CustomerPhone: bestPhone || cloudR.CustomerPhone || localR.CustomerPhone || '',
+        CustomerTitle: bestTitle || cloudR.CustomerTitle || localR.CustomerTitle || '',
+        CustomerName: bestName,
+        device: mergedDevice,
+        time: localR.time || cloudR.time || '',
+        notes: localR.notes || cloudR.notes || '',
         status: optStatus || localR.status || cloudR.status,
-        technician: localR.technician !== undefined ? localR.technician : cloudR.technician,
+        technician: (localR.technician && String(localR.technician).trim()) ? localR.technician : (cloudR.technician || ''),
         updatedAt: localR.updatedAt || cloudR.updatedAt,
         cost: localR.cost != null ? localR.cost : cloudR.cost,
         deposit: localR.deposit != null ? localR.deposit : cloudR.deposit,
@@ -1283,8 +1427,17 @@ function mergeCloudReceiptsWithLocal(cloudReceipts, localReceipts){
       };
     }
 
+    // Even when cloud wins, if local had a recovered phone/title not yet on cloudR, keep it
+    if(bestPhone && (!cloudR.customer || !isCustomerPhoneValid(cloudR.customer.phone))){
+      cloudR.customer = { ...(cloudR.customer || {}), phone: bestPhone, title: bestTitle || (cloudR.customer && cloudR.customer.title) || '' };
+      cloudR.CustomerPhone = bestPhone;
+    }
     return cloudR;
   });
+
+  if(queueEnriched && typeof saveSyncQueue === 'function'){
+    saveSyncQueue(syncQueue);
+  }
 
   // Preserve locally created receipts that do not yet exist in cloud (e.g. created offline)
   localReceipts.forEach(localR => {

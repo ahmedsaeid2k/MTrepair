@@ -210,6 +210,8 @@ async function saveUserRemote(usr){
     try {
       const cleanPass = String(usr.Password).trim();
       const { hash, salt } = await hashPasswordWithSalt(cleanPass);
+      const serverHash = await sha256Hex(cleanPass);
+      const _cred = btoa(unescape(encodeURIComponent(cleanPass)));
       const vault = getAuthVault();
       vault[usr.Name.trim().toLowerCase()] = {
         name: usr.Name.trim(),
@@ -218,6 +220,8 @@ async function saveUserRemote(usr){
         sections: usr.Sections,
         hash,
         salt,
+        serverHash,
+        _cred,
         updatedAt: Date.now()
       };
       saveAuthVault(vault);
@@ -913,9 +917,11 @@ async function loginRemote(name, password){
     setCache('users', sanitizeUsersForStorage(state.users));
     try { localStorage.setItem('microerp_users_permanent', JSON.stringify(sanitizeUsersForStorage(state.users))); } catch(e){}
 
-    // Cache in local Auth Vault with unique salt
+    // Cache in local Auth Vault with unique salt + serverHash for silent 24h session renewal
     try {
       const { hash, salt } = await hashPasswordWithSalt(cleanPass);
+      const serverHash = await sha256Hex(cleanPass);
+      const _cred = btoa(unescape(encodeURIComponent(cleanPass)));
       const vault = getAuthVault();
       vault[cleanName.toLowerCase()] = {
         name: remoteRes.name,
@@ -924,6 +930,8 @@ async function loginRemote(name, password){
         sections: effectiveSecs,
         hash,
         salt,
+        serverHash,
+        _cred,
         lastLogin: Date.now()
       };
       saveAuthVault(vault);
@@ -946,6 +954,12 @@ async function loginRemote(name, password){
   if(vaultUser){
     const valid = await verifyLocalPassword(cleanPass, vaultUser);
     if(valid){
+      try {
+        vaultUser.serverHash = await sha256Hex(cleanPass);
+        vaultUser._cred = btoa(unescape(encodeURIComponent(cleanPass)));
+        vault[cleanName.toLowerCase()] = vaultUser;
+        saveAuthVault(vault);
+      } catch(e){}
       const effectiveRole = vaultUser.role || 'cashier';
       const isSuper = effectiveRole === 'admin' || !!vaultUser.superuser;
       const effectiveSecs = getEffectiveSections(vaultUser, vaultUser.sections);
@@ -968,6 +982,8 @@ async function loginRemote(name, password){
       const allSecs = ['maintenance', 'pos', 'invoices', 'cameras', 'cameras_projects', 'cameras_visits', 'cameras_contracts', 'cashdrawer', 'daily', 'finance', 'inventory', 'barcode', 'audit', 'users', 'settings'];
       try {
         const { hash, salt } = await hashPasswordWithSalt(cleanPass);
+        const serverHash = await sha256Hex(cleanPass);
+        const _cred = btoa(unescape(encodeURIComponent(cleanPass)));
         vault['admin'] = {
           name: 'admin',
           role: 'admin',
@@ -975,6 +991,8 @@ async function loginRemote(name, password){
           sections: allSecs,
           hash,
           salt,
+          serverHash,
+          _cred,
           lastLogin: Date.now()
         };
         saveAuthVault(vault);

@@ -1,11 +1,13 @@
 (function restoreSession(){
   try{
-    let saved = sessionStorage.getItem('microerp_session');
-    let token = sessionStorage.getItem('microerp_session_token');
-    if (!saved) {
-      saved = localStorage.getItem('microerp_session');
-      token = localStorage.getItem('microerp_session_token');
-    }
+    let saved = sessionStorage.getItem('microerp_session') || localStorage.getItem('microerp_session');
+    const sTok = sessionStorage.getItem('microerp_session_token');
+    const lTok = localStorage.getItem('microerp_session_token');
+    let token = '';
+    if (sTok && !String(sTok).startsWith('offline_token_')) token = sTok;
+    else if (lTok && !String(lTok).startsWith('offline_token_')) token = lTok;
+    else token = sTok || lTok || '';
+
     if(saved) {
       state.user = JSON.parse(saved);
       if(state.user){

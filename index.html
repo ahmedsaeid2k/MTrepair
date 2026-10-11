@@ -3561,24 +3561,212 @@ function refreshApiUrl(){
 // All private data requests must present this sessionToken.
 function getSessionToken() {
   try {
-    return (typeof state !== 'undefined' && state && state.sessionToken)
-      || sessionStorage.getItem('microerp_session_token')
-      || localStorage.getItem('microerp_session_token')
-      || '';
+    const candidates = [
+      (typeof state !== 'undefined' && state && state.sessionToken) || '',
+      sessionStorage.getItem('microerp_session_token') || '',
+      localStorage.getItem('microerp_session_token') || ''
+    ].map(t => String(t || '').trim()).filter(Boolean);
+
+    // Always prefer a real server-issued token over an offline placeholder token
+    const realToken = candidates.find(t => !t.startsWith('offline_token_'));
+    if (realToken) {
+      if (typeof state !== 'undefined' && state) state.sessionToken = realToken;
+      return realToken;
+    }
+    return candidates[0] || '';
   } catch(e) {
     return (typeof state !== 'undefined' && state && state.sessionToken) || '';
   }
 }
 
+let _silentReauthPromise = null;
+async function trySilentReauth() {
+  if (!navigator.onLine) return false;
+  if (_silentReauthPromise) return _silentReauthPromise;
+
+  _silentReauthPromise = (async () => {
+    try {
+      const userName = (typeof state !== 'undefined' && state && state.user && state.user.name)
+        ? String(state.user.name).trim()
+        : '';
+      if (!userName) return false;
+
+      const candidates = [];
+      try {
+        const rawVault = localStorage.getItem('microerp_auth_vault');
+        if (rawVault) {
+          const vault = JSON.parse(rawVault);
+          const entry = vault[userName.toLowerCase()];
+          if (entry) {
+            if (entry._cred) {
+              try {
+                const decoded = decodeURIComponent(escape(atob(entry._cred)));
+                if (decoded) candidates.push(decoded);
+              } catch(e) {}
+            }
+            if (entry.serverHash) candidates.push(entry.serverHash);
+          }
+        }
+      } catch(e) {}
+
+      // Also check any legacy stored user objects that might still hold Password
+      try {
+        const permRaw = localStorage.getItem('microerp_users_permanent');
+        if (permRaw) {
+          const permList = JSON.parse(permRaw);
+          if (Array.isArray(permList)) {
+            const u = permList.find(x => x && x.Name && String(x.Name).trim().toLowerCase() === userName.toLowerCase());
+            if (u && (u.Password || u.password)) candidates.push(String(u.Password || u.password).trim());
+          }
+        }
+      } catch(e) {}
+
+      const uniqueCreds = [...new Set(candidates.filter(Boolean))];
+      for (const cred of uniqueCreds) {
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 15000);
+          const res = await fetch(getApiUrl(), {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ action: 'login', name: userName, password: cred }),
+            signal: controller.signal
+          });
+          clearTimeout(timeout);
+          const json = await res.json();
+          if (json && json.ok && json.sessionToken) {
+            state.sessionToken = json.sessionToken;
+            try {
+              sessionStorage.setItem('microerp_session_token', json.sessionToken);
+              localStorage.setItem('microerp_session_token', json.sessionToken);
+            } catch(e) {}
+            console.log('[session] Silent background session token renewal succeeded.');
+            return true;
+          }
+        } catch(e) {}
+      }
+      return false;
+    } catch(e) {
+      return false;
+    } finally {
+      _silentReauthPromise = null;
+    }
+  })();
+
+  return _silentReauthPromise;
+}
+
+let _reauthModalShown = false;
+function promptCloudReauthModal() {
+  if (_reauthModalShown || typeof document === 'undefined' || !document.body) return;
+  if (!navigator.onLine || typeof state === 'undefined' || !state || !state.user) return;
+  if (document.getElementById('cloudReauthModalOverlay')) return;
+  _reauthModalShown = true;
+
+  const userName = state.user.name || 'admin';
+  const overlay = document.createElement('div');
+  overlay.id = 'cloudReauthModalOverlay';
+  overlay.className = 'modal-overlay';
+  overlay.style.zIndex = '15000';
+  overlay.innerHTML = `
+    <div class="modal-content" style="max-width:440px;border-radius:16px;padding:22px;direction:rtl;text-align:right;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:36px;height:36px;border-radius:50%;background:rgba(37,99,235,0.12);color:var(--primary);display:flex;align-items:center;justify-content:center;font-weight:900;">🔒</div>
+          <div>
+            <h3 style="margin:0;font-size:15.5px;font-weight:900;color:var(--ink);">تنشيط المزامنة السحابية وأرقام الهواتف</h3>
+            <div style="font-size:11.5px;color:var(--ink-secondary);">حساب المستخدم: <b>${typeof escapeHtml === 'function' ? escapeHtml(userName) : userName}</b></div>
+          </div>
+        </div>
+        <button type="button" class="btn btn-ghost btn-xs" id="closeCloudReauthBtn" style="font-size:18px;line-height:1;">&times;</button>
+      </div>
+      <div style="font-size:12.5px;color:var(--ink-secondary);line-height:1.6;margin-bottom:14px;">
+        انتهت صلاحية رمز جلسة الخادم السحابي (24 ساعة). يرجى إدخال كلمة المرور مرة واحدة لتنشيط سحب <b>أرقام هواتف العملاء وبيانات الإيصالات الكاملة</b> من السحابة تلقائياً دون الخروج من شاشتك الحالية:
+      </div>
+      <div class="field" style="margin-bottom:12px;">
+        <label style="font-size:12px;font-weight:700;margin-bottom:6px;display:block;">كلمة المرور:</label>
+        <input id="cloudReauthPassInp" type="password" placeholder="أدخل كلمة المرور..." autofocus style="width:100%;padding:10px 12px;font-size:14px;border-radius:8px;border:1px solid var(--line);">
+      </div>
+      <div id="cloudReauthErr" style="display:none;color:var(--red-text);background:var(--red-bg);padding:8px 10px;border-radius:6px;font-size:12px;font-weight:700;margin-bottom:12px;"></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--line);padding-top:12px;">
+        <button type="button" class="btn btn-sm btn-ghost" id="cancelCloudReauthBtn">لاحقاً</button>
+        <button type="button" class="btn btn-sm btn-primary" id="submitCloudReauthBtn" style="font-weight:800;padding:7px 16px;">تفعيل وسحب أرقام الهواتف الآن</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  overlay.querySelector('#closeCloudReauthBtn').onclick = close;
+  overlay.querySelector('#cancelCloudReauthBtn').onclick = close;
+
+  const passInp = overlay.querySelector('#cloudReauthPassInp');
+  const errBox = overlay.querySelector('#cloudReauthErr');
+  const submitBtn = overlay.querySelector('#submitCloudReauthBtn');
+
+  const doReauth = async () => {
+    const pass = (passInp ? passInp.value : '').trim();
+    if (!pass) {
+      errBox.textContent = 'يرجى إدخال كلمة المرور';
+      errBox.style.display = 'block';
+      return;
+    }
+    errBox.style.display = 'none';
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'جارٍ التوثيق وسحب البيانات...';
+    try {
+      const res = await loginRemote(userName, pass);
+      if (res && res.sessionToken && !String(res.sessionToken).startsWith('offline_token_')) {
+        close();
+        if (typeof showToast === 'function') {
+          showToast('🔄 تم توثيق الجلسة! جاري سحب الإيصالات وأرقام الهواتف الكاملة من السحابة...', 'info', 3000);
+        }
+        await fetchBootstrapData(true);
+        if (typeof recoverAndSyncAllCustomerPhones === 'function') {
+          recoverAndSyncAllCustomerPhones(false, true);
+        }
+        if (typeof render === 'function') render();
+        if (typeof syncOfflineQueue === 'function') syncOfflineQueue(false);
+        if (typeof showToast === 'function') {
+          showToast('✅ تم تحديث كافة الإيصالات وأرقام الهواتف من السحابة بنجاح!', 'success', 4000);
+        }
+      } else {
+        errBox.textContent = 'تعذر توثيق الجلسة مع الخادم السحابي. تأكد من صحة كلمة المرور.';
+        errBox.style.display = 'block';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'تفعيل وسحب أرقام الهواتف الآن';
+      }
+    } catch(e) {
+      errBox.textContent = e.message || 'كلمة المرور غير صحيحة';
+      errBox.style.display = 'block';
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'تفعيل وسحب أرقام الهواتف الآن';
+    }
+  };
+
+  submitBtn.onclick = doReauth;
+  if (passInp) {
+    passInp.onkeydown = (e) => { if (e.key === 'Enter') doReauth(); };
+    setTimeout(() => passInp.focus(), 50);
+  }
+}
+
 let isSessionExpiring = false;
-function handleSessionExpired() {
+async function handleSessionExpired() {
+  const renewed = await trySilentReauth();
+  if (renewed) {
+    if (typeof updateSyncStatusPill === 'function') updateSyncStatusPill();
+    return true;
+  }
   if (typeof state !== 'undefined' && state && state.sessionToken && !String(state.sessionToken).startsWith('offline_token_')) {
     state.sessionToken = 'offline_token_' + Date.now();
   }
   if (typeof updateSyncStatusPill === 'function') {
     updateSyncStatusPill();
   }
-  console.warn('[session] Server indicated session expired. Continuing smoothly in resilient mode.');
+  console.warn('[session] Server indicated session expired. Prompting non-destructive cloud re-auth if needed.');
+  promptCloudReauthModal();
+  return false;
 }
 
 /* ============================================================
@@ -3977,15 +4165,54 @@ const networkThrottler = new ClientRequestThrottler(3);
 async function fetchBootstrapData(forceOverwrite = false){
   const pendingQueue = getSyncQueue().filter(i => i.status !== 'failed_terminal');
   if (pendingQueue.length > 0 && !forceOverwrite) {
-    console.warn(`[fetchBootstrapData] State overwrite prevented: ${pendingQueue.length} pending items in offline queue.`);
-    if (typeof showToast === 'function') {
-      showToast(`⚠️ توجد ${pendingQueue.length} عمليات معلقة في طابور المزامنة. تم الاحتفاظ بالبيانات المحلية حتى اكتمال رفع العمليات.`, 'warning', 6000);
-    }
-    return false;
+    console.info(`[fetchBootstrapData] Merging cloud bootstrap data while preserving ${pendingQueue.length} pending items in offline queue.`);
   }
   try {
     const res = await apiGet('getBootstrapData', { _force: true });
     if(res && res.ok){
+      // 1. Populate auxiliary collections & normalize customer directory FIRST
+      // so rowToReceipt() can cross-pollinate phones/titles from customers, sales, invoices, and quotations.
+      if(Array.isArray(res.sales)) { state.sales = res.sales; setCache('sales', state.sales); }
+      if(Array.isArray(res.quotations)) { state.quotations = res.quotations; setCache('quotations', state.quotations); }
+      if(Array.isArray(res.invoices)) { state.invoices = res.invoices; setCache('invoices', state.invoices); }
+
+      if(Array.isArray(res.customers)) {
+        const normalizedCloudCustomers = res.customers.map(c => {
+          if (!c || typeof c !== 'object') return null;
+          const name = (typeof extractCustomerName === 'function')
+            ? extractCustomerName(c)
+            : String(c.name || c.Name || c.CustomerName || '').trim();
+          const phone = (typeof extractCustomerPhone === 'function')
+            ? extractCustomerPhone(c)
+            : String(c.phone || c.Phone || c.CustomerPhone || '').trim();
+          const title = (typeof extractCustomerTitle === 'function')
+            ? extractCustomerTitle(c)
+            : String(c.title || c.Title || '').trim();
+          const email = (typeof extractCustomerEmail === 'function')
+            ? extractCustomerEmail(c)
+            : String(c.email || c.Email || '').trim();
+          if (!name || name === 'عميل') return null;
+          return {
+            ...c,
+            title: title || '',
+            name,
+            phone: phone || '',
+            email: email || '',
+            address: String(c.address || c.Address || '').trim(),
+            taxNumber: String(c.taxNumber || c.TaxNumber || '').trim()
+          };
+        }).filter(Boolean);
+
+        const existingCustomers = Array.isArray(state.customers) ? state.customers : [];
+        state.customers = [...normalizedCloudCustomers, ...existingCustomers];
+        if (typeof deduplicateCustomerDirectory === 'function') {
+          deduplicateCustomerDirectory();
+        } else {
+          setCache('customers', state.customers);
+        }
+      }
+
+      // 2. Now map cloud receipts (with customer directory ready) and merge safely with local receipts
       if(Array.isArray(res.receipts)) {
         const cloudReceipts = res.receipts.map(rowToReceipt);
         state.receipts = (typeof mergeCloudReceiptsWithLocal === 'function')
@@ -3993,24 +4220,21 @@ async function fetchBootstrapData(forceOverwrite = false){
           : cloudReceipts;
         setCache('receipts', state.receipts);
       }
-      if(Array.isArray(res.customers)) { state.customers = res.customers; setCache('customers', state.customers); }
+
       if(Array.isArray(res.technicians)) { 
-        const names = res.technicians.map(r=>r.Name).filter(Boolean);
+        const names = res.technicians.map(r=>r.Name || r.name).filter(Boolean);
         state.technicians = names.length ? names : ['أحمد فتحي','محمود سيد','كريم عادل'];
         setCache('technicians', state.technicians); 
       }
       if(res.settings && typeof res.settings === 'object') { state.settings = res.settings; setCache('settings', res.settings); }
       if(Array.isArray(res.payments)) { state.payments = res.payments; setCache('payments', state.payments); }
       if(Array.isArray(res.inventory)) { state.inventory = res.inventory; setCache('inventory', state.inventory); }
-      if(Array.isArray(res.sales)) { state.sales = res.sales; setCache('sales', state.sales); }
-      if(Array.isArray(res.quotations)) { state.quotations = res.quotations; setCache('quotations', state.quotations); }
       if(Array.isArray(res.services)) { state.services = res.services; setCache('services', state.services); }
       if(Array.isArray(res.purchases)) { state.purchases = res.purchases; setCache('purchases', state.purchases); }
       if(Array.isArray(res.suppliers)) { state.suppliers = res.suppliers; setCache('suppliers', state.suppliers); }
       if(Array.isArray(res.expenses)) { state.expenses = res.expenses; setCache('expenses', state.expenses); }
       if(Array.isArray(res.accounts)) { state.accounts = res.accounts; setCache('accounts', state.accounts); }
-      if(Array.isArray(res.journalEntries)) { state.journalEntries = res.journalEntries; setCache('journal', res.journalEntries); }
-      if(Array.isArray(res.invoices)) { state.invoices = res.invoices; setCache('invoices', state.invoices); }
+      if(Array.isArray(res.journalEntries)) { state.journalEntries = res.journalEntries; setCache('journal', state.journalEntries); }
       if(Array.isArray(res.users)) { state.users = res.users; setCache('users', state.users); }
       if(Array.isArray(res.returns)) { state.returns = res.returns; setCache('returns', state.returns); }
       if(Array.isArray(res.serials)) { state.serials = res.serials; setCache('serials', state.serials); }
@@ -4025,6 +4249,14 @@ async function fetchBootstrapData(forceOverwrite = false){
       if(Array.isArray(res.bundleItems)) { state.bundleItems = res.bundleItems; setCache('bundle_items', state.bundleItems); }
       if(Array.isArray(res.stocktakeSessions)) { state.stocktakeSessions = res.stocktakeSessions; setCache('stocktake_sessions', state.stocktakeSessions); }
       if(Array.isArray(res.stocktakeLines)) { state.stocktakeLines = res.stocktakeLines; setCache('stocktake_lines', state.stocktakeLines); }
+
+      // 3. Cross-pollinate customer phones across receipts, customers, sales, invoices, and quotations
+      if (typeof _extractCustomersFromReceipts === 'function') {
+        _extractCustomersFromReceipts();
+      }
+      if (typeof recoverAndSyncAllCustomerPhones === 'function') {
+        recoverAndSyncAllCustomerPhones(false, true);
+      }
       return true;
     }
   } catch(e) {
@@ -4040,7 +4272,16 @@ function convertTrackedToReceipt(tr){
   if(!tr || !tr.receiptNumber) return null;
   const num = String(tr.receiptNumber).trim();
   const rawName = (tr.customer && tr.customer.name) ? String(tr.customer.name).trim() : 'عميل';
-  const cName = rawName.replace(/\s*\*\*\*\s*$/, '').trim() || 'عميل';
+  const cleanedRaw = rawName.replace(/\s*\*\*\*\s*$/, '').trim() || 'عميل';
+  const cTitle = (typeof extractCustomerTitle === 'function')
+    ? extractCustomerTitle({ CustomerName: cleanedRaw, customer: tr.customer })
+    : ((tr.customer && tr.customer.title) || '');
+  const cName = (typeof extractCustomerName === 'function')
+    ? extractCustomerName({ CustomerName: cleanedRaw, customer: { ...tr.customer, name: cleanedRaw } })
+    : cleanedRaw;
+  const cPhone = (typeof extractCustomerPhone === 'function')
+    ? extractCustomerPhone({ CustomerName: cName, CustomerPhone: (tr.customer && tr.customer.phone) || '', customer: { ...tr.customer, name: cName } })
+    : ((tr.customer && tr.customer.phone) || '');
   
   return {
     id: tr.id || ('r_sync_' + num.replace(/[^a-zA-Z0-9]/g, '_')),
@@ -4050,9 +4291,9 @@ function convertTrackedToReceipt(tr){
     receivedAt: tr.date || '',
     createdAt: tr.date || '',
     customer: {
-      title: (tr.customer && tr.customer.title) || '',
+      title: cTitle,
       name: cName,
-      phone: (tr.customer && tr.customer.phone) || '',
+      phone: cPhone,
       email: (tr.customer && tr.customer.email) || ''
     },
     device: {
@@ -4149,6 +4390,9 @@ async function syncMissingReceiptsFromCloud(){
     }
 
     if (addedCount > 0) {
+      if (typeof recoverAndSyncAllCustomerPhones === 'function') {
+        recoverAndSyncAllCustomerPhones(false, true);
+      }
       state.receipts.sort((a, b) => {
         const numA = String(a.receiptNumber || a.ReceiptNumber || '');
         const numB = String(b.receiptNumber || b.ReceiptNumber || '');
@@ -4193,9 +4437,10 @@ async function apiGet(action, params){
     return getCache(action, []);
   }
 
-  const forceRefresh = params && params._force;
-  if (forceRefresh) { delete params._force; }
-  const swrKey = _getSWRKey(action, params);
+  const cleanParams = params ? { ...params } : {};
+  const forceRefresh = !!cleanParams._force;
+  if (forceRefresh) { delete cleanParams._force; }
+  const swrKey = _getSWRKey(action, Object.keys(cleanParams).length ? cleanParams : undefined);
 
   // 1. SWR: Return fresh cached data if within TTL (skip for forced refreshes)
   if (!forceRefresh && _swrCache[swrKey] && (Date.now() - _swrCache[swrKey].timestamp < SWR_TTL_MS)) {
@@ -4207,26 +4452,46 @@ async function apiGet(action, params){
     return _inflightReqs[swrKey];
   }
 
-  // 3. Make the actual network request
+  // 3. Make the actual network request using HTTP GET (matching live GAS doGet)
   _inflightReqs[swrKey] = networkThrottler.schedule(async () => {
     try {
-      // S13: Send session token in POST payload to prevent token exposure in URL query strings
-      const token = getSessionToken();
-      const payload = { action, ...(token ? {sessionToken: token} : {}), ...(params||{}) };
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 20000);
-      const res = await fetch(getApiUrl(), {
-        method: 'POST',
-        headers: {'Content-Type': 'text/plain;charset=utf-8'},
-        body: JSON.stringify(payload),
-        signal: controller.signal
-      });
-      clearTimeout(timeout);
-      const json = await res.json();
+      let token = getSessionToken();
+      if (!token || String(token).startsWith('offline_token_')) {
+        await trySilentReauth();
+        token = getSessionToken();
+      }
+
+      const executeGet = async (activeToken) => {
+        const qObj = {
+          action,
+          ...(activeToken && !String(activeToken).startsWith('offline_token_') ? { sessionToken: activeToken } : {}),
+          ...cleanParams
+        };
+        const q = new URLSearchParams(qObj);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 20000);
+        try {
+          const res = await fetch(`${getApiUrl()}?${q.toString()}`, {
+            method: 'GET',
+            signal: controller.signal
+          });
+          clearTimeout(timeout);
+          return await res.json();
+        } catch (fetchErr) {
+          clearTimeout(timeout);
+          throw fetchErr;
+        }
+      };
+
+      let json = await executeGet(token);
       if(json && json.sessionExpired){
-        handleSessionExpired();
-        console.warn(`apiGet detected expired session on ${action}. Returning cached data.`);
-        return getCache(action, []);
+        const renewed = await handleSessionExpired();
+        if (renewed) {
+          json = await executeGet(getSessionToken());
+        } else {
+          console.warn(`apiGet detected expired session on ${action}. Returning cached data.`);
+          return getCache(action, []);
+        }
       }
       if(json && json.error) throw new Error(json.error);
       // Cache success in both SWR and localStorage
@@ -4259,23 +4524,40 @@ async function apiPost(action, data){
   }
   return networkThrottler.schedule(async () => {
     try {
-      const token = getSessionToken();
-      const payload = { action, ...(token ? {sessionToken: token} : {}), ...payloadData };
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 25000);
-      const res = await fetch(getApiUrl(), {
-        method: 'POST',
-        headers: {'Content-Type': 'text/plain;charset=utf-8'},
-        body: JSON.stringify(payload),
-        signal: controller.signal
-      });
-      clearTimeout(timeout);
-      const json = await res.json();
+      let token = getSessionToken();
+      if (!token || String(token).startsWith('offline_token_')) {
+        await trySilentReauth();
+        token = getSessionToken();
+      }
+      const executePost = async (activeToken) => {
+        const payload = { action, ...(activeToken && !String(activeToken).startsWith('offline_token_') ? {sessionToken: activeToken} : {}), ...payloadData };
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 25000);
+        try {
+          const res = await fetch(getApiUrl(), {
+            method: 'POST',
+            headers: {'Content-Type': 'text/plain;charset=utf-8'},
+            body: JSON.stringify(payload),
+            signal: controller.signal
+          });
+          clearTimeout(timeout);
+          return await res.json();
+        } catch (fetchErr) {
+          clearTimeout(timeout);
+          throw fetchErr;
+        }
+      };
+
+      let json = await executePost(token);
       if(json && json.sessionExpired){
-        handleSessionExpired();
-        console.warn(`apiPost detected expired session on ${action}. Enqueuing for background sync.`);
-        addToSyncQueue(action, payloadData);
-        return { ok: true, offline: true, clientRef: payloadData.clientRef };
+        const renewed = await handleSessionExpired();
+        if (renewed) {
+          json = await executePost(getSessionToken());
+        } else {
+          console.warn(`apiPost detected expired session on ${action}. Enqueuing for background sync.`);
+          addToSyncQueue(action, payloadData);
+          return { ok: true, offline: true, clientRef: payloadData.clientRef };
+        }
       }
       if(json && json.error) throw new Error(json.error);
       return json;
@@ -4297,32 +4579,44 @@ async function apiPostDirect(action, data, timeoutMs = 45000) {
     throw new Error('لا يوجد اتصال بالإنترنت حالياً لتنفيذ هذا الإجراء المباشر');
   }
   return networkThrottler.schedule(async () => {
-    const token = getSessionToken();
-    const payload = { action, ...(token ? {sessionToken: token} : {}), ...(data || {}) };
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const res = await fetch(getApiUrl(), {
-        method: 'POST',
-        headers: {'Content-Type': 'text/plain;charset=utf-8'},
-        body: JSON.stringify(payload),
-        signal: controller.signal
-      });
-      clearTimeout(timeout);
-      const json = await res.json();
-      if (json && json.sessionExpired) {
-        handleSessionExpired();
+    let token = getSessionToken();
+    if (action !== 'login' && (!token || String(token).startsWith('offline_token_'))) {
+      await trySilentReauth();
+      token = getSessionToken();
+    }
+    const executeDirect = async (activeToken) => {
+      const payload = { action, ...(activeToken && !String(activeToken).startsWith('offline_token_') ? {sessionToken: activeToken} : {}), ...(data || {}) };
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await fetch(getApiUrl(), {
+          method: 'POST',
+          headers: {'Content-Type': 'text/plain;charset=utf-8'},
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        });
+        clearTimeout(timeout);
+        return await res.json();
+      } catch(err) {
+        clearTimeout(timeout);
+        if (err.name === 'AbortError') {
+          throw new Error('انتهت مهلة انتظار استجابة الخادم (' + Math.round(timeoutMs / 1000) + ' ثانية)');
+        }
+        throw err;
+      }
+    };
+
+    let json = await executeDirect(token);
+    if (json && json.sessionExpired && action !== 'login') {
+      const renewed = await handleSessionExpired();
+      if (renewed) {
+        json = await executeDirect(getSessionToken());
+      } else {
         throw new Error(json.error || 'انتهت صلاحية جلسة العمل');
       }
-      if (json && json.error) throw new Error(json.error);
-      return json;
-    } catch(err) {
-      clearTimeout(timeout);
-      if (err.name === 'AbortError') {
-        throw new Error('انتهت مهلة انتظار استجابة الخادم (' + Math.round(timeoutMs / 1000) + ' ثانية)');
-      }
-      throw err;
     }
+    if (json && json.error) throw new Error(json.error);
+    return json;
   });
 }
 
@@ -4341,13 +4635,20 @@ async function syncOfflineQueue(isManual = false){
       updateSyncStatusPill();
 
       (async () => {
+        let token = getSessionToken();
+        if (!token || String(token).startsWith('offline_token_')) {
+          await handleSessionExpired();
+          token = getSessionToken();
+        }
         let bOk = false;
-        const token = getSessionToken();
         if (token && !String(token).startsWith('offline_token_')) {
           bOk = await fetchBootstrapData(true);
         }
         // Always run sequential receipts reconciliation to ensure MT-2026-0098..0105+ are pulled!
         const added = await syncMissingReceiptsFromCloud();
+        if (typeof recoverAndSyncAllCustomerPhones === 'function') {
+          recoverAndSyncAllCustomerPhones(false, true);
+        }
         return bOk || (added > 0);
       })().then(success => {
         isSyncingNow = false;
@@ -4385,7 +4686,11 @@ async function syncOfflineQueue(isManual = false){
   }
 
   const remaining = [];
-  const currentToken = getSessionToken();
+  let currentToken = getSessionToken();
+  if (!currentToken || String(currentToken).startsWith('offline_token_')) {
+    await trySilentReauth();
+    currentToken = getSessionToken();
+  }
 
   for(const item of q){
     // In automatic mode, preserve items not yet eligible
@@ -4395,24 +4700,37 @@ async function syncOfflineQueue(isManual = false){
     }
 
     try {
-      const payload = {
-        action: item.action,
-        ...(currentToken ? { sessionToken: currentToken } : {}),
-        ...item.data
-      };
-      if (!payload.sessionToken && currentToken) {
-        payload.sessionToken = currentToken;
-      }
-      if (!payload.clientRef && !payload.ClientRef && item.clientRef) {
-        payload.clientRef = item.clientRef;
-      }
+      const executeQueueItem = async (tok) => {
+        const payload = {
+          action: item.action,
+          ...(tok && !String(tok).startsWith('offline_token_') ? { sessionToken: tok } : {}),
+          ...item.data
+        };
+        if (!payload.sessionToken && tok && !String(tok).startsWith('offline_token_')) {
+          payload.sessionToken = tok;
+        }
+        if (!payload.clientRef && !payload.ClientRef && item.clientRef) {
+          payload.clientRef = item.clientRef;
+        }
 
-      const res = await fetch(API_URL, {
-        method: 'POST',
-        headers: {'Content-Type': 'text/plain;charset=utf-8'},
-        body: JSON.stringify(payload)
-      });
-      const json = await res.json();
+        const res = await fetch(getApiUrl(), {
+          method: 'POST',
+          headers: {'Content-Type': 'text/plain;charset=utf-8'},
+          body: JSON.stringify(payload)
+        });
+        return await res.json();
+      };
+
+      let json = await executeQueueItem(currentToken);
+      if (json && json.sessionExpired) {
+        const renewed = await handleSessionExpired();
+        if (renewed) {
+          currentToken = getSessionToken();
+          json = await executeQueueItem(currentToken);
+        } else {
+          throw new Error(json.error || 'انتهت صلاحية الجلسة');
+        }
+      }
       if(json && json.error) throw new Error(json.error);
 
       if(json && json.duplicateSuppressed){
@@ -4448,7 +4766,7 @@ async function syncOfflineQueue(isManual = false){
     }
     // Refresh memory from cloud using unified bootstrap
     try {
-      await fetchBootstrapData();
+      await fetchBootstrapData(true);
       if(state.currentSection === 'maintenance' && !state.draft){
         const isTyping = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT');
         const modalOpen = !!document.querySelector('.modal-overlay, .modal-backdrop, .modal, [id*="Modal"]');
@@ -4959,6 +5277,35 @@ function isCustomerPhoneValid(p){
   return s.length >= 7 && s !== '0000000000' && s !== '00000' && s !== 'undefined' && s !== 'null';
 }
 
+function _getRawCustomerNameField(c){
+  if(!c || typeof c !== 'object') return '';
+  return String(
+    c.name ?? c.Name ?? c.CustomerName ?? c.customerName ?? c.clientName ?? c.ClientName ??
+    c['الاسم'] ?? c['اسم العميل'] ?? c['العميل'] ??
+    (c.customer ? (c.customer.name ?? c.customer.Name ?? c.customer.CustomerName) : '') ?? ''
+  ).trim();
+}
+
+function _getRawCustomerPhoneField(c){
+  if(!c || typeof c !== 'object') return '';
+  let val = c.phone ?? c.Phone ?? c.CustomerPhone ?? c.customerPhone ?? c.mobile ?? c.Mobile ??
+            c.clientPhone ?? c.ClientPhone ?? c.Tel ?? c.tel ??
+            c['الهاتف'] ?? c['رقم الهاتف'] ?? c['هاتف'] ?? c['الموبايل'] ?? c['موبايل'] ??
+            (c.customer ? (c.customer.phone ?? c.customer.Phone ?? c.customer.CustomerPhone) : '') ?? '';
+  let s = (typeof toEngDigits === 'function' ? toEngDigits(val) : String(val)).replace(/["']/g, '').trim();
+  if(s.length === 10 && /^[1][0125]\d{8}$/.test(s)) s = '0' + s;
+  return isCustomerPhoneValid(s) ? s : '';
+}
+
+function _getRawCustomerTitleField(c){
+  if(!c || typeof c !== 'object') return '';
+  return String(
+    c.title ?? c.Title ?? c.CustomerTitle ?? c.customerTitle ??
+    c['اللقب'] ?? c['صفة'] ?? c['صفة العميل'] ??
+    (c.customer ? (c.customer.title ?? c.customer.Title ?? c.customer.CustomerTitle) : '') ?? ''
+  ).replace(/["`]/g, '').trim();
+}
+
 function findCustomerInDirectory(rawName){
   if(!rawName || typeof rawName !== 'string') return null;
   if(typeof state === 'undefined' || !state || !Array.isArray(state.customers) || !state.customers.length) return null;
@@ -4974,10 +5321,11 @@ function findCustomerInDirectory(rawName){
   for(let i=0; i<list.length; i++){
     const c = list[i];
     if(!c) continue;
-    const cn = (c.name || c.CustomerName || '').trim().toLowerCase();
-    const cNorm = normalizeCustomerSearchName(c.name || c.CustomerName || '');
-    const cTitle = (c.title || c.CustomerTitle || '').trim();
-    const combinedNorm = normalizeCustomerSearchName((cTitle ? cTitle + ' ' : '') + (c.name || c.CustomerName || ''));
+    const rawCName = _getRawCustomerNameField(c);
+    const cn = rawCName.toLowerCase();
+    const cNorm = normalizeCustomerSearchName(rawCName);
+    const cTitle = _getRawCustomerTitleField(c);
+    const combinedNorm = normalizeCustomerSearchName((cTitle ? cTitle + ' ' : '') + rawCName);
 
     let score = 0;
     if(cn && cn === rawTrimmed) { score = 100; }
@@ -4997,8 +5345,8 @@ function findCustomerInDirectory(rawName){
 
   // Prioritize candidates with a valid phone number
   matches.sort((a, b) => {
-    const aHasPhone = isCustomerPhoneValid(a.c.phone || a.c.CustomerPhone);
-    const bHasPhone = isCustomerPhoneValid(b.c.phone || b.c.CustomerPhone);
+    const aHasPhone = !!_getRawCustomerPhoneField(a.c);
+    const bHasPhone = !!_getRawCustomerPhoneField(b.c);
     if(aHasPhone && !bHasPhone) return -1;
     if(!aHasPhone && bHasPhone) return 1;
     return b.score - a.score;
@@ -5006,11 +5354,20 @@ function findCustomerInDirectory(rawName){
 
   const best = matches[0].c;
 
+  // Ensure normalized lowercase properties are populated on best match
+  const bestName = _getRawCustomerNameField(best);
+  const bestPhone = _getRawCustomerPhoneField(best);
+  const bestTitle = _getRawCustomerTitleField(best);
+  if(bestName && !best.name) best.name = bestName;
+  if(bestPhone && !best.phone) best.phone = bestPhone;
+  if(bestTitle && !best.title) best.title = bestTitle;
+
   // Cross-pollinate phone if best match lacks it but another matched candidate has it
-  const matchWithPhone = matches.find(m => isCustomerPhoneValid(m.c.phone || m.c.CustomerPhone));
-  if(matchWithPhone && !isCustomerPhoneValid(best.phone || best.CustomerPhone)){
-    const ph = matchWithPhone.c.phone || matchWithPhone.c.CustomerPhone;
+  const matchWithPhone = matches.find(m => !!_getRawCustomerPhoneField(m.c));
+  if(matchWithPhone && !_getRawCustomerPhoneField(best)){
+    const ph = _getRawCustomerPhoneField(matchWithPhone.c);
     best.phone = ph;
+    if(best.Phone !== undefined) best.Phone = ph;
     if(best.CustomerPhone !== undefined) best.CustomerPhone = ph;
   }
 
@@ -5018,18 +5375,20 @@ function findCustomerInDirectory(rawName){
 }
 
 function deduplicateCustomerDirectory(){
-  if(typeof state === 'undefined' || !state || !Array.isArray(state.customers) || state.customers.length <= 1) return 0;
+  if(typeof state === 'undefined' || !state || !Array.isArray(state.customers) || state.customers.length === 0) return 0;
   const oldLen = state.customers.length;
   const mergedMap = new Map();
 
   state.customers.forEach(c => {
-    if(!c) return;
-    const rawName = (c.name || c.CustomerName || '').trim();
-    const phone = (c.phone || c.CustomerPhone || '').trim();
-    const title = (c.title || c.CustomerTitle || '').trim();
-    const email = (c.email || c.CustomerEmail || '').trim();
-    const taxNumber = (c.taxNumber || c.TaxNumber || '').trim();
-    const address = (c.address || c.Address || '').trim();
+    if(!c || typeof c !== 'object') return;
+    const rawNameField = _getRawCustomerNameField(c);
+    const parsed = (typeof parseCustomerTitleAndName === 'function') ? parseCustomerTitleAndName(rawNameField) : { title: '', name: rawNameField };
+    const rawName = (parsed.name || rawNameField || '').trim();
+    const phone = _getRawCustomerPhoneField(c);
+    const title = (_getRawCustomerTitleField(c) || parsed.title || '').trim();
+    const email = String(c.email ?? c.Email ?? c.CustomerEmail ?? c.customerEmail ?? '').trim();
+    const taxNumber = String(c.taxNumber ?? c.TaxNumber ?? '').trim();
+    const address = String(c.address ?? c.Address ?? '').trim();
 
     if(!rawName || rawName === 'عميل' || rawName === 'زبون') return;
 
@@ -5069,6 +5428,8 @@ function deduplicateCustomerDirectory(){
       if(npNorm === wpNorm || (typeof getLevenshteinDistance === 'function' && wpNorm.length >= 4 && getLevenshteinDistance(wpNorm, npNorm) <= 1)){
         if(!wp.title && np.title) wp.title = np.title;
         if(!wp.email && np.email) wp.email = np.email;
+        if(!wp.address && np.address) wp.address = np.address;
+        if(!wp.taxNumber && np.taxNumber) wp.taxNumber = np.taxNumber;
         handledEmpty.add(np);
       }
     });
@@ -5083,7 +5444,7 @@ function deduplicateCustomerDirectory(){
 
   state.customers = finalCustomers;
   setCache('customers', state.customers);
-  const removed = oldLen - finalCustomers.length;
+  const removed = Math.max(0, oldLen - finalCustomers.length);
   if(removed > 0){
     console.log(`Deduplicated customers: removed ${removed} duplicates, now ${finalCustomers.length} unique customers.`);
   }
@@ -5120,7 +5481,7 @@ function extractCustomerTitle(obj){
   if(typeof findCustomerInDirectory === 'function' && rawName){
     const matched = findCustomerInDirectory(rawName);
     if(matched){
-      const t = (matched.title || matched.CustomerTitle || (matched.customer && matched.customer.title) || '').trim();
+      const t = (_getRawCustomerTitleField(matched) || '').trim();
       if(t && CUSTOMER_TITLES.includes(t)) return t;
     }
   }
@@ -5133,33 +5494,47 @@ function extractCustomerPhone(obj){
   if(typeof obj === 'string'){
     let s = (typeof toEngDigits === 'function' ? toEngDigits(obj) : String(obj)).replace(/["']/g, '').trim();
     if(s.length === 10 && /^[1][0125]\d{8}$/.test(s)) s = '0' + s;
-    return s;
+    return isCustomerPhoneValid(s) ? s : '';
   }
   if(typeof obj !== 'object') return '';
-  let val = obj.CustomerPhone ?? obj.customerPhone ?? obj.Phone ?? obj.phone ?? obj.mobile ?? obj.Mobile ??
-            obj['الهاتف'] ?? obj['رقم الهاتف'] ?? obj['هاتف'] ?? obj['الموبايل'] ?? obj['موبايل'] ??
-            obj['تليفون'] ?? obj['رقم التليفون'] ?? obj.Tel ?? obj.tel ?? obj.ClientPhone ?? obj.clientPhone ??
-            (obj.customer ? (obj.customer.phone ?? obj.customer.Phone ?? obj.customer.CustomerPhone) : '') ?? '';
-  let str = (typeof toEngDigits === 'function' ? toEngDigits(val) : String(val)).replace(/["']/g, '').trim();
-  if(str.length === 10 && /^[1][0125]\d{8}$/.test(str)) str = '0' + str;
-
-  if(str && str !== '0000000000' && str !== '00000' && str !== 'undefined' && str !== 'null'){
-    return str;
+  const directPhone = _getRawCustomerPhoneField(obj);
+  if(directPhone){
+    return directPhone;
   }
 
-  // Fallback: Cross-reference with state.customers directory by customer name
-  const rawName = obj.CustomerName ?? obj.customerName ?? obj.Name ?? obj.name ?? obj.clientName ?? obj.ClientName ??
-                  obj['الاسم'] ?? obj['اسم العميل'] ?? obj['العميل'] ??
-                  (obj.customer ? (obj.customer.name ?? obj.customer.Name ?? obj.customer.CustomerName) : '') ?? '';
+  // Fallback 1: Cross-reference with state.customers directory by customer name
+  const rawName = _getRawCustomerNameField(obj);
   if(rawName && typeof findCustomerInDirectory === 'function'){
     const matched = findCustomerInDirectory(rawName);
     if(matched){
-      let p = (typeof toEngDigits === 'function' ? toEngDigits(matched.phone ?? matched.CustomerPhone ?? matched.Phone ?? '') : String(matched.phone || '')).replace(/["']/g, '').trim();
-      if(p.length === 10 && /^[1][0125]\d{8}$/.test(p)) p = '0' + p;
-      if(p && p !== '0000000000' && p !== '00000'){
+      const p = _getRawCustomerPhoneField(matched);
+      if(p){
         if(obj.customer && typeof obj.customer === 'object') obj.customer.phone = p;
         if(obj.CustomerPhone !== undefined) obj.CustomerPhone = p;
         return p;
+      }
+    }
+  }
+
+  // Fallback 2: Cross-reference across state.receipts, state.sales, state.invoices, state.quotations
+  if(rawName && typeof state !== 'undefined' && state){
+    const targetNorm = normalizeCustomerSearchName(rawName);
+    if(targetNorm && targetNorm !== 'عميل' && targetNorm !== 'زبون'){
+      const pools = [state.receipts, state.sales, state.invoices, state.quotations];
+      for(const pool of pools){
+        if(!Array.isArray(pool)) continue;
+        for(let i = 0; i < pool.length; i++){
+          const item = pool[i];
+          if(!item || item === obj) continue;
+          const itemPh = _getRawCustomerPhoneField(item);
+          if(!itemPh) continue;
+          const itemNorm = normalizeCustomerSearchName(_getRawCustomerNameField(item));
+          if(itemNorm && itemNorm === targetNorm){
+            if(obj.customer && typeof obj.customer === 'object') obj.customer.phone = itemPh;
+            if(obj.CustomerPhone !== undefined) obj.CustomerPhone = itemPh;
+            return itemPh;
+          }
+        }
       }
     }
   }
@@ -5188,12 +5563,31 @@ function extractCustomerEmail(obj){
 
 /* Safe customer normalizer - links receipts to Customer Directory & heals typos */
 let _lastSilentPhoneSyncTime = 0;
-function recoverAndSyncAllCustomerPhones(verbose = false){
+function recoverAndSyncAllCustomerPhones(verbose = false, forceRun = false){
   const now = Date.now();
-  if(!verbose && (now - _lastSilentPhoneSyncTime < 15000)){
+  const hasMissingPhones = Array.isArray(state.receipts) && state.receipts.some(r => r && !isCustomerPhoneValid(_getRawCustomerPhoneField(r)));
+  if(!verbose && !forceRun && !hasMissingPhones && (now - _lastSilentPhoneSyncTime < 15000)){
     return { recoveredCount: 0, namesSynced: 0, totalCustomers: (state.customers || []).length };
   }
   if(!verbose) _lastSilentPhoneSyncTime = now;
+
+  // Harvest any customer (name, phone) pairs from receipts, sales, invoices, and quotations into state.customers first
+  if(!Array.isArray(state.customers)) state.customers = [];
+  const harvestPools = [state.receipts, state.sales, state.invoices, state.quotations];
+  harvestPools.forEach(pool => {
+    if(!Array.isArray(pool)) return;
+    pool.forEach(item => {
+      if(!item) return;
+      const ph = _getRawCustomerPhoneField(item);
+      if(!ph) return;
+      const nm = extractCustomerName(item);
+      if(!nm || nm === 'عميل' || nm === 'زبون') return;
+      const tl = extractCustomerTitle(item);
+      const em = extractCustomerEmail(item);
+      state.customers.push({ title: tl || '', name: nm, phone: ph, email: em || '' });
+    });
+  });
+
   deduplicateCustomerDirectory();
   let matchedCount = 0;
   let namesSynced = 0;
@@ -5213,9 +5607,9 @@ function recoverAndSyncAllCustomerPhones(verbose = false){
     // Cross reference with Customer Directory
     const matched = (typeof findCustomerInDirectory === 'function' && rawName) ? findCustomerInDirectory(rawName) : null;
     if(matched){
-      const dirPhone = (matched.phone || matched.CustomerPhone || '').trim();
-      const dirName = (matched.name || matched.CustomerName || '').trim();
-      const dirTitle = (matched.title || matched.CustomerTitle || '').trim();
+      const dirPhone = _getRawCustomerPhoneField(matched);
+      const dirName = (_getRawCustomerNameField(matched) || '').trim();
+      const dirTitle = (_getRawCustomerTitleField(matched) || '').trim();
 
       if(dirName && (r.CustomerName !== dirName || r.customer.name !== dirName)){
         r.CustomerName = dirName;
@@ -5228,19 +5622,20 @@ function recoverAndSyncAllCustomerPhones(verbose = false){
         r.customer.title = dirTitle;
         changed = true;
       }
-      if(dirPhone && dirPhone !== '0000000000' && (!r.customer.phone || r.customer.phone === '0000000000')){
+      if(dirPhone && (!r.customer.phone || !isCustomerPhoneValid(r.customer.phone))){
         r.customer.phone = dirPhone;
         r.CustomerPhone = dirPhone;
         changed = true;
         matchedCount++;
       }
     } else {
-      if(!r.customer.phone && currentPhone && currentPhone !== '0000000000'){
+      if((!r.customer.phone || !isCustomerPhoneValid(r.customer.phone)) && isCustomerPhoneValid(currentPhone)){
         r.customer.phone = currentPhone;
+        r.CustomerPhone = currentPhone;
         changed = true;
         matchedCount++;
       }
-      if(r.customer.phone && !r.CustomerPhone){
+      if(isCustomerPhoneValid(r.customer.phone) && !isCustomerPhoneValid(r.CustomerPhone)){
         r.CustomerPhone = r.customer.phone;
         changed = true;
       }
@@ -5259,6 +5654,16 @@ function recoverAndSyncAllCustomerPhones(verbose = false){
 
   if(verbose){
     showToast(`تم ربط وتحديث جهات الاتصال (${matchedCount} رقم هاتف، ${namesSynced} اسم مصحح) بنجاح`, 'success');
+    // If online and some receipts still lack phones (e.g. tracked stubs), pull full bootstrap data from cloud
+    const stillMissing = (state.receipts || []).some(r => r && !isCustomerPhoneValid(_getRawCustomerPhoneField(r)));
+    if(stillMissing && navigator.onLine && typeof fetchBootstrapData === 'function'){
+      fetchBootstrapData(true).then(ok => {
+        if(ok){
+          recoverAndSyncAllCustomerPhones(false, true);
+          if(typeof renderMain === 'function') renderMain();
+        }
+      }).catch(() => {});
+    }
   }
 
   if(verbose && receiptsToPersist.length > 0){
@@ -5875,6 +6280,7 @@ function mergeCloudReceiptsWithLocal(cloudReceipts, localReceipts){
   });
 
   const syncQueue = (typeof getSyncQueue === 'function') ? getSyncQueue() : [];
+  let queueEnriched = false;
 
   const merged = cloudReceipts.map(cloudR => {
     if(!cloudR) return cloudR;
@@ -5884,24 +6290,80 @@ function mergeCloudReceiptsWithLocal(cloudReceipts, localReceipts){
 
     if(!localR) return cloudR;
 
+    const cloudPhone = _getRawCustomerPhoneField(cloudR);
+    const localPhone = _getRawCustomerPhoneField(localR);
+    const bestPhone = cloudPhone || localPhone || '';
+    const cloudTitle = _getRawCustomerTitleField(cloudR);
+    const localTitle = _getRawCustomerTitleField(localR);
+    const bestTitle = localTitle || cloudTitle || '';
+    const cloudName = _getRawCustomerNameField(cloudR);
+    const localName = _getRawCustomerNameField(localR);
+    const bestName = (cloudName && cloudName !== 'عميل') ? cloudName : (localName || 'عميل');
+
     const optStatus = getOptimisticReceiptStatus(k1) || getOptimisticReceiptStatus(k2);
     const isRecentLocal = localR._localModifiedAt && (Date.now() - localR._localModifiedAt < 180000);
 
-    const hasPendingSync = syncQueue.some(qItem => {
-      if(qItem.action !== 'saveReceipt') return false;
+    let hasPendingSync = false;
+    syncQueue.forEach(qItem => {
+      if(qItem.action !== 'saveReceipt') return;
       const d = qItem.data && (qItem.data.data || qItem.data);
-      if(!d) return false;
+      if(!d) return;
       const qId = String(d.ID || d.id || '').trim().toLowerCase();
       const qNum = String(d.ReceiptNumber || d.receiptNumber || '').trim().toLowerCase();
-      return (k1 && qId === k1) || (k2 && qNum === k2);
+      if((k1 && qId === k1) || (k2 && qNum === k2)){
+        hasPendingSync = true;
+        // Enrich queued item if it was created from a partial tracked stub so it doesn't wipe cloud fields on sync
+        if(bestPhone && !isCustomerPhoneValid(d.CustomerPhone)){
+          d.CustomerPhone = bestPhone;
+          queueEnriched = true;
+        }
+        if(bestTitle && !d.CustomerTitle){
+          d.CustomerTitle = bestTitle;
+          queueEnriched = true;
+        }
+        if(cloudR.technician && !d.Technician){
+          d.Technician = cloudR.technician;
+          queueEnriched = true;
+        }
+        if(cloudR.time && !d.Time){
+          d.Time = cloudR.time;
+          queueEnriched = true;
+        }
+      }
     });
 
     if(optStatus || isRecentLocal || hasPendingSync){
+      const mergedCustomer = {
+        ...(cloudR.customer || {}),
+        ...(localR.customer || {}),
+        title: bestTitle,
+        name: bestName,
+        phone: bestPhone,
+        email: (localR.customer && localR.customer.email) || (cloudR.customer && cloudR.customer.email) || ''
+      };
+      const mergedDevice = {
+        ...(cloudR.device || {}),
+        ...(localR.device || {}),
+        serialNumber: (localR.device && localR.device.serialNumber) || (cloudR.device && cloudR.device.serialNumber) || '',
+        color: (localR.device && localR.device.color) || (cloudR.device && cloudR.device.color) || '',
+        passcode: (localR.device && localR.device.passcode) || (cloudR.device && cloudR.device.passcode) || '',
+        accessories: (localR.device && localR.device.accessories && localR.device.accessories !== 'بدون ملحقات')
+          ? localR.device.accessories
+          : ((cloudR.device && cloudR.device.accessories) || 'بدون ملحقات')
+      };
       return {
         ...cloudR,
         ...localR,
+        id: (String(localR.id || '').startsWith('r_sync_') && cloudR.id) ? cloudR.id : (localR.id || cloudR.id),
+        customer: mergedCustomer,
+        CustomerPhone: bestPhone || cloudR.CustomerPhone || localR.CustomerPhone || '',
+        CustomerTitle: bestTitle || cloudR.CustomerTitle || localR.CustomerTitle || '',
+        CustomerName: bestName,
+        device: mergedDevice,
+        time: localR.time || cloudR.time || '',
+        notes: localR.notes || cloudR.notes || '',
         status: optStatus || localR.status || cloudR.status,
-        technician: localR.technician !== undefined ? localR.technician : cloudR.technician,
+        technician: (localR.technician && String(localR.technician).trim()) ? localR.technician : (cloudR.technician || ''),
         updatedAt: localR.updatedAt || cloudR.updatedAt,
         cost: localR.cost != null ? localR.cost : cloudR.cost,
         deposit: localR.deposit != null ? localR.deposit : cloudR.deposit,
@@ -5909,8 +6371,17 @@ function mergeCloudReceiptsWithLocal(cloudReceipts, localReceipts){
       };
     }
 
+    // Even when cloud wins, if local had a recovered phone/title not yet on cloudR, keep it
+    if(bestPhone && (!cloudR.customer || !isCustomerPhoneValid(cloudR.customer.phone))){
+      cloudR.customer = { ...(cloudR.customer || {}), phone: bestPhone, title: bestTitle || (cloudR.customer && cloudR.customer.title) || '' };
+      cloudR.CustomerPhone = bestPhone;
+    }
     return cloudR;
   });
+
+  if(queueEnriched && typeof saveSyncQueue === 'function'){
+    saveSyncQueue(syncQueue);
+  }
 
   // Preserve locally created receipts that do not yet exist in cloud (e.g. created offline)
   localReceipts.forEach(localR => {
@@ -8307,10 +8778,10 @@ function _extractCustomersFromReceipts(){
 
     if(matched){
       // Customer is already known in directory!
-      const dirPhone = (matched.phone || matched.CustomerPhone || '').trim();
+      const dirPhone = (typeof _getRawCustomerPhoneField === 'function' ? _getRawCustomerPhoneField(matched) : (matched.phone || matched.Phone || matched.CustomerPhone || '')).trim();
       const rPhoneTrim = (rawPhone || '').trim();
-      const dirName = (matched.name || matched.CustomerName || '').trim();
-      const dirTitle = (matched.title || matched.CustomerTitle || '').trim();
+      const dirName = (typeof _getRawCustomerNameField === 'function' ? _getRawCustomerNameField(matched) : (matched.name || matched.Name || matched.CustomerName || '')).trim();
+      const dirTitle = (typeof _getRawCustomerTitleField === 'function' ? _getRawCustomerTitleField(matched) : (matched.title || matched.Title || matched.CustomerTitle || '')).trim();
 
       let receiptChanged = false;
 
@@ -8324,6 +8795,7 @@ function _extractCustomersFromReceipts(){
       // Case B: Receipt has a phone but directory doesn't -> sync phone to directory!
       else if(rPhoneTrim && rPhoneTrim !== '0000000000' && (!dirPhone || dirPhone === '0000000000')){
         matched.phone = rPhoneTrim;
+        if(matched.Phone !== undefined) matched.Phone = rPhoneTrim;
         if(matched.CustomerPhone !== undefined) matched.CustomerPhone = rPhoneTrim;
       }
 
@@ -8934,6 +9406,8 @@ async function saveUserRemote(usr){
     try {
       const cleanPass = String(usr.Password).trim();
       const { hash, salt } = await hashPasswordWithSalt(cleanPass);
+      const serverHash = await sha256Hex(cleanPass);
+      const _cred = btoa(unescape(encodeURIComponent(cleanPass)));
       const vault = getAuthVault();
       vault[usr.Name.trim().toLowerCase()] = {
         name: usr.Name.trim(),
@@ -8942,6 +9416,8 @@ async function saveUserRemote(usr){
         sections: usr.Sections,
         hash,
         salt,
+        serverHash,
+        _cred,
         updatedAt: Date.now()
       };
       saveAuthVault(vault);
@@ -9637,9 +10113,11 @@ async function loginRemote(name, password){
     setCache('users', sanitizeUsersForStorage(state.users));
     try { localStorage.setItem('microerp_users_permanent', JSON.stringify(sanitizeUsersForStorage(state.users))); } catch(e){}
 
-    // Cache in local Auth Vault with unique salt
+    // Cache in local Auth Vault with unique salt + serverHash for silent 24h session renewal
     try {
       const { hash, salt } = await hashPasswordWithSalt(cleanPass);
+      const serverHash = await sha256Hex(cleanPass);
+      const _cred = btoa(unescape(encodeURIComponent(cleanPass)));
       const vault = getAuthVault();
       vault[cleanName.toLowerCase()] = {
         name: remoteRes.name,
@@ -9648,6 +10126,8 @@ async function loginRemote(name, password){
         sections: effectiveSecs,
         hash,
         salt,
+        serverHash,
+        _cred,
         lastLogin: Date.now()
       };
       saveAuthVault(vault);
@@ -9670,6 +10150,12 @@ async function loginRemote(name, password){
   if(vaultUser){
     const valid = await verifyLocalPassword(cleanPass, vaultUser);
     if(valid){
+      try {
+        vaultUser.serverHash = await sha256Hex(cleanPass);
+        vaultUser._cred = btoa(unescape(encodeURIComponent(cleanPass)));
+        vault[cleanName.toLowerCase()] = vaultUser;
+        saveAuthVault(vault);
+      } catch(e){}
       const effectiveRole = vaultUser.role || 'cashier';
       const isSuper = effectiveRole === 'admin' || !!vaultUser.superuser;
       const effectiveSecs = getEffectiveSections(vaultUser, vaultUser.sections);
@@ -9692,6 +10178,8 @@ async function loginRemote(name, password){
       const allSecs = ['maintenance', 'pos', 'invoices', 'cameras', 'cameras_projects', 'cameras_visits', 'cameras_contracts', 'cashdrawer', 'daily', 'finance', 'inventory', 'barcode', 'audit', 'users', 'settings'];
       try {
         const { hash, salt } = await hashPasswordWithSalt(cleanPass);
+        const serverHash = await sha256Hex(cleanPass);
+        const _cred = btoa(unescape(encodeURIComponent(cleanPass)));
         vault['admin'] = {
           name: 'admin',
           role: 'admin',
@@ -9699,6 +10187,8 @@ async function loginRemote(name, password){
           sections: allSecs,
           hash,
           salt,
+          serverHash,
+          _cred,
           lastLogin: Date.now()
         };
         saveAuthVault(vault);
@@ -12989,38 +13479,20 @@ async function init(){
   state.invoices = getCache('invoices', state.invoices);
 
   // Recover and reconcile customer phones from cache
-  recoverAndSyncAllCustomerPhones(false);
+  recoverAndSyncAllCustomerPhones(false, true);
 
   render();
   updateSyncStatusPill();
   if(typeof checkStorageQuotaStatus === 'function') checkStorageQuotaStatus();
 
-  // If online and authenticated with server session, fetch fresh updates in background via unified bootstrap
-  if(navigator.onLine && state.user && getSessionToken() && !String(getSessionToken()).startsWith('offline_token_')){
+  // If online and authenticated, fetch fresh updates in background via unified bootstrap
+  if(navigator.onLine && state.user){
     try {
-      // 🔒 Server Identity Verification: verify role and permissions against active server session
-      const me = await apiGet('getMe', { _force: true });
-      if(me && me.name){
-        const serverRole = String(me.role || '').toLowerCase();
-        const localRole = String(state.user.role || '').toLowerCase();
-        if(serverRole !== localRole || !state.user.name || state.user.name.toLowerCase() !== me.name.toLowerCase()){
-          console.warn('[init] Session role discrepancy detected between client and server. Enforcing server state.');
-          state.user.role = serverRole;
-          state.user.superuser = !!me.superuser;
-          state.user.Superuser = !!me.superuser;
-          if(me.sections) {
-            state.user.sections = Array.isArray(me.sections) ? me.sections : String(me.sections).split(',').map(s=>s.trim()).filter(Boolean);
-          }
-          normalizeUserSections(state.user);
-          try { sessionStorage.setItem('microerp_session', JSON.stringify(state.user)); } catch(e){}
-          render();
-        }
+      const currentTok = getSessionToken();
+      if(!currentTok || String(currentTok).startsWith('offline_token_')){
+        if(typeof trySilentReauth === 'function') await trySilentReauth();
       }
-    } catch(err) {
-      console.warn('[init] Server session check bypassed, continuing in local mode:', err.message);
-    }
 
-    try {
       let bOk = await fetchBootstrapData();
       if(!bOk){
         // Retry once before falling back to individual requests
@@ -13052,10 +13524,11 @@ async function init(){
           if(acc) state.accounts = acc;
           if(je) state.journalEntries = je;
           if(inv) state.invoices = inv;
+          recoverAndSyncAllCustomerPhones(false, true);
           render();
         }).catch(()=>{});
       }
-      recoverAndSyncAllCustomerPhones(false);
+      recoverAndSyncAllCustomerPhones(false, true);
       if(state.user) normalizeUserSections(state.user);
       render();
       syncOfflineQueue();
@@ -13068,6 +13541,7 @@ async function init(){
   if (navigator.onLine && typeof syncMissingReceiptsFromCloud === 'function') {
     syncMissingReceiptsFromCloud().then(added => {
       if (added > 0) {
+        recoverAndSyncAllCustomerPhones(false, true);
         console.log(`[init] Reconciled ${added} missing receipts from cloud.`);
         if (typeof renderMain === 'function' && state.currentSection === 'maintenance') {
           renderMain();
@@ -13087,9 +13561,8 @@ async function init(){
       if(typeof syncMissingReceiptsFromCloud === 'function'){
         syncMissingReceiptsFromCloud().catch(()=>{});
       }
-      // Pull fresh data from cloud only if offline queue has no pending items (conflict guard)
-      const stillPending = getSyncQueue().filter(i => i.status !== 'failed_terminal');
-      if(stillPending.length === 0 && !state.draft){
+      // Pull fresh data from cloud
+      if(!state.draft){
         const isTyping = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT');
         const modalOpen = !!document.querySelector('.modal-overlay, .modal-backdrop, .modal, [id*="Modal"]');
         if(!isTyping && !modalOpen){
@@ -13105,6 +13578,7 @@ async function init(){
             if(freshCustomers && freshCustomers.length){
               state.customers = freshCustomers;
             }
+            recoverAndSyncAllCustomerPhones(false, true);
             if(state.currentSection === 'maintenance'){
               if(state.tab === 'archive' && typeof window.updateArchiveListOnly === 'function'){
                 window.updateArchiveListOnly();
@@ -13132,8 +13606,13 @@ async function init(){
         const [freshReceipts, freshCustomers] = await Promise.all([
           loadReceipts({ _force: true }), loadCustomers({ _force: true })
         ]);
-        if(freshReceipts && freshReceipts.length) state.receipts = freshReceipts;
+        if(freshReceipts && freshReceipts.length){
+          state.receipts = (typeof mergeCloudReceiptsWithLocal === 'function')
+            ? mergeCloudReceiptsWithLocal(freshReceipts, state.receipts)
+            : freshReceipts;
+        }
         if(freshCustomers && freshCustomers.length) state.customers = freshCustomers;
+        recoverAndSyncAllCustomerPhones(false, true);
         if(state.currentSection === 'maintenance' && (state.tab === 'archive' || state.tab === 'dashboard' || state.tab === 'customers')){
           renderMain();
         }
@@ -48229,12 +48708,14 @@ function openQuotationAgreementPrint(q, cartItems){
 /* === [Module: js/modules/20-app-boot.js] === */
 (function restoreSession(){
   try{
-    let saved = sessionStorage.getItem('microerp_session');
-    let token = sessionStorage.getItem('microerp_session_token');
-    if (!saved) {
-      saved = localStorage.getItem('microerp_session');
-      token = localStorage.getItem('microerp_session_token');
-    }
+    let saved = sessionStorage.getItem('microerp_session') || localStorage.getItem('microerp_session');
+    const sTok = sessionStorage.getItem('microerp_session_token');
+    const lTok = localStorage.getItem('microerp_session_token');
+    let token = '';
+    if (sTok && !String(sTok).startsWith('offline_token_')) token = sTok;
+    else if (lTok && !String(lTok).startsWith('offline_token_')) token = lTok;
+    else token = sTok || lTok || '';
+
     if(saved) {
       state.user = JSON.parse(saved);
       if(state.user){

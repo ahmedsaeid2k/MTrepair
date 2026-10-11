@@ -21,38 +21,20 @@ async function init(){
   state.invoices = getCache('invoices', state.invoices);
 
   // Recover and reconcile customer phones from cache
-  recoverAndSyncAllCustomerPhones(false);
+  recoverAndSyncAllCustomerPhones(false, true);
 
   render();
   updateSyncStatusPill();
   if(typeof checkStorageQuotaStatus === 'function') checkStorageQuotaStatus();
 
-  // If online and authenticated with server session, fetch fresh updates in background via unified bootstrap
-  if(navigator.onLine && state.user && getSessionToken() && !String(getSessionToken()).startsWith('offline_token_')){
+  // If online and authenticated, fetch fresh updates in background via unified bootstrap
+  if(navigator.onLine && state.user){
     try {
-      // 🔒 Server Identity Verification: verify role and permissions against active server session
-      const me = await apiGet('getMe', { _force: true });
-      if(me && me.name){
-        const serverRole = String(me.role || '').toLowerCase();
-        const localRole = String(state.user.role || '').toLowerCase();
-        if(serverRole !== localRole || !state.user.name || state.user.name.toLowerCase() !== me.name.toLowerCase()){
-          console.warn('[init] Session role discrepancy detected between client and server. Enforcing server state.');
-          state.user.role = serverRole;
-          state.user.superuser = !!me.superuser;
-          state.user.Superuser = !!me.superuser;
-          if(me.sections) {
-            state.user.sections = Array.isArray(me.sections) ? me.sections : String(me.sections).split(',').map(s=>s.trim()).filter(Boolean);
-          }
-          normalizeUserSections(state.user);
-          try { sessionStorage.setItem('microerp_session', JSON.stringify(state.user)); } catch(e){}
-          render();
-        }
+      const currentTok = getSessionToken();
+      if(!currentTok || String(currentTok).startsWith('offline_token_')){
+        if(typeof trySilentReauth === 'function') await trySilentReauth();
       }
-    } catch(err) {
-      console.warn('[init] Server session check bypassed, continuing in local mode:', err.message);
-    }
 
-    try {
       let bOk = await fetchBootstrapData();
       if(!bOk){
         // Retry once before falling back to individual requests
@@ -84,10 +66,11 @@ async function init(){
           if(acc) state.accounts = acc;
           if(je) state.journalEntries = je;
           if(inv) state.invoices = inv;
+          recoverAndSyncAllCustomerPhones(false, true);
           render();
         }).catch(()=>{});
       }
-      recoverAndSyncAllCustomerPhones(false);
+      recoverAndSyncAllCustomerPhones(false, true);
       if(state.user) normalizeUserSections(state.user);
       render();
       syncOfflineQueue();
@@ -100,6 +83,7 @@ async function init(){
   if (navigator.onLine && typeof syncMissingReceiptsFromCloud === 'function') {
     syncMissingReceiptsFromCloud().then(added => {
       if (added > 0) {
+        recoverAndSyncAllCustomerPhones(false, true);
         console.log(`[init] Reconciled ${added} missing receipts from cloud.`);
         if (typeof renderMain === 'function' && state.currentSection === 'maintenance') {
           renderMain();
@@ -119,9 +103,8 @@ async function init(){
       if(typeof syncMissingReceiptsFromCloud === 'function'){
         syncMissingReceiptsFromCloud().catch(()=>{});
       }
-      // Pull fresh data from cloud only if offline queue has no pending items (conflict guard)
-      const stillPending = getSyncQueue().filter(i => i.status !== 'failed_terminal');
-      if(stillPending.length === 0 && !state.draft){
+      // Pull fresh data from cloud
+      if(!state.draft){
         const isTyping = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT');
         const modalOpen = !!document.querySelector('.modal-overlay, .modal-backdrop, .modal, [id*="Modal"]');
         if(!isTyping && !modalOpen){
@@ -137,6 +120,7 @@ async function init(){
             if(freshCustomers && freshCustomers.length){
               state.customers = freshCustomers;
             }
+            recoverAndSyncAllCustomerPhones(false, true);
             if(state.currentSection === 'maintenance'){
               if(state.tab === 'archive' && typeof window.updateArchiveListOnly === 'function'){
                 window.updateArchiveListOnly();
@@ -164,8 +148,13 @@ async function init(){
         const [freshReceipts, freshCustomers] = await Promise.all([
           loadReceipts({ _force: true }), loadCustomers({ _force: true })
         ]);
-        if(freshReceipts && freshReceipts.length) state.receipts = freshReceipts;
+        if(freshReceipts && freshReceipts.length){
+          state.receipts = (typeof mergeCloudReceiptsWithLocal === 'function')
+            ? mergeCloudReceiptsWithLocal(freshReceipts, state.receipts)
+            : freshReceipts;
+        }
         if(freshCustomers && freshCustomers.length) state.customers = freshCustomers;
+        recoverAndSyncAllCustomerPhones(false, true);
         if(state.currentSection === 'maintenance' && (state.tab === 'archive' || state.tab === 'dashboard' || state.tab === 'customers')){
           renderMain();
         }

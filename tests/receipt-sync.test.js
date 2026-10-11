@@ -180,6 +180,11 @@ describe('Receipt Synchronization & Numbering Engine (>100)', () => {
       if (!Array.isArray(cloudReceipts)) return localReceipts || [];
       if (!Array.isArray(localReceipts) || localReceipts.length === 0) return cloudReceipts;
 
+      const getPhone = (c) => {
+        if (!c || typeof c !== 'object') return '';
+        return String(c.phone || c.Phone || c.CustomerPhone || (c.customer && (c.customer.phone || c.customer.Phone)) || '').trim();
+      };
+
       const localMap = new Map();
       localReceipts.forEach(r => {
         if (!r) return;
@@ -197,6 +202,7 @@ describe('Receipt Synchronization & Numbering Engine (>100)', () => {
 
         if (!localR) return cloudR;
 
+        const bestPhone = getPhone(cloudR) || getPhone(localR);
         const optStatus = getOptimisticReceiptStatus(k1) || getOptimisticReceiptStatus(k2);
         const isRecentLocal = localR._localModifiedAt && (Date.now() - localR._localModifiedAt < 180000);
 
@@ -213,8 +219,15 @@ describe('Receipt Synchronization & Numbering Engine (>100)', () => {
           return {
             ...cloudR,
             ...localR,
+            customer: {
+              ...(cloudR.customer || {}),
+              ...(localR.customer || {}),
+              phone: bestPhone
+            },
+            CustomerPhone: bestPhone,
             status: optStatus || localR.status || cloudR.status,
-            technician: localR.technician !== undefined ? localR.technician : cloudR.technician,
+            technician: (localR.technician && String(localR.technician).trim()) ? localR.technician : (cloudR.technician || ''),
+            time: localR.time || cloudR.time || '',
             updatedAt: localR.updatedAt || cloudR.updatedAt,
             cost: localR.cost != null ? localR.cost : cloudR.cost,
             deposit: localR.deposit != null ? localR.deposit : cloudR.deposit,
@@ -269,6 +282,38 @@ describe('Receipt Synchronization & Numbering Engine (>100)', () => {
       expect(merged).toHaveLength(1);
       expect(merged[0].status).toBe('مكتمل');
       expect(merged[0].technician).toBe('أحمد فتحي');
+    });
+
+    it('preserves cloud phone, technician, and time when merging with a local tracked stub', () => {
+      const localTrackedStub = [
+        {
+          id: 'r_sync_MT_2026_0105',
+          receiptNumber: 'MT-2026-0105',
+          status: 'مكتمل',
+          technician: '',
+          time: '',
+          customer: { name: 'امجد جرجس', phone: '' },
+          _localModifiedAt: Date.now()
+        }
+      ];
+      const cloudFullReceipt = [
+        {
+          id: 'rec_105',
+          receiptNumber: 'MT-2026-0105',
+          status: 'قيد الفحص',
+          technician: 'أحمد فتحي',
+          time: '14:30',
+          customer: { name: 'امجد جرجس', phone: '01223456789' },
+          CustomerPhone: '01223456789'
+        }
+      ];
+
+      const merged = mergeCloudReceiptsWithLocal(cloudFullReceipt, localTrackedStub);
+      expect(merged).toHaveLength(1);
+      expect(merged[0].status).toBe('مكتمل');
+      expect(merged[0].customer.phone).toBe('01223456789');
+      expect(merged[0].technician).toBe('أحمد فتحي');
+      expect(merged[0].time).toBe('14:30');
     });
 
     it('preserves receipts created locally when not yet present in cloud', () => {

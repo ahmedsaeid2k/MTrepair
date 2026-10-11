@@ -308,12 +308,12 @@ function renderArchive(main){
           <button type="button" class="view-mode-btn ${state.maintenanceViewMode!=='cards'?'active':''}" id="archViewTableBtn" title="عرض جدول">${getSvgIcon("fileText", 13)} جدول</button>
           <button type="button" class="view-mode-btn ${state.maintenanceViewMode==='cards'?'active':''}" id="archViewCardsBtn" title="عرض بطاقات ذكية">${getSvgIcon("folder", 13)} بطاقات ذكية</button>
         </div>
-        <button class="btn btn-whatsapp btn-sm" id="archBulkOverdueBtn" title="إرسال تذكيرات واتساب دفعة واحدة للأجهزة المتروكة (+7 أيام)">${WA_ICON} تذكير المتروكة (+7)</button>
-        <button class="btn btn-whatsapp btn-sm" id="archBulkUnclaimedBtn" style="background:#b45309;" title="تذكير وإشعار العملاء بالأجهزة غير المطالب بها (+30 يوم)">${WA_ICON} لم تُطالَب (+30 يوم)</button>
-        <button class="btn btn-ghost btn-sm" id="archRecoverPhonesBtn" style="color:var(--primary);font-weight:800;" title="فحص كافة السجلات واسترداد أرقام الهواتف التائهة">${getSvgIcon("refresh", 13)} استرداد الهواتف</button>
+        <button class="btn btn-ghost btn-sm" id="archBulkOverdueBtn" title="إرسال تذكيرات واتساب دفعة واحدة للأجهزة المتروكة (+7 أيام)">${WA_ICON} تذكير المتروكة (+7)</button>
+        <button class="btn btn-ghost btn-sm" id="archBulkUnclaimedBtn" style="color:var(--amber-text);" title="تذكير وإشعار العملاء بالأجهزة غير المطالب بها (+30 يوم)">${WA_ICON} غير المطالب بها (+30)</button>
+        <button class="btn btn-ghost btn-sm" id="archRecoverPhonesBtn" style="color:var(--primary-text);font-weight:700;" title="فحص كافة السجلات واسترداد أرقام الهواتف التائهة">${getSvgIcon("refresh", 13)} استرداد الهواتف</button>
         <button class="btn btn-ghost btn-sm" id="archGotoCustBtn">${getSvgIcon("users", 13)} دليل العملاء</button>
-        <button class="btn btn-ghost btn-sm" id="exportArchiveExcelBtn">${getSvgIcon("download", 13)} تصدير CSV (Excel)</button>
-        <button class="btn btn-primary btn-sm" id="archNewReceiptBtn">${getSvgIcon("plus", 13)} إيصال جديد</button>
+        <button class="btn btn-ghost btn-sm" id="exportArchiveExcelBtn">${getSvgIcon("download", 13)} تصدير CSV</button>
+        <button class="btn btn-primary" id="archNewReceiptBtn" style="font-weight:800;box-shadow:0 2px 8px var(--primary-focus);">${getSvgIcon("plus", 14)} إيصال استلام جديد</button>
       </div>
     </div>
 

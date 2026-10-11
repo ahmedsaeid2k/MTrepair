@@ -6,8 +6,8 @@
   transform: translateX(-50%);
   z-index: 99999;
   background: var(--paper2);
-  border: 1px solid #f87171;
-  border-radius: var(--radius);
+  border: 1px solid var(--red);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   padding: 12px 18px;
   display: flex;
@@ -30,8 +30,8 @@
 .ios-alert-bell-pulse {
   width: 36px;
   height: 36px;
-  border-radius: var(--radius-sm);
-  background: #dc2626;
+  border-radius: var(--radius-md);
+  background: var(--red);
   color: #fff;
   font-size: 16px;
   display: flex;
@@ -63,13 +63,13 @@
   position: absolute;
   top: -3px;
   left: -3px;
-  background: #dc2626;
+  background: var(--red);
   color: #fff;
   border-radius: 9999px;
   padding: 1px 5px;
   font-size: 10px;
   font-weight: 800;
-  box-shadow: 0 1px 3px rgba(220, 38, 38, 0.4);
+  box-shadow: 0 1px 3px rgba(185, 28, 28, 0.4);
 }
 .ios-segmented-bar {
   display: inline-flex;

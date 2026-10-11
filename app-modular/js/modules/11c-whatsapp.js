@@ -290,7 +290,9 @@ function getStatusCustomMessage(rawR, status){
   const depositVal = Number(r.deposit||0);
   const depositInfo = depositVal > 0 ? `• العربون المدفوع مسبقاً: *${depositVal.toLocaleString()} ج.م*` : '';
   const warrantyVal = (r.warranty || '').trim();
-  const warrantyInfo = warrantyVal ? `• فترة الضمان المعتمدة: *${warrantyVal}*` : '';
+  const hasWarranty = warrantyVal && warrantyVal !== 'بدون ضمان' && warrantyVal !== '0' && Number(r.warrantyMonths || 0) > 0;
+  const warrantyDisplay = hasWarranty ? warrantyVal : 'بدون ضمان';
+  const warrantyInfo = hasWarranty ? `• فترة الضمان المعتمدة: *${warrantyVal}*` : '';
 
   // Replace placeholders
   const receiptTimeStr = (typeof formatReceiptTime === 'function' ? formatReceiptTime(r) : (r.time || ''));
@@ -310,7 +312,7 @@ function getStatusCustomMessage(rawR, status){
     .replace(/{remaining}/g, remaining.toLocaleString())
     .replace(/{inspection_fee}/g, Number(r.inspectionFee || (state.settings && state.settings.defaultInspectionFee) || 100).toLocaleString())
     .replace(/{estimate_time}/g, r.estimateTime || (state.settings && state.settings.defaultEstimateTime) || 'خلال 24-48 ساعة')
-    .replace(/{warranty}/g, warrantyVal || (state.settings && state.settings.defaultWarranty) || '3 شهور')
+    .replace(/{warranty}/g, warrantyDisplay)
     .replace(/{warranty_info}/g, warrantyInfo)
     .replace(/{track_url}/g, trackUrl)
     .replace(/{shop_name}/g, shop)
@@ -1072,11 +1074,12 @@ function buildCostEstimateWhatsappText(rawR, vals){
   const remaining = Math.max(0, cost - deposit);
   const inspectionFee = Number(vals.inspectionFee != null ? vals.inspectionFee : ((state.settings && state.settings.defaultInspectionFee != null) ? state.settings.defaultInspectionFee : 100));
   const estimateTime = (vals.estimateTime || 'خلال 24-48 ساعة').trim();
-  const warranty = (vals.warranty || '3 شهور ضد عيوب الصناعة').trim();
+  const warranty = (vals.warranty || '').trim() || 'بدون ضمان';
   const faultsReport = (vals.faultsReport || (Array.isArray(r.faults) ? r.faults.join('، ') : String(r.faults || '')) || r.faultNotes || 'فحص شامل وتحديد الأعطال').trim();
 
   const depositInfo = deposit > 0 ? `• العربون المدفوع مسبقاً: *${deposit.toLocaleString()} ج.م*` : '';
-  const warrantyInfo = warranty ? `• فترة الضمان المعتمدة: *${warranty}*` : '';
+  const hasWarranty = warranty && warranty !== 'بدون ضمان' && warranty !== '0';
+  const warrantyInfo = hasWarranty ? `• فترة الضمان المعتمدة: *${warranty}*` : '';
 
   let tmpl = getWaTemplate('cost_estimate') || DEFAULT_WA_TEMPLATES.cost_estimate;
 
@@ -1123,7 +1126,7 @@ function openCostEstimateModal(rawR){
   const defaultFee = (state.settings && state.settings.defaultInspectionFee != null) ? Number(state.settings.defaultInspectionFee) : 100;
   const initialInspectionFee = Number(r.inspectionFee != null ? r.inspectionFee : defaultFee);
   const initialEstimateTime = r.estimateTime || (state.settings && state.settings.defaultEstimateTime) || 'خلال 24-48 ساعة';
-  const initialWarranty = r.warranty || (state.settings && state.settings.defaultWarranty) || '3 شهور ضد عيوب الصناعة';
+  const initialWarranty = r.warranty || (Number(r.warrantyMonths || 0) > 0 ? `${r.warrantyMonths} شهور ضد عيوب الصناعة` : 'بدون ضمان');
 
   let initialFaultsReport = '';
   if(Array.isArray(r.faults) && r.faults.length){
@@ -1218,7 +1221,7 @@ function openCostEstimateModal(rawR){
             </div>
             <div class="field" style="margin-bottom:0;">
               <label style="font-size:11.5px;">فترة الضمان المعتمدة:</label>
-              <input type="text" id="estWarranty" value="${escapeHtml(initialWarranty)}" list="estWarrantyDatalist" placeholder="3 شهور ضد عيوب الصناعة">
+              <input type="text" id="estWarranty" value="${escapeHtml(initialWarranty)}" list="estWarrantyDatalist" placeholder="بدون ضمان">
               <datalist id="estWarrantyDatalist">
                 <option value="شهر واحد ضد عيوب الصناعة">
                 <option value="3 شهور ضد عيوب الصناعة">

@@ -306,4 +306,101 @@ describe('Receipt Synchronization & Numbering Engine (>100)', () => {
       expect(merged[0].status).toBe('تم التسليم');
     });
   });
+
+  describe('Maintenance Intake Warranty Rules', () => {
+    function computeWarrantyEndDate(startDateStr, months = 0) {
+      if (!startDateStr || !months || Number(months) <= 0) return '';
+      try {
+        const cleanStr = String(startDateStr).slice(0, 10);
+        const parts = cleanStr.split('-');
+        if (parts.length !== 3) return '';
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10) - 1;
+        const d = parseInt(parts[2], 10);
+        if (isNaN(y) || isNaN(m) || isNaN(d)) return '';
+        const date = new Date(y, m + Number(months), d);
+        if (isNaN(date.getTime())) return '';
+        const resY = date.getFullYear();
+        const resM = String(date.getMonth() + 1).padStart(2, '0');
+        const resD = String(date.getDate()).padStart(2, '0');
+        return `${resY}-${resM}-${resD}`;
+      } catch (e) {
+        return '';
+      }
+    }
+
+    function normalizeWarranty(r) {
+      const wMonths = Number(r.warrantyMonths != null ? r.warrantyMonths : (r.WarrantyMonths != null ? r.WarrantyMonths : 0));
+      r.warrantyMonths = isNaN(wMonths) || wMonths < 0 ? 0 : wMonths;
+      r.WarrantyMonths = r.warrantyMonths;
+
+      if (r.warrantyMonths > 0) {
+        r.warranty = r.warranty || r.Warranty || `${r.warrantyMonths} شهور ضد عيوب الصناعة`;
+        r.warrantyEnd = r.warrantyEnd || r.WarrantyEnd || computeWarrantyEndDate(r.deliveryDate || r.date, r.warrantyMonths);
+      } else {
+        r.warranty = r.warranty || r.Warranty || 'بدون ضمان';
+        r.warrantyEnd = '';
+      }
+      r.WarrantyEnd = r.warrantyEnd;
+      r.Warranty = r.warranty;
+      return r;
+    }
+
+    it('returns empty warranty end date when warranty months is 0 or unassigned', () => {
+      expect(computeWarrantyEndDate('2026-10-11', 0)).toBe('');
+      expect(computeWarrantyEndDate('2026-10-11', undefined)).toBe('');
+      expect(computeWarrantyEndDate('2026-10-11', null)).toBe('');
+      expect(computeWarrantyEndDate('', 3)).toBe('');
+    });
+
+    it('correctly calculates warranty end date when positive months are provided', () => {
+      expect(computeWarrantyEndDate('2026-10-11', 1)).toBe('2026-11-11');
+      expect(computeWarrantyEndDate('2026-10-11', 3)).toBe('2027-01-11');
+      expect(computeWarrantyEndDate('2026-10-11', 12)).toBe('2027-10-11');
+    });
+
+    it('defaults maintenance intake draft to "بدون ضمان" and 0 months when no parts are installed', () => {
+      const intakeDraft = {
+        date: '2026-10-11',
+        deliveryDate: '2026-10-11',
+        warranty: 'بدون ضمان',
+        warrantyMonths: 0,
+        warrantyEnd: '',
+        partsList: []
+      };
+
+      const normalized = normalizeWarranty({ ...intakeDraft });
+      expect(normalized.warrantyMonths).toBe(0);
+      expect(normalized.warranty).toBe('بدون ضمان');
+      expect(normalized.warrantyEnd).toBe('');
+    });
+
+    it('sets warranty automatically when a spare part with warranty is added', () => {
+      const intakeDraft = {
+        date: '2026-10-11',
+        deliveryDate: '2026-10-11',
+        warranty: 'بدون ضمان',
+        warrantyMonths: 0,
+        warrantyEnd: '',
+        partsList: []
+      };
+
+      // Adding part with 6 months warranty
+      const partFromInventory = { ID: 'part_1', Name: 'شاشة أصلية', WarrantyMonths: 6 };
+      if (partFromInventory.WarrantyMonths > 0) {
+        intakeDraft.partsList.push(partFromInventory);
+        intakeDraft.warrantyMonths = Math.max(intakeDraft.warrantyMonths, partFromInventory.WarrantyMonths);
+        intakeDraft.warranty = `${intakeDraft.warrantyMonths} شهور ضد عيوب الصناعة`;
+        intakeDraft.warrantyEnd = computeWarrantyEndDate(intakeDraft.deliveryDate, intakeDraft.warrantyMonths);
+      }
+
+      expect(intakeDraft.warrantyMonths).toBe(6);
+      expect(intakeDraft.warranty).toBe('6 شهور ضد عيوب الصناعة');
+      expect(intakeDraft.warrantyEnd).toBe('2027-04-11');
+
+      const normalized = normalizeWarranty({ ...intakeDraft });
+      expect(normalized.warrantyMonths).toBe(6);
+      expect(normalized.warrantyEnd).toBe('2027-04-11');
+    });
+  });
 });

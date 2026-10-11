@@ -301,20 +301,20 @@ function renderForm(main){
         <div class="subtitle">رقم الإيصال: <b class="mono" style="color:var(--primary);">${d.receiptNumber || '...'}</b> — التاريخ: <b class="mono">${d.date}</b></div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <span id="draftAutosaveBadge" class="badge" style="background:var(--paper2);border:1px solid var(--line);color:var(--ink-secondary);font-size:11.5px;padding:4px 8px;display:inline-flex;align-items:center;gap:5px;">
+        <span id="draftAutosaveBadge" class="badge" style="background:var(--paper2);border:1px solid var(--line);color:var(--ink-secondary);font-size:var(--text-xs);padding:4px 10px;border-radius:var(--radius-sm);display:inline-flex;align-items:center;gap:6px;">
           ${getSvgIcon("check", 12)} <span id="draftAutosaveText">${d._savedAt ? 'مسودة محفوظة تلقائياً' : 'حفظ تلقائي مفعّل'}</span>
         </span>
-        <button type="button" class="btn btn-ghost btn-xs" id="manualSaveDraftBtn" style="border:1px solid var(--line);">${getSvgIcon("save", 13)} حفظ المسودة</button>
-        <button type="button" class="btn btn-ghost btn-xs text-danger" id="discardDraftBtn" style="color:var(--red);border:1px solid rgba(239,68,68,0.25);">${getSvgIcon("trash", 13)} مسح المسودة والبدء من جديد</button>
+        <button type="button" class="btn btn-ghost btn-xs" id="manualSaveDraftBtn">${getSvgIcon("save", 13)} حفظ المسودة</button>
+        <button type="button" class="btn btn-ghost btn-xs text-danger" id="discardDraftBtn" style="color:var(--red);">${getSvgIcon("trash", 13)} مسح المسودة والبدء من جديد</button>
       </div>
     </div>
     ${d._isRestored ? `
-      <div id="draftRestoredAlert" style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);border-radius:6px;padding:8px 12px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-        <div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--green-text);">
+      <div id="draftRestoredAlert" style="background:var(--primary-light);border:1px solid rgba(4,120,87,0.25);border-radius:var(--radius-md);padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+        <div style="display:flex;align-items:center;gap:8px;font-size:var(--text-sm);color:var(--primary-text);font-weight:700;">
           <span>${getSvgIcon("check", 16)}</span>
           <span><b>تمت استعادة المسودة المحفوظة تلقائياً بنجاح</b> (الخطوة ${state.formStep + 1} من ${STEPS.length})</span>
         </div>
-        <button type="button" class="btn btn-ghost btn-xs" style="color:var(--ink-secondary);padding:2px 6px;" onclick="this.closest('#draftRestoredAlert').remove()">✕ إغلاق التنبيه</button>
+        <button type="button" class="btn btn-ghost btn-xs" style="color:var(--ink-secondary);padding:2px 8px;" onclick="this.closest('#draftRestoredAlert').remove()">✕ إغلاق التنبيه</button>
       </div>
     ` : ''}
     <div class="stepper">
@@ -385,9 +385,10 @@ function renderForm(main){
 function stepNav(body, canBack, canNext, nextLabel){
   const div = document.createElement('div');
   div.className='actions-row';
+  div.style.marginTop = '20px';
   div.innerHTML = `
-    <button class="btn btn-ghost" id="backBtn" ${canBack?'':'disabled'}>السابق</button>
-    <button class="btn btn-primary" id="nextBtn">${nextLabel||'التالي'}</button>
+    <button class="btn btn-ghost" id="backBtn" ${canBack?'':'disabled'}>${getSvgIcon('arrowRight', 14)} السابق</button>
+    <button class="btn btn-primary" id="nextBtn" style="font-weight:800;padding:8px 24px;box-shadow:0 2px 8px var(--primary-focus);">${nextLabel||'التالي'} ${getSvgIcon('arrowLeft', 14)}</button>
   `;
   body.appendChild(div);
   if(canBack) div.querySelector('#backBtn').onclick = ()=>{ 
@@ -1209,16 +1210,16 @@ function stepFinance(body,d){
         <div class="field" style="margin-bottom:0;">
           <label>مدة الضمان المعتمدة</label>
           <select id="draftWarrantyMonthsSelect">
-            <option value="0" ${Number(d.warrantyMonths)===0?'selected':''}>بدون ضمان</option>
+            <option value="0" ${Number(d.warrantyMonths)===0||d.warrantyMonths==null?'selected':''}>بدون ضمان (الافتراضي)</option>
             <option value="1" ${Number(d.warrantyMonths)===1?'selected':''}>شهر واحد (30 يوماً)</option>
-            <option value="3" ${Number(d.warrantyMonths)===3||d.warrantyMonths==null?'selected':''}>3 شهور (الافتراضي)</option>
+            <option value="3" ${Number(d.warrantyMonths)===3?'selected':''}>3 شهور</option>
             <option value="6" ${Number(d.warrantyMonths)===6?'selected':''}>6 شهور</option>
             <option value="12" ${Number(d.warrantyMonths)===12?'selected':''}>سنة كاملة (12 شهراً)</option>
           </select>
         </div>
         <div class="field" style="margin-bottom:0;">
           <label>تاريخ نهاية الضمان التقديري</label>
-          <input id="draftWarrantyEndDisplay" type="text" readonly disabled class="mono" style="background:var(--paper3);font-weight:bold;color:var(--primary);" value="${d.warrantyEnd || (typeof computeWarrantyEndDate === 'function' ? computeWarrantyEndDate(d.deliveryDate || d.date, d.warrantyMonths || 3) : '')}">
+          <input id="draftWarrantyEndDisplay" type="text" readonly disabled class="mono" style="background:var(--paper3);font-weight:bold;color:var(--primary);" value="${d.warrantyEnd || ((d.warrantyMonths > 0 && typeof computeWarrantyEndDate === 'function') ? computeWarrantyEndDate(d.deliveryDate || d.date, d.warrantyMonths) : '')}" placeholder="بدون ضمان">
         </div>
       </div>
     </div>
@@ -1343,6 +1344,10 @@ function stepFinance(body,d){
     const disp = document.getElementById('draftWarrantyEndDisplay');
     if(!wmSel || !disp) return;
     const months = Number(wmSel.value);
+    if(months <= 0){
+      disp.value = '';
+      return;
+    }
     const startDate = (fDate && fDate.value) ? fDate.value : (d.deliveryDate || d.date);
     disp.value = (typeof computeWarrantyEndDate === 'function') ? computeWarrantyEndDate(startDate, months) : '';
   };
@@ -1368,13 +1373,34 @@ function stepFinance(body,d){
     const item = state.inventory.find(x=>x.ID===itemId);
     if(!item || qty > Number(item.Quantity)){ showToast('الكمية المطلوبة غير متوفرة بالمخزن (المتاح: ' + (item ? item.Quantity : 0) + ')', 'error'); return; }
 
+    const itemWarrantyMonths = Number(item.WarrantyMonths || 0);
     if(!d.partsList) d.partsList = [];
-    d.partsList.push({ itemId, name: item.Name, qty, purchasePrice: Number(item.PurchasePrice || 0) });
+    d.partsList.push({ itemId, name: item.Name, qty, purchasePrice: Number(item.PurchasePrice || 0), warrantyMonths: itemWarrantyMonths });
     const cost = qty * Number(item.PurchasePrice || 0);
     d.partsCost = Number(d.partsCost||0) + cost;
     d.partsUsed = d.partsList.map(p => `${p.name} × ${p.qty}`).join('، ');
     document.getElementById('finParts').value = d.partsCost;
     document.getElementById('draftPartsUsedList').innerHTML = escapeHtml(d.partsUsed) + ' <span style="font-size:11px;color:var(--primary);font-weight:700;">(سيتم الخصم الفعلي عند اعتماد الإيصال)</span>';
+
+    // إذا كان للصنف فترة ضمان، نحدد فترة ضمان الإيصال بناءً عليها تلقائياً
+    if(itemWarrantyMonths > 0){
+      d.warrantyMonths = Math.max(Number(d.warrantyMonths || 0), itemWarrantyMonths);
+      d.warranty = `${d.warrantyMonths} شهور ضد عيوب الصناعة`;
+      const wmSel = document.getElementById('draftWarrantyMonthsSelect');
+      if(wmSel){
+        let matched = Array.from(wmSel.options).some(opt => Number(opt.value) === d.warrantyMonths);
+        if(!matched){
+          const opt = document.createElement('option');
+          opt.value = String(d.warrantyMonths);
+          opt.textContent = `${d.warrantyMonths} شهور (ضمان الصنف)`;
+          wmSel.appendChild(opt);
+        }
+        wmSel.value = String(d.warrantyMonths);
+      }
+      updateWarrantyEndPreview();
+      showToast(`تم ضبط فترة الضمان تلقائياً (${d.warrantyMonths} شهور) بناءً على قطعة الغيار المضافة`, 'info');
+    }
+
     recalcDraftFinances();
     showToast('تمت إضافة قطعة الغيار لمسودة الإيصال (سيتم الخصم عند الحفظ النهائي)', 'success');
   };
@@ -1404,8 +1430,8 @@ function stepFinance(body,d){
     const finDateEl = document.getElementById('finDate');
     d.deliveryDate = finDateEl ? finDateEl.value : '';
     const wmSel = document.getElementById('draftWarrantyMonthsSelect');
-    d.warrantyMonths = wmSel ? Number(wmSel.value) : (d.warrantyMonths != null ? d.warrantyMonths : 3);
-    d.warrantyEnd = (typeof computeWarrantyEndDate === 'function') ? computeWarrantyEndDate(d.deliveryDate || d.date, d.warrantyMonths) : '';
+    d.warrantyMonths = wmSel ? Number(wmSel.value) : (d.warrantyMonths != null ? d.warrantyMonths : 0);
+    d.warrantyEnd = (d.warrantyMonths > 0 && typeof computeWarrantyEndDate === 'function') ? computeWarrantyEndDate(d.deliveryDate || d.date, d.warrantyMonths) : '';
     d.warranty = d.warrantyMonths > 0 ? `${d.warrantyMonths} شهور ضد عيوب الصناعة` : 'بدون ضمان';
   };
   stepNav(body, true, ()=>{
@@ -1461,7 +1487,7 @@ function stepReview(body,d){
         ` : `<div><b>الدفعة المقدمة:</b> 0 ج.م</div>`}
         <div><b style="color:var(--primary);">المبلغ المتبقي المطلوب:</b> <span class="mono" style="font-size:17px;font-weight:900;color:var(--primary);">${remaining}</span> ج.م</div>
         <div><b>موعد التسليم:</b> ${escapeHtml(d.deliveryDate||'غير محدد')}</div>
-        <div><b>فترة الضمان:</b> <span class="badge" style="background:#ecfdf5;color:#047857;font-weight:700;">${d.warrantyMonths ? d.warrantyMonths + ' شهور (حتى: ' + (d.warrantyEnd || (typeof computeWarrantyEndDate === 'function' ? computeWarrantyEndDate(d.deliveryDate || d.date, d.warrantyMonths) : '')) + ')' : 'بدون ضمان'}</span></div>
+        <div><b>فترة الضمان:</b> <span class="badge" style="${d.warrantyMonths > 0 ? 'background:#ecfdf5;color:#047857;' : 'background:var(--paper3);color:var(--ink-secondary);'}font-weight:700;">${d.warrantyMonths > 0 ? d.warrantyMonths + ' شهور (حتى: ' + (d.warrantyEnd || (typeof computeWarrantyEndDate === 'function' ? computeWarrantyEndDate(d.deliveryDate || d.date, d.warrantyMonths) : '')) + ')' : 'بدون ضمان'}</span></div>
       </div>
 
       ${isMultiDev ? `
@@ -1514,13 +1540,13 @@ function stepReview(body,d){
         </div>
       ` : ''}
     </div>
-    <div class="actions-row" style="flex-wrap:wrap;">
-      <button class="btn btn-ghost" id="backBtn">السابق</button>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    <div class="actions-row" style="flex-wrap:wrap;margin-top:20px;gap:10px;">
+      <button class="btn btn-ghost" id="backBtn">${getSvgIcon('arrowRight', 14)} السابق</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
         <button class="btn btn-ghost btn-sm" id="saveOnlyBtn">${getSvgIcon("check", 14)} حفظ فقط</button>
-        <button class="btn btn-whatsapp btn-sm" id="saveWaBtn">${WA_ICON} واتساب</button>
-        <button class="btn btn-amber btn-sm" id="saveStickerBtn">${getSvgIcon("tag", 14)} حفظ وطباعة ملصق</button>
-        <button class="btn btn-primary btn-sm" id="savePrintBtn">${getSvgIcon("printer", 14)} حفظ وطباعة A5</button>
+        <button class="btn btn-ghost btn-sm" id="saveWaBtn" style="color:#16a34a;">${WA_ICON} حفظ وواتساب</button>
+        <button class="btn btn-ghost btn-sm" id="saveStickerBtn" style="color:var(--amber-text);">${getSvgIcon("tag", 14)} حفظ وملصق باركود</button>
+        <button class="btn btn-primary" id="savePrintBtn" style="font-weight:800;padding:9px 20px;box-shadow:0 2px 10px var(--primary-focus);">${getSvgIcon("printer", 16)} حفظ وطباعة إيصال A5</button>
       </div>
     </div>
   `;

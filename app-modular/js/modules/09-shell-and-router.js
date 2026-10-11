@@ -1621,7 +1621,7 @@ function renderDashboard(main){
       <div style="display:flex;gap:8px;align-items:center;">
         <div id="networkSyncPill" class="sync-pill online" onclick="syncOfflineQueue(true)"><span class="sync-dot"></span><span>متصل</span></div>
         <button class="btn btn-ghost btn-sm" id="exportExcelDashBtn">${getSvgIcon('invoices', 14)} تصدير CSV (Excel)</button>
-        <button class="btn btn-primary btn-sm" id="dashNewReceiptBtn">${getSvgIcon('plus', 14)} استلام جهاز جديد</button>
+        <button class="btn btn-primary" id="dashNewReceiptBtn" style="font-weight:800;padding:8px 18px;box-shadow:0 2px 8px var(--primary-focus);">${getSvgIcon('plus', 14)} استلام جهاز جديد</button>
       </div>
     </div>
 
@@ -1640,7 +1640,7 @@ function renderDashboard(main){
         </div>
         <div class="num mono">${done}</div>
       </div>
-      <div class="stat-card purple" id="dashCardDelivered" style="border-right-color:#8b5cf6;cursor:pointer;" title="عرض الأجهزة المسلمة">
+      <div class="stat-card purple" id="dashCardDelivered" style="border-right:3px solid var(--purple);cursor:pointer;" title="عرض الأجهزة المسلمة">
         <div class="top-row">
           <span class="lbl">تم تسليمها للعملاء</span>
           <div class="icon-box">${getSvgIcon('check', 16)}</div>
@@ -1654,21 +1654,21 @@ function renderDashboard(main){
         </div>
         <div class="num mono">${todayIncome.toLocaleString()} <span style="font-size:13px;font-weight:600;">ج.م</span></div>
       </div>
-      <div class="stat-card amber" id="dashCardDelayed48h" style="border-right-color:#f59e0b;cursor:pointer;" title="أجهزة قيد الصيانة تجاوزت 48 ساعة بالورشة">
+      <div class="stat-card amber" id="dashCardDelayed48h" style="border-right:3px solid var(--amber);cursor:pointer;" title="أجهزة قيد الصيانة تجاوزت 48 ساعة بالورشة">
         <div class="top-row">
           <span class="lbl">متأخرة بالورشة (+48 س)</span>
-          <div class="icon-box" style="color:#d97706;">${getSvgIcon('clock', 16)}</div>
+          <div class="icon-box" style="color:var(--amber-text);">${getSvgIcon('clock', 16)}</div>
         </div>
-        <div class="num mono" style="color:#d97706;">${delayed48hList.length}</div>
+        <div class="num mono" style="color:var(--amber-text);">${delayed48hList.length}</div>
       </div>
-      <div class="stat-card red" id="dashCardOverdue7d" style="cursor:pointer;" title="أجهزة مكتملة لم يستلمها العملاء لأكثر من أسبوع">
+      <div class="stat-card red" id="dashCardOverdue7d" style="border-right:3px solid var(--red);cursor:pointer;" title="أجهزة مكتملة لم يستلمها العملاء لأكثر من أسبوع">
         <div class="top-row">
           <span class="lbl">متروكة +7 أيام</span>
           <div class="icon-box">${getSvgIcon('alert', 16)}</div>
         </div>
         <div class="num mono">${overdueList.length}</div>
       </div>
-      <div class="stat-card purple" style="border-right-color:#6366f1;">
+      <div class="stat-card purple" style="border-right:3px solid var(--blue);">
         <div class="top-row">
           <span class="lbl">متبقي الصيانة والديون</span>
           <div class="icon-box">${getSvgIcon('finance', 16)}</div>

@@ -682,8 +682,8 @@ function formatReceiptTime(rawR){
 }
 
 /* ---- Warranty End Date Computation Helper ---- */
-function computeWarrantyEndDate(startDateStr, months = 3){
-  if(!startDateStr) return '';
+function computeWarrantyEndDate(startDateStr, months = 0){
+  if(!startDateStr || !months || Number(months) <= 0) return '';
   try {
     const cleanStr = String(startDateStr).slice(0, 10);
     const parts = cleanStr.split('-');
@@ -692,7 +692,7 @@ function computeWarrantyEndDate(startDateStr, months = 3){
     const m = parseInt(parts[1], 10) - 1;
     const d = parseInt(parts[2], 10);
     if(isNaN(y) || isNaN(m) || isNaN(d)) return '';
-    const date = new Date(y, m + Number(months || 0), d);
+    const date = new Date(y, m + Number(months), d);
     if(isNaN(date.getTime())) return '';
     const resY = date.getFullYear();
     const resM = String(date.getMonth() + 1).padStart(2, '0');
@@ -761,8 +761,8 @@ function receiptToRow(d){
 
   const pass = (d.device && d.device.password) || d.password || '';
   const timeStr = d.time || formatReceiptTime(d) || '';
-  const wMonths = Number(d.warrantyMonths != null ? d.warrantyMonths : 3);
-  const wEnd = d.warrantyEnd || (d.deliveryDate || d.date ? computeWarrantyEndDate(d.deliveryDate || d.date, wMonths) : '');
+  const wMonths = Number(d.warrantyMonths != null ? d.warrantyMonths : (d.WarrantyMonths != null ? d.WarrantyMonths : 0));
+  const wEnd = d.warrantyEnd || (wMonths > 0 && (d.deliveryDate || d.date) ? computeWarrantyEndDate(d.deliveryDate || d.date, wMonths) : '');
   const approvalJSON = d.customerApproval ? (typeof d.customerApproval === 'string' ? d.customerApproval : JSON.stringify(d.customerApproval)) : '';
 
   return {
@@ -776,7 +776,7 @@ function receiptToRow(d){
     PartsJSON: (Array.isArray(d.partsList) && d.partsList.length) ? JSON.stringify(d.partsList) : (typeof d.partsJSON === 'string' ? d.partsJSON : ''),
     InspectionFee: d.inspectionFee != null ? d.inspectionFee : '',
     EstimateTime: d.estimateTime || '',
-    Warranty: d.warranty || '',
+    Warranty: d.warranty || (wMonths > 0 ? `${wMonths} شهور ضد عيوب الصناعة` : 'بدون ضمان'),
     WarrantyMonths: wMonths,
     WarrantyEnd: wEnd,
     CustomerApprovalJSON: approvalJSON,
@@ -853,9 +853,9 @@ function rowToReceipt(row){
     })(),
     inspectionFee: (row.InspectionFee != null && row.InspectionFee !== '') ? Number(row.InspectionFee) : ((row.inspectionFee != null && row.inspectionFee !== '') ? Number(row.inspectionFee) : null),
     estimateTime: row.EstimateTime || row.estimateTime || '',
-    warranty: row.Warranty || row.warranty || '',
-    warrantyMonths: Number(row.WarrantyMonths != null ? row.WarrantyMonths : (row.warrantyMonths != null ? row.warrantyMonths : 3)),
-    warrantyEnd: row.WarrantyEnd || row.warrantyEnd || ((row.DeliveryDate || row.Date || row.date) ? computeWarrantyEndDate(row.DeliveryDate || row.Date || row.date, Number(row.WarrantyMonths != null ? row.WarrantyMonths : (row.warrantyMonths != null ? row.warrantyMonths : 3))) : ''),
+    warranty: row.Warranty || row.warranty || (Number(row.WarrantyMonths != null ? row.WarrantyMonths : (row.warrantyMonths != null ? row.warrantyMonths : 0)) > 0 ? `${Number(row.WarrantyMonths != null ? row.WarrantyMonths : row.warrantyMonths)} شهور ضد عيوب الصناعة` : 'بدون ضمان'),
+    warrantyMonths: Number(row.WarrantyMonths != null ? row.WarrantyMonths : (row.warrantyMonths != null ? row.warrantyMonths : 0)),
+    warrantyEnd: row.WarrantyEnd || row.warrantyEnd || ((Number(row.WarrantyMonths != null ? row.WarrantyMonths : (row.warrantyMonths != null ? row.warrantyMonths : 0)) > 0 && (row.DeliveryDate || row.Date || row.date)) ? computeWarrantyEndDate(row.DeliveryDate || row.Date || row.date, Number(row.WarrantyMonths != null ? row.WarrantyMonths : row.warrantyMonths)) : ''),
     customerApproval: (()=>{
       const rawA = row.CustomerApprovalJSON || row.customerApprovalJSON || row.CustomerApproval || row.customerApproval;
       if(rawA && typeof rawA === 'object') return rawA;
@@ -1123,12 +1123,19 @@ function normalizeReceipt(r){
   }
 
   // Normalize Warranty
-  r.warrantyMonths = Number(r.warrantyMonths != null ? r.warrantyMonths : (r.WarrantyMonths != null ? r.WarrantyMonths : 3));
-  if(isNaN(r.warrantyMonths) || r.warrantyMonths < 0) r.warrantyMonths = 3;
+  r.warrantyMonths = Number(r.warrantyMonths != null ? r.warrantyMonths : (r.WarrantyMonths != null ? r.WarrantyMonths : 0));
+  if(isNaN(r.warrantyMonths) || r.warrantyMonths < 0) r.warrantyMonths = 0;
   r.WarrantyMonths = r.warrantyMonths;
 
-  r.warrantyEnd = r.warrantyEnd || r.WarrantyEnd || computeWarrantyEndDate(r.deliveryDate || r.date, r.warrantyMonths);
+  if(r.warrantyMonths > 0){
+    r.warranty = r.warranty || r.Warranty || `${r.warrantyMonths} شهور ضد عيوب الصناعة`;
+    r.warrantyEnd = r.warrantyEnd || r.WarrantyEnd || computeWarrantyEndDate(r.deliveryDate || r.date, r.warrantyMonths);
+  } else {
+    r.warranty = r.warranty || r.Warranty || 'بدون ضمان';
+    r.warrantyEnd = '';
+  }
   r.WarrantyEnd = r.warrantyEnd;
+  r.Warranty = r.warranty;
 
   // Normalize Customer Approval
   if(!r.customerApproval){

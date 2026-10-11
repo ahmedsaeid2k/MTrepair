@@ -20,11 +20,14 @@
 
 /* === [File: css/01-variables.css] === */
 :root {
-  --primary: #059669;
-  --primary-hover: #047857;
+  /* Brand Accent — WCAG 2.2 AA Verified (5.48:1 on #FFFFFF) */
+  --primary: #047857;
+  --primary-hover: #065f46;
   --primary-light: #ecfdf5;
-  --primary-focus: rgba(5, 150, 105, 0.18);
+  --primary-text: #065f46;
+  --primary-focus: rgba(4, 120, 87, 0.22);
   
+  /* Grayscale Palette */
   --slate-900: #0f172a;
   --slate-800: #1e293b;
   --slate-700: #334155;
@@ -36,99 +39,131 @@
   --slate-100: #f1f5f9;
   --slate-50: #f8fafc;
   
+  /* Surfaces & Typography */
   --ink: #0f172a;
-  --ink-secondary: #64748b;
-  --paper: #f0f2f5;
+  --ink-secondary: #475569;
+  --ink-muted: #64748b;
+  --paper: #f8fafc;
   --paper2: #ffffff;
-  --paper3: #f8fafc;
-  --line: rgba(226, 232, 240, 0.8);
+  --paper3: #f1f5f9;
+  --line: #e2e8f0;
   --line-strong: #cbd5e1;
-  --glass-bg: rgba(255, 255, 255, 0.9);
-  --glass-border: rgba(226, 232, 240, 0.8);
-  --card-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.03);
-  --card-hover-shadow: 0 10px 30px -4px rgba(0, 0, 0, 0.06);
+  --glass-bg: rgba(255, 255, 255, 0.92);
+  --glass-border: rgba(226, 232, 240, 0.9);
+  --card-shadow: 0 1px 3px rgba(15, 23, 42, 0.05), 0 1px 2px -1px rgba(15, 23, 42, 0.03);
+  --card-hover-shadow: 0 4px 12px -2px rgba(15, 23, 42, 0.08), 0 2px 4px -2px rgba(15, 23, 42, 0.04);
   
-  --blue: #2563eb;
-  --blue-bg: #dbeafe;
+  /* Semantic Status Colors (All text/bg pairs >= 4.5:1 AA) */
+  --blue: #1d4ed8;
+  --blue-bg: #eff6ff;
   --blue-text: #1e40af;
   
-  --amber: #d97706;
-  --amber-bg: #fef3c7;
+  --amber: #b45309;
+  --amber-bg: #fffbeb;
   --amber-text: #92400e;
   
-  --red: #e11d48;
-  --red-bg: #ffe4e6;
-  --red-text: #9f1239;
+  --red: #b91c1c;
+  --red-bg: #fef2f2;
+  --red-text: #991b1b;
   
-  --green: #059669;
+  --green: #047857;
   --green-bg: #ecfdf5;
-  --green-text: #047857;
+  --green-text: #065f46;
   
-  --purple: #8b5cf6;
-  --purple-bg: #ede9fe;
+  --purple: #6d28d9;
+  --purple-bg: #f5f3ff;
   --purple-text: #5b21b6;
 
-  --cyan: #06b6d4;
-  --cyan-bg: #cffafe;
+  --cyan: #0e7490;
+  --cyan-bg: #ecfeff;
   --cyan-text: #155e75;
   
+  /* Standardized Radius Scale */
   --radius-xs: 4px;
   --radius-sm: 6px;
   --radius: 8px;
-  --radius-md: 10px;
+  --radius-md: 8px;
   --radius-lg: 12px;
+  --radius-xl: 16px;
   --radius-full: 9999px;
+
+  /* Standardized Spacing Scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
   
-  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
-  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
-  --shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.06), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+  /* Elevation Shadows */
+  --shadow-xs: 0 1px 2px 0 rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 1px 3px 0 rgba(15, 23, 42, 0.06), 0 1px 2px -1px rgba(15, 23, 42, 0.04);
+  --shadow: 0 2px 4px -1px rgba(15, 23, 42, 0.06), 0 2px 4px -2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.07), 0 2px 4px -2px rgba(15, 23, 42, 0.04);
+  --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.04);
   
-  --font-main: 'Tajawal', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  --font-mono: 'IBM Plex Mono', monospace, Consolas, Courier;
+  /* Modular Typography Scale */
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 13.5px;
+  --text-base: 15px;
+  --text-md: 16px;
+  --text-lg: 18px;
+  --text-xl: 22px;
+  --text-2xl: 28px;
+
+  /* Transition Durations */
+  --transition-fast: 140ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 220ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Font Stacks (Offline Resilient) */
+  --font-main: 'Tajawal', 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Segoe UI Arabic', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'Cascadia Code', Consolas, Monaco, Courier, monospace;
 }
 
 [data-theme="dark"] {
   --primary: #10b981;
   --primary-hover: #34d399;
-  --primary-light: rgba(16, 185, 129, 0.18);
+  --primary-light: rgba(16, 185, 129, 0.16);
+  --primary-text: #6ee7b7;
   --primary-focus: rgba(16, 185, 129, 0.28);
   
   --slate-900: #030712;
   --slate-800: #090d16;
-  --slate-700: #131b2e;
+  --slate-700: #111827;
   --slate-600: #1e293b;
   --slate-500: #64748b;
   --slate-400: #94a3b8;
   --slate-300: #cbd5e1;
   --slate-200: #1e293b;
   --slate-100: #0f172a;
-  --slate-50: #090d16;
+  --slate-50: #0b1120;
   
   --ink: #f8fafc;
   --ink-secondary: #94a3b8;
-  --paper: #090d16;
+  --ink-muted: #64748b;
+  --paper: #0b1120;
   --paper2: #111827;
-  --paper3: #1f2937;
+  --paper3: #1e293b;
   --line: rgba(255, 255, 255, 0.08);
-  --line-strong: rgba(255, 255, 255, 0.14);
-  --glass-bg: rgba(17, 24, 39, 0.88);
-  --glass-border: rgba(255, 255, 255, 0.1);
-  --card-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-  --card-hover-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --glass-bg: rgba(17, 24, 39, 0.92);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --card-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  --card-hover-shadow: 0 10px 25px rgba(0, 0, 0, 0.55);
   
-  --blue-bg: rgba(37, 99, 235, 0.22);
+  --blue-bg: rgba(37, 99, 235, 0.2);
   --blue-text: #93c5fd;
-  --amber-bg: rgba(217, 119, 6, 0.22);
+  --amber-bg: rgba(217, 119, 6, 0.2);
   --amber-text: #fcd34d;
-  --red-bg: rgba(225, 29, 72, 0.22);
+  --red-bg: rgba(225, 29, 72, 0.2);
   --red-text: #fda4af;
-  --green-bg: rgba(16, 185, 129, 0.22);
+  --green-bg: rgba(16, 185, 129, 0.2);
   --green-text: #6ee7b7;
-  --purple-bg: rgba(139, 92, 246, 0.22);
+  --purple-bg: rgba(139, 92, 246, 0.2);
   --purple-text: #c4b5fd;
-  --cyan-bg: rgba(6, 182, 212, 0.22);
+  --cyan-bg: rgba(6, 182, 212, 0.2);
   --cyan-text: #67e8f9;
 }
 
@@ -142,6 +177,10 @@
   -webkit-font-feature-settings: "numr" 0, "lnum" 1, "tnum" 1;
   font-feature-settings: "numr" 0, "lnum" 1, "tnum" 1;
 }
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
 body {
   font-family: var(--font-main);
   background: var(--paper);
@@ -149,7 +188,7 @@ body {
   line-height: 1.5;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
-  transition: background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1), color 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.22s cubic-bezier(0.4, 0, 0.2, 1), color 0.22s cubic-bezier(0.4, 0, 0.2, 1);
   font-variant-numeric: tabular-nums lining-nums;
 }
 .mono, input, select, textarea, td, th, .num, span, div, b, strong, p {
@@ -770,59 +809,60 @@ main {
   margin-top: 3px;
 }
 
-/* Stepper - Modern Pill Design */
+/* Stepper - Modern Precision Design */
 .stepper {
   display: flex;
   gap: 6px;
-  margin-bottom: 22px;
-  background: #ffffff;
+  margin-bottom: 20px;
+  background: var(--paper2);
   padding: 6px;
-  border-radius: 9999px;
-  border: 1px solid rgba(226, 232, 240, 0.8);
-  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.03);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-xs);
 }
 [data-theme="dark"] .stepper {
-  background: #111827;
-  border-color: rgba(255, 255, 255, 0.08);
+  background: var(--paper2);
+  border-color: var(--line);
 }
 .step-dot {
   flex: 1;
   text-align: center;
-  padding: 10px 14px;
+  padding: 9px 12px;
   background: transparent;
-  border-radius: 9999px;
-  font-size: 12.5px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
   font-weight: 700;
-  color: #64748b;
+  color: var(--ink-secondary);
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all var(--transition-fast);
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
+  user-select: none;
 }
 .step-dot:hover {
-  background: #f1f5f9;
-  color: #0f172a;
+  background: var(--paper3);
+  color: var(--ink);
 }
 [data-theme="dark"] .step-dot:hover {
-  background: #1f2937;
-  color: #ffffff;
+  background: var(--paper3);
+  color: var(--ink);
 }
 .step-dot.active {
-  background: #059669 !important;
+  background: var(--primary) !important;
   color: #ffffff !important;
-  box-shadow: 0 4px 14px rgba(5, 150, 105, 0.35);
+  box-shadow: 0 2px 8px var(--primary-focus);
   font-weight: 800;
 }
 .step-dot.done {
-  background: #ecfdf5;
-  color: #059669;
+  background: var(--primary-light);
+  color: var(--primary-text);
   font-weight: 800;
 }
 [data-theme="dark"] .step-dot.done {
-  background: rgba(5, 150, 105, 0.2);
-  color: #34d399;
+  background: var(--primary-light);
+  color: var(--primary-text);
 }
 
 /* Forms & Inputs */
@@ -840,19 +880,19 @@ label {
 input, select, textarea {
   width: 100%;
   padding: 10px 14px;
-  border: 1px solid rgba(203, 213, 225, 0.8);
-  border-radius: 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
   font-family: inherit;
-  font-size: 13px;
+  font-size: var(--text-base);
   background: var(--paper2);
   color: var(--ink);
   outline: none;
-  transition: all 0.2s ease;
+  transition: all var(--transition-fast);
 }
 [data-theme="dark"] input, [data-theme="dark"] select, [data-theme="dark"] textarea {
-  background: #1f2937;
-  border-color: rgba(255, 255, 255, 0.12);
-  color: #f8fafc;
+  background: var(--paper3);
+  border-color: var(--line-strong);
+  color: var(--ink);
 }
 input:focus, select:focus, textarea:focus {
   border-color: var(--primary);
@@ -904,15 +944,20 @@ textarea { min-height: 75px; resize: vertical; }
   justify-content: center;
   gap: 8px;
   padding: 8px 16px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   border: 1px solid transparent;
   font-family: inherit;
   font-weight: 700;
-  font-size: 13px;
+  font-size: var(--text-base);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--transition-fast);
   user-select: none;
   text-decoration: none;
+  line-height: 1.3;
+}
+.btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 .btn:hover {
   transform: translateY(-1px);
@@ -932,31 +977,32 @@ textarea { min-height: 75px; resize: vertical; }
 .btn-ghost {
   background: var(--paper2);
   border: 1px solid var(--line);
-  color: var(--ink);
+  color: var(--ink-secondary);
   box-shadow: var(--shadow-xs);
 }
 [data-theme="dark"] .btn-ghost {
   background: var(--paper2);
   border-color: var(--line);
-  color: var(--ink);
+  color: var(--ink-secondary);
 }
 .btn-ghost:hover {
   background: var(--paper3);
   border-color: var(--line-strong);
+  color: var(--ink);
 }
-.btn-green { background: #059669; color: #fff; border-color: #059669; }
-.btn-green:hover { background: #047857; }
-.btn-blue { background: #2563eb; color: #fff; border-color: #2563eb; }
-.btn-blue:hover { background: #1d4ed8; }
-.btn-amber { background: #d97706; color: #fff; border-color: #d97706; }
-.btn-amber:hover { background: #b45309; }
-.btn-red { background: #dc2626; color: #fff; border-color: #dc2626; }
-.btn-red:hover { background: #b91c1c; }
+.btn-green { background: var(--primary); color: #fff; border-color: var(--primary); }
+.btn-green:hover { background: var(--primary-hover); }
+.btn-blue { background: var(--blue); color: #fff; border-color: var(--blue); }
+.btn-blue:hover { filter: brightness(0.92); }
+.btn-amber { background: var(--amber); color: #fff; border-color: var(--amber); }
+.btn-amber:hover { filter: brightness(0.92); }
+.btn-red { background: var(--red); color: #fff; border-color: var(--red); }
+.btn-red:hover { filter: brightness(0.92); }
 .btn-whatsapp { background: #16a34a; color: #fff; border-color: #16a34a; }
 .btn-whatsapp:hover { background: #15803d; }
 .wa-icon { width: 14px; height: 14px; flex-shrink: 0; }
-.btn-sm { padding: 6px 14px; font-size: 12px; }
-.btn-xs { padding: 4px 10px; font-size: 11px; }
+.btn-sm { padding: 6px 12px; font-size: var(--text-sm); border-radius: var(--radius-sm); }
+.btn-xs { padding: 4px 8px; font-size: var(--text-xs); border-radius: var(--radius-sm); }
 .actions-row { display: flex; gap: 10px; justify-content: space-between; align-items: center; margin-top: 16px; }
 
 /* Status Badges */
@@ -1033,28 +1079,30 @@ textarea { min-height: 75px; resize: vertical; }
 .table-wrap {
   background: var(--paper2);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   overflow: auto;
-  box-shadow: var(--card-shadow);
+  box-shadow: var(--shadow-xs);
 }
 table {
   width: 100%;
   border-collapse: collapse;
   text-align: right;
+  font-size: var(--text-base);
 }
 th, td {
-  padding: 10px 14px;
+  padding: 11px 16px;
   border-bottom: 1px solid var(--line);
-  font-size: 12.5px;
+  font-size: var(--text-base);
 }
 th {
   background: var(--paper3);
-  font-weight: 700;
+  font-weight: 800;
   color: var(--ink-secondary);
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   white-space: nowrap;
+  letter-spacing: 0.02em;
 }
-tbody tr { transition: background-color 0.1s ease; }
+tbody tr { transition: background-color var(--transition-fast); }
 tbody tr:hover { background-color: var(--paper3); }
 tr:last-child td { border-bottom: none; }
 .row-actions { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
@@ -1068,9 +1116,9 @@ tr:last-child td { border-bottom: none; }
   align-items: center;
   background: var(--paper2);
   padding: 10px 14px;
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   border: 1px solid var(--line);
-  box-shadow: var(--card-shadow);
+  box-shadow: var(--shadow-xs);
 }
 .filters-bar input, .filters-bar select {
   width: auto;
@@ -1174,8 +1222,8 @@ tr:last-child td { border-bottom: none; }
   transform: translateX(-50%);
   z-index: 99999;
   background: var(--paper2);
-  border: 1px solid #f87171;
-  border-radius: var(--radius);
+  border: 1px solid var(--red);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   padding: 12px 18px;
   display: flex;
@@ -1198,8 +1246,8 @@ tr:last-child td { border-bottom: none; }
 .ios-alert-bell-pulse {
   width: 36px;
   height: 36px;
-  border-radius: var(--radius-sm);
-  background: #dc2626;
+  border-radius: var(--radius-md);
+  background: var(--red);
   color: #fff;
   font-size: 16px;
   display: flex;
@@ -1231,13 +1279,13 @@ tr:last-child td { border-bottom: none; }
   position: absolute;
   top: -3px;
   left: -3px;
-  background: #dc2626;
+  background: var(--red);
   color: #fff;
   border-radius: 9999px;
   padding: 1px 5px;
   font-size: 10px;
   font-weight: 800;
-  box-shadow: 0 1px 3px rgba(220, 38, 38, 0.4);
+  box-shadow: 0 1px 3px rgba(185, 28, 28, 0.4);
 }
 .ios-segmented-bar {
   display: inline-flex;
@@ -2315,7 +2363,7 @@ tr:last-child td { border-bottom: none; }
   background: var(--primary);
   color: #fff;
   border-color: var(--primary);
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
+  box-shadow: 0 2px 8px var(--primary-focus);
 }
 
 .pos-tiles-container {
@@ -2328,7 +2376,7 @@ tr:last-child td { border-bottom: none; }
   margin: 0;
   background: var(--paper2);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   box-sizing: border-box;
 }
 @media (max-width: 980px), (max-height: 560px) {
@@ -2424,7 +2472,7 @@ tr:last-child td { border-bottom: none; }
 .pos-cart-panel {
   background: var(--paper);
   border: 1.5px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   padding: 12px 14px;
   display: flex;
   flex-direction: column;
@@ -2564,9 +2612,9 @@ tr:last-child td { border-bottom: none; }
   background: var(--paper3);
 }
 .pos-pay-btn.selected {
-  background: rgba(79, 70, 229, 0.1);
+  background: var(--primary-light);
   border-color: var(--primary);
-  color: var(--primary);
+  color: var(--primary-text);
   font-weight: 900;
   box-shadow: 0 0 0 1px var(--primary);
 }
@@ -3101,40 +3149,40 @@ tr.selectable-row:hover {
 }
 
 tr.selected-row {
-  background: rgba(5, 150, 105, 0.12) !important;
-  box-shadow: inset 3.5px 0 0 #059669;
+  background: var(--primary-light) !important;
+  box-shadow: inset 3.5px 0 0 var(--primary);
 }
 [data-theme="dark"] tr.selected-row {
-  background: rgba(5, 150, 105, 0.22) !important;
-  box-shadow: inset 3.5px 0 0 #10b981;
+  background: var(--primary-light) !important;
+  box-shadow: inset 3.5px 0 0 var(--primary);
 }
 
 .smart-receipt-card {
   cursor: pointer;
-  transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all var(--transition-normal);
   position: relative;
 }
 .smart-receipt-card:hover {
-  border-color: rgba(5, 150, 105, 0.45);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-sm);
 }
 .smart-receipt-card.selected-card {
-  border-color: #059669 !important;
-  box-shadow: 0 0 0 2px #059669, 0 12px 28px -6px rgba(5, 150, 105, 0.28) !important;
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 2px var(--primary), 0 8px 24px -4px var(--primary-focus) !important;
   transform: translateY(-2px);
-  background: rgba(5, 150, 105, 0.025);
+  background: var(--primary-light);
 }
 [data-theme="dark"] .smart-receipt-card.selected-card {
-  border-color: #10b981 !important;
-  box-shadow: 0 0 0 2px #10b981, 0 12px 28px -6px rgba(16, 185, 129, 0.35) !important;
-  background: rgba(16, 185, 129, 0.06);
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 2px var(--primary), 0 8px 24px -4px var(--primary-focus) !important;
+  background: var(--primary-light);
 }
 
 .selected-badge-indicator {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: #059669;
+  background: var(--primary);
   color: #ffffff;
   font-size: 10px;
   font-weight: 800;
@@ -5260,8 +5308,8 @@ function formatReceiptTime(rawR){
 }
 
 /* ---- Warranty End Date Computation Helper ---- */
-function computeWarrantyEndDate(startDateStr, months = 3){
-  if(!startDateStr) return '';
+function computeWarrantyEndDate(startDateStr, months = 0){
+  if(!startDateStr || !months || Number(months) <= 0) return '';
   try {
     const cleanStr = String(startDateStr).slice(0, 10);
     const parts = cleanStr.split('-');
@@ -5270,7 +5318,7 @@ function computeWarrantyEndDate(startDateStr, months = 3){
     const m = parseInt(parts[1], 10) - 1;
     const d = parseInt(parts[2], 10);
     if(isNaN(y) || isNaN(m) || isNaN(d)) return '';
-    const date = new Date(y, m + Number(months || 0), d);
+    const date = new Date(y, m + Number(months), d);
     if(isNaN(date.getTime())) return '';
     const resY = date.getFullYear();
     const resM = String(date.getMonth() + 1).padStart(2, '0');
@@ -5339,8 +5387,8 @@ function receiptToRow(d){
 
   const pass = (d.device && d.device.password) || d.password || '';
   const timeStr = d.time || formatReceiptTime(d) || '';
-  const wMonths = Number(d.warrantyMonths != null ? d.warrantyMonths : 3);
-  const wEnd = d.warrantyEnd || (d.deliveryDate || d.date ? computeWarrantyEndDate(d.deliveryDate || d.date, wMonths) : '');
+  const wMonths = Number(d.warrantyMonths != null ? d.warrantyMonths : (d.WarrantyMonths != null ? d.WarrantyMonths : 0));
+  const wEnd = d.warrantyEnd || (wMonths > 0 && (d.deliveryDate || d.date) ? computeWarrantyEndDate(d.deliveryDate || d.date, wMonths) : '');
   const approvalJSON = d.customerApproval ? (typeof d.customerApproval === 'string' ? d.customerApproval : JSON.stringify(d.customerApproval)) : '';
 
   return {
@@ -5354,7 +5402,7 @@ function receiptToRow(d){
     PartsJSON: (Array.isArray(d.partsList) && d.partsList.length) ? JSON.stringify(d.partsList) : (typeof d.partsJSON === 'string' ? d.partsJSON : ''),
     InspectionFee: d.inspectionFee != null ? d.inspectionFee : '',
     EstimateTime: d.estimateTime || '',
-    Warranty: d.warranty || '',
+    Warranty: d.warranty || (wMonths > 0 ? `${wMonths} شهور ضد عيوب الصناعة` : 'بدون ضمان'),
     WarrantyMonths: wMonths,
     WarrantyEnd: wEnd,
     CustomerApprovalJSON: approvalJSON,
@@ -5431,9 +5479,9 @@ function rowToReceipt(row){
     })(),
     inspectionFee: (row.InspectionFee != null && row.InspectionFee !== '') ? Number(row.InspectionFee) : ((row.inspectionFee != null && row.inspectionFee !== '') ? Number(row.inspectionFee) : null),
     estimateTime: row.EstimateTime || row.estimateTime || '',
-    warranty: row.Warranty || row.warranty || '',
-    warrantyMonths: Number(row.WarrantyMonths != null ? row.WarrantyMonths : (row.warrantyMonths != null ? row.warrantyMonths : 3)),
-    warrantyEnd: row.WarrantyEnd || row.warrantyEnd || ((row.DeliveryDate || row.Date || row.date) ? computeWarrantyEndDate(row.DeliveryDate || row.Date || row.date, Number(row.WarrantyMonths != null ? row.WarrantyMonths : (row.warrantyMonths != null ? row.warrantyMonths : 3))) : ''),
+    warranty: row.Warranty || row.warranty || (Number(row.WarrantyMonths != null ? row.WarrantyMonths : (row.warrantyMonths != null ? row.warrantyMonths : 0)) > 0 ? `${Number(row.WarrantyMonths != null ? row.WarrantyMonths : row.warrantyMonths)} شهور ضد عيوب الصناعة` : 'بدون ضمان'),
+    warrantyMonths: Number(row.WarrantyMonths != null ? row.WarrantyMonths : (row.warrantyMonths != null ? row.warrantyMonths : 0)),
+    warrantyEnd: row.WarrantyEnd || row.warrantyEnd || ((Number(row.WarrantyMonths != null ? row.WarrantyMonths : (row.warrantyMonths != null ? row.warrantyMonths : 0)) > 0 && (row.DeliveryDate || row.Date || row.date)) ? computeWarrantyEndDate(row.DeliveryDate || row.Date || row.date, Number(row.WarrantyMonths != null ? row.WarrantyMonths : row.warrantyMonths)) : ''),
     customerApproval: (()=>{
       const rawA = row.CustomerApprovalJSON || row.customerApprovalJSON || row.CustomerApproval || row.customerApproval;
       if(rawA && typeof rawA === 'object') return rawA;
@@ -5701,12 +5749,19 @@ function normalizeReceipt(r){
   }
 
   // Normalize Warranty
-  r.warrantyMonths = Number(r.warrantyMonths != null ? r.warrantyMonths : (r.WarrantyMonths != null ? r.WarrantyMonths : 3));
-  if(isNaN(r.warrantyMonths) || r.warrantyMonths < 0) r.warrantyMonths = 3;
+  r.warrantyMonths = Number(r.warrantyMonths != null ? r.warrantyMonths : (r.WarrantyMonths != null ? r.WarrantyMonths : 0));
+  if(isNaN(r.warrantyMonths) || r.warrantyMonths < 0) r.warrantyMonths = 0;
   r.WarrantyMonths = r.warrantyMonths;
 
-  r.warrantyEnd = r.warrantyEnd || r.WarrantyEnd || computeWarrantyEndDate(r.deliveryDate || r.date, r.warrantyMonths);
+  if(r.warrantyMonths > 0){
+    r.warranty = r.warranty || r.Warranty || `${r.warrantyMonths} شهور ضد عيوب الصناعة`;
+    r.warrantyEnd = r.warrantyEnd || r.WarrantyEnd || computeWarrantyEndDate(r.deliveryDate || r.date, r.warrantyMonths);
+  } else {
+    r.warranty = r.warranty || r.Warranty || 'بدون ضمان';
+    r.warrantyEnd = '';
+  }
   r.WarrantyEnd = r.warrantyEnd;
+  r.Warranty = r.warranty;
 
   // Normalize Customer Approval
   if(!r.customerApproval){
@@ -11271,8 +11326,8 @@ function newDraft(){
     otherAccountDesc: '',
     otherAccountAmount: 0,
     deliveryDate: todayStr,
-    warranty: '3 شهور ضد عيوب الصناعة',
-    warrantyMonths: 3,
+    warranty: 'بدون ضمان',
+    warrantyMonths: 0,
     warrantyEnd: '',
     customerApproval: null,
     status: 'قيد الفحص',
@@ -14534,7 +14589,7 @@ function renderDashboard(main){
       <div style="display:flex;gap:8px;align-items:center;">
         <div id="networkSyncPill" class="sync-pill online" onclick="syncOfflineQueue(true)"><span class="sync-dot"></span><span>متصل</span></div>
         <button class="btn btn-ghost btn-sm" id="exportExcelDashBtn">${getSvgIcon('invoices', 14)} تصدير CSV (Excel)</button>
-        <button class="btn btn-primary btn-sm" id="dashNewReceiptBtn">${getSvgIcon('plus', 14)} استلام جهاز جديد</button>
+        <button class="btn btn-primary" id="dashNewReceiptBtn" style="font-weight:800;padding:8px 18px;box-shadow:0 2px 8px var(--primary-focus);">${getSvgIcon('plus', 14)} استلام جهاز جديد</button>
       </div>
     </div>
 
@@ -14553,7 +14608,7 @@ function renderDashboard(main){
         </div>
         <div class="num mono">${done}</div>
       </div>
-      <div class="stat-card purple" id="dashCardDelivered" style="border-right-color:#8b5cf6;cursor:pointer;" title="عرض الأجهزة المسلمة">
+      <div class="stat-card purple" id="dashCardDelivered" style="border-right:3px solid var(--purple);cursor:pointer;" title="عرض الأجهزة المسلمة">
         <div class="top-row">
           <span class="lbl">تم تسليمها للعملاء</span>
           <div class="icon-box">${getSvgIcon('check', 16)}</div>
@@ -14567,21 +14622,21 @@ function renderDashboard(main){
         </div>
         <div class="num mono">${todayIncome.toLocaleString()} <span style="font-size:13px;font-weight:600;">ج.م</span></div>
       </div>
-      <div class="stat-card amber" id="dashCardDelayed48h" style="border-right-color:#f59e0b;cursor:pointer;" title="أجهزة قيد الصيانة تجاوزت 48 ساعة بالورشة">
+      <div class="stat-card amber" id="dashCardDelayed48h" style="border-right:3px solid var(--amber);cursor:pointer;" title="أجهزة قيد الصيانة تجاوزت 48 ساعة بالورشة">
         <div class="top-row">
           <span class="lbl">متأخرة بالورشة (+48 س)</span>
-          <div class="icon-box" style="color:#d97706;">${getSvgIcon('clock', 16)}</div>
+          <div class="icon-box" style="color:var(--amber-text);">${getSvgIcon('clock', 16)}</div>
         </div>
-        <div class="num mono" style="color:#d97706;">${delayed48hList.length}</div>
+        <div class="num mono" style="color:var(--amber-text);">${delayed48hList.length}</div>
       </div>
-      <div class="stat-card red" id="dashCardOverdue7d" style="cursor:pointer;" title="أجهزة مكتملة لم يستلمها العملاء لأكثر من أسبوع">
+      <div class="stat-card red" id="dashCardOverdue7d" style="border-right:3px solid var(--red);cursor:pointer;" title="أجهزة مكتملة لم يستلمها العملاء لأكثر من أسبوع">
         <div class="top-row">
           <span class="lbl">متروكة +7 أيام</span>
           <div class="icon-box">${getSvgIcon('alert', 16)}</div>
         </div>
         <div class="num mono">${overdueList.length}</div>
       </div>
-      <div class="stat-card purple" style="border-right-color:#6366f1;">
+      <div class="stat-card purple" style="border-right:3px solid var(--blue);">
         <div class="top-row">
           <span class="lbl">متبقي الصيانة والديون</span>
           <div class="icon-box">${getSvgIcon('finance', 16)}</div>
@@ -15086,20 +15141,20 @@ function renderForm(main){
         <div class="subtitle">رقم الإيصال: <b class="mono" style="color:var(--primary);">${d.receiptNumber || '...'}</b> — التاريخ: <b class="mono">${d.date}</b></div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <span id="draftAutosaveBadge" class="badge" style="background:var(--paper2);border:1px solid var(--line);color:var(--ink-secondary);font-size:11.5px;padding:4px 8px;display:inline-flex;align-items:center;gap:5px;">
+        <span id="draftAutosaveBadge" class="badge" style="background:var(--paper2);border:1px solid var(--line);color:var(--ink-secondary);font-size:var(--text-xs);padding:4px 10px;border-radius:var(--radius-sm);display:inline-flex;align-items:center;gap:6px;">
           ${getSvgIcon("check", 12)} <span id="draftAutosaveText">${d._savedAt ? 'مسودة محفوظة تلقائياً' : 'حفظ تلقائي مفعّل'}</span>
         </span>
-        <button type="button" class="btn btn-ghost btn-xs" id="manualSaveDraftBtn" style="border:1px solid var(--line);">${getSvgIcon("save", 13)} حفظ المسودة</button>
-        <button type="button" class="btn btn-ghost btn-xs text-danger" id="discardDraftBtn" style="color:var(--red);border:1px solid rgba(239,68,68,0.25);">${getSvgIcon("trash", 13)} مسح المسودة والبدء من جديد</button>
+        <button type="button" class="btn btn-ghost btn-xs" id="manualSaveDraftBtn">${getSvgIcon("save", 13)} حفظ المسودة</button>
+        <button type="button" class="btn btn-ghost btn-xs text-danger" id="discardDraftBtn" style="color:var(--red);">${getSvgIcon("trash", 13)} مسح المسودة والبدء من جديد</button>
       </div>
     </div>
     ${d._isRestored ? `
-      <div id="draftRestoredAlert" style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);border-radius:6px;padding:8px 12px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-        <div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--green-text);">
+      <div id="draftRestoredAlert" style="background:var(--primary-light);border:1px solid rgba(4,120,87,0.25);border-radius:var(--radius-md);padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+        <div style="display:flex;align-items:center;gap:8px;font-size:var(--text-sm);color:var(--primary-text);font-weight:700;">
           <span>${getSvgIcon("check", 16)}</span>
           <span><b>تمت استعادة المسودة المحفوظة تلقائياً بنجاح</b> (الخطوة ${state.formStep + 1} من ${STEPS.length})</span>
         </div>
-        <button type="button" class="btn btn-ghost btn-xs" style="color:var(--ink-secondary);padding:2px 6px;" onclick="this.closest('#draftRestoredAlert').remove()">✕ إغلاق التنبيه</button>
+        <button type="button" class="btn btn-ghost btn-xs" style="color:var(--ink-secondary);padding:2px 8px;" onclick="this.closest('#draftRestoredAlert').remove()">✕ إغلاق التنبيه</button>
       </div>
     ` : ''}
     <div class="stepper">
@@ -15170,9 +15225,10 @@ function renderForm(main){
 function stepNav(body, canBack, canNext, nextLabel){
   const div = document.createElement('div');
   div.className='actions-row';
+  div.style.marginTop = '20px';
   div.innerHTML = `
-    <button class="btn btn-ghost" id="backBtn" ${canBack?'':'disabled'}>السابق</button>
-    <button class="btn btn-primary" id="nextBtn">${nextLabel||'التالي'}</button>
+    <button class="btn btn-ghost" id="backBtn" ${canBack?'':'disabled'}>${getSvgIcon('arrowRight', 14)} السابق</button>
+    <button class="btn btn-primary" id="nextBtn" style="font-weight:800;padding:8px 24px;box-shadow:0 2px 8px var(--primary-focus);">${nextLabel||'التالي'} ${getSvgIcon('arrowLeft', 14)}</button>
   `;
   body.appendChild(div);
   if(canBack) div.querySelector('#backBtn').onclick = ()=>{ 
@@ -15994,16 +16050,16 @@ function stepFinance(body,d){
         <div class="field" style="margin-bottom:0;">
           <label>مدة الضمان المعتمدة</label>
           <select id="draftWarrantyMonthsSelect">
-            <option value="0" ${Number(d.warrantyMonths)===0?'selected':''}>بدون ضمان</option>
+            <option value="0" ${Number(d.warrantyMonths)===0||d.warrantyMonths==null?'selected':''}>بدون ضمان (الافتراضي)</option>
             <option value="1" ${Number(d.warrantyMonths)===1?'selected':''}>شهر واحد (30 يوماً)</option>
-            <option value="3" ${Number(d.warrantyMonths)===3||d.warrantyMonths==null?'selected':''}>3 شهور (الافتراضي)</option>
+            <option value="3" ${Number(d.warrantyMonths)===3?'selected':''}>3 شهور</option>
             <option value="6" ${Number(d.warrantyMonths)===6?'selected':''}>6 شهور</option>
             <option value="12" ${Number(d.warrantyMonths)===12?'selected':''}>سنة كاملة (12 شهراً)</option>
           </select>
         </div>
         <div class="field" style="margin-bottom:0;">
           <label>تاريخ نهاية الضمان التقديري</label>
-          <input id="draftWarrantyEndDisplay" type="text" readonly disabled class="mono" style="background:var(--paper3);font-weight:bold;color:var(--primary);" value="${d.warrantyEnd || (typeof computeWarrantyEndDate === 'function' ? computeWarrantyEndDate(d.deliveryDate || d.date, d.warrantyMonths || 3) : '')}">
+          <input id="draftWarrantyEndDisplay" type="text" readonly disabled class="mono" style="background:var(--paper3);font-weight:bold;color:var(--primary);" value="${d.warrantyEnd || ((d.warrantyMonths > 0 && typeof computeWarrantyEndDate === 'function') ? computeWarrantyEndDate(d.deliveryDate || d.date, d.warrantyMonths) : '')}" placeholder="بدون ضمان">
         </div>
       </div>
     </div>
@@ -16128,6 +16184,10 @@ function stepFinance(body,d){
     const disp = document.getElementById('draftWarrantyEndDisplay');
     if(!wmSel || !disp) return;
     const months = Number(wmSel.value);
+    if(months <= 0){
+      disp.value = '';
+      return;
+    }
     const startDate = (fDate && fDate.value) ? fDate.value : (d.deliveryDate || d.date);
     disp.value = (typeof computeWarrantyEndDate === 'function') ? computeWarrantyEndDate(startDate, months) : '';
   };
@@ -16153,13 +16213,34 @@ function stepFinance(body,d){
     const item = state.inventory.find(x=>x.ID===itemId);
     if(!item || qty > Number(item.Quantity)){ showToast('الكمية المطلوبة غير متوفرة بالمخزن (المتاح: ' + (item ? item.Quantity : 0) + ')', 'error'); return; }
 
+    const itemWarrantyMonths = Number(item.WarrantyMonths || 0);
     if(!d.partsList) d.partsList = [];
-    d.partsList.push({ itemId, name: item.Name, qty, purchasePrice: Number(item.PurchasePrice || 0) });
+    d.partsList.push({ itemId, name: item.Name, qty, purchasePrice: Number(item.PurchasePrice || 0), warrantyMonths: itemWarrantyMonths });
     const cost = qty * Number(item.PurchasePrice || 0);
     d.partsCost = Number(d.partsCost||0) + cost;
     d.partsUsed = d.partsList.map(p => `${p.name} × ${p.qty}`).join('، ');
     document.getElementById('finParts').value = d.partsCost;
     document.getElementById('draftPartsUsedList').innerHTML = escapeHtml(d.partsUsed) + ' <span style="font-size:11px;color:var(--primary);font-weight:700;">(سيتم الخصم الفعلي عند اعتماد الإيصال)</span>';
+
+    // إذا كان للصنف فترة ضمان، نحدد فترة ضمان الإيصال بناءً عليها تلقائياً
+    if(itemWarrantyMonths > 0){
+      d.warrantyMonths = Math.max(Number(d.warrantyMonths || 0), itemWarrantyMonths);
+      d.warranty = `${d.warrantyMonths} شهور ضد عيوب الصناعة`;
+      const wmSel = document.getElementById('draftWarrantyMonthsSelect');
+      if(wmSel){
+        let matched = Array.from(wmSel.options).some(opt => Number(opt.value) === d.warrantyMonths);
+        if(!matched){
+          const opt = document.createElement('option');
+          opt.value = String(d.warrantyMonths);
+          opt.textContent = `${d.warrantyMonths} شهور (ضمان الصنف)`;
+          wmSel.appendChild(opt);
+        }
+        wmSel.value = String(d.warrantyMonths);
+      }
+      updateWarrantyEndPreview();
+      showToast(`تم ضبط فترة الضمان تلقائياً (${d.warrantyMonths} شهور) بناءً على قطعة الغيار المضافة`, 'info');
+    }
+
     recalcDraftFinances();
     showToast('تمت إضافة قطعة الغيار لمسودة الإيصال (سيتم الخصم عند الحفظ النهائي)', 'success');
   };
@@ -16189,8 +16270,8 @@ function stepFinance(body,d){
     const finDateEl = document.getElementById('finDate');
     d.deliveryDate = finDateEl ? finDateEl.value : '';
     const wmSel = document.getElementById('draftWarrantyMonthsSelect');
-    d.warrantyMonths = wmSel ? Number(wmSel.value) : (d.warrantyMonths != null ? d.warrantyMonths : 3);
-    d.warrantyEnd = (typeof computeWarrantyEndDate === 'function') ? computeWarrantyEndDate(d.deliveryDate || d.date, d.warrantyMonths) : '';
+    d.warrantyMonths = wmSel ? Number(wmSel.value) : (d.warrantyMonths != null ? d.warrantyMonths : 0);
+    d.warrantyEnd = (d.warrantyMonths > 0 && typeof computeWarrantyEndDate === 'function') ? computeWarrantyEndDate(d.deliveryDate || d.date, d.warrantyMonths) : '';
     d.warranty = d.warrantyMonths > 0 ? `${d.warrantyMonths} شهور ضد عيوب الصناعة` : 'بدون ضمان';
   };
   stepNav(body, true, ()=>{
@@ -16246,7 +16327,7 @@ function stepReview(body,d){
         ` : `<div><b>الدفعة المقدمة:</b> 0 ج.م</div>`}
         <div><b style="color:var(--primary);">المبلغ المتبقي المطلوب:</b> <span class="mono" style="font-size:17px;font-weight:900;color:var(--primary);">${remaining}</span> ج.م</div>
         <div><b>موعد التسليم:</b> ${escapeHtml(d.deliveryDate||'غير محدد')}</div>
-        <div><b>فترة الضمان:</b> <span class="badge" style="background:#ecfdf5;color:#047857;font-weight:700;">${d.warrantyMonths ? d.warrantyMonths + ' شهور (حتى: ' + (d.warrantyEnd || (typeof computeWarrantyEndDate === 'function' ? computeWarrantyEndDate(d.deliveryDate || d.date, d.warrantyMonths) : '')) + ')' : 'بدون ضمان'}</span></div>
+        <div><b>فترة الضمان:</b> <span class="badge" style="${d.warrantyMonths > 0 ? 'background:#ecfdf5;color:#047857;' : 'background:var(--paper3);color:var(--ink-secondary);'}font-weight:700;">${d.warrantyMonths > 0 ? d.warrantyMonths + ' شهور (حتى: ' + (d.warrantyEnd || (typeof computeWarrantyEndDate === 'function' ? computeWarrantyEndDate(d.deliveryDate || d.date, d.warrantyMonths) : '')) + ')' : 'بدون ضمان'}</span></div>
       </div>
 
       ${isMultiDev ? `
@@ -16299,13 +16380,13 @@ function stepReview(body,d){
         </div>
       ` : ''}
     </div>
-    <div class="actions-row" style="flex-wrap:wrap;">
-      <button class="btn btn-ghost" id="backBtn">السابق</button>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    <div class="actions-row" style="flex-wrap:wrap;margin-top:20px;gap:10px;">
+      <button class="btn btn-ghost" id="backBtn">${getSvgIcon('arrowRight', 14)} السابق</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
         <button class="btn btn-ghost btn-sm" id="saveOnlyBtn">${getSvgIcon("check", 14)} حفظ فقط</button>
-        <button class="btn btn-whatsapp btn-sm" id="saveWaBtn">${WA_ICON} واتساب</button>
-        <button class="btn btn-amber btn-sm" id="saveStickerBtn">${getSvgIcon("tag", 14)} حفظ وطباعة ملصق</button>
-        <button class="btn btn-primary btn-sm" id="savePrintBtn">${getSvgIcon("printer", 14)} حفظ وطباعة A5</button>
+        <button class="btn btn-ghost btn-sm" id="saveWaBtn" style="color:#16a34a;">${WA_ICON} حفظ وواتساب</button>
+        <button class="btn btn-ghost btn-sm" id="saveStickerBtn" style="color:var(--amber-text);">${getSvgIcon("tag", 14)} حفظ وملصق باركود</button>
+        <button class="btn btn-primary" id="savePrintBtn" style="font-weight:800;padding:9px 20px;box-shadow:0 2px 10px var(--primary-focus);">${getSvgIcon("printer", 16)} حفظ وطباعة إيصال A5</button>
       </div>
     </div>
   `;
@@ -16689,12 +16770,12 @@ function renderArchive(main){
           <button type="button" class="view-mode-btn ${state.maintenanceViewMode!=='cards'?'active':''}" id="archViewTableBtn" title="عرض جدول">${getSvgIcon("fileText", 13)} جدول</button>
           <button type="button" class="view-mode-btn ${state.maintenanceViewMode==='cards'?'active':''}" id="archViewCardsBtn" title="عرض بطاقات ذكية">${getSvgIcon("folder", 13)} بطاقات ذكية</button>
         </div>
-        <button class="btn btn-whatsapp btn-sm" id="archBulkOverdueBtn" title="إرسال تذكيرات واتساب دفعة واحدة للأجهزة المتروكة (+7 أيام)">${WA_ICON} تذكير المتروكة (+7)</button>
-        <button class="btn btn-whatsapp btn-sm" id="archBulkUnclaimedBtn" style="background:#b45309;" title="تذكير وإشعار العملاء بالأجهزة غير المطالب بها (+30 يوم)">${WA_ICON} لم تُطالَب (+30 يوم)</button>
-        <button class="btn btn-ghost btn-sm" id="archRecoverPhonesBtn" style="color:var(--primary);font-weight:800;" title="فحص كافة السجلات واسترداد أرقام الهواتف التائهة">${getSvgIcon("refresh", 13)} استرداد الهواتف</button>
+        <button class="btn btn-ghost btn-sm" id="archBulkOverdueBtn" title="إرسال تذكيرات واتساب دفعة واحدة للأجهزة المتروكة (+7 أيام)">${WA_ICON} تذكير المتروكة (+7)</button>
+        <button class="btn btn-ghost btn-sm" id="archBulkUnclaimedBtn" style="color:var(--amber-text);" title="تذكير وإشعار العملاء بالأجهزة غير المطالب بها (+30 يوم)">${WA_ICON} غير المطالب بها (+30)</button>
+        <button class="btn btn-ghost btn-sm" id="archRecoverPhonesBtn" style="color:var(--primary-text);font-weight:700;" title="فحص كافة السجلات واسترداد أرقام الهواتف التائهة">${getSvgIcon("refresh", 13)} استرداد الهواتف</button>
         <button class="btn btn-ghost btn-sm" id="archGotoCustBtn">${getSvgIcon("users", 13)} دليل العملاء</button>
-        <button class="btn btn-ghost btn-sm" id="exportArchiveExcelBtn">${getSvgIcon("download", 13)} تصدير CSV (Excel)</button>
-        <button class="btn btn-primary btn-sm" id="archNewReceiptBtn">${getSvgIcon("plus", 13)} إيصال جديد</button>
+        <button class="btn btn-ghost btn-sm" id="exportArchiveExcelBtn">${getSvgIcon("download", 13)} تصدير CSV</button>
+        <button class="btn btn-primary" id="archNewReceiptBtn" style="font-weight:800;box-shadow:0 2px 8px var(--primary-focus);">${getSvgIcon("plus", 14)} إيصال استلام جديد</button>
       </div>
     </div>
 
@@ -19032,16 +19113,16 @@ async function openReceiptDetail(rawR){
         <div class="field" style="margin-bottom:0;">
           <label style="font-size:11.5px;font-weight:700;">مدة الضمان بعد الإصلاح:</label>
           <select id="eWarrantyMonths" style="font-weight:700;padding:5px 8px;font-size:12px;">
-            <option value="0" ${Number(r.warrantyMonths)===0 ? 'selected' : ''}>بدون ضمان</option>
+            <option value="0" ${Number(r.warrantyMonths)===0 || r.warrantyMonths == null ? 'selected' : ''}>بدون ضمان (الافتراضي)</option>
             <option value="1" ${Number(r.warrantyMonths)===1 ? 'selected' : ''}>شهر واحد (30 يوم)</option>
-            <option value="3" ${Number(r.warrantyMonths)===3 || r.warrantyMonths == null ? 'selected' : ''}>3 شهور (الافتراضي)</option>
+            <option value="3" ${Number(r.warrantyMonths)===3 ? 'selected' : ''}>3 شهور</option>
             <option value="6" ${Number(r.warrantyMonths)===6 ? 'selected' : ''}>6 شهور</option>
             <option value="12" ${Number(r.warrantyMonths)===12 ? 'selected' : ''}>سنة كاملة (12 شهر)</option>
           </select>
         </div>
         <div class="field" style="margin-bottom:0;">
           <label style="font-size:11.5px;font-weight:700;">تاريخ انتهاء الضمان المعتمد:</label>
-          <input type="text" id="eWarrantyEnd" value="${escapeHtml(r.warrantyEnd || (typeof computeWarrantyEndDate === 'function' ? computeWarrantyEndDate(r.date, r.warrantyMonths || 3) : ''))}" placeholder="YYYY-MM-DD" style="font-family:monospace;font-size:12px;font-weight:700;">
+          <input type="text" id="eWarrantyEnd" value="${escapeHtml(r.warrantyEnd || ((Number(r.warrantyMonths) > 0 && typeof computeWarrantyEndDate === 'function') ? computeWarrantyEndDate(r.date, r.warrantyMonths) : ''))}" placeholder="YYYY-MM-DD" style="font-family:monospace;font-size:12px;font-weight:700;">
         </div>
       </div>
     </div>
@@ -19219,7 +19300,7 @@ async function openReceiptDetail(rawR){
       </div>
       <div style="display:flex;gap:6px;">
         <button class="btn btn-ghost btn-sm" id="closeModalBtn">إلغاء</button>
-        <button class="btn btn-primary btn-sm" id="saveEditBtn">${getSvgIcon("check", 14)} حفظ التعديلات</button>
+        <button class="btn btn-primary" id="saveEditBtn" style="font-weight:800;padding:7px 18px;box-shadow:0 2px 8px var(--primary-focus);">${getSvgIcon("check", 14)} حفظ التعديلات</button>
       </div>
     </div>
   </div>`;
@@ -19511,6 +19592,8 @@ async function openReceiptDetail(rawR){
           existing.qty = Number(existing.qty || 1) + 1;
           showToast(`تم زيادة كمية (${item.Name}) إلى ${existing.qty} `, 'info');
         } else {
+          const partWarrantyMonths = Number(item.WarrantyMonths || 0);
+          const partWarrantyDays = partWarrantyMonths * 30;
           detailSpareParts.push({
             id: 'part_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
             itemId: item.ID,
@@ -19519,9 +19602,28 @@ async function openReceiptDetail(rawR){
             qty: 1,
             costPrice: Number(item.PurchasePrice || 0),
             sellPrice: Number(item.SellPrice || item.PurchasePrice || 0),
-            warrantyDays: 30,
+            warrantyDays: partWarrantyDays,
             isStockDeducted: false
           });
+
+          if(partWarrantyMonths > 0){
+            const wM = overlay.querySelector('#eWarrantyMonths');
+            const wE = overlay.querySelector('#eWarrantyEnd');
+            if(wM && (!wM.value || Number(wM.value) < partWarrantyMonths)){
+              let matched = Array.from(wM.options).some(opt => Number(opt.value) === partWarrantyMonths);
+              if(!matched){
+                const opt = document.createElement('option');
+                opt.value = String(partWarrantyMonths);
+                opt.textContent = `${partWarrantyMonths} شهور (ضمان القطعة)`;
+                wM.appendChild(opt);
+              }
+              wM.value = String(partWarrantyMonths);
+              if(wE && typeof computeWarrantyEndDate === 'function'){
+                wE.value = computeWarrantyEndDate(r.date || new Date().toISOString().slice(0,10), partWarrantyMonths);
+              }
+            }
+          }
+
           showToast(`تمت إضافة (${item.Name}) بنجاح`, 'success');
         }
         renderDetailSpareParts();
@@ -19540,7 +19642,7 @@ async function openReceiptDetail(rawR){
         qty: 1,
         costPrice: 0,
         sellPrice: 0,
-        warrantyDays: 30,
+        warrantyDays: 0,
         isStockDeducted: false
       });
       renderDetailSpareParts();
@@ -19835,11 +19937,11 @@ async function openReceiptDetail(rawR){
     r.otherAccountDesc = (overlay.querySelector('#eOtherDesc')?.value || '').trim();
     r.otherAccountAmount = Number(overlay.querySelector('#eOtherAmount')?.value || 0);
     r.cost = Number(overlay.querySelector('#eCost').value || 0);
-    const wMonthsVal = Number(overlay.querySelector('#eWarrantyMonths')?.value != null ? overlay.querySelector('#eWarrantyMonths').value : 3);
+    const wMonthsVal = Number(overlay.querySelector('#eWarrantyMonths')?.value != null ? overlay.querySelector('#eWarrantyMonths').value : 0);
     r.warrantyMonths = wMonthsVal;
-    r.warrantyEnd = overlay.querySelector('#eWarrantyEnd')?.value || '';
+    r.warrantyEnd = wMonthsVal > 0 ? (overlay.querySelector('#eWarrantyEnd')?.value || '') : '';
     if(wMonthsVal > 0){
-      r.warranty = `${wMonthsVal} شهور`;
+      r.warranty = `${wMonthsVal} شهور ضد عيوب الصناعة`;
     } else {
       r.warranty = 'بدون ضمان';
     }
@@ -23703,7 +23805,9 @@ function getStatusCustomMessage(rawR, status){
   const depositVal = Number(r.deposit||0);
   const depositInfo = depositVal > 0 ? `• العربون المدفوع مسبقاً: *${depositVal.toLocaleString()} ج.م*` : '';
   const warrantyVal = (r.warranty || '').trim();
-  const warrantyInfo = warrantyVal ? `• فترة الضمان المعتمدة: *${warrantyVal}*` : '';
+  const hasWarranty = warrantyVal && warrantyVal !== 'بدون ضمان' && warrantyVal !== '0' && Number(r.warrantyMonths || 0) > 0;
+  const warrantyDisplay = hasWarranty ? warrantyVal : 'بدون ضمان';
+  const warrantyInfo = hasWarranty ? `• فترة الضمان المعتمدة: *${warrantyVal}*` : '';
 
   // Replace placeholders
   const receiptTimeStr = (typeof formatReceiptTime === 'function' ? formatReceiptTime(r) : (r.time || ''));
@@ -23723,7 +23827,7 @@ function getStatusCustomMessage(rawR, status){
     .replace(/{remaining}/g, remaining.toLocaleString())
     .replace(/{inspection_fee}/g, Number(r.inspectionFee || (state.settings && state.settings.defaultInspectionFee) || 100).toLocaleString())
     .replace(/{estimate_time}/g, r.estimateTime || (state.settings && state.settings.defaultEstimateTime) || 'خلال 24-48 ساعة')
-    .replace(/{warranty}/g, warrantyVal || (state.settings && state.settings.defaultWarranty) || '3 شهور')
+    .replace(/{warranty}/g, warrantyDisplay)
     .replace(/{warranty_info}/g, warrantyInfo)
     .replace(/{track_url}/g, trackUrl)
     .replace(/{shop_name}/g, shop)
@@ -24485,11 +24589,12 @@ function buildCostEstimateWhatsappText(rawR, vals){
   const remaining = Math.max(0, cost - deposit);
   const inspectionFee = Number(vals.inspectionFee != null ? vals.inspectionFee : ((state.settings && state.settings.defaultInspectionFee != null) ? state.settings.defaultInspectionFee : 100));
   const estimateTime = (vals.estimateTime || 'خلال 24-48 ساعة').trim();
-  const warranty = (vals.warranty || '3 شهور ضد عيوب الصناعة').trim();
+  const warranty = (vals.warranty || '').trim() || 'بدون ضمان';
   const faultsReport = (vals.faultsReport || (Array.isArray(r.faults) ? r.faults.join('، ') : String(r.faults || '')) || r.faultNotes || 'فحص شامل وتحديد الأعطال').trim();
 
   const depositInfo = deposit > 0 ? `• العربون المدفوع مسبقاً: *${deposit.toLocaleString()} ج.م*` : '';
-  const warrantyInfo = warranty ? `• فترة الضمان المعتمدة: *${warranty}*` : '';
+  const hasWarranty = warranty && warranty !== 'بدون ضمان' && warranty !== '0';
+  const warrantyInfo = hasWarranty ? `• فترة الضمان المعتمدة: *${warranty}*` : '';
 
   let tmpl = getWaTemplate('cost_estimate') || DEFAULT_WA_TEMPLATES.cost_estimate;
 
@@ -24536,7 +24641,7 @@ function openCostEstimateModal(rawR){
   const defaultFee = (state.settings && state.settings.defaultInspectionFee != null) ? Number(state.settings.defaultInspectionFee) : 100;
   const initialInspectionFee = Number(r.inspectionFee != null ? r.inspectionFee : defaultFee);
   const initialEstimateTime = r.estimateTime || (state.settings && state.settings.defaultEstimateTime) || 'خلال 24-48 ساعة';
-  const initialWarranty = r.warranty || (state.settings && state.settings.defaultWarranty) || '3 شهور ضد عيوب الصناعة';
+  const initialWarranty = r.warranty || (Number(r.warrantyMonths || 0) > 0 ? `${r.warrantyMonths} شهور ضد عيوب الصناعة` : 'بدون ضمان');
 
   let initialFaultsReport = '';
   if(Array.isArray(r.faults) && r.faults.length){
@@ -24631,7 +24736,7 @@ function openCostEstimateModal(rawR){
             </div>
             <div class="field" style="margin-bottom:0;">
               <label style="font-size:11.5px;">فترة الضمان المعتمدة:</label>
-              <input type="text" id="estWarranty" value="${escapeHtml(initialWarranty)}" list="estWarrantyDatalist" placeholder="3 شهور ضد عيوب الصناعة">
+              <input type="text" id="estWarranty" value="${escapeHtml(initialWarranty)}" list="estWarrantyDatalist" placeholder="بدون ضمان">
               <datalist id="estWarrantyDatalist">
                 <option value="شهر واحد ضد عيوب الصناعة">
                 <option value="3 شهور ضد عيوب الصناعة">

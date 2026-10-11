@@ -134,16 +134,16 @@ async function openReceiptDetail(rawR){
         <div class="field" style="margin-bottom:0;">
           <label style="font-size:11.5px;font-weight:700;">مدة الضمان بعد الإصلاح:</label>
           <select id="eWarrantyMonths" style="font-weight:700;padding:5px 8px;font-size:12px;">
-            <option value="0" ${Number(r.warrantyMonths)===0 ? 'selected' : ''}>بدون ضمان</option>
+            <option value="0" ${Number(r.warrantyMonths)===0 || r.warrantyMonths == null ? 'selected' : ''}>بدون ضمان (الافتراضي)</option>
             <option value="1" ${Number(r.warrantyMonths)===1 ? 'selected' : ''}>شهر واحد (30 يوم)</option>
-            <option value="3" ${Number(r.warrantyMonths)===3 || r.warrantyMonths == null ? 'selected' : ''}>3 شهور (الافتراضي)</option>
+            <option value="3" ${Number(r.warrantyMonths)===3 ? 'selected' : ''}>3 شهور</option>
             <option value="6" ${Number(r.warrantyMonths)===6 ? 'selected' : ''}>6 شهور</option>
             <option value="12" ${Number(r.warrantyMonths)===12 ? 'selected' : ''}>سنة كاملة (12 شهر)</option>
           </select>
         </div>
         <div class="field" style="margin-bottom:0;">
           <label style="font-size:11.5px;font-weight:700;">تاريخ انتهاء الضمان المعتمد:</label>
-          <input type="text" id="eWarrantyEnd" value="${escapeHtml(r.warrantyEnd || (typeof computeWarrantyEndDate === 'function' ? computeWarrantyEndDate(r.date, r.warrantyMonths || 3) : ''))}" placeholder="YYYY-MM-DD" style="font-family:monospace;font-size:12px;font-weight:700;">
+          <input type="text" id="eWarrantyEnd" value="${escapeHtml(r.warrantyEnd || ((Number(r.warrantyMonths) > 0 && typeof computeWarrantyEndDate === 'function') ? computeWarrantyEndDate(r.date, r.warrantyMonths) : ''))}" placeholder="YYYY-MM-DD" style="font-family:monospace;font-size:12px;font-weight:700;">
         </div>
       </div>
     </div>
@@ -321,7 +321,7 @@ async function openReceiptDetail(rawR){
       </div>
       <div style="display:flex;gap:6px;">
         <button class="btn btn-ghost btn-sm" id="closeModalBtn">إلغاء</button>
-        <button class="btn btn-primary btn-sm" id="saveEditBtn">${getSvgIcon("check", 14)} حفظ التعديلات</button>
+        <button class="btn btn-primary" id="saveEditBtn" style="font-weight:800;padding:7px 18px;box-shadow:0 2px 8px var(--primary-focus);">${getSvgIcon("check", 14)} حفظ التعديلات</button>
       </div>
     </div>
   </div>`;
@@ -613,6 +613,8 @@ async function openReceiptDetail(rawR){
           existing.qty = Number(existing.qty || 1) + 1;
           showToast(`تم زيادة كمية (${item.Name}) إلى ${existing.qty} `, 'info');
         } else {
+          const partWarrantyMonths = Number(item.WarrantyMonths || 0);
+          const partWarrantyDays = partWarrantyMonths * 30;
           detailSpareParts.push({
             id: 'part_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
             itemId: item.ID,
@@ -621,9 +623,28 @@ async function openReceiptDetail(rawR){
             qty: 1,
             costPrice: Number(item.PurchasePrice || 0),
             sellPrice: Number(item.SellPrice || item.PurchasePrice || 0),
-            warrantyDays: 30,
+            warrantyDays: partWarrantyDays,
             isStockDeducted: false
           });
+
+          if(partWarrantyMonths > 0){
+            const wM = overlay.querySelector('#eWarrantyMonths');
+            const wE = overlay.querySelector('#eWarrantyEnd');
+            if(wM && (!wM.value || Number(wM.value) < partWarrantyMonths)){
+              let matched = Array.from(wM.options).some(opt => Number(opt.value) === partWarrantyMonths);
+              if(!matched){
+                const opt = document.createElement('option');
+                opt.value = String(partWarrantyMonths);
+                opt.textContent = `${partWarrantyMonths} شهور (ضمان القطعة)`;
+                wM.appendChild(opt);
+              }
+              wM.value = String(partWarrantyMonths);
+              if(wE && typeof computeWarrantyEndDate === 'function'){
+                wE.value = computeWarrantyEndDate(r.date || new Date().toISOString().slice(0,10), partWarrantyMonths);
+              }
+            }
+          }
+
           showToast(`تمت إضافة (${item.Name}) بنجاح`, 'success');
         }
         renderDetailSpareParts();
@@ -642,7 +663,7 @@ async function openReceiptDetail(rawR){
         qty: 1,
         costPrice: 0,
         sellPrice: 0,
-        warrantyDays: 30,
+        warrantyDays: 0,
         isStockDeducted: false
       });
       renderDetailSpareParts();
@@ -937,11 +958,11 @@ async function openReceiptDetail(rawR){
     r.otherAccountDesc = (overlay.querySelector('#eOtherDesc')?.value || '').trim();
     r.otherAccountAmount = Number(overlay.querySelector('#eOtherAmount')?.value || 0);
     r.cost = Number(overlay.querySelector('#eCost').value || 0);
-    const wMonthsVal = Number(overlay.querySelector('#eWarrantyMonths')?.value != null ? overlay.querySelector('#eWarrantyMonths').value : 3);
+    const wMonthsVal = Number(overlay.querySelector('#eWarrantyMonths')?.value != null ? overlay.querySelector('#eWarrantyMonths').value : 0);
     r.warrantyMonths = wMonthsVal;
-    r.warrantyEnd = overlay.querySelector('#eWarrantyEnd')?.value || '';
+    r.warrantyEnd = wMonthsVal > 0 ? (overlay.querySelector('#eWarrantyEnd')?.value || '') : '';
     if(wMonthsVal > 0){
-      r.warranty = `${wMonthsVal} شهور`;
+      r.warranty = `${wMonthsVal} شهور ضد عيوب الصناعة`;
     } else {
       r.warranty = 'بدون ضمان';
     }

@@ -208,9 +208,11 @@ function reconcileHistoricalJournalEntries(){
         }
 
         if (Array.isArray(splits) && splits.length > 0) {
+          let splitSum = 0;
           splits.forEach(sp => {
             const sAmt = Number(sp.amount || 0);
             if (sAmt <= 0) return;
+            splitSum += sAmt;
             const mId = String(sp.methodId || '').toLowerCase();
             const isEmpCr = mId === 'employee_credit' || mId === 'employee' || mId.includes('موظف');
             const isCr = mId === 'credit' || mId.includes('آجل') || mId.includes('اجل') || isEmpCr;
@@ -219,6 +221,13 @@ function reconcileHistoricalJournalEntries(){
             const accName = isEmpCr ? 'مشتريات الموظفين بالآجل' : (isCr ? 'العملاء والمدينون' : (isBk ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)'));
             lines.push({ AccountCode: accCode, AccountName: accName, Debit: sAmt, Credit: 0, Notes: `مقبوضات مبيعات [${sp.methodName || sp.methodId || 'نقدي'}]` });
           });
+          if (round2(splitSum) < round2(total)) {
+            const remainder = round2(total - splitSum);
+            const hasEmp = splits.some(sp => String(sp.methodId || '').toLowerCase().includes('employee') || String(sp.methodId || '').includes('موظف'));
+            const remCode = hasEmp ? '1107' : '1103';
+            const remName = hasEmp ? 'مشتريات الموظفين بالآجل' : 'العملاء والمدينون';
+            lines.push({ AccountCode: remCode, AccountName: remName, Debit: remainder, Credit: 0, Notes: `متبقي آجل مبيعات POS للعميل ${s.CustomerName || ''}` });
+          }
         } else {
           const pMethod = s.PaymentMethod || 'نقدي';
           const pLow = String(pMethod).toLowerCase();
@@ -584,6 +593,44 @@ function reconcileHistoricalJournalEntries(){
     }
   });
 
+  // 6b. Reconcile POS Returns from state.returns if not reconciled via expenses
+  (state.returns || []).forEach(ret => {
+    const amt = Number(ret.RefundAmount || 0);
+    if (amt <= 0) return;
+    const refKey1 = `POS_Return_${ret.ID}`;
+    const refKey2 = `POS_Return_${ret.SaleID}`;
+    const refKey3 = `Expense_ret_${ret.ID}`;
+    if (!existingRefs.has(refKey1) && !existingRefs.has(refKey2) && !existingRefs.has(refKey3)) {
+      const payMethod = ret.RefundMethod || 'نقدي';
+      const isBank = isElectronicPay(payMethod);
+      const isCredit = payMethod.includes('آجل') || payMethod.includes('اجل');
+      const creditCode = isCredit ? '1103' : (isBank ? '1102' : '1101');
+      const creditName = isCredit ? 'العملاء والمدينون' : (isBank ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)');
+
+      const entry = {
+        ID: 'je_hist_ret_rec_' + ret.ID,
+        EntryNumber: getNextJournalEntryNumber(),
+        Date: (ret.Date || new Date().toISOString()).slice(0, 10),
+        Description: `مرتجع مبيعات POS: أصناف (${ret.ItemsSummary || ''}) - [${payMethod}]`,
+        ReferenceType: 'POS_Return',
+        ReferenceID: String(ret.SaleID || ret.ID),
+        Lines: [
+          { AccountCode: '4102', AccountName: 'مردودات ومسموحات مبيعات الأجهزة والإكسسوار', Debit: amt, Credit: 0, Notes: `مرتجع مبيعات للعميل ${ret.CustomerName || ''}` },
+          { AccountCode: creditCode, AccountName: creditName, Debit: 0, Credit: amt, Notes: `رد واسترداد عبر [${payMethod}]` }
+        ],
+        TotalDebit: amt,
+        TotalCredit: amt,
+        By: ret.By || 'نظام'
+      };
+      entry.LinesJSON = JSON.stringify(entry.Lines);
+      newEntries.push(entry);
+      state.journalEntries.push(entry);
+      existingRefs.add(refKey1);
+      existingRefs.add(refKey2);
+      existingRefs.add(refKey3);
+    }
+  });
+
   // 7. Reconcile Employee Advances (Dr 1106 / Cr 1101 or 1102)
   (state.employeeAdvances || []).forEach(adv => {
     const refKey = `Employee_Advance_${adv.ID}`;
@@ -621,7 +668,7 @@ function reconcileHistoricalJournalEntries(){
 
   // 8. Reconcile Employee Advance Repayments & Purchase Repayments
   (state.employeeAdvanceRepayments || []).forEach(rep => {
-    if (rep.Type === 'payroll_deduction' || rep.Type === 'payroll_purchase_deduction') return;
+    if (String(rep.Type || '').includes('payroll') || rep.Type === 'payroll_deduction' || rep.Type === 'payroll_purchase_deduction') return;
     const isPurchaseRep = rep.Type === 'purchase_repayment_cash' || rep.Type === 'purchase_repayment';
     const refType = isPurchaseRep ? 'Employee_Purchase_Repayment' : 'Advance_Repayment';
     const refKey = `${refType}_${rep.ID}`;

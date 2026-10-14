@@ -518,7 +518,7 @@ function renderDailyJournalSectionApp(app){
   const dInv = document.getElementById('dayToInvoicesNav');
   if(dInv) dInv.onclick = ()=>{ state.currentSection = 'invoices'; render(); };
   const dFin = document.getElementById('dayToFinanceNav');
-  if(dFin) dFin.onclick = ()=>{ state.currentSection = 'finance'; state.financeTab = 'accounts'; render(); };
+  if(dFin) dFin.onclick = ()=>{ state.currentSection = 'finance'; state.financeTab = 'overview'; render(); };
   const dInc = document.getElementById('dayToIncomeNav');
   if(dInc) dInc.onclick = ()=>{ state.currentSection = 'finance'; state.financeTab = 'income'; render(); };
   const dPos = document.getElementById('dayToPosNav');

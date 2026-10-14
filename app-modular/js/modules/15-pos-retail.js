@@ -1,7 +1,7 @@
 /* ---------------- POS Section ---------------- */
 function renderPosApp(app){
   if(!state.posTab) state.posTab = 'sell';
-  const hasHelpTools = canUserAccessSection('barcode') || canUserAccessSection('inventory') || canUserAccessSection('cashdrawer') || canUserAccessSection('daily') || canUserAccessSection('settings');
+  const hasHelpTools = canUserAccessSection('finance') || canUserAccessSection('barcode') || canUserAccessSection('inventory') || canUserAccessSection('cashdrawer') || canUserAccessSection('daily') || canUserAccessSection('settings');
 
   app.innerHTML = `
     <div class="sidebar">
@@ -18,6 +18,11 @@ function renderPosApp(app){
 
         ${hasHelpTools ? `
           <div class="nav-section">أدوات مساعدة</div>
+          ${canUserAccessSection('finance') ? `
+            <div class="nav-item" id="posToFinanceNav">
+              <span class="nav-item-icon">${getSvgIcon('finance', 16)}</span><span>القسم المالي والمحاسبي</span>
+            </div>
+          ` : ''}
           ${canUserAccessSection('barcode') ? `
             <div class="nav-item" id="posToBarcodeNav">
               <span class="nav-item-icon">${getSvgIcon('barcode', 16)}</span><span>استوديو طباعة الباركود</span>
@@ -57,6 +62,8 @@ function renderPosApp(app){
     el.onclick = ()=>{ state.posTab = el.dataset.postab; renderPosApp(app); };
   });
 
+  const pFin = document.getElementById('posToFinanceNav');
+  if(pFin) pFin.onclick = ()=>{ state.currentSection = 'finance'; state.financeTab = 'overview'; render(); };
   const pBar = document.getElementById('posToBarcodeNav');
   if(pBar) pBar.onclick = ()=>{ state.currentSection = 'barcode'; render(); };
   const pInv = document.getElementById('posToInvNav');

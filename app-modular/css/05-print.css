@@ -168,6 +168,7 @@
   #switchSectionBtn { margin: 6px 10px; white-space: nowrap; flex-shrink: 0; }
   .sidebar-foot {
     display: flex;
+    flex-wrap: wrap;
     padding: 8px 14px;
     border-top: 1px solid var(--line);
     align-items: center;

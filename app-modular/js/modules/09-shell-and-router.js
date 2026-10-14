@@ -314,11 +314,13 @@ const MASTER_MODULES = [
     desc: 'دفتر اليومية وحركة السيولة النقدية، مقبوضات ومصروفات، شجرة الحسابات، ومكافآت الفنيين.',
     sec: 'finance',
     chips: [
-      { label: 'نظرة مالية عامة', sec: 'finance' },
+      { label: 'نظرة مالية عامة', sec: 'finance', tab: 'overview' },
       { label: 'حركة الخزينة والدرج', sec: 'cashdrawer' },
       { label: 'دفتر اليومية العامة', sec: 'daily' },
-      { label: 'شجرة الحسابات', sec: 'finance' },
-      { label: 'مكافآت الفنيين', sec: 'finance' }
+      { label: 'شجرة الحسابات', sec: 'finance', tab: 'accounts' },
+      { label: 'سلف الموظفين', sec: 'finance', tab: 'advances' },
+      { label: 'مسير الرواتب', sec: 'finance', tab: 'payroll' },
+      { label: 'مكافآت الفنيين', sec: 'finance', tab: 'bonus' }
     ]
   },
   {
@@ -728,6 +730,9 @@ function renderExecutiveCommandCenter(app){
       
       <!-- Topbar Header -->
       <header class="hub-topbar">
+        <button class="hub-icon-circle hub-menu-btn" id="hubMenuBtn" title="القائمة الجانبية (Ctrl+B)">
+          ${getSvgIcon('menu', 18)}
+        </button>
         <div class="hub-brand" id="hubrandHome">
           <div class="hub-brand-logo">
             ${logoUrl ? `<img src="${logoUrl}" style="width:100%;height:100%;object-fit:contain;border-radius:var(--radius-sm);">` : getSvgIcon('logo', 20)}
@@ -773,6 +778,7 @@ function renderExecutiveCommandCenter(app){
 
       <!-- Main Shell (Dock + Workspace) -->
       <div class="hub-shell">
+        <div class="hub-dock-backdrop" id="hubDockBackdrop"></div>
         
         <!-- Side Dock Rail -->
         <aside class="hub-dock ${state.dockExpanded ? 'expanded' : ''}" id="hubDock">
@@ -845,7 +851,7 @@ function renderExecutiveCommandCenter(app){
                       <!-- Interactive Quick Sub-Links -->
                       <div class="hub-mod-chips">
                         ${allowedChips.map(chip => `
-                          <span class="hub-mod-chip" data-chipact="${chip.action||''}" data-chipsec="${chip.sec||''}">
+                          <span class="hub-mod-chip" data-chipact="${chip.action||''}" data-chipsec="${chip.sec||''}" data-chiptab="${chip.tab||''}">
                             ${chip.label}
                           </span>
                         `).join('')}
@@ -1150,6 +1156,12 @@ function renderExecutiveCommandCenter(app){
   const hubLogoutBtn = document.getElementById('hubLogoutBtn');
   if(hubLogoutBtn) hubLogoutBtn.onclick = logout;
 
+  const hubMenuBtn = document.getElementById('hubMenuBtn');
+  if(hubMenuBtn) hubMenuBtn.onclick = () => toggleDockExpanded();
+
+  const hubDockBackdrop = document.getElementById('hubDockBackdrop');
+  if(hubDockBackdrop) hubDockBackdrop.onclick = () => toggleDockExpanded(false);
+
   // Floating Side Dock Navigation
   const dockMap = [
     { id: 'dockHome', sec: null },
@@ -1172,6 +1184,9 @@ function renderExecutiveCommandCenter(app){
         if(d.id === 'dockHome' && state.currentSection === null){
           toggleDockExpanded();
           return;
+        }
+        if(typeof window !== 'undefined' && window.innerWidth <= 768){
+          toggleDockExpanded(false);
         }
         state.currentSection = d.sec;
         render();
@@ -1310,6 +1325,11 @@ function renderExecutiveCommandCenter(app){
         if(typeof openWarehouseManagerModal === 'function') openWarehouseManagerModal();
       } else if(sec){
         state.currentSection = sec;
+        if(chip.dataset.chiptab && sec === 'finance'){
+          state.financeTab = chip.dataset.chiptab;
+          if(state.financeTab === 'advances') state.hrTab = 'advances';
+          else if(state.financeTab === 'payroll') state.hrTab = 'payroll';
+        }
         render();
       }
     };
@@ -1369,6 +1389,15 @@ function toggleDockExpanded(forceState){
   const dock = document.getElementById('hubDock') || document.querySelector('.hub-dock');
   if(dock){
     dock.classList.toggle('expanded', !!state.dockExpanded);
+  }
+  const dockHomeBtn = document.getElementById('dockHome');
+  if(dockHomeBtn){
+    dockHomeBtn.setAttribute('title', state.dockExpanded ? 'طي القائمة الجانبية (Ctrl+B)' : 'توسيع القائمة الجانبية (Ctrl+B)');
+    dockHomeBtn.setAttribute('aria-expanded', state.dockExpanded ? 'true' : 'false');
+  }
+  const backdrop = document.getElementById('hubDockBackdrop');
+  if(backdrop){
+    backdrop.classList.toggle('visible', !!state.dockExpanded && (typeof window !== 'undefined' && window.innerWidth <= 768));
   }
 }
 
@@ -1466,7 +1495,7 @@ function logout(){
 
 /* ---------------- Maintenance Section ---------------- */
 function renderMaintenanceApp(app){
-  const hasFinanceNav = canUserAccessSection('invoices') || canUserAccessSection('cashdrawer') || canUserAccessSection('daily');
+  const hasFinanceNav = canUserAccessSection('finance') || canUserAccessSection('invoices') || canUserAccessSection('cashdrawer') || canUserAccessSection('daily');
   const hasAdminNav = canUserAccessSection('audit') || canUserAccessSection('users') || canUserAccessSection('settings');
 
   app.innerHTML = `
@@ -1482,6 +1511,11 @@ function renderMaintenanceApp(app){
 
         ${hasFinanceNav ? `
           <div class="nav-section">الماليات والربط</div>
+          ${canUserAccessSection('finance') ? `
+            <div class="nav-item" id="maintToFinanceNav">
+              <span class="nav-item-icon">${getSvgIcon('finance', 16)}</span><span>القسم المالي والمحاسبي</span>
+            </div>
+          ` : ''}
           ${canUserAccessSection('cashdrawer') ? `
             <div class="nav-item" id="maintToDrawerNav">
               <span class="nav-item-icon">${getSvgIcon('cashdrawer', 16)}</span><span>حركة الخزينة والدرج</span>
@@ -1528,6 +1562,8 @@ function renderMaintenanceApp(app){
     };
   });
 
+  const mFin = document.getElementById('maintToFinanceNav');
+  if(mFin) mFin.onclick = ()=>{ state.currentSection = 'finance'; state.financeTab = 'overview'; render(); };
   const mDrw = document.getElementById('maintToDrawerNav');
   if(mDrw) mDrw.onclick = ()=>{ state.currentSection = 'cashdrawer'; render(); };
   const mDay = document.getElementById('maintToDailyNav');

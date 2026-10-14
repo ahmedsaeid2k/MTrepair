@@ -20,6 +20,7 @@ describe('Historical Journal Entries Reconciliation Engine', () => {
       employeeAdvances: [],
       employeeAdvanceRepayments: [],
       payrollRuns: [],
+      returns: [],
       accounts: [
         { Code: '1101', Name: 'الخزينة الرئيسية (النقدية)', Nature: 'مدين' },
         { Code: '1102', Name: 'البنك والحسابات الإلكترونية والمحافظ', Nature: 'مدين' },
@@ -280,5 +281,75 @@ describe('Historical Journal Entries Reconciliation Engine', () => {
     expect(retEntry.Lines[0].Debit).toBe(250);
     expect(retEntry.Lines[1].AccountCode).toBe('1101'); // Cr Cash
     expect(retEntry.Lines[1].Credit).toBe(250);
+  });
+
+  it('reconciles POS sales with split payment remainder ensuring balanced double-entry (Dr = Cr)', () => {
+    context.state.sales = [
+      {
+        ID: 'sale_split_100',
+        Date: '2026-10-13',
+        Total: 1000,
+        AmountPaid: 700,
+        PaymentSplits: [
+          { methodId: 'cash', methodName: 'نقدي', amount: 400 },
+          { methodId: 'instapay', methodName: 'انستاباي', amount: 300 }
+        ],
+        CustomerName: 'عميل تقسيم الدفع'
+      }
+    ];
+
+    const entries = vm.runInContext('reconcileHistoricalJournalEntries()', context);
+    const saleEntry = entries.find(e => e.ReferenceID === 'sale_split_100');
+
+    expect(saleEntry).toBeDefined();
+    expect(saleEntry.TotalDebit).toBe(1000);
+    expect(saleEntry.TotalCredit).toBe(1000);
+    expect(FinanceEngine.isBalancedEntry(saleEntry.Lines)).toBe(true);
+
+    // Dr 1101 (400), Dr 1102 (300), Dr 1103 (remainder 300), Cr 4102 (1000)
+    expect(saleEntry.Lines.some(l => l.AccountCode === '1101' && l.Debit === 400)).toBe(true);
+    expect(saleEntry.Lines.some(l => l.AccountCode === '1102' && l.Debit === 300)).toBe(true);
+    expect(saleEntry.Lines.some(l => l.AccountCode === '1103' && l.Debit === 300)).toBe(true);
+    expect(saleEntry.Lines.some(l => l.AccountCode === '4102' && l.Credit === 1000)).toBe(true);
+  });
+
+  it('reconciles POS returns directly from state.returns when not logged in expenses', () => {
+    context.state.returns = [
+      {
+        ID: 'ret_pos_direct_1',
+        SaleID: 'sale_999',
+        RefundAmount: 200,
+        RefundMethod: 'نقدي',
+        ItemsSummary: 'جراب + شاشة حماية',
+        CustomerName: 'عميل مرتجع مباشرة'
+      },
+      {
+        ID: 'ret_pos_direct_2',
+        SaleID: 'sale_888',
+        RefundAmount: 350,
+        RefundMethod: 'فودافون كاش',
+        ItemsSummary: 'سماعة بلوتوث',
+        CustomerName: 'عميل إلكتروني مرتجع'
+      }
+    ];
+
+    const entries = vm.runInContext('reconcileHistoricalJournalEntries()', context);
+    const ret1 = entries.find(e => e.ReferenceID === 'sale_999');
+    expect(ret1).toBeDefined();
+    expect(ret1.ReferenceType).toBe('POS_Return');
+    expect(ret1.Lines[0].AccountCode).toBe('4102');
+    expect(ret1.Lines[0].Debit).toBe(200);
+    expect(ret1.Lines[1].AccountCode).toBe('1101');
+    expect(ret1.Lines[1].Credit).toBe(200);
+    expect(FinanceEngine.isBalancedEntry(ret1.Lines)).toBe(true);
+
+    const ret2 = entries.find(e => e.ReferenceID === 'sale_888');
+    expect(ret2).toBeDefined();
+    expect(ret2.ReferenceType).toBe('POS_Return');
+    expect(ret2.Lines[0].AccountCode).toBe('4102');
+    expect(ret2.Lines[0].Debit).toBe(350);
+    expect(ret2.Lines[1].AccountCode).toBe('1102');
+    expect(ret2.Lines[1].Credit).toBe(350);
+    expect(FinanceEngine.isBalancedEntry(ret2.Lines)).toBe(true);
   });
 });

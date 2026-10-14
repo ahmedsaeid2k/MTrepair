@@ -994,15 +994,19 @@ tr:last-child td { border-bottom: none; }
   }
   .journal-line-row > input[data-jdebit] {
     grid-column: 1 / 2;
+    grid-row: 2;
   }
   .journal-line-row > input[data-jcredit] {
     grid-column: 2 / 3;
-  }
-  .journal-line-row > input[data-jnotes] {
-    grid-column: 1 / 3;
+    grid-row: 2;
   }
   .journal-line-row > button[data-jdel] {
     grid-column: 3 / 4;
+    grid-row: 2;
+  }
+  .journal-line-row > input[data-jnotes] {
+    grid-column: 1 / -1;
+    grid-row: 3;
   }
 }
 

@@ -241,7 +241,7 @@ function renderInvoicesSectionApp(app){
   const iDay = document.getElementById('invToDailyNav');
   if(iDay) iDay.onclick = ()=>{ state.currentSection = 'daily'; render(); };
   const iFin = document.getElementById('invToFinanceNav');
-  if(iFin) iFin.onclick = ()=>{ state.currentSection = 'finance'; state.financeTab = 'accounts'; render(); };
+  if(iFin) iFin.onclick = ()=>{ state.currentSection = 'finance'; state.financeTab = 'overview'; render(); };
   const iInc = document.getElementById('invToIncomeNav');
   if(iInc) iInc.onclick = ()=>{ state.currentSection = 'finance'; state.financeTab = 'income'; render(); };
   const iMaint = document.getElementById('invToMaintNav');

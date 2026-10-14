@@ -111,18 +111,32 @@ function renderFinanceSectionApp(app){
 }
 
 function renderFinanceOverview(main){
-  const totalIncomeAllTime = state.payments.reduce((s,p)=>s+Number(p.Amount||0),0);
-  const totalExpAll = state.expenses.reduce((s,x)=>s+Number(x.Amount||0),0);
-  const maintenanceDue = state.receipts.reduce((s,r)=>{
-    const remaining = Number(r.cost||0)+Number(r.partsCost||0)-Number(r.deposit||0)+Number(r.refunded||0);
+  let totalIncomeAllTime = 0;
+  let totalExpAll = 0;
+
+  if (typeof getUnifiedDailyTransactions === 'function') {
+    const allTx = getUnifiedDailyTransactions();
+    totalIncomeAllTime = allTx.reduce((s, tx) => s + Number(tx.in || 0), 0);
+    totalExpAll = allTx.reduce((s, tx) => s + Number(tx.out || 0), 0);
+  } else {
+    const paySum = (state.payments || []).reduce((s, p) => s + Number(p.Amount || 0), 0);
+    const saleSum = (state.sales || []).reduce((s, x) => s + Number(x.AmountPaid != null ? x.AmountPaid : (x.Total || 0)), 0);
+    totalIncomeAllTime = paySum + saleSum;
+    totalExpAll = (state.expenses || []).reduce((s, x) => s + Number(x.Amount || 0), 0);
+  }
+
+  const netProfit = totalIncomeAllTime - totalExpAll;
+  const maintenanceDue = (state.receipts || []).reduce((s, r) => {
+    const remaining = Number(r.cost || 0) + Number(r.partsCost || 0) - Number(r.deposit || 0) + Number(r.refunded || 0);
     return s + Math.max(0, remaining);
-  },0);
+  }, 0);
+
   main.innerHTML = `
     <div class="top-header"><div><h2 class="page-title">${getSvgIcon("chart", 22)} النظرة المالية العامة</h2></div></div>
     <div class="stat-grid">
       <div class="stat-card green"><div class="num mono">${totalIncomeAllTime.toLocaleString()} ج.م</div><div class="lbl">إجمالي المقبوضات المسجلة</div></div>
       <div class="stat-card red"><div class="num mono">${totalExpAll.toLocaleString()} ج.م</div><div class="lbl">إجمالي المصروفات</div></div>
-      <div class="stat-card purple"><div class="num mono">${(totalIncomeAllTime - totalExpAll).toLocaleString()} ج.م</div><div class="lbl">صافي الأرباح العام</div></div>
+      <div class="stat-card purple"><div class="num mono">${netProfit.toLocaleString()} ج.م</div><div class="lbl">صافي الأرباح العام</div></div>
       <div class="stat-card amber"><div class="num mono">${maintenanceDue.toLocaleString()} ج.م</div><div class="lbl">مستحقات متبقية على إيصالات الصيانة</div></div>
     </div>
 
@@ -131,7 +145,7 @@ function renderFinanceOverview(main){
         <h3>${getSvgIcon("folder", 16)} ملخص الحسابات الرئيسية</h3>
         <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px;">
           ${['1','2','3','4','5'].map(code=>{
-            const acc = state.accounts.find(a=>String(a.Code)===code);
+            const acc = (state.accounts || []).find(a=>String(a.Code)===code);
             if(!acc) return '';
             const stats = getAccountStats(code);
             return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--paper3);border-radius:var(--radius-sm);border:1px solid var(--line);">
@@ -150,6 +164,8 @@ function renderFinanceOverview(main){
         <h3>وصول سريع للعمليات المحاسبية</h3>
         <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px;">
           <button class="btn btn-primary" onclick="state.financeTab='accounts';renderFinanceSectionApp(document.getElementById('app'));">${getSvgIcon('folder', 14)} استعراض شجرة الحسابات الكاملة</button>
+          <button class="btn btn-ghost" onclick="state.financeTab='income';renderFinanceSectionApp(document.getElementById('app'));">${getSvgIcon('trendUp', 14)} تقرير الدخل والأرباح الشامل</button>
+          <button class="btn btn-ghost" onclick="state.financeTab='cashdrawer';renderFinanceSectionApp(document.getElementById('app'));">${getSvgIcon('cashdrawer', 14)} حركة الخزينة والسيولة النقدية</button>
           <button class="btn btn-ghost" onclick="state.financeTab='advances';state.hrTab='advances';renderFinanceSectionApp(document.getElementById('app'));">${getSvgIcon('creditCard', 14)} سلف ومشتريات الموظفين</button>
           <button class="btn btn-ghost" onclick="state.financeTab='payroll';state.hrTab='payroll';renderFinanceSectionApp(document.getElementById('app'));">${getSvgIcon('checkCircle', 14)} مسير وصرف الرواتب الشهرية</button>
           <button class="btn btn-ghost" onclick="state.financeTab='journal';renderFinanceSectionApp(document.getElementById('app'));">${getSvgIcon('fileText', 14)} دفتر القيود اليومية (+ قيد يدوي)</button>

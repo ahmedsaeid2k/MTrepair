@@ -49,6 +49,14 @@ function renderFinanceSectionApp(app){
           <span class="nav-item-icon">${getSvgIcon("fileText", 16)}</span><span>دفتر القيود اليومية</span>
         </div>
 
+        <div class="nav-section">الموارد البشرية والرواتب</div>
+        <div class="nav-item ${state.financeTab==='advances'?'active':''}" data-fintab="advances">
+          <span class="nav-item-icon">${getSvgIcon("creditCard", 16)}</span><span>سلف ومشتريات الموظفين</span>
+        </div>
+        <div class="nav-item ${state.financeTab==='payroll'?'active':''}" data-fintab="payroll">
+          <span class="nav-item-icon">${getSvgIcon("checkCircle", 16)}</span><span>مسير وصرف الرواتب</span>
+        </div>
+
         <div class="nav-section">المكافآت والتهيئة</div>
         <div class="nav-item ${state.financeTab==='bonus'?'active':''}" data-fintab="bonus">
           <span class="nav-item-icon">${getSvgIcon("tag", 16)}</span><span>مكافآت ونسب الفنيين</span>
@@ -73,7 +81,12 @@ function renderFinanceSectionApp(app){
   attachSidebarHandlers();
 
   document.querySelectorAll('[data-fintab]').forEach(el=>{
-    el.onclick = ()=>{ state.financeTab = el.dataset.fintab; renderFinanceSectionApp(app); };
+    el.onclick = ()=>{
+      state.financeTab = el.dataset.fintab;
+      if(state.financeTab === 'advances') state.hrTab = 'advances';
+      else if(state.financeTab === 'payroll') state.hrTab = 'payroll';
+      renderFinanceSectionApp(app);
+    };
   });
 
   const fSet = document.getElementById('finToSettingsNav');
@@ -88,6 +101,11 @@ function renderFinanceSectionApp(app){
   else if(state.financeTab==='journal') renderJournalEntries(main);
   else if(state.financeTab==='trialbalance') renderTrialBalance(main);
   else if(state.financeTab==='income') renderFinanceReportPage(main);
+  else if(state.financeTab==='advances' || state.financeTab==='payroll') {
+    if(state.financeTab === 'payroll') state.hrTab = 'payroll';
+    else if(!state.hrTab) state.hrTab = 'advances';
+    if(typeof renderEmployeeAdvancesPage === 'function') renderEmployeeAdvancesPage(main);
+  }
   else if(state.financeTab==='users' && canUserAccessSection('users')) renderUsersManagementPage(main);
   else renderBonusPage(main);
 }
@@ -132,6 +150,8 @@ function renderFinanceOverview(main){
         <h3>وصول سريع للعمليات المحاسبية</h3>
         <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px;">
           <button class="btn btn-primary" onclick="state.financeTab='accounts';renderFinanceSectionApp(document.getElementById('app'));">${getSvgIcon('folder', 14)} استعراض شجرة الحسابات الكاملة</button>
+          <button class="btn btn-ghost" onclick="state.financeTab='advances';state.hrTab='advances';renderFinanceSectionApp(document.getElementById('app'));">${getSvgIcon('creditCard', 14)} سلف ومشتريات الموظفين</button>
+          <button class="btn btn-ghost" onclick="state.financeTab='payroll';state.hrTab='payroll';renderFinanceSectionApp(document.getElementById('app'));">${getSvgIcon('checkCircle', 14)} مسير وصرف الرواتب الشهرية</button>
           <button class="btn btn-ghost" onclick="state.financeTab='journal';renderFinanceSectionApp(document.getElementById('app'));">${getSvgIcon('fileText', 14)} دفتر القيود اليومية (+ قيد يدوي)</button>
           <button class="btn btn-ghost" onclick="state.financeTab='trialbalance';renderFinanceSectionApp(document.getElementById('app'));">${getSvgIcon('scale', 14)} عرض ميزان المراجعة العام</button>
         </div>

@@ -17,6 +17,10 @@ let state = {
     notes: ''
   },
   users: getCache('users', DEFAULT_USERS),
+  employeeAdvances: getCache('employee_advances', []),
+  employeeAdvanceRepayments: getCache('employee_advance_repayments', []),
+  payrollRuns: getCache('payroll_runs', []),
+  hrTab: 'advances',
   receipts: getCache('receipts', []),
   customers: getCache('customers', []),
   technicians: getCache('technicians', ['أحمد فتحي','محمود سيد','كريم عادل']),

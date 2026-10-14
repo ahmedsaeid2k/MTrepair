@@ -3,10 +3,18 @@ function exportUsersToExcel(list){
   const rows = (list || state.users || []).map((u, idx) => {
     const secs = Array.isArray(u.Sections) ? u.Sections : String(u.Sections||'').split(',').map(s=>s.trim()).filter(Boolean);
     const secsLabels = secs.map(s => (SECTION_INFO[s]||{}).label || s).join(' + ');
+    const b = (typeof computeEmployeeBalances === 'function')
+      ? computeEmployeeBalances(u.Name, state)
+      : { salary: Number(u.Salary)||0, purchasesCreditLimit: Number(u.PurchasesCreditLimit)||0, advancesBalance: 0, purchasesBalance: 0, totalDueFromEmployee: 0 };
     return {
       '#': idx + 1,
       'اسم المستخدم': u.Name,
       'المسمى / الدور': u.Role === 'admin' ? 'مدير عام' : (u.Role === 'cashier' ? 'كاشير' : (u.Role === 'technician' ? 'فني صيانة' : (u.Role === 'accountant' ? 'محاسب' : (u.Role === 'storekeeper' ? 'أمين مخزن' : u.Role)))),
+      'الراتب الأساسي': b.salary,
+      'سقف مشتريات الآجل': b.purchasesCreditLimit,
+      'رصيد السلف القائمة': b.advancesBalance,
+      'رصيد المشتريات الآجلة': b.purchasesBalance,
+      'إجمالي المستحق على الموظف': b.totalDueFromEmployee,
       'الشاشات المسموحة': secsLabels,
       'عدد الشاشات': secs.length,
       'ملاحظات': u.Notes || ''
@@ -95,6 +103,25 @@ function openUserModal(editUser=null){
         <div class="field">
           <label>ملاحظات إضافية</label>
           <input id="uModalNotes" value="${editUser ? (editUser.Notes||'') : ''}" placeholder="ملاحظات حول الموظف أو الفرع">
+        </div>
+      </div>
+
+      <!-- Financial & HR Profile (Salary & Credit Limit) -->
+      <div class="card" style="padding:14px 16px;background:var(--paper3);border:1px solid var(--line);margin-bottom:14px;">
+        <div style="font-size:13px;font-weight:900;color:var(--primary);margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+          <span>${getSvgIcon('creditCard', 15)}</span> الملف المالي وإعدادات الموارد البشرية (الراتب وسقف الائتمان)
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label>الراتب الشهري الأساسي (ج.م)</label>
+            <input type="number" step="any" min="0" id="uModalSalary" value="${editUser ? (Number(editUser.Salary) || 0) : 0}" placeholder="مثال: 5000">
+            <div style="font-size:11px;color:var(--ink-secondary);margin-top:2px;">يستخدم في مسير الرواتب الشهري وحساب استقطاعات السلف</div>
+          </div>
+          <div class="field">
+            <label>سقف مشتريات الآجل المسموح بها (ج.م)</label>
+            <input type="number" step="any" min="0" id="uModalCreditLimit" value="${editUser ? (Number(editUser.PurchasesCreditLimit) || 0) : 0}" placeholder="مثال: 1500">
+            <div style="font-size:11px;color:var(--ink-secondary);margin-top:2px;">الحد الأقصى لمشتريات الموظف بالآجل في شاشة الكاشير (POS)</div>
+          </div>
         </div>
       </div>
 
@@ -315,6 +342,9 @@ function openUserModal(editUser=null){
 
     if(!selectedSections.length){ showToast('يرجى اختيار شاشة واحدة على الأقل للمستخدم', 'error'); return; }
 
+    const salary = parseFloat(overlay.querySelector('#uModalSalary') ? overlay.querySelector('#uModalSalary').value : 0) || 0;
+    const purchasesCreditLimit = parseFloat(overlay.querySelector('#uModalCreditLimit') ? overlay.querySelector('#uModalCreditLimit').value : 0) || 0;
+
     const userObj = {
       ID: editUser ? editUser.ID : ('usr_' + Date.now()),
       Name: name,
@@ -322,7 +352,9 @@ function openUserModal(editUser=null){
       Role: role,
       Superuser: isSuperuser,
       Sections: selectedSections.join(','),
-      Notes: notes
+      Notes: notes,
+      Salary: salary,
+      PurchasesCreditLimit: purchasesCreditLimit
     };
 
     try{
@@ -332,7 +364,7 @@ function openUserModal(editUser=null){
         recordAuditLog(
           isEdit ? 'تعديل مستخدم وصلاحيات' : 'إضافة مستخدم جديد',
           'users',
-          `المستخدم (${name}) - الدور: ${role} - الأقسام: [${selectedSections.join(', ')}] - Superuser: ${isSuperuser ? 'مفعل' : 'معطل'}`,
+          `المستخدم (${name}) - الدور: ${role} - الراتب: ${salary} - سقف الآجل: ${purchasesCreditLimit} - الأقسام: [${selectedSections.join(', ')}] - Superuser: ${isSuperuser ? 'مفعل' : 'معطل'}`,
           userObj.ID,
           'معتمد'
         );
@@ -344,6 +376,8 @@ function openUserModal(editUser=null){
         state.user.superuser = isSuperuser;
         state.user.Superuser = isSuperuser;
         state.user.sections = selectedSections;
+        state.user.Salary = salary;
+        state.user.PurchasesCreditLimit = purchasesCreditLimit;
         try{ sessionStorage.setItem('microerp_session', JSON.stringify(state.user)); }catch(e){}
       }
 
@@ -398,6 +432,8 @@ function renderUsersManagementPage(main){
         <div class="subtitle mono" style="font-size:12px;color:var(--ink-secondary);">${totalUsers} مستخدم مسجل</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" id="navToAdvancesBtn">${getSvgIcon("creditCard", 13)} سلف ومشتريات الموظفين</button>
+        <button class="btn btn-ghost btn-sm" id="navToPayrollBtn">${getSvgIcon("checkCircle", 13)} مسير الرواتب الشهرية</button>
         <button class="btn btn-ghost btn-sm" id="importTechsAsUsersBtn">${getSvgIcon("users", 13)} استيراد الفنيين كمستخدمين</button>
         <button class="btn btn-ghost btn-sm" id="exportUsersExcelBtn">${getSvgIcon("download", 13)} تصدير CSV (Excel)</button>
         <button class="btn btn-primary btn-sm" id="addNewUserBtn">${getSvgIcon("plus", 13)} إضافة مستخدم جديد وتخصيص الصلاحيات</button>
@@ -436,11 +472,15 @@ function renderUsersManagementPage(main){
               <th>#</th>
               <th>اسم المستخدم</th>
               <th>المسمى / الدور</th>
-              <th>صلاحية Superuser (الحذف المباشر)</th>
+              <th>الراتب الأساسي</th>
+              <th>سقف مشتريات الآجل</th>
+              <th>سلف قائمة</th>
+              <th>مشتريات آجلة</th>
+              <th>صلاحية Superuser</th>
               <th>أمان الحساب</th>
-              <th>الشاشات والأقسام المسموح بها</th>
+              <th>الشاشات المسموح بها</th>
               <th>ملاحظات</th>
-              <th>الإجراءات والتخصيص</th>
+              <th>الإجراءات والمعاملات</th>
             </tr>
           </thead>
           <tbody>
@@ -448,18 +488,29 @@ function renderUsersManagementPage(main){
               const secs = Array.isArray(u.Sections) ? u.Sections : String(u.Sections||'').split(',').map(s=>s.trim()).filter(Boolean);
               const isAdmin = u.Role === 'admin';
               const isSuper = isAdmin || !!u.Superuser || !!u.superuser;
+              const b = (typeof computeEmployeeBalances === 'function')
+                ? computeEmployeeBalances(u.Name, state)
+                : { salary: Number(u.Salary)||0, purchasesCreditLimit: Number(u.PurchasesCreditLimit)||0, advancesBalance: 0, purchasesBalance: 0, totalDueFromEmployee: 0 };
 
               return `
                 <tr>
                   <td class="mono" style="color:var(--ink-secondary);">${idx+1}</td>
                   <td>
-                    <div style="font-weight:900;font-size:13.5px;color:var(--ink);">${u.Name}</div>
+                    <div style="font-weight:900;font-size:13.5px;color:var(--ink);">${escapeHtml(u.Name)}</div>
                     ${u.ID ? `<div class="mono" style="font-size:10.5px;color:var(--slate-400);">${u.ID}</div>` : ''}
                   </td>
                   <td>
                     <span class="status-badge ${isAdmin ? 'st-done' : 'st-check'}" style="font-size:11px;">
                       ${isAdmin ? 'مدير عام' : (u.Role === 'cashier' ? 'كاشير مبيعات' : (u.Role === 'technician' ? 'فني صيانة' : (u.Role === 'accountant' ? 'محاسب مالي' : (u.Role === 'storekeeper' ? 'أمين مخزن' : u.Role))))}
                     </span>
+                  </td>
+                  <td class="mono font-bold" style="color:var(--ink);">${b.salary.toLocaleString()} ج.م</td>
+                  <td class="mono font-bold" style="color:#0284c7;">${b.purchasesCreditLimit.toLocaleString()} ج.م</td>
+                  <td class="mono font-bold" style="color:${b.advancesBalance>0?'#b45309':'var(--ink-secondary)'};">
+                    ${b.advancesBalance>0 ? `<span class="badge red">${b.advancesBalance.toLocaleString()} ج.م</span>` : '0.00'}
+                  </td>
+                  <td class="mono font-bold" style="color:${b.purchasesBalance>0?'#9d174d':'var(--ink-secondary)'};">
+                    ${b.purchasesBalance>0 ? `<span class="badge orange">${b.purchasesBalance.toLocaleString()} ج.م</span>` : '0.00'}
                   </td>
                   <td>
                     ${isSuper ? `
@@ -478,16 +529,18 @@ function renderUsersManagementPage(main){
                     </span>
                   </td>
                   <td>
-                    <div style="display:flex;gap:4px;flex-wrap:wrap;max-width:360px;">
+                    <div style="display:flex;gap:4px;flex-wrap:wrap;max-width:280px;">
                       ${secs.length === 0 ? '<span style="color:var(--red);font-size:11px;">لا توجد شاشات</span>' : secs.map(s => {
                         const info = SECTION_INFO[s] || { label: s, icon: getSvgIcon('folder', 14) };
                         return `<span class="status-badge" style="background:var(--paper3);border:1px solid var(--line);font-size:10.5px;padding:2px 6px;">${info.icon} ${info.label}</span>`;
                       }).join('')}
                     </div>
                   </td>
-                  <td style="font-size:11.5px;color:var(--ink-secondary);">${u.Notes || '-'}</td>
-                  <td class="row-actions">
-                    <button class="btn btn-xs btn-primary" data-useract="edit" data-uid="${u.ID||u.Name}">${getSvgIcon("edit", 13)} تخصيص الصلاحيات</button>
+                  <td style="font-size:11.5px;color:var(--ink-secondary);">${escapeHtml(u.Notes || '-')}</td>
+                  <td class="row-actions" style="white-space:nowrap;">
+                    <button class="btn btn-xs btn-ghost" data-useract="advance" data-uname="${escapeHtml(u.Name)}" title="صرف سلفة للموظف">${getSvgIcon('creditCard', 13)} سلفة</button>
+                    <button class="btn btn-xs btn-purple" data-useract="statement" data-uname="${escapeHtml(u.Name)}" title="كشف حساب الموظف">${getSvgIcon('fileText', 13)} كشف حساب</button>
+                    <button class="btn btn-xs btn-primary" data-useract="edit" data-uid="${u.ID||u.Name}">${getSvgIcon("edit", 13)} تخصيص</button>
                     ${u.Name !== 'admin' && (!state.user || state.user.name !== u.Name) ? `
                       <button class="btn btn-xs btn-red" data-useract="del" data-uid="${u.ID||u.Name}">${getSvgIcon('trash', 13)}</button>
                     ` : ''}
@@ -504,6 +557,30 @@ function renderUsersManagementPage(main){
   // Buttons
   document.getElementById('addNewUserBtn').onclick = ()=>openUserModal();
   document.getElementById('exportUsersExcelBtn').onclick = ()=>exportUsersToExcel(usersList);
+
+  const navAdvBtn = document.getElementById('navToAdvancesBtn');
+  if(navAdvBtn){
+    navAdvBtn.onclick = () => {
+      state.currentSection = 'finance';
+      state.financeTab = 'advances';
+      state.hrTab = 'advances';
+      render();
+    };
+  }
+
+  const navPayBtn = document.getElementById('navToPayrollBtn');
+  if(navPayBtn){
+    navPayBtn.onclick = () => {
+      if(typeof openMonthlyPayrollModal === 'function'){
+        openMonthlyPayrollModal(() => renderUsersManagementPage(main));
+      } else {
+        state.currentSection = 'finance';
+        state.financeTab = 'payroll';
+        state.hrTab = 'payroll';
+        render();
+      }
+    };
+  }
 
   const importTechBtn = document.getElementById('importTechsAsUsersBtn');
   if(importTechBtn){
@@ -538,9 +615,26 @@ function renderUsersManagementPage(main){
   main.querySelectorAll('[data-useract]').forEach(btn => {
     btn.onclick = async ()=>{
       const uid = btn.dataset.uid;
+      const uname = btn.dataset.uname;
+      const act = btn.dataset.useract;
+
+      if(act === 'advance'){
+        if(typeof openDisburseAdvanceModal === 'function'){
+          openDisburseAdvanceModal(uname, () => renderUsersManagementPage(main));
+        }
+        return;
+      }
+
+      if(act === 'statement'){
+        if(typeof openEmployeeStatementModal === 'function'){
+          openEmployeeStatementModal(uname);
+        }
+        return;
+      }
+
       const u = state.users.find(x => (x.ID && x.ID === uid) || x.Name === uid);
       if(!u) return;
-      const act = btn.dataset.useract;
+
       if(act === 'edit'){
         openUserModal(u);
       }

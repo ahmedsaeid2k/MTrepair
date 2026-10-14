@@ -436,6 +436,9 @@ function renderPosSell(main){
   const enabledPayMethods = (posSettings.paymentMethods || []).filter(p => p.enabled !== false);
   const heldCartsCount = getHeldCarts().length;
 
+  const matchedEmp = (state.users || []).find(u => (u.Name || '').trim().toLowerCase() === (ps.customerName || '').trim().toLowerCase());
+  const empBalances = (matchedEmp && typeof computeEmployeeBalances === 'function') ? computeEmployeeBalances(matchedEmp.Name, state) : null;
+
   main.innerHTML = `
     <div class="top-header" style="margin-bottom:8px;">
       <div>
@@ -532,9 +535,10 @@ function renderPosSell(main){
             </select>
           </div>
           <div class="field" style="margin:0;">
-            <input id="posCustName" placeholder="اسم العميل" value="${escapeHtml(ps.customerName||'عميل زائر')}" style="padding:4px 8px;font-size:11.5px;" list="posRegisteredCustDatalist">
+            <input id="posCustName" placeholder="اسم العميل أو الموظف" value="${escapeHtml(ps.customerName||'عميل زائر')}" style="padding:4px 8px;font-size:11.5px;" list="posRegisteredCustDatalist">
             <datalist id="posRegisteredCustDatalist">
               ${(state.customers || []).map(c => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.phone ? c.name + ' (' + c.phone + ')' : c.name)}</option>`).join('')}
+              ${(state.users || []).map(u => `<option value="${escapeHtml(u.Name)}">${escapeHtml(u.Name + ' (موظف شركة)')}</option>`).join('')}
             </datalist>
           </div>
           <div class="field" style="margin:0;">
@@ -633,15 +637,44 @@ function renderPosSell(main){
           <div class="pos-pay-grid">
             ${enabledPayMethods.map(pm => `
               <div class="pos-pay-btn ${ps.paymentMethod===pm.id?'selected':''}" data-pospaymethod="${pm.id}">
-                <span>${getSvgIcon(pm.iconName || (pm.id==='card'?'creditCard':(pm.id==='instapay'?'refresh':(pm.id==='vodafone'?'phone':(pm.id==='credit'?'fileText':'dollar')))), 15)}</span>
+                <span>${getSvgIcon(pm.iconName || (pm.id==='card'?'creditCard':(pm.id==='instapay'?'refresh':(pm.id==='vodafone'?'phone':(pm.id==='employee_credit'?'users':(pm.id==='credit'?'fileText':'dollar'))))), 15)}</span>
                 <span>${pm.name}</span>
               </div>
             `).join('')}
           </div>
         </div>
 
-        <!-- Cash Calculator or Split Payment Box -->
-        ${ps.paymentMethod === 'split' ? `
+        <!-- Employee Credit Box -->
+        ${ps.paymentMethod === 'employee_credit' ? `
+          <div class="pos-split-box" style="background:#fdf2f8;border:1.5px solid #fbcfe8;border-radius:8px;padding:8px 10px;margin-bottom:8px;">
+            <div style="font-size:11.5px;font-weight:900;color:#9d174d;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;">
+              <span>مشتريات موظف بالآجل (حساب وسقف الموظف):</span>
+              <span class="mono font-bold">${grandTotal.toLocaleString()} ج.م</span>
+            </div>
+            ${empBalances ? `
+              <div style="font-size:11px;color:#831843;line-height:1.5;margin-bottom:4px;">
+                الموظف: <b>${escapeHtml(matchedEmp.Name)}</b> • الراتب: <b class="mono">${empBalances.salary.toLocaleString()} ج.م</b><br>
+                السقف المعتمد: <b class="mono">${empBalances.purchasesCreditLimit.toLocaleString()} ج.م</b> •
+                المسحوب سابقاً: <b class="mono">${empBalances.purchasesBalance.toLocaleString()} ج.م</b><br>
+                الرصيد المتاح حالياً: <b class="mono font-bold" style="color:${empBalances.availableCredit >= grandTotal ? '#059669' : '#dc2626'};">${empBalances.availableCredit.toLocaleString()} ج.م</b>
+              </div>
+              ${empBalances.availableCredit < grandTotal ? `
+                <div style="background:#fee2e2;color:#991b1b;padding:4px 8px;border-radius:4px;font-size:10.5px;font-weight:800;display:flex;align-items:center;gap:4px;">
+                  <span>⚠️</span>
+                  <span>تنبيه: الفاتورة تتجاوز السقف المتاح بمقدار ${(grandTotal - empBalances.availableCredit).toLocaleString()} ج.م (يلزم تصريح المشرف)</span>
+                </div>
+              ` : `
+                <div style="color:#059669;font-size:10.5px;font-weight:800;">
+                  ✓ العملية ضمن السقف الائتماني المعتمد للموظف
+                </div>
+              `}
+            ` : `
+              <div style="font-size:11px;color:#9d174d;">
+                يرجى كتابة أو اختيار اسم الموظف في خانة "اسم العميل" أعلاه للتحقق من سجله وسقف الائتمان.
+              </div>
+            `}
+          </div>
+        ` : (ps.paymentMethod === 'split' ? `
           <div class="pos-split-box" style="background:var(--surface-sunken, #f8fafc);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:8px;">
             <div style="font-size:11px;font-weight:800;color:var(--primary);margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
               <span>تفصيل الدفع المركب (نقدي + شبكة):</span>
@@ -698,7 +731,7 @@ function renderPosSell(main){
               <button class="btn btn-ghost btn-xs pos-cash-preset-chip" data-cashamt="${amt}" style="padding:1px 6px;font-size:10px;">${amt} ج.م</button>
             `).join('')}
           </div>
-        `}
+        `)}
 
         <!-- Final Checkout Buttons -->
         <div class="pos-checkout-actions">
@@ -1240,7 +1273,11 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
     } else {
       const payMethodObj = (posSettings.paymentMethods||[]).find(p => p.id === ps.paymentMethod) || { name: 'نقدي' };
       payMethodName = payMethodObj.name || 'نقدي';
-      if (ps.paymentMethod === 'credit') {
+      if (ps.paymentMethod === 'employee_credit') {
+        paidAmount = 0;
+        finalChangeDue = 0;
+        splits.push({ methodId: 'employee_credit', methodName: 'آجل موظف (سقف الائتمان)', amount: grandTotal });
+      } else if (ps.paymentMethod === 'credit') {
         paidAmount = 0;
         finalChangeDue = 0;
         splits.push({ methodId: 'credit', methodName: 'آجل / على الحساب', amount: grandTotal });
@@ -1255,15 +1292,42 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
       }
     }
 
-    // Require registered customer for credit sales [U11]
-    const remainingDebt = Math.max(0, round2(grandTotal - paidAmount));
-    const isCreditSale = ps.paymentMethod === 'credit' || remainingDebt > 0.005;
-
-    if (isCreditSale) {
-      const isRegistered = customerName && customerName !== 'عميل زائر' && (state.customers || []).some(c => (c.name || '').trim().toLowerCase() === customerName.toLowerCase());
-      if (!isRegistered) {
-        showToast('البيع الآجل يتطلب اختيار عميل مسجَّل حتى يمكن تحصيل الدين', 'error');
+    // Require registered employee and credit limit check for employee_credit sales
+    const isEmployeeCreditSale = ps.paymentMethod === 'employee_credit' || (Array.isArray(splits) && splits.some(s => s.methodId === 'employee_credit'));
+    if (isEmployeeCreditSale) {
+      const isEmployeeUser = customerName && customerName !== 'عميل زائر' && (state.users || []).some(u => (u.Name || '').trim().toLowerCase() === customerName.toLowerCase());
+      if (!isEmployeeUser) {
+        showToast('مبيعات آجل الموظفين تتطلب اختيار موظف مسجل بالنظام', 'error');
         return;
+      }
+
+      // Enforce credit ceiling check
+      const empDebtAmt = splits.find(s => s.methodId === 'employee_credit')?.amount || grandTotal;
+      const creditCheck = (typeof checkEmployeeCreditLimit === 'function') 
+        ? checkEmployeeCreditLimit(customerName, empDebtAmt, state)
+        : { allowed: true };
+
+      if (!creditCheck.allowed) {
+        const auth = await promptSupervisorApproval({
+          action: 'تجاوز سقف مشتريات الموظف الآجلة',
+          details: `الموظف (${customerName}) - ${creditCheck.message}`
+        });
+        if (!auth || !auth.approved) {
+          showToast(creditCheck.message, 'error');
+          return;
+        }
+      }
+    } else {
+      // Require registered customer for general credit sales [U11]
+      const remainingDebt = Math.max(0, round2(grandTotal - paidAmount));
+      const isCreditSale = ps.paymentMethod === 'credit' || remainingDebt > 0.005;
+
+      if (isCreditSale) {
+        const isRegistered = customerName && customerName !== 'عميل زائر' && (state.customers || []).some(c => (c.name || '').trim().toLowerCase() === customerName.toLowerCase());
+        if (!isRegistered) {
+          showToast('البيع الآجل يتطلب اختيار عميل مسجَّل حتى يمكن تحصيل الدين', 'error');
+          return;
+        }
       }
     }
 

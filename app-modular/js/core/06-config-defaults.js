@@ -152,7 +152,8 @@ const DEFAULT_POS_SETTINGS = {
     { id: 'card', name: 'فيزا وبطاقات بنكية', iconName: 'creditCard', enabled: true },
     { id: 'instapay', name: 'إنستاباي InstaPay', iconName: 'refresh', enabled: true },
     { id: 'split', name: 'دفع مركب (نقدي + شبكة)', iconName: 'refresh', enabled: true },
-    { id: 'credit', name: 'آجل / على الحساب', iconName: 'fileText', enabled: true }
+    { id: 'credit', name: 'آجل / على الحساب', iconName: 'fileText', enabled: true },
+    { id: 'employee_credit', name: 'آجل موظف (سقف الائتمان)', iconName: 'users', enabled: true }
   ],
   quickServices: [
     { name: 'صيانة وفحص سريع', price: 100, iconName: 'maintenance' },
@@ -181,6 +182,9 @@ function getPosSettings(){
     state.settings.pos = { ...DEFAULT_POS_SETTINGS, ...state.settings.pos };
     if(!Array.isArray(state.settings.pos.shortcutItemIds)) state.settings.pos.shortcutItemIds = [];
     if(!state.settings.pos.paymentMethods) state.settings.pos.paymentMethods = DEFAULT_POS_SETTINGS.paymentMethods;
+    else if(Array.isArray(state.settings.pos.paymentMethods) && !state.settings.pos.paymentMethods.some(p => p.id === 'employee_credit')){
+      state.settings.pos.paymentMethods.push({ id: 'employee_credit', name: 'آجل موظف (سقف الائتمان)', iconName: 'users', enabled: true });
+    }
     if(!state.settings.pos.quickServices) state.settings.pos.quickServices = DEFAULT_POS_SETTINGS.quickServices;
     if(state.settings.pos.maxDiscountPercent == null) state.settings.pos.maxDiscountPercent = DEFAULT_POS_SETTINGS.maxDiscountPercent;
     if(state.settings.pos.maxDiscountAmount == null) state.settings.pos.maxDiscountAmount = DEFAULT_POS_SETTINGS.maxDiscountAmount;
@@ -198,6 +202,9 @@ function getActivePaymentMethods(){
 function getPaymentMethodBadge(methodName){
   if(!methodName) return `<span class="badge" style="background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;font-weight:700;">${getSvgIcon('dollar', 12)} نقدي</span>`;
   const str = String(methodName).toLowerCase();
+  if(str.includes('موظف') || str === 'employee_credit'){
+    return `<span class="badge" style="background:#fdf2f8;color:#9d174d;border:1px solid #fbcfe8;font-weight:800;">${getSvgIcon('users', 12)} آجل موظف</span>`;
+  }
   if(str.includes('فيزا') || str.includes('card') || str.includes('بطاق') || str.includes('visa')){
     return `<span class="badge" style="background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;font-weight:700;">${getSvgIcon('creditCard', 12)} فيزا وبطاقات</span>`;
   }

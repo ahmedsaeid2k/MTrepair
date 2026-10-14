@@ -257,7 +257,10 @@ const PROTECTED_STORAGE_KEYS = [
   'microerp_barcode_studio',
   'microerp_draft_autosave',
   'microerp_intake_draft',
-  'microerp_wa_log'
+  'microerp_wa_log',
+  'microerp_cache_employee_advances',
+  'microerp_cache_employee_advance_repayments',
+  'microerp_cache_payroll_runs'
 ];
 
 /**
@@ -714,6 +717,9 @@ async function fetchBootstrapData(forceOverwrite = false){
       if(Array.isArray(res.bundleItems)) { state.bundleItems = res.bundleItems; setCache('bundle_items', state.bundleItems); }
       if(Array.isArray(res.stocktakeSessions)) { state.stocktakeSessions = res.stocktakeSessions; setCache('stocktake_sessions', state.stocktakeSessions); }
       if(Array.isArray(res.stocktakeLines)) { state.stocktakeLines = res.stocktakeLines; setCache('stocktake_lines', state.stocktakeLines); }
+      if(Array.isArray(res.employeeAdvances)) { state.employeeAdvances = res.employeeAdvances; setCache('employee_advances', state.employeeAdvances); }
+      if(Array.isArray(res.employeeAdvanceRepayments)) { state.employeeAdvanceRepayments = res.employeeAdvanceRepayments; setCache('employee_advance_repayments', state.employeeAdvanceRepayments); }
+      if(Array.isArray(res.payrollRuns)) { state.payrollRuns = res.payrollRuns; setCache('payroll_runs', state.payrollRuns); }
 
       // 3. Cross-pollinate customer phones across receipts, customers, sales, invoices, and quotations
       if (typeof _extractCustomersFromReceipts === 'function') {

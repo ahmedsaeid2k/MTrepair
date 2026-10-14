@@ -621,6 +621,318 @@
     return null;
   }
 
+  /* =========================================================================
+     6. HR, Employee Advances & Credit Limit Engine
+     ========================================================================= */
+
+  /**
+   * Computes comprehensive financial balances for an employee:
+   * - Active advances balance (سلف قائمة)
+   * - Credit purchases balance (ذمم مشتريات بالآجل)
+   * - Credit limit and available purchase headroom (سقف الائتمان والمتاح)
+   * - Basic salary (الراتب الأساسي)
+   */
+  function computeEmployeeBalances(employeeName, appState = {}) {
+    if (!employeeName) {
+      return {
+        advancesBalance: 0,
+        purchasesBalance: 0,
+        salary: 0,
+        purchasesCreditLimit: 0,
+        availableCredit: 0,
+        totalDueFromEmployee: 0,
+        activeAdvancesCount: 0
+      };
+    }
+    const cleanName = String(employeeName).trim().toLowerCase();
+    const user = (appState.users || []).find(u => String(u.Name || '').trim().toLowerCase() === cleanName) || {};
+
+    const salary = round2(user.Salary || 0);
+    const purchasesCreditLimit = round2(user.PurchasesCreditLimit || 0);
+
+    // 1. Advances Balance: sum of remaining balance of active advances
+    const advances = (appState.employeeAdvances || []).filter(a => {
+      return String(a.EmployeeName || '').trim().toLowerCase() === cleanName && a.Status !== 'paid';
+    });
+    const advancesBalance = round2(advances.reduce((sum, a) => sum + round2(a.RemainingBalance != null ? a.RemainingBalance : a.Amount || 0), 0));
+
+    // 2. Purchases Balance:
+    // Debits: POS sales with employee credit
+    let totalPurchases = 0;
+    (appState.sales || []).forEach(s => {
+      const sCust = String(s.CustomerName || '').trim().toLowerCase();
+      if (sCust === cleanName) {
+        let isEmpCredit = false;
+        let empCreditAmount = 0;
+        if (s.SplitsJSON) {
+          try {
+            const splits = typeof s.SplitsJSON === 'string' ? JSON.parse(s.SplitsJSON) : s.SplitsJSON;
+            if (Array.isArray(splits)) {
+              splits.forEach(sp => {
+                const m = String(sp.methodId || '').toLowerCase();
+                if (m === 'employee_credit' || m === 'employee' || m.includes('موظف')) {
+                  isEmpCredit = true;
+                  empCreditAmount += round2(sp.amount || 0);
+                }
+              });
+            }
+          } catch(e){}
+        }
+        const pMethod = String(s.PaymentMethod || '').toLowerCase();
+        if (pMethod.includes('موظف') || pMethod === 'employee_credit') {
+          isEmpCredit = true;
+          if (empCreditAmount === 0) empCreditAmount = round2(s.Total || 0);
+        }
+        if (isEmpCredit && empCreditAmount > 0) {
+          totalPurchases += empCreditAmount;
+        }
+      }
+    });
+
+    // Credits: repayments or payroll deductions for purchases
+    let totalPurchaseRepayments = 0;
+    (appState.employeeAdvanceRepayments || []).forEach(r => {
+      const rName = String(r.EmployeeName || '').trim().toLowerCase();
+      if (rName === cleanName && (r.Type === 'purchase_repayment' || r.Type === 'purchase_repayment_cash' || r.Type === 'payroll_purchase_deduction')) {
+        totalPurchaseRepayments += round2(r.Amount || 0);
+      }
+    });
+
+    const purchasesBalance = Math.max(0, round2(totalPurchases - totalPurchaseRepayments));
+    const availableCredit = Math.max(0, round2(purchasesCreditLimit - purchasesBalance));
+    const totalDueFromEmployee = round2(advancesBalance + purchasesBalance);
+
+    return {
+      advancesBalance,
+      purchasesBalance,
+      salary,
+      purchasesCreditLimit,
+      availableCredit,
+      totalDueFromEmployee,
+      activeAdvancesCount: advances.length
+    };
+  }
+
+  /**
+   * Validates whether an employee can purchase on credit within their defined credit limit.
+   */
+  function checkEmployeeCreditLimit(employeeName, purchaseAmount, appState = {}) {
+    const amt = round2(purchaseAmount);
+    const balances = computeEmployeeBalances(employeeName, appState);
+    const limit = balances.purchasesCreditLimit;
+
+    if (limit <= 0) {
+      // If no limit defined (0), credit purchase is blocked by default unless authorized
+      return {
+        allowed: false,
+        reason: 'no_credit_limit',
+        message: `الموظف (${employeeName}) ليس لديه سقف ائتماني محدد لمشتريات الآجل (السقف الحالي: 0 ج.م). يلزم تحديد سقف أولاً أو اعتماد المشرف.`,
+        currentBalance: balances.purchasesBalance,
+        creditLimit: limit,
+        availableCredit: 0,
+        purchaseAmount: amt,
+        excess: amt
+      };
+    }
+
+    const projectedBalance = round2(balances.purchasesBalance + amt);
+    if (projectedBalance > limit) {
+      const excess = round2(projectedBalance - limit);
+      return {
+        allowed: false,
+        reason: 'limit_exceeded',
+        message: `المبلغ المطلوب (${formatMoney(amt)}) يتجاوز السقف الائتماني المتاح للموظف (${formatMoney(balances.availableCredit)} من أصل ${formatMoney(limit)}). الزيادة: ${formatMoney(excess)}.`,
+        currentBalance: balances.purchasesBalance,
+        creditLimit: limit,
+        availableCredit: balances.availableCredit,
+        purchaseAmount: amt,
+        excess: excess
+      };
+    }
+
+    return {
+      allowed: true,
+      reason: 'within_limit',
+      message: `ضمن السقف الائتماني المعتمد (المتبقي بعد الشراء: ${formatMoney(round2(balances.availableCredit - amt))})`,
+      currentBalance: balances.purchasesBalance,
+      creditLimit: limit,
+      availableCredit: balances.availableCredit,
+      purchaseAmount: amt,
+      excess: 0
+    };
+  }
+
+  /**
+   * Builds double-entry balanced journal lines for advance disbursement:
+   * Dr. 1106 (سلف وعهد الموظفين)
+   * Cr. 1101 (الخزينة) or 1102 (البنك)
+   */
+  function buildAdvanceDisbursementJournalLines({ employeeName, amount, paymentMethod }) {
+    const amt = round2(amount);
+    const isBank = String(paymentMethod || '').toLowerCase().includes('بنك') || 
+                   String(paymentMethod || '').toLowerCase().includes('فيزا') || 
+                   String(paymentMethod || '').toLowerCase().includes('انستاباي') || 
+                   String(paymentMethod || '').toLowerCase().includes('محفظ');
+    const creditCode = isBank ? '1102' : '1101';
+    const creditName = isBank ? 'البنك والحسابات الإلكترونية' : 'الخزينة الرئيسية (النقدية)';
+
+    return [
+      {
+        AccountCode: '1106',
+        AccountName: 'سلف وعهد الموظفين',
+        Debit: amt,
+        Credit: 0,
+        Notes: `صرف سلفة للموظف (${employeeName})`
+      },
+      {
+        AccountCode: creditCode,
+        AccountName: creditName,
+        Debit: 0,
+        Credit: amt,
+        Notes: `صرف نقدي عبر [${paymentMethod || 'الخزينة'}]`
+      }
+    ];
+  }
+
+  /**
+   * Builds double-entry balanced journal lines for advance cash repayment:
+   * Dr. 1101 (الخزينة) or 1102 (البنك)
+   * Cr. 1106 (سلف وعهد الموظفين)
+   */
+  function buildAdvanceRepaymentJournalLines({ employeeName, amount, paymentMethod }) {
+    const amt = round2(amount);
+    const isBank = String(paymentMethod || '').toLowerCase().includes('بنك') || 
+                   String(paymentMethod || '').toLowerCase().includes('فيزا') || 
+                   String(paymentMethod || '').toLowerCase().includes('انستاباي') || 
+                   String(paymentMethod || '').toLowerCase().includes('محفظ');
+    const debitCode = isBank ? '1102' : '1101';
+    const debitName = isBank ? 'البنك والحسابات الإلكترونية' : 'الخزينة الرئيسية (النقدية)';
+
+    return [
+      {
+        AccountCode: debitCode,
+        AccountName: debitName,
+        Debit: amt,
+        Credit: 0,
+        Notes: `تحصيل سداد سلفة الموظف (${employeeName}) عبر [${paymentMethod || 'الخزينة'}]`
+      },
+      {
+        AccountCode: '1106',
+        AccountName: 'سلف وعهد الموظفين',
+        Debit: 0,
+        Credit: amt,
+        Notes: `سداد سلفة للموظف (${employeeName})`
+      }
+    ];
+  }
+
+  /**
+   * Builds double-entry balanced journal lines for employee credit purchases cash repayment:
+   * Dr. 1101 (الخزينة) or 1102 (البنك)
+   * Cr. 1107 (مشتريات الموظفين بالآجل)
+   */
+  function buildEmployeePurchasePaymentJournalLines({ employeeName, amount, paymentMethod }) {
+    const amt = round2(amount);
+    const isBank = String(paymentMethod || '').toLowerCase().includes('بنك') || 
+                   String(paymentMethod || '').toLowerCase().includes('فيزا') || 
+                   String(paymentMethod || '').toLowerCase().includes('انستاباي') || 
+                   String(paymentMethod || '').toLowerCase().includes('محفظ');
+    const debitCode = isBank ? '1102' : '1101';
+    const debitName = isBank ? 'البنك والحسابات الإلكترونية' : 'الخزينة الرئيسية (النقدية)';
+
+    return [
+      {
+        AccountCode: debitCode,
+        AccountName: debitName,
+        Debit: amt,
+        Credit: 0,
+        Notes: `تحصيل سداد مشتريات الموظف (${employeeName}) بالآجل عبر [${paymentMethod || 'الخزينة'}]`
+      },
+      {
+        AccountCode: '1107',
+        AccountName: 'مشتريات الموظفين بالآجل',
+        Debit: 0,
+        Credit: amt,
+        Notes: `سداد مشتريات موظف (${employeeName})`
+      }
+    ];
+  }
+
+  /**
+   * Builds compound balanced journal entry for Monthly Payroll Run:
+   * Dr. 5203 (رواتب ومكافآت الفنيين والموظفين) -> Total Gross
+   * Cr. 1106 (سلف وعهد الموظفين) -> Total Advances Deducted
+   * Cr. 1107 (مشتريات الموظفين بالآجل) -> Total Purchases Deducted
+   * Cr. 4201 (إيرادات وأرباح متنوعة / تسوية جزاءات) -> Total Penalties Deducted (if any)
+   * Cr. 1101 / 1102 (الخزينة / البنك) -> Total Net Paid to Staff
+   */
+  function buildPayrollJournalLines({ month, totalGross, totalAdvancesDeducted = 0, totalPurchasesDeducted = 0, totalPenalties = 0, totalNetPaid, paymentMethod = 'نقدي (الخزينة)' }) {
+    const gross = round2(totalGross);
+    const adv = round2(totalAdvancesDeducted);
+    const pur = round2(totalPurchasesDeducted);
+    const pen = round2(totalPenalties);
+    const net = round2(totalNetPaid);
+
+    const isBank = String(paymentMethod || '').toLowerCase().includes('بنك') || 
+                   String(paymentMethod || '').toLowerCase().includes('فيزا') || 
+                   String(paymentMethod || '').toLowerCase().includes('انستاباي') || 
+                   String(paymentMethod || '').toLowerCase().includes('محفظ');
+    const payoutCode = isBank ? '1102' : '1101';
+    const payoutName = isBank ? 'البنك والحسابات الإلكترونية' : 'الخزينة الرئيسية (النقدية)';
+
+    const lines = [
+      {
+        AccountCode: '5203',
+        AccountName: 'رواتب ومكافآت الفنيين والموظفين',
+        Debit: gross,
+        Credit: 0,
+        Notes: `إجمالي استحقاق مسير رواتب شهر [${month || ''}]`
+      }
+    ];
+
+    if (adv > 0) {
+      lines.push({
+        AccountCode: '1106',
+        AccountName: 'سلف وعهد الموظفين',
+        Debit: 0,
+        Credit: adv,
+        Notes: `استقطاع أقساط سلف موظفين من راتب شهر [${month || ''}]`
+      });
+    }
+
+    if (pur > 0) {
+      lines.push({
+        AccountCode: '1107',
+        AccountName: 'مشتريات الموظفين بالآجل',
+        Debit: 0,
+        Credit: pur,
+        Notes: `استقطاع مشتريات موظفين بالآجل من راتب شهر [${month || ''}]`
+      });
+    }
+
+    if (pen > 0) {
+      lines.push({
+        AccountCode: '4201',
+        AccountName: 'إيرادات وأرباح متنوعة وزيادة الجرد',
+        Debit: 0,
+        Credit: pen,
+        Notes: `تسوية جزاءات وخصومات إدارية لمسير شهر [${month || ''}]`
+      });
+    }
+
+    if (net > 0) {
+      lines.push({
+        AccountCode: payoutCode,
+        AccountName: payoutName,
+        Debit: 0,
+        Credit: net,
+        Notes: `صرف صافي الرواتب المستحقة لمسير شهر [${month || ''}]`
+      });
+    }
+
+    return lines;
+  }
+
   return {
     toEngDigits,
     parseMoney,
@@ -647,6 +959,12 @@
     sha256Hex,
     hashPasswordWithSalt,
     verifyLocalPassword,
-    checkEmergencyAdminBootstrap
+    checkEmergencyAdminBootstrap,
+    computeEmployeeBalances,
+    checkEmployeeCreditLimit,
+    buildAdvanceDisbursementJournalLines,
+    buildAdvanceRepaymentJournalLines,
+    buildEmployeePurchasePaymentJournalLines,
+    buildPayrollJournalLines
   };
 });

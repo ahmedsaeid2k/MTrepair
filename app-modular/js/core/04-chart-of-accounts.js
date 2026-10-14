@@ -8,6 +8,8 @@ const DEFAULT_ACCOUNTS = [
   {Code:'1103', Name:'العملاء والمدينون', Type:'الأصول', ParentCode:'11', Nature:'مدين', Description:'مستحقات على العملاء', Balance:0},
   {Code:'1104', Name:'مخزون البضائع وقطع الغيار', Type:'الأصول', ParentCode:'11', Nature:'مدين', Description:'قيمة البضائع وقطع الغيار بالمخزن', Balance:0},
   {Code:'1105', Name:'ضريبة القيمة المضافة القابلة للخصم (مدخلات)', Type:'الأصول', ParentCode:'11', Nature:'مدين', Description:'الضريبة المسددة على المشتريات والمصروفات', Balance:0},
+  {Code:'1106', Name:'سلف وعهد الموظفين', Type:'الأصول', ParentCode:'11', Nature:'مدين', Description:'مستحقات سلف العاملين والعهد الشخصية', Balance:0},
+  {Code:'1107', Name:'مشتريات الموظفين بالآجل', Type:'الأصول', ParentCode:'11', Nature:'مدين', Description:'ذمم مشتريات موظفي الشركة المسحوبة بالآجل', Balance:0},
   {Code:'12', Name:'الأصول الثابتة', Type:'الأصول', ParentCode:'1', Nature:'مدين', Description:'الممتلكات والمعدات', Balance:0},
   {Code:'1201', Name:'أجهزة ومعدات مركز الصيانة', Type:'الأصول', ParentCode:'12', Nature:'مدين', Description:'كاوية، هوت إير، باور سبلاي، ميكروسكوب...', Balance:0},
   {Code:'1202', Name:'ديكورات وتجهيزات المحل', Type:'الأصول', ParentCode:'12', Nature:'مدين', Description:'أرفف، لافتات، أثاث', Balance:0},
@@ -60,7 +62,12 @@ const EXPENSE_ACCOUNT_MAP = {
   'كهرباء ومياه': '5202',
   'رواتب وسلفيات': '5203',
   'رواتب': '5203',
-  'سلفيات': '5203',
+  'سلفيات': '1106',
+  'سلف موظفين': '1106',
+  'سلفة': '1106',
+  'سداد سلفيات': '1106',
+  'مشتريات موظفين': '1107',
+  'سداد مشتريات موظفين': '1107',
   'بوفيه ونثريات': '5204',
   'نثريات': '5204',
   'بوفيه': '5204',
@@ -81,7 +88,13 @@ const EXPENSE_ACCOUNT_MAP = {
 
 async function loadAccounts(){
   const rows = await apiGet('getAccounts');
-  const finalAccounts = (Array.isArray(rows) && rows.length) ? rows : DEFAULT_ACCOUNTS;
+  let finalAccounts = (Array.isArray(rows) && rows.length) ? rows : DEFAULT_ACCOUNTS;
+  // Ensure default accounts like 1106, 1107 exist
+  DEFAULT_ACCOUNTS.forEach(defAcc => {
+    if(!finalAccounts.some(a => String(a.Code) === String(defAcc.Code))){
+      finalAccounts.push({ ...defAcc });
+    }
+  });
   state.accounts = finalAccounts;
   setCache('accounts', finalAccounts);
   if(typeof invalidateAccountStatsCache === 'function') invalidateAccountStatsCache();

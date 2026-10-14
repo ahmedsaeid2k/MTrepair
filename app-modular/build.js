@@ -81,6 +81,7 @@ const jsFiles = [
   'js/modules/17d-income-statement.js',
   'js/modules/17e-statements.js',
   'js/modules/17f-users-audit.js',
+  'js/modules/17g-employee-advances-hr.js',
   // Module 18: Settings & Administration
   'js/modules/18a-appearance.js',
   'js/modules/18b-printers.js',

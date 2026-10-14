@@ -1915,8 +1915,12 @@ async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, cust
   const paidClamped = Math.min(numTotal, Math.max(0, round2(finalPaid - finalChangeDue)));
   const remainingCredit = Math.max(0, round2(numTotal - paidClamped));
 
-  // Update customer debt if credit remains [U11]
-  if (remainingCredit > 0.005 && customerName && customerName !== 'عميل زائر') {
+  // Update customer debt if credit remains (excluding employee purchases which are tracked separately in 1107) [U11]
+  const isEmployeeCreditSale = String(paymentMethod || '').toLowerCase().includes('موظف') || 
+                               String(paymentMethod || '').toLowerCase().includes('employee') ||
+                               (Array.isArray(splits) && splits.some(s => String(s.methodId||'').includes('employee') || String(s.methodId||'').includes('موظف')));
+
+  if (!isEmployeeCreditSale && remainingCredit > 0.005 && customerName && customerName !== 'عميل زائر') {
     const cust = (state.customers || []).find(c => (c.name || '').trim().toLowerCase() === customerName.trim().toLowerCase());
     if (cust) {
       cust.Debt = round2(Number(cust.Debt || 0) + remainingCredit);
@@ -1932,10 +1936,11 @@ async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, cust
       const sAmt = Number(s.amount || 0);
       if (sAmt <= 0) return;
       const mId = String(s.methodId || '').toLowerCase();
-      const isCr = mId === 'credit' || mId.includes('آجل') || mId.includes('اجل');
+      const isEmpCr = mId === 'employee_credit' || mId === 'employee' || mId.includes('موظف');
+      const isCr = mId === 'credit' || mId.includes('آجل') || mId.includes('اجل') || isEmpCr;
       const isBk = mId === 'card' || mId === 'vodafone' || mId === 'instapay' || mId.includes('فيزا') || mId.includes('محفظ') || mId.includes('بنك');
-      const accCode = isCr ? '1103' : (isBk ? '1102' : '1101');
-      const accName = isCr ? 'العملاء والمدينون' : (isBk ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)');
+      const accCode = isEmpCr ? '1107' : (isCr ? '1103' : (isBk ? '1102' : '1101'));
+      const accName = isEmpCr ? 'مشتريات الموظفين بالآجل' : (isCr ? 'العملاء والمدينون' : (isBk ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)'));
       journalLines.push({
         AccountCode: accCode,
         AccountName: accName,
@@ -1947,10 +1952,11 @@ async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, cust
   } else {
     // Single payment method routing
     const pLow = String(paymentMethod || '').toLowerCase();
+    const isEmpCr = pLow === 'employee_credit' || pLow.includes('موظف') || pLow.includes('employee');
     const isBankOrWallet = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('إنستاباي') || pLow.includes('instapay') || pLow.includes('محفظ') || pLow.includes('فودافون') || pLow.includes('vodafone');
-    const isCredit = pLow.includes('آجل') || pLow.includes('اجل');
-    const debitAccCode = isCredit ? '1103' : (isBankOrWallet ? '1102' : '1101');
-    const debitAccName = isCredit ? 'العملاء والمدينون' : (isBankOrWallet ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)');
+    const isCredit = pLow.includes('آجل') || pLow.includes('اجل') || isEmpCr;
+    const debitAccCode = isEmpCr ? '1107' : (isCredit ? '1103' : (isBankOrWallet ? '1102' : '1101'));
+    const debitAccName = isEmpCr ? 'مشتريات الموظفين بالآجل' : (isCredit ? 'العملاء والمدينون' : (isBankOrWallet ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)'));
 
     if (paidClamped > 0 && !isCredit) {
       journalLines.push({
@@ -1963,19 +1969,19 @@ async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, cust
     }
     if (isCredit) {
       journalLines.push({
-        AccountCode: '1103',
-        AccountName: 'العملاء والمدينون',
+        AccountCode: debitAccCode,
+        AccountName: debitAccName,
         Debit: numTotal,
         Credit: 0,
-        Notes: `آجل مبيعات POS للعميل (${customerName || 'عميل'})`
+        Notes: isEmpCr ? `آجل مشتريات موظف (${customerName})` : `آجل مبيعات POS للعميل (${customerName || 'عميل'})`
       });
     } else if (remainingCredit > 0) {
       journalLines.push({
-        AccountCode: '1103',
-        AccountName: 'العملاء والمدينون',
+        AccountCode: isEmpCr ? '1107' : '1103',
+        AccountName: isEmpCr ? 'مشتريات الموظفين بالآجل' : 'العملاء والمدينون',
         Debit: remainingCredit,
         Credit: 0,
-        Notes: `متبقي آجل مبيعات POS للعميل (${customerName || 'عميل'})`
+        Notes: isEmpCr ? `متبقي آجل مشتريات موظف (${customerName})` : `متبقي آجل مبيعات POS للعميل (${customerName || 'عميل'})`
       });
     }
   }

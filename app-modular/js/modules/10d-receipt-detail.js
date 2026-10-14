@@ -8,7 +8,10 @@ async function openReceiptDetail(rawR){
     const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
     const initialStatus = r.status;
     const remaining = (typeof getReceiptRemaining === 'function') ? getReceiptRemaining(r) : Math.max(0, Number(r.cost||0)+Number(r.partsCost||0)+Number(r.otherAccountAmount||0)-Number(r.deposit||0)+Number(r.refunded||0));
+    const existing = document.getElementById('receiptDetailModalOverlay');
+    if(existing) existing.remove();
     const overlay = document.createElement('div');
+    overlay.id = 'receiptDetailModalOverlay';
     overlay.className = 'modal-overlay';
 
     const curTitle = extractCustomerTitle(r) || (r.customer && r.customer.title) || '';

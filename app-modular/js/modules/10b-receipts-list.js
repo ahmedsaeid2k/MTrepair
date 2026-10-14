@@ -71,7 +71,7 @@ function archiveTable(list){
       <div>${dCat} - ${dBrand} <span style="color:var(--ink-secondary);">${dModel}</span></div>
     `;
 
-    return `<tr class="selectable-row ${isSelected ? 'selected-row' : ''}" data-receipt-id="${safeTargetId}" data-receipt-num="${rNum}" onclick="handleReceiptRowClick('${safeTargetId}', '${rNum}', event)" ondblclick="openReceiptDetailModal('${safeTargetId}', '${rNum}')" style="cursor:pointer;${isOverdue?'background:rgba(245,158,11,0.08);':''}" title="نقر لتحديد الإيصال وإجراء العمليات • نقر مزدوج لعرض التفاصيل والتعديل">
+    return `<tr class="selectable-row ${isSelected ? 'selected-row' : ''}" data-receipt-id="${safeTargetId}" data-receipt-num="${rNum}" onclick="handleReceiptRowClick('${safeTargetId}', '${rNum}', event)" ondblclick="openReceiptDetailModal('${safeTargetId}', '${rNum}')" style="cursor:pointer;${isOverdue?'background:rgba(245,158,11,0.08);':''}" title="نقر لتحديد الإيصال • نقر مزدوج لفتح بطاقة الصيانة">
       <td style="text-align:center;" onclick="event.stopPropagation();">
         <input type="checkbox" class="receipt-select-cb" value="${safeTargetId}" ${isChecked ? 'checked' : ''} onchange="window.toggleReceiptMultiSelection('${safeTargetId}', this.checked, event)" style="cursor:pointer;width:16px;height:16px;" />
       </td>
@@ -149,7 +149,7 @@ function archiveCards(list){
 
     const isMultiDev = Array.isArray(r.devices) && r.devices.length > 1;
 
-    return `<div class="smart-receipt-card ${isSelected ? 'selected-card' : ''}" data-receipt-id="${safeTargetId}" data-receipt-num="${rNum}" onclick="handleReceiptCardClick('${safeTargetId}', '${rNum}', event)" style="${isOverdue?'border-right: 4px solid var(--amber);background:rgba(245,158,11,0.03);':''}">
+    return `<div class="smart-receipt-card ${isSelected ? 'selected-card' : ''}" data-receipt-id="${safeTargetId}" data-receipt-num="${rNum}" onclick="handleReceiptCardClick('${safeTargetId}', '${rNum}', event)" ondblclick="openReceiptDetailModal('${safeTargetId}', '${rNum}')" style="cursor:pointer;${isOverdue?'border-right: 4px solid var(--amber);background:rgba(245,158,11,0.03);':''}" title="نقر لتحديد الإيصال • نقر مزدوج لفتح بطاقة الصيانة">
       <div>
         <div class="smart-card-header">
           <div style="display:flex;align-items:flex-start;gap:8px;">

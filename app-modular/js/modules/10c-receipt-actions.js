@@ -1727,11 +1727,19 @@ window.handleReceiptRowClick = function(receiptId, receiptNum, evt){
   if(evt && evt.target && evt.target.closest('button, a, input, select')){
     return;
   }
+  if(evt && evt.detail === 2){
+    openReceiptDetailModal(receiptId, receiptNum);
+    return;
+  }
   toggleReceiptSelection(receiptId, receiptNum);
 };
 
 window.handleReceiptCardClick = function(receiptId, receiptNum, evt){
   if(evt && evt.target && evt.target.closest('button, a, input, select')){
+    return;
+  }
+  if(evt && evt.detail === 2){
+    openReceiptDetailModal(receiptId, receiptNum);
     return;
   }
   toggleReceiptSelection(receiptId, receiptNum);

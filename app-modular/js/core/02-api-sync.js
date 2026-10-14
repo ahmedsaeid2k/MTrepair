@@ -134,19 +134,19 @@ function promptCloudReauthModal() {
   overlay.className = 'modal-overlay';
   overlay.style.zIndex = '15000';
   overlay.innerHTML = `
-    <div class="modal-content" style="max-width:440px;border-radius:16px;padding:22px;direction:rtl;text-align:right;">
+    <div class="modal-content" style="max-width:400px;border-radius:16px;padding:22px;direction:rtl;text-align:right;">
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:14px;">
         <div style="display:flex;align-items:center;gap:10px;">
           <div style="width:36px;height:36px;border-radius:50%;background:rgba(37,99,235,0.12);color:var(--primary);display:flex;align-items:center;justify-content:center;font-weight:900;">🔒</div>
           <div>
-            <h3 style="margin:0;font-size:15.5px;font-weight:900;color:var(--ink);">تنشيط المزامنة السحابية وأرقام الهواتف</h3>
-            <div style="font-size:11.5px;color:var(--ink-secondary);">حساب المستخدم: <b>${typeof escapeHtml === 'function' ? escapeHtml(userName) : userName}</b></div>
+            <h3 style="margin:0;font-size:15px;font-weight:900;color:var(--ink);">تأكيد كلمة المرور للمزامنة</h3>
+            <div style="font-size:11.5px;color:var(--ink-secondary);">المستخدم: <b>${typeof escapeHtml === 'function' ? escapeHtml(userName) : userName}</b></div>
           </div>
         </div>
         <button type="button" class="btn btn-ghost btn-xs" id="closeCloudReauthBtn" style="font-size:18px;line-height:1;">&times;</button>
       </div>
-      <div style="font-size:12.5px;color:var(--ink-secondary);line-height:1.6;margin-bottom:14px;">
-        انتهت صلاحية رمز جلسة الخادم السحابي (24 ساعة). يرجى إدخال كلمة المرور مرة واحدة لتنشيط سحب <b>أرقام هواتف العملاء وبيانات الإيصالات الكاملة</b> من السحابة تلقائياً دون الخروج من شاشتك الحالية:
+      <div style="font-size:13px;color:var(--ink-secondary);line-height:1.6;margin-bottom:14px;">
+        يرجى إدخال كلمة المرور لتحديث ومزامنة البيانات مع السحابة:
       </div>
       <div class="field" style="margin-bottom:12px;">
         <label style="font-size:12px;font-weight:700;margin-bottom:6px;display:block;">كلمة المرور:</label>
@@ -155,7 +155,7 @@ function promptCloudReauthModal() {
       <div id="cloudReauthErr" style="display:none;color:var(--red-text);background:var(--red-bg);padding:8px 10px;border-radius:6px;font-size:12px;font-weight:700;margin-bottom:12px;"></div>
       <div style="display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--line);padding-top:12px;">
         <button type="button" class="btn btn-sm btn-ghost" id="cancelCloudReauthBtn">لاحقاً</button>
-        <button type="button" class="btn btn-sm btn-primary" id="submitCloudReauthBtn" style="font-weight:800;padding:7px 16px;">تفعيل وسحب أرقام الهواتف الآن</button>
+        <button type="button" class="btn btn-sm btn-primary" id="submitCloudReauthBtn" style="font-weight:800;padding:7px 16px;">مزامنة وتحديث</button>
       </div>
     </div>
   `;
@@ -178,13 +178,13 @@ function promptCloudReauthModal() {
     }
     errBox.style.display = 'none';
     submitBtn.disabled = true;
-    submitBtn.textContent = 'جارٍ التوثيق وسحب البيانات...';
+    submitBtn.textContent = 'جارٍ المزامنة...';
     try {
       const res = await loginRemote(userName, pass);
       if (res && res.sessionToken && !String(res.sessionToken).startsWith('offline_token_')) {
         close();
         if (typeof showToast === 'function') {
-          showToast('🔄 تم توثيق الجلسة! جاري سحب الإيصالات وأرقام الهواتف الكاملة من السحابة...', 'info', 3000);
+          showToast('🔄 تم توثيق الجلسة، جارٍ سحب وتحديث البيانات من السحابة...', 'info', 2500);
         }
         await fetchBootstrapData(true);
         if (typeof recoverAndSyncAllCustomerPhones === 'function') {
@@ -193,19 +193,19 @@ function promptCloudReauthModal() {
         if (typeof render === 'function') render();
         if (typeof syncOfflineQueue === 'function') syncOfflineQueue(false);
         if (typeof showToast === 'function') {
-          showToast('✅ تم تحديث كافة الإيصالات وأرقام الهواتف من السحابة بنجاح!', 'success', 4000);
+          showToast('✅ تم تحديث ومزامنة البيانات بنجاح', 'success', 3500);
         }
       } else {
-        errBox.textContent = 'تعذر توثيق الجلسة مع الخادم السحابي. تأكد من صحة كلمة المرور.';
+        errBox.textContent = 'تعذر الاتصال بالسحابة. تأكد من صحة كلمة المرور.';
         errBox.style.display = 'block';
         submitBtn.disabled = false;
-        submitBtn.textContent = 'تفعيل وسحب أرقام الهواتف الآن';
+        submitBtn.textContent = 'مزامنة وتحديث';
       }
     } catch(e) {
       errBox.textContent = e.message || 'كلمة المرور غير صحيحة';
       errBox.style.display = 'block';
       submitBtn.disabled = false;
-      submitBtn.textContent = 'تفعيل وسحب أرقام الهواتف الآن';
+      submitBtn.textContent = 'مزامنة وتحديث';
     }
   };
 

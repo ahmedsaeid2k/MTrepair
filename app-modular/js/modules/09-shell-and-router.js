@@ -309,11 +309,12 @@ const MASTER_MODULES = [
     id: 'finance',
     title: 'المالية والخزينة والحسابات',
     enTitle: 'Finance & Treasury',
-    iconName: 'cashdrawer',
+    iconName: 'finance',
     gradient: '#7c3aed',
     desc: 'دفتر اليومية وحركة السيولة النقدية، مقبوضات ومصروفات، شجرة الحسابات، ومكافآت الفنيين.',
-    sec: 'cashdrawer',
+    sec: 'finance',
     chips: [
+      { label: 'نظرة مالية عامة', sec: 'finance' },
       { label: 'حركة الخزينة والدرج', sec: 'cashdrawer' },
       { label: 'دفتر اليومية العامة', sec: 'daily' },
       { label: 'شجرة الحسابات', sec: 'finance' },
@@ -584,11 +585,21 @@ function openItemModal(editItem = null, cloneMode = false, defaultCategory = 'ص
   return openInventoryItemModal(editItem, cloneMode, defaultCategory);
 }
 
-// Global Keyboard Shortcut listener (Cmd+K / Ctrl+K / F6 / F7)
+// Global Keyboard Shortcut listener (Cmd+K / Ctrl+K / Ctrl+B / F6 / F7)
 window.addEventListener('keydown', (e)=>{
   if((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K' || e.key === 'ك')){
     e.preventDefault();
     openCommandPalette();
+  } else if((e.metaKey || e.ctrlKey) && (e.key === 'b' || e.key === 'B' || e.key === 'لا')){
+    const tag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+    if(tag !== 'input' && tag !== 'textarea' && !document.activeElement.isContentEditable){
+      e.preventDefault();
+      if(state.currentSection === null){
+        toggleDockExpanded();
+      } else if(typeof toggleSidebar === 'function'){
+        toggleSidebar();
+      }
+    }
   } else if(e.key === 'F6' && state.currentSection === 'pos'){
     e.preventDefault();
     if(typeof holdCurrentCart === 'function') holdCurrentCart();
@@ -602,6 +613,9 @@ window.addEventListener('keydown', (e)=>{
 function renderExecutiveCommandCenter(app){
   const expandBtn = document.getElementById("sidebarExpandBtn");
   if(expandBtn) expandBtn.classList.remove("visible");
+  if(state.dockExpanded === undefined){
+    state.dockExpanded = localStorage.getItem('microerp_dock_expanded') === 'true';
+  }
   normalizeUserSections(state.user);
   const logoUrl = state.settings.logoUrl;
   const today = new Date().toISOString().slice(0, 10);
@@ -730,7 +744,7 @@ function renderExecutiveCommandCenter(app){
           ${canUserAccessSection('maintenance') ? `<div class="hub-pill" id="hubavMaint">${getSvgIcon('maintenance', 14)} الصيانة</div>` : ''}
           ${(canUserAccessSection('pos') || canUserAccessSection('invoices')) ? `<div class="hub-pill" id="hubavPos">${getSvgIcon('pos', 14)} المبيعات</div>` : ''}
           ${(canUserAccessSection('inventory') || canUserAccessSection('barcode')) ? `<div class="hub-pill" id="hubavInv">${getSvgIcon('inventory', 14)} المخزن والمشتريات</div>` : ''}
-          ${(canUserAccessSection('cashdrawer') || canUserAccessSection('daily') || canUserAccessSection('finance')) ? `<div class="hub-pill" id="hubavFin">${getSvgIcon('cashdrawer', 14)} المالية والخزينة</div>` : ''}
+          ${(canUserAccessSection('finance') || canUserAccessSection('cashdrawer') || canUserAccessSection('daily')) ? `<div class="hub-pill" id="hubavFin">${getSvgIcon('finance', 14)} المالية والخزينة</div>` : ''}
           ${(canUserAccessSection('audit') || canUserAccessSection('users') || canUserAccessSection('settings')) ? `<div class="hub-pill" id="hubavAdmin">${getSvgIcon('audit', 14)} الإدارة والرقابة</div>` : ''}
         </nav>
 
@@ -751,6 +765,9 @@ function renderExecutiveCommandCenter(app){
           <div class="hub-user-avatar" id="hubserBtn" title="${state.user.name} (${state.user.role === 'admin' ? 'مدير' : 'موظف'})">
             ${(state.user.name || 'U').slice(0, 2).toUpperCase()}
           </div>
+          <div class="hub-icon-circle" id="hubLogoutBtn" title="تسجيل الخروج" style="color:#ef4444;">
+            ${getSvgIcon('logout', 16)}
+          </div>
         </div>
       </header>
 
@@ -758,20 +775,21 @@ function renderExecutiveCommandCenter(app){
       <div class="hub-shell">
         
         <!-- Side Dock Rail -->
-        <aside class="hub-dock">
-          <button class="hub-dock-btn active" id="dockHome" title="لوحة القيادة الرئيسية">${getSvgIcon('dashboard', 18)}</button>
-          ${canUserAccessSection('maintenance') ? `<button class="hub-dock-btn" id="dockMaint" title="مركز الصيانة">${getSvgIcon('maintenance', 18)}</button>` : ''}
-          ${canUserAccessSection('pos') ? `<button class="hub-dock-btn" id="dockPos" title="نقطة البيع (POS)">${getSvgIcon('pos', 18)}</button>` : ''}
-          ${canUserAccessSection('inventory') ? `<button class="hub-dock-btn" id="dockInv" title="المخزن العام">${getSvgIcon('inventory', 18)}</button>` : ''}
-          ${canUserAccessSection('barcode') ? `<button class="hub-dock-btn" id="dockBarcode" title="استوديو الباركود">${getSvgIcon('barcode', 18)}</button>` : ''}
-          ${canUserAccessSection('cashdrawer') ? `<button class="hub-dock-btn" id="dockCashdrawer" title="حركة الخزينة والدرج">${getSvgIcon('cashdrawer', 18)}</button>` : ''}
-          ${canUserAccessSection('daily') ? `<button class="hub-dock-btn" id="dockDaily" title="دفتر اليومية العامة">${getSvgIcon('daily', 18)}</button>` : ''}
-          ${canUserAccessSection('invoices') ? `<button class="hub-dock-btn" id="dockInvoice" title="الفواتير وعروض الأسعار">${getSvgIcon('invoices', 18)}</button>` : ''}
-          ${canUserAccessSection('cameras') ? `<button class="hub-dock-btn" id="dockCameras" title="كاميرات المراقبة">${getSvgIcon('cameras', 18)}</button>` : ''}
-          ${canUserAccessSection('audit') ? `<button class="hub-dock-btn" id="dockAudit" title="الرقابة والتصاريح">${getSvgIcon('audit', 18)}</button>` : ''}
-          ${canUserAccessSection('settings') ? `<button class="hub-dock-btn" id="dockSettings" title="الإعدادات">${getSvgIcon('settings', 18)}</button>` : ''}
+        <aside class="hub-dock ${state.dockExpanded ? 'expanded' : ''}" id="hubDock">
+          <button class="hub-dock-btn active" id="dockHome" title="لوحة القيادة (تبديل عرض القائمة Ctrl+B)">${getSvgIcon('dashboard', 18)}<span class="hub-dock-label">الرئيسية</span></button>
+          ${canUserAccessSection('maintenance') ? `<button class="hub-dock-btn" id="dockMaint" title="مركز الصيانة">${getSvgIcon('maintenance', 18)}<span class="hub-dock-label">مركز الصيانة</span></button>` : ''}
+          ${canUserAccessSection('pos') ? `<button class="hub-dock-btn" id="dockPos" title="نقطة البيع (POS)">${getSvgIcon('pos', 18)}<span class="hub-dock-label">نقطة البيع</span></button>` : ''}
+          ${canUserAccessSection('inventory') ? `<button class="hub-dock-btn" id="dockInv" title="المخزن العام">${getSvgIcon('inventory', 18)}<span class="hub-dock-label">المخزن العام</span></button>` : ''}
+          ${canUserAccessSection('barcode') ? `<button class="hub-dock-btn" id="dockBarcode" title="استوديو الباركود">${getSvgIcon('barcode', 18)}<span class="hub-dock-label">استوديو الباركود</span></button>` : ''}
+          ${canUserAccessSection('finance') ? `<button class="hub-dock-btn" id="dockFinance" title="القسم المالي والمحاسبي">${getSvgIcon('finance', 18)}<span class="hub-dock-label">القسم المالي</span></button>` : ''}
+          ${canUserAccessSection('cashdrawer') ? `<button class="hub-dock-btn" id="dockCashdrawer" title="حركة الخزينة والدرج">${getSvgIcon('cashdrawer', 18)}<span class="hub-dock-label">حركة الخزينة</span></button>` : ''}
+          ${canUserAccessSection('daily') ? `<button class="hub-dock-btn" id="dockDaily" title="دفتر اليومية العامة">${getSvgIcon('daily', 18)}<span class="hub-dock-label">اليومية العامة</span></button>` : ''}
+          ${canUserAccessSection('invoices') ? `<button class="hub-dock-btn" id="dockInvoice" title="الفواتير وعروض الأسعار">${getSvgIcon('invoices', 18)}<span class="hub-dock-label">الفواتير</span></button>` : ''}
+          ${canUserAccessSection('cameras') ? `<button class="hub-dock-btn" id="dockCameras" title="كاميرات المراقبة">${getSvgIcon('cameras', 18)}<span class="hub-dock-label">كاميرات المراقبة</span></button>` : ''}
+          ${canUserAccessSection('audit') ? `<button class="hub-dock-btn" id="dockAudit" title="الرقابة والتصاريح">${getSvgIcon('audit', 18)}<span class="hub-dock-label">الرقابة</span></button>` : ''}
+          ${canUserAccessSection('settings') ? `<button class="hub-dock-btn" id="dockSettings" title="الإعدادات">${getSvgIcon('settings', 18)}<span class="hub-dock-label">الإعدادات</span></button>` : ''}
           <div style="flex:1;"></div>
-          <button class="hub-dock-btn" id="dockLogout" style="color:#ef4444;" title="تسجيل الخروج">${getSvgIcon('logout', 18)}</button>
+          <button class="hub-dock-btn" id="dockLogout" style="color:#ef4444;" title="تسجيل الخروج">${getSvgIcon('logout', 18)}<span class="hub-dock-label">تسجيل الخروج</span></button>
         </aside>
 
         <!-- Workspace Area -->
@@ -1076,7 +1094,7 @@ function renderExecutiveCommandCenter(app){
     { id: 'hubavMaint', sec: 'maintenance' },
     { id: 'hubavPos', sec: 'pos' },
     { id: 'hubavInv', sec: 'inventory' },
-    { id: 'hubavFin', sec: 'cashdrawer' },
+    { id: 'hubavFin', sec: 'finance' },
     { id: 'hubavAdmin', sec: 'audit' }
   ];
   navPills.forEach(item => {
@@ -1089,7 +1107,7 @@ function renderExecutiveCommandCenter(app){
         } else if(item.id === 'hubavInv'){
           targetSec = canUserAccessSection('inventory') ? 'inventory' : 'barcode';
         } else if(item.id === 'hubavFin'){
-          targetSec = canUserAccessSection('cashdrawer') ? 'cashdrawer' : (canUserAccessSection('daily') ? 'daily' : 'finance');
+          targetSec = canUserAccessSection('finance') ? 'finance' : (canUserAccessSection('cashdrawer') ? 'cashdrawer' : 'daily');
         } else if(item.id === 'hubavAdmin'){
           targetSec = canUserAccessSection('audit') ? 'audit' : (canUserAccessSection('users') ? 'users' : 'settings');
         }
@@ -1129,6 +1147,9 @@ function renderExecutiveCommandCenter(app){
     };
   }
 
+  const hubLogoutBtn = document.getElementById('hubLogoutBtn');
+  if(hubLogoutBtn) hubLogoutBtn.onclick = logout;
+
   // Floating Side Dock Navigation
   const dockMap = [
     { id: 'dockHome', sec: null },
@@ -1136,6 +1157,7 @@ function renderExecutiveCommandCenter(app){
     { id: 'dockPos', sec: 'pos' },
     { id: 'dockInv', sec: 'inventory' },
     { id: 'dockBarcode', sec: 'barcode' },
+    { id: 'dockFinance', sec: 'finance' },
     { id: 'dockCashdrawer', sec: 'cashdrawer' },
     { id: 'dockDaily', sec: 'daily' },
     { id: 'dockInvoice', sec: 'invoices' },
@@ -1147,6 +1169,10 @@ function renderExecutiveCommandCenter(app){
     const btn = document.getElementById(d.id);
     if(btn){
       btn.onclick = ()=>{
+        if(d.id === 'dockHome' && state.currentSection === null){
+          toggleDockExpanded();
+          return;
+        }
         state.currentSection = d.sec;
         render();
       };
@@ -1233,7 +1259,7 @@ function renderExecutiveCommandCenter(app){
       if(!canUserAccessSection(targetSec)){
         const cardTitle = card.querySelector('.hub-mod-title')?.innerText || '';
         if(cardTitle.includes('المالية') || cardTitle.includes('الخزينة')){
-          targetSec = canUserAccessSection('cashdrawer') ? 'cashdrawer' : (canUserAccessSection('daily') ? 'daily' : (canUserAccessSection('finance') ? 'finance' : null));
+          targetSec = canUserAccessSection('finance') ? 'finance' : (canUserAccessSection('cashdrawer') ? 'cashdrawer' : (canUserAccessSection('daily') ? 'daily' : null));
         } else if(cardTitle.includes('المبيعات') || cardTitle.includes('POS')){
           targetSec = canUserAccessSection('pos') ? 'pos' : (canUserAccessSection('invoices') ? 'invoices' : (canUserAccessSection('cameras') ? 'cameras' : null));
         } else if(cardTitle.includes('المخازن')){
@@ -1334,6 +1360,18 @@ function sidebarFootHtml(){
   </div>`;
 }
 
+function toggleDockExpanded(forceState){
+  if(state.dockExpanded === undefined){
+    state.dockExpanded = localStorage.getItem('microerp_dock_expanded') === 'true';
+  }
+  state.dockExpanded = (forceState !== undefined) ? forceState : !state.dockExpanded;
+  try { localStorage.setItem('microerp_dock_expanded', state.dockExpanded ? 'true' : 'false'); } catch(e){}
+  const dock = document.getElementById('hubDock') || document.querySelector('.hub-dock');
+  if(dock){
+    dock.classList.toggle('expanded', !!state.dockExpanded);
+  }
+}
+
 function initSidebarToggle(){
   let expandBtn = document.getElementById('sidebarExpandBtn');
   if(!expandBtn){
@@ -1368,11 +1406,15 @@ function initSidebarToggle(){
   if(!window.__sidebarShortcutRegistered){
     window.__sidebarShortcutRegistered = true;
     window.addEventListener('keydown', (e) => {
-      if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b'){
+      if((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'b' || e.key === 'لا')){
         const tag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
         if(tag !== 'input' && tag !== 'textarea' && !document.activeElement.isContentEditable){
           e.preventDefault();
-          toggleSidebar();
+          if(state.currentSection === null){
+            toggleDockExpanded();
+          } else {
+            toggleSidebar();
+          }
         }
       }
     });

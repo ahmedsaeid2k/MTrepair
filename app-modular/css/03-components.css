@@ -273,7 +273,7 @@
   align-items: flex-start;
 }
 .hub-dock {
-  width: 50px;
+  width: 54px;
   background: var(--paper2);
   border-radius: var(--radius);
   padding: 10px 5px;
@@ -287,6 +287,13 @@
   top: 16px;
   flex-shrink: 0;
   z-index: 10;
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), padding 0.25s ease;
+  overflow: hidden;
+}
+.hub-dock.expanded {
+  width: 220px;
+  padding: 10px 8px;
+  align-items: stretch;
 }
 .hub-dock-btn {
   width: 38px;
@@ -301,6 +308,35 @@
   transition: all 0.15s ease;
   color: var(--ink-secondary);
   position: relative;
+  white-space: nowrap;
+}
+.hub-dock.expanded .hub-dock-btn {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 0 12px;
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+}
+.hub-dock-label {
+  display: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink);
+}
+.hub-dock.expanded .hub-dock-label {
+  display: inline-block;
+}
+.hub-dock.expanded .hub-dock-btn.active .hub-dock-label {
+  color: #ffffff;
+}
+.hub-dock.expanded .hub-dock-btn:hover .hub-dock-label {
+  color: var(--ink);
+}
+.hub-dock.expanded .hub-dock-btn.active:hover .hub-dock-label {
+  color: #ffffff;
 }
 .hub-dock-btn:hover {
   background: var(--paper3);
@@ -392,6 +428,32 @@
 }
 @media (max-width: 1200px) {
   .hub-top-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 900px) {
+  .hub-topbar {
+    padding: 8px 12px;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .hub-nav-pills {
+    width: 100%;
+    order: 3;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 4px;
+    gap: 4px;
+  }
+  .hub-nav-pills::-webkit-scrollbar {
+    display: none;
+  }
+  .hub-pill {
+    flex-shrink: 0;
+    white-space: nowrap;
+    padding: 6px 12px;
+    font-size: 12px;
+  }
 }
 @media (max-width: 768px) {
   .hub-top-grid { grid-template-columns: 1fr; }

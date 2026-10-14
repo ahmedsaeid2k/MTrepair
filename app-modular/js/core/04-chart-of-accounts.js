@@ -133,6 +133,16 @@ function reconcileHistoricalJournalEntries(){
   const existingRefs = new Set((state.journalEntries || []).map(e => `${e.ReferenceType}_${e.ReferenceID}`));
   const newEntries = [];
 
+  const isElectronicPay = (method) => {
+    const p = String(method || '').toLowerCase();
+    return p.includes('بنك') || p.includes('bank') ||
+           p.includes('فيزا') || p.includes('visa') || p.includes('card') ||
+           p.includes('انستاباي') || p.includes('إنستاباي') || p.includes('instapay') ||
+           p.includes('محفظ') || p.includes('wallet') ||
+           p.includes('فودافون') || p.includes('vodafone') ||
+           p.includes('إلكتروني') || p.includes('الكتروني');
+  };
+
   // 1. Reconcile Payments (F2: Route to 2102 deposit or 1103 debt settlement - never 4101)
   (state.payments || []).forEach(p => {
     const payId = p.ID || `p_${p.ReceiptID}_${p.Amount}_${p.Date}`;
@@ -145,10 +155,9 @@ function reconcileHistoricalJournalEntries(){
         const isDelivered = r && (r.status === 'تم التسليم' || r.status === 'delivered');
 
         const payMethod = p.PaymentMethod || 'نقدي (كاش)';
-        const pLow = String(payMethod).toLowerCase();
-        const isBank = pLow.includes('فيزا') || pLow.includes('انستاباي') || pLow.includes('محفظ') || pLow.includes('فودافون') || pLow.includes('card');
+        const isBank = isElectronicPay(payMethod);
         const debitCode = isBank ? '1102' : '1101';
-        const debitName = isBank ? 'البنك والحسابات الإلكترونية' : 'الخزينة الرئيسية (النقدية)';
+        const debitName = isBank ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)';
 
         const creditCode = isDelivered ? '1103' : '2102';
         const creditName = isDelivered ? 'العملاء والمدينون' : 'أمانات ومقدمات عملاء الصيانة';
@@ -189,12 +198,50 @@ function reconcileHistoricalJournalEntries(){
       const paid = Math.min(total, Math.max(0, round2(rawPaid - change)));
       if (total > 0) {
         const lines = [];
-        if (paid > 0) {
-          lines.push({ AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: paid, Credit: 0, Notes: `مقبوضات مبيعات POS` });
+
+        // Check if multi-payment split exists
+        let splits = null;
+        if (s.SplitsJSON) {
+          try { splits = JSON.parse(s.SplitsJSON); } catch(e){}
+        } else if (Array.isArray(s.PaymentSplits)) {
+          splits = s.PaymentSplits;
         }
-        if (total > paid) {
-          lines.push({ AccountCode: '1103', AccountName: 'العملاء والمدينون', Debit: round2(total - paid), Credit: 0, Notes: `آجل مبيعات POS للعميل ${s.CustomerName || ''}` });
+
+        if (Array.isArray(splits) && splits.length > 0) {
+          splits.forEach(sp => {
+            const sAmt = Number(sp.amount || 0);
+            if (sAmt <= 0) return;
+            const mId = String(sp.methodId || '').toLowerCase();
+            const isEmpCr = mId === 'employee_credit' || mId === 'employee' || mId.includes('موظف');
+            const isCr = mId === 'credit' || mId.includes('آجل') || mId.includes('اجل') || isEmpCr;
+            const isBk = isElectronicPay(mId) || isElectronicPay(sp.methodName);
+            const accCode = isEmpCr ? '1107' : (isCr ? '1103' : (isBk ? '1102' : '1101'));
+            const accName = isEmpCr ? 'مشتريات الموظفين بالآجل' : (isCr ? 'العملاء والمدينون' : (isBk ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)'));
+            lines.push({ AccountCode: accCode, AccountName: accName, Debit: sAmt, Credit: 0, Notes: `مقبوضات مبيعات [${sp.methodName || sp.methodId || 'نقدي'}]` });
+          });
+        } else {
+          const pMethod = s.PaymentMethod || 'نقدي';
+          const pLow = String(pMethod).toLowerCase();
+          const isEmpCr = pLow === 'employee_credit' || pLow.includes('موظف') || pLow.includes('employee');
+          const isBank = isElectronicPay(pMethod);
+          const isCredit = pLow.includes('آجل') || pLow.includes('اجل') || isEmpCr;
+          const debitCode = isEmpCr ? '1107' : (isCredit ? '1103' : (isBank ? '1102' : '1101'));
+          const debitName = isEmpCr ? 'مشتريات الموظفين بالآجل' : (isCredit ? 'العملاء والمدينون' : (isBank ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)'));
+
+          if (isCredit) {
+            lines.push({ AccountCode: debitCode, AccountName: debitName, Debit: total, Credit: 0, Notes: isEmpCr ? `آجل مشتريات موظف (${s.CustomerName || ''})` : `آجل مبيعات POS للعميل ${s.CustomerName || ''}` });
+          } else {
+            if (paid > 0) {
+              lines.push({ AccountCode: debitCode, AccountName: debitName, Debit: paid, Credit: 0, Notes: `مقبوضات مبيعات POS [${pMethod}]` });
+            }
+            if (total > paid) {
+              const unpaidCode = isEmpCr ? '1107' : '1103';
+              const unpaidName = isEmpCr ? 'مشتريات الموظفين بالآجل' : 'العملاء والمدينون';
+              lines.push({ AccountCode: unpaidCode, AccountName: unpaidName, Debit: round2(total - paid), Credit: 0, Notes: isEmpCr ? `متبقي آجل موظف (${s.CustomerName || ''})` : `آجل مبيعات POS للعميل ${s.CustomerName || ''}` });
+            }
+          }
         }
+
         const taxAmt = Math.max(0, Number(s.TaxAmount || 0));
         const netRevenue = Math.max(0, Math.round((total - taxAmt) * 100) / 100);
         lines.push({ AccountCode: '4102', AccountName: 'إيرادات مبيعات بضائع وقطع غيار', Debit: 0, Credit: netRevenue, Notes: `فاتورة مبيعات #${s.ID.slice(-8)}` });
@@ -261,7 +308,10 @@ function reconcileHistoricalJournalEntries(){
           lines.push({ AccountCode: '1105', AccountName: 'ضريبة القيمة المضافة القابلة للخصم (مدخلات)', Debit: taxAmt, Credit: 0, Notes: `ضريبة مدخلات مشتريات #${pur.ID.slice(-8)}` });
         }
         if (paid > 0) {
-          lines.push({ AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: 0, Credit: paid, Notes: `سداد نقدي لفاتورة شراء` });
+          const isBankPur = isElectronicPay(pur.PaymentMethod);
+          const payAcc = isBankPur ? '1102' : '1101';
+          const payName = isBankPur ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)';
+          lines.push({ AccountCode: payAcc, AccountName: payName, Debit: 0, Credit: paid, Notes: `سداد ${isBankPur ? 'إلكتروني/بنكي' : 'نقدي'} لفاتورة شراء` });
         }
         if (total > paid) {
           lines.push({ AccountCode: '2101', AccountName: 'الموردون والدائنون', Debit: 0, Credit: total - paid, Notes: `مستحقات آجلة للمورد (${pur.Supplier || ''})` });
@@ -370,8 +420,7 @@ function reconcileHistoricalJournalEntries(){
       const total = Number(inv.Total || 0);
       const paid = Number(inv.AmountPaid != null ? inv.AmountPaid : (inv.Status === 'مدفوعة' ? total : 0));
       if (total > 0) {
-        const pLow = String(inv.PaymentMethod || 'نقدي').toLowerCase();
-        const isBank = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('إنستاباي') || pLow.includes('محفظ') || pLow.includes('فودافون');
+        const isBank = isElectronicPay(inv.PaymentMethod);
         const debitCode = isBank ? '1102' : '1101';
         const debitName = isBank ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)';
         const lines = [];
@@ -408,49 +457,272 @@ function reconcileHistoricalJournalEntries(){
     }
   });
 
-  // 6. Reconcile Operating Expenses (F1: Ensure complete ledger coverage)
+  // 6. Reconcile Operating Expenses, Supplier Payments, Owner Drawings & POS Returns
   (state.expenses || []).forEach(exp => {
-    const refKey = `Expense_${exp.ID}`;
+    const amt = Number(exp.Amount || 0);
+    if (amt <= 0) return;
+
+    const cat = exp.Category || 'مصروفات أخرى';
+    const isSupplier = cat === 'سداد موردين ومشتريات' || String(cat).includes('مورد') || exp.Type === 'supplier';
+    const isDraw = cat === 'مسحوبات شخصية' || cat === 'جاري الشركاء' || String(exp.Title || '').includes('مسحوبات');
+    const isIncome = exp.Type === 'in' || exp.Type === 'income';
+    const isPosReturn = cat === 'مرتجع مبيعات POS' || exp.AccountCode === '4102-RET' || exp.Type === 'pos_return';
+    const isHrAdvanceOrPayroll = String(exp.ID || '').startsWith('exp_adv_') || String(exp.ID || '').startsWith('exp_rep_') || String(exp.ID || '').startsWith('exp_purrep_') || String(exp.ID || '').startsWith('exp_payroll_');
+
+    if (isHrAdvanceOrPayroll) {
+      // Handled specifically by HR advances, repayments and payroll reconcilers below
+      return;
+    }
+
+    const payMethod = exp.PaymentMethod || 'نقدي';
+    const isBank = isElectronicPay(payMethod);
+    const cashOrBankCode = isBank ? '1102' : '1101';
+    const cashOrBankName = isBank ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)';
+
+    if (isSupplier) {
+      const refKey1 = `SupplierPayment_${exp.ID}`;
+      const refKey2 = `Expense_${exp.ID}`;
+      if (!existingRefs.has(refKey1) && !existingRefs.has(refKey2)) {
+        const entry = {
+          ID: 'je_hist_sup_' + exp.ID,
+          EntryNumber: getNextJournalEntryNumber(),
+          Date: (exp.Date || new Date().toISOString()).slice(0, 10),
+          Description: `سند صرف وسداد مورد: ${exp.Title || cat} - [${payMethod}]`,
+          ReferenceType: 'SupplierPayment',
+          ReferenceID: String(exp.ID),
+          Lines: [
+            { AccountCode: '2101', AccountName: 'الموردون والدائنون', Debit: amt, Credit: 0, Notes: exp.Title || `سداد للمورد` },
+            { AccountCode: cashOrBankCode, AccountName: cashOrBankName, Debit: 0, Credit: amt, Notes: `صرف عبر [${payMethod}]` }
+          ],
+          TotalDebit: amt,
+          TotalCredit: amt,
+          By: exp.By || 'نظام'
+        };
+        entry.LinesJSON = JSON.stringify(entry.Lines);
+        newEntries.push(entry);
+        state.journalEntries.push(entry);
+        existingRefs.add(refKey1);
+        existingRefs.add(refKey2);
+      }
+    } else if (isDraw) {
+      const refKey1 = `CashOut_${exp.ID}`;
+      const refKey2 = `Expense_${exp.ID}`;
+      if (!existingRefs.has(refKey1) && !existingRefs.has(refKey2)) {
+        const entry = {
+          ID: 'je_hist_draw_' + exp.ID,
+          EntryNumber: getNextJournalEntryNumber(),
+          Date: (exp.Date || new Date().toISOString()).slice(0, 10),
+          Description: `منصرف مسحوبات: ${exp.Title || cat} - [${payMethod}]`,
+          ReferenceType: 'CashOut',
+          ReferenceID: String(exp.ID),
+          Lines: [
+            { AccountCode: '3103', AccountName: 'جاري الشركاء والمسحوبات', Debit: amt, Credit: 0, Notes: exp.Title || `مسحوبات شخصية` },
+            { AccountCode: cashOrBankCode, AccountName: cashOrBankName, Debit: 0, Credit: amt, Notes: `صرف عبر [${payMethod}]` }
+          ],
+          TotalDebit: amt,
+          TotalCredit: amt,
+          By: exp.By || 'نظام'
+        };
+        entry.LinesJSON = JSON.stringify(entry.Lines);
+        newEntries.push(entry);
+        state.journalEntries.push(entry);
+        existingRefs.add(refKey1);
+        existingRefs.add(refKey2);
+      }
+    } else if (isPosReturn) {
+      const refKey1 = `POS_Return_${exp.ID}`;
+      const refKey2 = `Expense_${exp.ID}`;
+      if (!existingRefs.has(refKey1) && !existingRefs.has(refKey2)) {
+        const entry = {
+          ID: 'je_hist_ret_' + exp.ID,
+          EntryNumber: getNextJournalEntryNumber(),
+          Date: (exp.Date || new Date().toISOString()).slice(0, 10),
+          Description: `مرتجع مبيعات POS: ${exp.Title || cat} - [${payMethod}]`,
+          ReferenceType: 'POS_Return',
+          ReferenceID: String(exp.ID),
+          Lines: [
+            { AccountCode: '4102', AccountName: 'مردودات ومسموحات مبيعات الأجهزة والإكسسوار', Debit: amt, Credit: 0, Notes: exp.Title || `مرتجع مبيعات` },
+            { AccountCode: cashOrBankCode, AccountName: cashOrBankName, Debit: 0, Credit: amt, Notes: `رد المبلغ عبر [${payMethod}]` }
+          ],
+          TotalDebit: amt,
+          TotalCredit: amt,
+          By: exp.By || 'نظام'
+        };
+        entry.LinesJSON = JSON.stringify(entry.Lines);
+        newEntries.push(entry);
+        state.journalEntries.push(entry);
+        existingRefs.add(refKey1);
+        existingRefs.add(refKey2);
+      }
+    } else if (!isIncome) {
+      const refKey = `Expense_${exp.ID}`;
+      if (!existingRefs.has(refKey)) {
+        const debitCode = EXPENSE_ACCOUNT_MAP[cat] || exp.AccountCode || '5208';
+        const debitAcc = (state.accounts || []).find(a => String(a.Code) === String(debitCode));
+        const debitName = debitAcc ? debitAcc.Name : (cat || 'مصروفات تشغيلية');
+
+        const entry = {
+          ID: 'je_hist_exp_' + exp.ID,
+          EntryNumber: getNextJournalEntryNumber(),
+          Date: (exp.Date || new Date().toISOString()).slice(0, 10),
+          Description: `مصروف تشغيلي: ${cat} - ${exp.Title || exp.Notes || ''}`.trim(),
+          ReferenceType: 'Expense',
+          ReferenceID: String(exp.ID),
+          Lines: [
+            { AccountCode: debitCode, AccountName: debitName, Debit: amt, Credit: 0, Notes: exp.Notes || cat },
+            { AccountCode: cashOrBankCode, AccountName: cashOrBankName, Debit: 0, Credit: amt, Notes: `سداد عبر ${payMethod}` }
+          ],
+          TotalDebit: amt,
+          TotalCredit: amt,
+          By: exp.By || 'نظام'
+        };
+        entry.LinesJSON = JSON.stringify(entry.Lines);
+        newEntries.push(entry);
+        state.journalEntries.push(entry);
+        existingRefs.add(refKey);
+      }
+    }
+  });
+
+  // 7. Reconcile Employee Advances (Dr 1106 / Cr 1101 or 1102)
+  (state.employeeAdvances || []).forEach(adv => {
+    const refKey = `Employee_Advance_${adv.ID}`;
     if (!existingRefs.has(refKey)) {
-      const amt = Number(exp.Amount || 0);
+      const amt = Number(adv.Amount || 0);
       if (amt > 0) {
-        const cat = exp.Category || 'مصروفات أخرى';
-        const isSupplier = cat === 'سداد موردين ومشتريات' || String(cat).includes('مورد') || exp.Type === 'supplier';
-        const isDraw = exp.Type === 'out' || cat === 'مسحوبات شخصية' || cat === 'جاري الشركاء';
-        const isIncome = exp.Type === 'in' || exp.Type === 'income';
-        const isPosReturn = cat === 'مرتجع مبيعات POS' || exp.AccountCode === '4102-RET' || exp.Type === 'pos_return';
+        const pMethod = adv.PaymentMethod || 'نقدي (الخزينة الرئيسية)';
+        const isBank = isElectronicPay(pMethod);
+        const creditCode = isBank ? '1102' : '1101';
+        const creditName = isBank ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)';
+        const empName = adv.EmployeeName || 'الموظف';
+        const lines = [
+          { AccountCode: '1106', AccountName: 'سلف وعهد الموظفين', Debit: amt, Credit: 0, Notes: `صرف سلفة للموظف (${empName})` },
+          { AccountCode: creditCode, AccountName: creditName, Debit: 0, Credit: amt, Notes: `صرف نقدي عبر [${pMethod}]` }
+        ];
+        const entry = {
+          ID: 'je_hist_adv_' + adv.ID,
+          EntryNumber: getNextJournalEntryNumber(),
+          Date: (adv.Date || new Date().toISOString()).slice(0, 10),
+          Description: `صرف سلفة للموظف (${empName}) بمبلغ ${amt} ج.م [${pMethod}]`,
+          ReferenceType: 'Employee_Advance',
+          ReferenceID: String(adv.ID),
+          Lines: lines,
+          TotalDebit: amt,
+          TotalCredit: amt,
+          By: adv.CreatedBy || 'نظام'
+        };
+        entry.LinesJSON = JSON.stringify(lines);
+        newEntries.push(entry);
+        state.journalEntries.push(entry);
+        existingRefs.add(refKey);
+      }
+    }
+  });
 
-        if (!isIncome && !isPosReturn && !isSupplier && !isDraw) {
-          const debitCode = EXPENSE_ACCOUNT_MAP[cat] || exp.AccountCode || '5208';
-          const debitAcc = (state.accounts || []).find(a => String(a.Code) === String(debitCode));
-          const debitName = debitAcc ? debitAcc.Name : (cat || 'مصروفات تشغيلية');
+  // 8. Reconcile Employee Advance Repayments & Purchase Repayments
+  (state.employeeAdvanceRepayments || []).forEach(rep => {
+    if (rep.Type === 'payroll_deduction' || rep.Type === 'payroll_purchase_deduction') return;
+    const isPurchaseRep = rep.Type === 'purchase_repayment_cash' || rep.Type === 'purchase_repayment';
+    const refType = isPurchaseRep ? 'Employee_Purchase_Repayment' : 'Advance_Repayment';
+    const refKey = `${refType}_${rep.ID}`;
 
-          const payMethod = exp.PaymentMethod || 'نقدي';
-          const pLow = String(payMethod).toLowerCase();
-          const isBank = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('إنستاباي') || pLow.includes('محفظ') || pLow.includes('فودافون');
-          const creditCode = isBank ? '1102' : '1101';
-          const creditName = isBank ? 'البنك والحسابات الإلكترونية' : 'الخزينة الرئيسية (النقدية)';
+    if (!existingRefs.has(refKey)) {
+      const amt = Number(rep.Amount || 0);
+      if (amt > 0) {
+        const pMethod = rep.PaymentMethod || 'نقدي (الخزينة الرئيسية)';
+        const isBank = isElectronicPay(pMethod);
+        const debitCode = isBank ? '1102' : '1101';
+        const debitName = isBank ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)';
+        const empName = rep.EmployeeName || 'الموظف';
+        const creditCode = isPurchaseRep ? '1107' : '1106';
+        const creditName = isPurchaseRep ? 'مشتريات الموظفين بالآجل' : 'سلف وعهد الموظفين';
+        const desc = isPurchaseRep 
+          ? `تحصيل سداد مشتريات الموظف (${empName}) بالآجل بمبلغ ${amt} ج.م [${pMethod}]`
+          : `تحصيل سداد سلفة الموظف (${empName}) بمبلغ ${amt} ج.م [${pMethod}]`;
+        const lines = [
+          { AccountCode: debitCode, AccountName: debitName, Debit: amt, Credit: 0, Notes: `تحصيل عبر [${pMethod}]` },
+          { AccountCode: creditCode, AccountName: creditName, Debit: 0, Credit: amt, Notes: isPurchaseRep ? `سداد مشتريات موظف (${empName})` : `سداد سلفة للموظف (${empName})` }
+        ];
+        const entry = {
+          ID: 'je_hist_rep_' + rep.ID,
+          EntryNumber: getNextJournalEntryNumber(),
+          Date: (rep.Date || new Date().toISOString()).slice(0, 10),
+          Description: desc,
+          ReferenceType: refType,
+          ReferenceID: String(rep.ID),
+          Lines: lines,
+          TotalDebit: amt,
+          TotalCredit: amt,
+          By: rep.CreatedBy || 'نظام'
+        };
+        entry.LinesJSON = JSON.stringify(lines);
+        newEntries.push(entry);
+        state.journalEntries.push(entry);
+        existingRefs.add(refKey);
+      }
+    }
+  });
 
-          const entry = {
-            ID: 'je_hist_exp_' + exp.ID,
-            EntryNumber: getNextJournalEntryNumber(),
-            Date: (exp.Date || new Date().toISOString()).slice(0, 10),
-            Description: `مصروف تشغيلي: ${cat} - ${exp.Title || exp.Notes || ''}`.trim(),
-            ReferenceType: 'Expense',
-            ReferenceID: String(exp.ID),
-            Lines: [
-              { AccountCode: debitCode, AccountName: debitName, Debit: amt, Credit: 0, Notes: exp.Notes || cat },
-              { AccountCode: creditCode, AccountName: creditName, Debit: 0, Credit: amt, Notes: `سداد عبر ${payMethod}` }
-            ],
-            TotalDebit: amt,
-            TotalCredit: amt,
-            By: exp.By || 'نظام'
-          };
-          entry.LinesJSON = JSON.stringify(entry.Lines);
-          newEntries.push(entry);
-          state.journalEntries.push(entry);
-          existingRefs.add(refKey);
+  // 9. Reconcile Monthly Payroll Runs
+  (state.payrollRuns || []).forEach(pr => {
+    const refKey = `Payroll_Run_${pr.ID}`;
+    if (!existingRefs.has(refKey)) {
+      const gross = Number(pr.TotalGross || 0);
+      if (gross > 0) {
+        let lines = null;
+        if (typeof buildPayrollJournalLines === 'function') {
+          lines = buildPayrollJournalLines({
+            month: pr.Month,
+            totalGross: pr.TotalGross,
+            totalAdvancesDeducted: pr.TotalAdvancesDeducted,
+            totalPurchasesDeducted: pr.TotalPurchasesDeducted,
+            totalPenalties: pr.TotalPenalties,
+            totalNetPaid: pr.TotalNetPaid,
+            paymentMethod: pr.PaymentMethod
+          });
+        } else if (typeof FinanceEngine !== 'undefined' && typeof FinanceEngine.buildPayrollJournalLines === 'function') {
+          lines = FinanceEngine.buildPayrollJournalLines({
+            month: pr.Month,
+            totalGross: pr.TotalGross,
+            totalAdvancesDeducted: pr.TotalAdvancesDeducted,
+            totalPurchasesDeducted: pr.TotalPurchasesDeducted,
+            totalPenalties: pr.TotalPenalties,
+            totalNetPaid: pr.TotalNetPaid,
+            paymentMethod: pr.PaymentMethod
+          });
         }
+        if (!lines || lines.length === 0) {
+          const adv = Number(pr.TotalAdvancesDeducted || 0);
+          const pur = Number(pr.TotalPurchasesDeducted || 0);
+          const pen = Number(pr.TotalPenalties || 0);
+          const net = Number(pr.TotalNetPaid || 0);
+          const isBank = isElectronicPay(pr.PaymentMethod);
+          const payoutCode = isBank ? '1102' : '1101';
+          const payoutName = isBank ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الخزينة الرئيسية (النقدية)';
+          lines = [
+            { AccountCode: '5203', AccountName: 'رواتب ومكافآت الفنيين والموظفين', Debit: gross, Credit: 0, Notes: `إجمالي استحقاق مسير رواتب شهر [${pr.Month}]` }
+          ];
+          if (adv > 0) lines.push({ AccountCode: '1106', AccountName: 'سلف وعهد الموظفين', Debit: 0, Credit: adv, Notes: `استقطاع سلف شهر [${pr.Month}]` });
+          if (pur > 0) lines.push({ AccountCode: '1107', AccountName: 'مشتريات الموظفين بالآجل', Debit: 0, Credit: pur, Notes: `استقطاع مشتريات شهر [${pr.Month}]` });
+          if (pen > 0) lines.push({ AccountCode: '4201', AccountName: 'إيرادات وأرباح متنوعة وزيادة الجرد', Debit: 0, Credit: pen, Notes: `تسوية جزاءات شهر [${pr.Month}]` });
+          if (net > 0) lines.push({ AccountCode: payoutCode, AccountName: payoutName, Debit: 0, Credit: net, Notes: `صرف صافي الرواتب شهر [${pr.Month}]` });
+        }
+        const entry = {
+          ID: 'je_hist_pr_' + pr.ID,
+          EntryNumber: getNextJournalEntryNumber(),
+          Date: (pr.Date || new Date().toISOString()).slice(0, 10),
+          Description: `مسير وصرف رواتب شهر [${pr.Month}] بإجمالي ${gross} ج.م وصافي منصرف ${pr.TotalNetPaid || 0} ج.م`,
+          ReferenceType: 'Payroll_Run',
+          ReferenceID: String(pr.ID),
+          Lines: lines,
+          TotalDebit: gross,
+          TotalCredit: gross,
+          By: pr.ProcessedBy || 'نظام'
+        };
+        entry.LinesJSON = JSON.stringify(lines);
+        newEntries.push(entry);
+        state.journalEntries.push(entry);
+        existingRefs.add(refKey);
       }
     }
   });

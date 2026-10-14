@@ -595,7 +595,7 @@ function renderCashDrawerSectionApp(app){
   const toInv = document.getElementById('drwToInvoicesNav');
   if(toInv) toInv.onclick = ()=>{ state.currentSection = 'invoices'; render(); };
   const toFin = document.getElementById('drwToFinanceNav');
-  if(toFin) toFin.onclick = ()=>{ state.currentSection = 'finance'; state.financeTab = 'accounts'; render(); };
+  if(toFin) toFin.onclick = ()=>{ state.currentSection = 'finance'; state.financeTab = 'overview'; render(); };
   const toPos = document.getElementById('drwToPosNav');
   if(toPos) toPos.onclick = ()=>{ state.currentSection = 'pos'; render(); };
   const toSet = document.getElementById('drwToSettingsNav');

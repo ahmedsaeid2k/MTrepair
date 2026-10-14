@@ -140,7 +140,8 @@ async function disburseEmployeeAdvanceAction({ employeeName, amount, repaymentTy
       Type: 'out',
       AccountCode: '1106',
       PaymentMethod: advance.PaymentMethod,
-      Notes: `${advance.Reason} • السداد: ${repLabel}`
+      Notes: `${advance.Reason} • السداد: ${repLabel}`,
+      skipAutoJournal: true
     });
   } catch(e){
     console.warn('[disburseEmployeeAdvanceAction] Local cash outflow registered:', e);
@@ -237,7 +238,8 @@ async function repayEmployeeAdvanceAction({ advanceId, employeeName, amount, pay
       Type: 'in',
       AccountCode: '1106',
       PaymentMethod: repayment.PaymentMethod,
-      Notes: repayment.Notes
+      Notes: repayment.Notes,
+      skipAutoJournal: true
     });
   } catch(e){}
 
@@ -302,7 +304,8 @@ async function repayEmployeePurchasesAction({ employeeName, amount, paymentMetho
       Type: 'in',
       AccountCode: '1107',
       PaymentMethod: repayment.PaymentMethod,
-      Notes: repayment.Notes
+      Notes: repayment.Notes,
+      skipAutoJournal: true
     });
   } catch(e){}
 
@@ -471,7 +474,8 @@ async function executeMonthlyPayrollAction({ month, employeesData, paymentMethod
         Type: 'out',
         AccountCode: '5203',
         PaymentMethod: payMethod,
-        Notes: `صافي رواتب ${processedEmployees.length} موظف بعد خصم السلف (${totalAdvancesDeducted} ج.م) والمشتريات (${totalPurchasesDeducted} ج.م)`
+        Notes: `صافي رواتب ${processedEmployees.length} موظف بعد خصم السلف (${totalAdvancesDeducted} ج.م) والمشتريات (${totalPurchasesDeducted} ج.م)`,
+        skipAutoJournal: true
       });
     } catch(e){}
   }

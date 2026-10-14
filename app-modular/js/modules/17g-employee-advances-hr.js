@@ -1456,7 +1456,6 @@ function renderEmployeeAdvancesPage(main){
 
   const allAdvances = state.employeeAdvances || [];
   const activeAdvances = allAdvances.filter(a => a.Status !== 'paid');
-  const paidAdvances = allAdvances.filter(a => a.Status === 'paid');
 
   const totalActiveAdvancesAmt = activeAdvances.reduce((s,a) => s + Number(a.RemainingBalance != null ? a.RemainingBalance : a.Amount || 0), 0);
   const totalAllAdvancesDisbursed = allAdvances.reduce((s,a) => s + Number(a.Amount || 0), 0);

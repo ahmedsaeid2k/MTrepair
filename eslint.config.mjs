@@ -49,6 +49,44 @@ declaredGlobals['JsBarcode'] = 'readonly';
   'countWaNotificationsByKey'
 ].forEach((name) => { declaredGlobals[name] = 'writable'; });
 
+// Public API of the UMD engine js/core/09-finance-engine.js.
+// Its exports are created inside a factory, so the scanner above cannot see them.
+[
+  'FinanceEngine',
+  'toEngDigits',
+  'parseMoney',
+  'round2',
+  'formatMoney',
+  'sumMoney',
+  'DEFAULT_VAT_RATE',
+  'calculateExclusiveVAT',
+  'extractInclusiveVAT',
+  'calculateInvoiceTotals',
+  'calculateVATReturn',
+  'calculateGrossProfit',
+  'calculateNetProfit',
+  'calculateInventoryValuation',
+  'isBalancedEntry',
+  'validateJournalEntryLines',
+  'computeAccountNetBalance',
+  'computeTrialBalance',
+  'VALID_APP_SECTIONS',
+  'checkUserSectionAccess',
+  'checkActionAuthorization',
+  'calculateCustomerBalance',
+  'fallbackSha256',
+  'sha256Hex',
+  'hashPasswordWithSalt',
+  'verifyLocalPassword',
+  'checkEmergencyAdminBootstrap',
+  'computeEmployeeBalances',
+  'checkEmployeeCreditLimit',
+  'buildAdvanceDisbursementJournalLines',
+  'buildAdvanceRepaymentJournalLines',
+  'buildEmployeePurchasePaymentJournalLines',
+  'buildPayrollJournalLines'
+].forEach((name) => { declaredGlobals[name] = 'writable'; });
+
 export default [
   {
     ignores: [

@@ -76,13 +76,18 @@ async function openReceiptDetail(rawR){
               const isAct = idx === 0;
               const b = dv.brand === 'أخرى' ? dv.brandOther : (dv.brand || '');
               const t = `${dv.category || 'جهاز'} ${b} ${dv.model || ''}`.trim() || `جهاز #${idx+1}`;
+              const dSt = dv.status || r.status || 'قيد الفحص';
+              const isDel = dSt === 'تم التسليم';
+              const stCls = (STATUSES.find(s=>s.v===dSt)||{}).cls || 'st-check';
               return `
-                <button type="button" class="btn btn-xs ${isAct ? 'btn-primary' : 'btn-ghost'} detail-dev-tab-btn" data-didx="${idx}" style="font-size:12px;">
-                  ${escapeHtml(t)}
+                <button type="button" class="btn btn-xs ${isAct ? 'btn-primary' : 'btn-ghost'} detail-dev-tab-btn" data-didx="${idx}" style="font-size:12px;display:inline-flex;align-items:center;gap:5px;">
+                  <span>${isDel ? '✅' : '🔧'} ${escapeHtml(t)}</span>
+                  <span class="status-badge ${stCls}" style="font-size:9.5px;padding:1px 5px;">${escapeHtml(dSt)}</span>
                 </button>
               `;
             }).join('')}
           </div>
+          <div id="activeDevStatusBanner" style="margin-top:10px;"></div>
         </div>
       ` : ''}
       <div class="grid4">
@@ -851,15 +856,84 @@ async function openReceiptDetail(rawR){
       else c.classList.remove('sel');
     });
 
-    // Update active tab styling
+    // Update active tab styling & badges
     overlay.querySelectorAll('.detail-dev-tab-btn').forEach(btn => {
       const bIdx = Number(btn.dataset.didx);
-      if(bIdx === idx){
-        btn.className = 'btn btn-xs btn-primary detail-dev-tab-btn';
-      } else {
-        btn.className = 'btn btn-xs btn-ghost detail-dev-tab-btn';
-      }
+      const bDev = r.devices[bIdx] || {};
+      const bSt = bDev.status || r.status || 'قيد الفحص';
+      const bDel = bSt === 'تم التسليم';
+      const bStCls = (STATUSES.find(s=>s.v===bSt)||{}).cls || 'st-check';
+      const bBrand = bDev.brand === 'أخرى' ? bDev.brandOther : (bDev.brand || '');
+      const bTitle = `${bDev.category || 'جهاز'} ${bBrand} ${bDev.model || ''}`.trim() || `جهاز #${bIdx+1}`;
+
+      btn.className = `btn btn-xs ${bIdx === idx ? 'btn-primary' : 'btn-ghost'} detail-dev-tab-btn`;
+      btn.innerHTML = `<span>${bDel ? '✅' : '🔧'} ${escapeHtml(bTitle)}</span><span class="status-badge ${bStCls}" style="font-size:9.5px;padding:1px 5px;">${escapeHtml(bSt)}</span>`;
     });
+
+    // Render active device delivery banner
+    const bannerEl = overlay.querySelector('#activeDevStatusBanner');
+    if(bannerEl && hasMultipleDevices){
+      const dSt = dev.status || r.status || 'قيد الفحص';
+      const isDel = dSt === 'تم التسليم';
+      const stCls = (STATUSES.find(s=>s.v===dSt)||{}).cls || 'st-check';
+      if(isDel){
+        bannerEl.innerHTML = `
+          <div style="background:#ecfdf5;border:1px solid #10b981;border-radius:var(--radius-sm);padding:8px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <div>
+              <div style="color:#047857;font-weight:700;font-size:12px;">✅ تم تسليم هذا الجهاز للعميل</div>
+              <div style="color:#065f46;font-size:11px;">
+                ${dev.deliveredAt ? `تاريخ التسليم: ${new Date(dev.deliveredAt).toLocaleDateString('ar-EG')}` : ''}
+                ${dev.deliveredBy ? ` • المسؤول: ${escapeHtml(dev.deliveredBy)}` : ''}
+                ${dev.deliveryNotes ? ` • ملاحظات: ${escapeHtml(dev.deliveryNotes)}` : ''}
+              </div>
+            </div>
+            <button type="button" class="btn btn-xs btn-ghost" style="color:var(--red);border-color:var(--red);" id="activeDevRevertBtn">
+              تراجع عن تسليم هذا الجهاز
+            </button>
+          </div>
+        `;
+        const revBtn = bannerEl.querySelector('#activeDevRevertBtn');
+        if(revBtn){
+          revBtn.onclick = () => {
+            if(!confirm('هل أنت متأكد من التراجع عن تسليم هذا الجهاز وإعادته للورشة؟')) return;
+            dev.status = 'مكتمل';
+            dev.deliveredAt = '';
+            dev.deliveredBy = '';
+            dev.deliveryNotes = '';
+            if(typeof computeReceiptOverallStatus === 'function'){
+              r.status = computeReceiptOverallStatus(r);
+            }
+            syncCurrentDevToDom(idx);
+            showToast('تم التراجع عن تسليم الجهاز', 'info');
+          };
+        }
+      } else {
+        bannerEl.innerHTML = `
+          <div style="background:#f0fdf4;border:1px dashed #22c55e;border-radius:var(--radius-sm);padding:8px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <div>
+              <div style="font-size:12px;color:#15803d;font-weight:700;">
+                📦 تسليم مستقل: يمكنك تسليم هذا الجهاز للعميل الآن مع إمكانية تحصيل دفعة نقدية
+              </div>
+              <div style="font-size:11px;color:#166534;">
+                حالة هذا الجهاز الحالية: <span class="status-badge ${stCls}">${escapeHtml(dSt)}</span>
+              </div>
+            </div>
+            <button type="button" class="btn btn-xs btn-primary" id="activeDevDeliverBtn" style="background:#16a34a;border-color:#16a34a;font-weight:700;">
+              تسليم هذا الجهاز للعميل
+            </button>
+          </div>
+        `;
+        const delBtn = bannerEl.querySelector('#activeDevDeliverBtn');
+        if(delBtn){
+          delBtn.onclick = () => {
+            saveDomToCurrentDev(idx);
+            if(typeof window.openDeliverDeviceModalDirect === 'function'){
+              window.openDeliverDeviceModalDirect(r.id || r.receiptNumber, r.receiptNumber, idx);
+            }
+          };
+        }
+      }
+    }
   }
 
   function saveDomToCurrentDev(idx){
@@ -881,6 +955,7 @@ async function openReceiptDetail(rawR){
         syncCurrentDevToDom(currentEditDevIdx);
       };
     });
+    syncCurrentDevToDom(0);
   }
 
   overlay.querySelectorAll('#editFaultChips .chip').forEach(c=>{
@@ -936,7 +1011,20 @@ async function openReceiptDetail(rawR){
     }
 
     r.technician = overlay.querySelector('#eTech').value;
-    r.status = overlay.querySelector('#eStatus').value.replace(/^[^\s]+\s/, '');
+    const formStatus = overlay.querySelector('#eStatus').value.replace(/^[^\s]+\s/, '');
+    if(hasMultipleDevices){
+      if(formStatus === 'تم التسليم'){
+        r.devices.forEach(d => {
+          d.status = 'تم التسليم';
+          if(!d.deliveredAt) d.deliveredAt = new Date().toISOString();
+        });
+        r.status = 'تم التسليم';
+      } else {
+        r.status = (typeof computeReceiptOverallStatus === 'function') ? computeReceiptOverallStatus(r) : formStatus;
+      }
+    } else {
+      r.status = formStatus;
+    }
     r.photos = detailPhotos;
     if(Array.isArray(r.devices) && r.devices.length > 0){
       if(r.devices[currentEditDevIdx]){

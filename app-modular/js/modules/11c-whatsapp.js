@@ -14,6 +14,7 @@ const WA_TEMPLATE_TITLES = {
   await_parts: 'بانتظار قطعة غيار',
   repair: 'الصيانة',
   done: 'جاهز للاستلام',
+  partial_delivery: 'تسليم جزئي',
   delivered: 'تم التسليم',
   pending: 'معلق',
   warranty: 'تحت الضمان',
@@ -241,6 +242,7 @@ function openWhatsappChat(rawPhone, msg, opts){
 function resolveWaTemplateKey(status){
   const s = String(status || '').trim();
   if(s === 'مكتمل' || s === 'done') return 'done';
+  if(s === 'تسليم جزئي' || s === 'partial_delivery') return 'partial_delivery';
   if(s === 'تم التسليم' || s === 'delivered') return 'delivered';
   if(s === 'الصيانة' || s === 'repair') return 'repair';
   if(s === 'قيد الفحص' || s === 'check') return 'check';
@@ -383,6 +385,7 @@ function openWhatsappStatusNotificationModal(rawR, statusOrKey, onSent){
     { k: 'repair', icon: getSvgIcon('tool', 14), label: 'الصيانة' },
     { k: 'await_parts', icon: getSvgIcon('tool', 14), label: 'بانتظار قطعة غيار' },
     { k: 'done', icon: getSvgIcon('check', 14), label: 'جاهز للاستلام' },
+    { k: 'partial_delivery', icon: getSvgIcon('check', 14), label: 'تسليم جزئي' },
     { k: 'delivered', icon: getSvgIcon('truck', 14), label: 'تم التسليم' },
     { k: 'pending', icon: getSvgIcon('pause', 14), label: 'معلق' },
     { k: 'warranty', icon: getSvgIcon('shield', 14), label: 'تحت الضمان' },

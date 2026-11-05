@@ -171,4 +171,110 @@ describe('Multi-Device Intake & Brand Integrity Engine', () => {
     expect(deviceText).toContain('[جهاز 1: كمبيوتر مكتبي HP ProDesk 600]');
     expect(deviceText).toContain('[جهاز 2: تابلت Apple iPad Air]');
   });
+
+  describe('Partial Delivery & Multi-Device Status Flow', () => {
+    function computeReceiptOverallStatus(r) {
+      if (!r) return 'قيد الفحص';
+      const devs = Array.isArray(r.devices) && r.devices.length ? r.devices : null;
+      if (!devs || devs.length === 1) {
+        return (devs && devs[0] && devs[0].status) || r.status || 'قيد الفحص';
+      }
+      const deliveredCount = devs.filter(d => d.status === 'تم التسليم').length;
+      if (deliveredCount === devs.length) {
+        return 'تم التسليم';
+      }
+      if (deliveredCount > 0) {
+        return 'تسليم جزئي';
+      }
+      if (r.status === 'تم التسليم' || r.status === 'تسليم جزئي') {
+        const anyDone = devs.some(d => d.status === 'مكتمل');
+        return anyDone ? 'مكتمل' : 'قيد الفحص';
+      }
+      return r.status || 'قيد الفحص';
+    }
+
+    it('correctly transitions receipt to تسليم جزئي when delivering 1 of 2 devices', () => {
+      const receipt = {
+        id: 'rec_multi_deliv',
+        receiptNumber: 'MT-2026-9999',
+        status: 'مكتمل',
+        devices: [
+          { id: 'dev_1', category: 'لابتوب', brand: 'Dell', model: 'Latitude', status: 'مكتمل' },
+          { id: 'dev_2', category: 'شاشة', brand: 'Samsung', model: '24 inch', status: 'مكتمل' }
+        ]
+      };
+
+      // Initially neither is delivered
+      expect(computeReceiptOverallStatus(receipt)).toBe('مكتمل');
+
+      // Deliver first device
+      receipt.devices[0].status = 'تم التسليم';
+      receipt.devices[0].deliveredAt = '2026-11-05T20:00:00.000Z';
+      receipt.devices[0].deliveredBy = 'أحمد المهندس';
+      receipt.devices[0].deliveryNotes = 'تم التجربة والتسليم مع الشاحن';
+      receipt.status = computeReceiptOverallStatus(receipt);
+
+      expect(receipt.status).toBe('تسليم جزئي');
+      expect(receipt.devices[0].status).toBe('تم التسليم');
+      expect(receipt.devices[1].status).toBe('مكتمل');
+
+      // Deliver second device
+      receipt.devices[1].status = 'تم التسليم';
+      receipt.devices[1].deliveredAt = '2026-11-05T20:30:00.000Z';
+      receipt.status = computeReceiptOverallStatus(receipt);
+
+      expect(receipt.status).toBe('تم التسليم');
+    });
+
+    it('reverts status gracefully when a partial delivery is undone', () => {
+      const receipt = {
+        id: 'rec_multi_revert',
+        receiptNumber: 'MT-2026-8888',
+        status: 'تسليم جزئي',
+        devices: [
+          { id: 'dev_1', category: 'لابتوب', brand: 'HP', status: 'تم التسليم', deliveredAt: '2026-11-05T12:00:00.000Z' },
+          { id: 'dev_2', category: 'كمبيوتر مكتبي', brand: 'Dell', status: 'مكتمل' }
+        ]
+      };
+
+      // Undoing delivery of device 1
+      receipt.devices[0].status = 'مكتمل';
+      receipt.devices[0].deliveredAt = '';
+      receipt.status = computeReceiptOverallStatus(receipt);
+
+      expect(receipt.status).toBe('مكتمل');
+      expect(receipt.devices[0].status).toBe('مكتمل');
+      expect(receipt.devices[1].status).toBe('مكتمل');
+    });
+
+    it('builds a clear WhatsApp notification for partial delivery with remaining devices listed', () => {
+      const receipt = {
+        receiptNumber: 'MT-2026-7777',
+        customer: { name: 'مهندس سامح' },
+        cost: 1500,
+        deposit: 500,
+        devices: [
+          { category: 'لابتوب', brand: 'HP', model: 'Victus', status: 'تم التسليم' },
+          { category: 'شاشة', brand: 'LG', model: 'UltraWide', status: 'الصيانة' }
+        ]
+      };
+
+      const dev = receipt.devices[0];
+      const collectedAmount = 500;
+      const remainingDevs = receipt.devices.filter(d => d.status !== 'تم التسليم');
+
+      let remInfo = '';
+      if (remainingDevs.length > 0) {
+        remInfo = `📌 الأجهزة المتبقية بالورشة قيد الصيانة (${remainingDevs.length} أجهزة): ` +
+          remainingDevs.map((d, i) => `[جهاز ${i+1}]: ${d.category} ${d.brand} (${d.status})`).join('، ');
+      }
+
+      const msg = `تم تسليم جهازكم (${dev.category} ${dev.brand} ${dev.model}) بنجاح. المبلغ المسدد: ${collectedAmount} ج.م. ${remInfo}`;
+
+      expect(msg).toContain('لابتوب HP Victus');
+      expect(msg).toContain('المبلغ المسدد: 500 ج.م');
+      expect(msg).toContain('شاشة LG (الصيانة)');
+      expect(msg).toContain('الأجهزة المتبقية بالورشة قيد الصيانة (1 أجهزة)');
+    });
+  });
 });

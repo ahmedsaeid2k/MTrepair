@@ -847,6 +847,18 @@ function openQuickStatusModal(rawR){
         <div><b>الحالة الحالية:</b> <span class="status-badge ${(STATUSES.find(s=>s.v===r.status)||{}).cls||'st-check'}">${escapeHtml(r.status)}</span></div>
       </div>
 
+      ${(Array.isArray(r.devices) && r.devices.length > 1) ? `
+        <div style="background:#e0f2fe;border:1px solid #7dd3fc;border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <div>
+            <div style="font-size:12px;font-weight:700;color:#0369a1;">📦 إيصال متعدد (${r.devices.length} أجهزة)</div>
+            <div style="font-size:11px;color:#075985;">يمكنك تسليم جهاز واحد محدد للعميل دون باقي الأجهزة</div>
+          </div>
+          <button type="button" class="btn btn-xs" style="background:#0284c7;color:#fff;border:none;font-weight:700;padding:6px 12px;border-radius:var(--radius-sm);" id="quickDeliverSingleDevBtn">
+            تسليم جهاز محدد
+          </button>
+        </div>
+      ` : ''}
+
       <label style="margin-bottom:8px;font-size:12.5px;">اختر الحالة الجديدة للجهاز:</label>
       <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:16px;">
         ${STATUSES.map(s=>`
@@ -888,11 +900,27 @@ function openQuickStatusModal(rawR){
   overlay.querySelector('#cancelQuickStatus').onclick = ()=>overlay.remove();
   const quickStatusCostEstBtn = overlay.querySelector('#quickStatusCostEstBtn');
   if(quickStatusCostEstBtn) quickStatusCostEstBtn.onclick = ()=>{ overlay.remove(); openCostEstimateModal(r); };
+  const quickDeliverSingleDevBtn = overlay.querySelector('#quickDeliverSingleDevBtn');
+  if(quickDeliverSingleDevBtn){
+    quickDeliverSingleDevBtn.onclick = () => {
+      overlay.remove();
+      if(typeof window.openDeliverDeviceModalDirect === 'function'){
+        window.openDeliverDeviceModalDirect(r.id || r.receiptNumber, r.receiptNumber);
+      }
+    };
+  }
 
   let isQuickStatusBusy = false;
 
   function applyQuickStatusChange(statusToSet, techToSet, shouldSendWa){
     r.status = statusToSet;
+    if(statusToSet === 'تم التسليم' && Array.isArray(r.devices)){
+      r.devices.forEach(d => {
+        d.status = 'تم التسليم';
+        if(!d.deliveredAt) d.deliveredAt = new Date().toISOString();
+        if(!d.deliveredBy) d.deliveredBy = (state.user && state.user.name) || 'نظام';
+      });
+    }
     if(techToSet) r.technician = techToSet;
     r.updatedBy = (state.user && state.user.name) || 'نظام';
     r.updatedAt = new Date().toISOString();
@@ -950,6 +978,13 @@ function openQuickStatusModal(rawR){
     btn.onclick = async ()=>{
       if(isQuickStatusBusy) return;
       const newStatus = btn.dataset.setstatus;
+      if(newStatus === 'تسليم جزئي'){
+        overlay.remove();
+        if(typeof window.openDeliverDeviceModalDirect === 'function'){
+          window.openDeliverDeviceModalDirect(r.id || r.receiptNumber, r.receiptNumber);
+        }
+        return;
+      }
       const newTech = overlay.querySelector('#quickTechSelect').value;
       const sendWa = overlay.querySelector('#sendWaAfterStatus').checked;
       const remaining = (typeof getReceiptRemaining === 'function') ? getReceiptRemaining(r) : Math.max(0, (Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0)) - Number(r.deposit||0) + Number(r.refunded||0));
@@ -972,6 +1007,13 @@ function openQuickStatusModal(rawR){
         promptDeliveryRemainingPayment(r, remaining, async (shouldPay, payMethodName)=>{
           if(newTech) r.technician = newTech;
           r.status = 'تم التسليم';
+          if(Array.isArray(r.devices)){
+            r.devices.forEach(d => {
+              d.status = 'تم التسليم';
+              if(!d.deliveredAt) d.deliveredAt = new Date().toISOString();
+              if(!d.deliveredBy) d.deliveredBy = (state.user && state.user.name) || 'نظام';
+            });
+          }
           r.updatedBy = (state.user && state.user.name) || 'نظام';
           r.updatedAt = new Date().toISOString();
           r._localModifiedAt = Date.now();

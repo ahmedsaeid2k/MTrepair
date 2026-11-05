@@ -1022,6 +1022,10 @@ function normalizeReceipt(r){
   r.receivedAt = r.receivedAt || r.ReceivedAt || r.createdAt || r.CreatedAt || '';
   r.createdAt = r.createdAt || r.CreatedAt || r.receivedAt || '';
 
+  // Normalize Status
+  r.status = String(r.status || r.Status || 'قيد الفحص');
+  r.Status = r.status;
+
   // Normalize Customer
   const cTitle = extractCustomerTitle(r);
   const cName = extractCustomerName(r) || 'عميل';
@@ -1161,6 +1165,10 @@ function normalizeReceipt(r){
         faults: Array.isArray(r.faults) ? [...r.faults] : [],
         faultNotes: String(r.faultNotes || ''),
         technician: String(r.technician || ''),
+        status: String(r.status || 'قيد الفحص'),
+        deliveredAt: String(r.deliveryDate || ''),
+        deliveredBy: '',
+        deliveryNotes: '',
         photos: r.photos || []
       }
     ];
@@ -1176,6 +1184,10 @@ function normalizeReceipt(r){
       faults: Array.isArray(d.faults) ? d.faults.map(String) : (typeof d.faults === 'string' ? d.faults.split('، ').filter(Boolean) : []),
       faultNotes: String(d.faultNotes != null ? d.faultNotes : ''),
       technician: String(d.technician != null ? d.technician : (r.technician || '')),
+      status: String(d.status || r.status || 'قيد الفحص'),
+      deliveredAt: String(d.deliveredAt || (d.status === 'تم التسليم' && r.deliveryDate ? r.deliveryDate : '')),
+      deliveredBy: String(d.deliveredBy || ''),
+      deliveryNotes: String(d.deliveryNotes || ''),
       photos: Array.isArray(d.photos) ? d.photos : []
     }));
   }
@@ -1291,6 +1303,35 @@ function getReceiptRemaining(rawR){
 
 window.getReceiptTotalDue = getReceiptTotalDue;
 window.getReceiptRemaining = getReceiptRemaining;
+
+/**
+ * Calculates the overall status of a receipt based on its devices.
+ * If all devices are delivered -> 'تم التسليم'
+ * If some are delivered and some are not -> 'تسليم جزئي'
+ * Otherwise preserves active status.
+ * @param {object} r - Receipt object
+ * @returns {string} Overall receipt status
+ */
+function computeReceiptOverallStatus(r){
+  if(!r) return 'قيد الفحص';
+  const devs = Array.isArray(r.devices) && r.devices.length ? r.devices : null;
+  if(!devs || devs.length === 1){
+    return (devs && devs[0] && devs[0].status) || r.status || 'قيد الفحص';
+  }
+  const deliveredCount = devs.filter(d => d.status === 'تم التسليم').length;
+  if(deliveredCount === devs.length){
+    return 'تم التسليم';
+  }
+  if(deliveredCount > 0){
+    return 'تسليم جزئي';
+  }
+  if(r.status === 'تم التسليم' || r.status === 'تسليم جزئي'){
+    const anyDone = devs.some(d => d.status === 'مكتمل');
+    return anyDone ? 'مكتمل' : 'قيد الفحص';
+  }
+  return r.status || 'قيد الفحص';
+}
+window.computeReceiptOverallStatus = computeReceiptOverallStatus;
 
 /* Safe universal receipt finder by String ID or Receipt Number */
 function findReceiptByIdOrNum(queryId, queryNum){

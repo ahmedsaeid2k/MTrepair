@@ -1034,6 +1034,7 @@ textarea { min-height: 75px; resize: vertical; }
 .st-await-parts { background: var(--cyan-bg); color: var(--cyan-text); border-color: #a5f3fc; }
 .st-repair { background: var(--amber-bg); color: var(--amber-text); border-color: #fde68a; }
 .st-done { background: var(--green-bg); color: var(--green-text); border-color: #a7f3d0; }
+.st-partial { background: #e0f2fe; color: #0369a1; border-color: #7dd3fc; }
 .st-delivered { background: #ede9fe; color: #6b21a8; border-color: #ddd6fe; }
 .st-failed { background: var(--red-bg); color: var(--red-text); border-color: #fecdd3; }
 .st-rejected { background: var(--slate-200); color: var(--slate-700); border-color: var(--slate-300); }
@@ -1044,6 +1045,7 @@ textarea { min-height: 75px; resize: vertical; }
 [data-theme="dark"] .st-await-parts { background: rgba(6, 182, 212, 0.22); color: #67e8f9; border-color: rgba(6, 182, 212, 0.35); }
 [data-theme="dark"] .st-repair { border-color: rgba(245, 158, 11, 0.35); }
 [data-theme="dark"] .st-done { border-color: rgba(16, 185, 129, 0.35); }
+[data-theme="dark"] .st-partial { background: rgba(14, 165, 233, 0.22); color: #38bdf8; border-color: rgba(14, 165, 233, 0.35); }
 [data-theme="dark"] .st-delivered { background: rgba(147, 51, 234, 0.22); color: #c084fc; border-color: rgba(147, 51, 234, 0.35); }
 [data-theme="dark"] .st-failed { border-color: rgba(239, 68, 68, 0.35); }
 [data-theme="dark"] .st-rejected { background: rgba(148, 163, 184, 0.15); color: #cbd5e1; border-color: rgba(148, 163, 184, 0.25); }
@@ -6130,6 +6132,10 @@ function normalizeReceipt(r){
   r.receivedAt = r.receivedAt || r.ReceivedAt || r.createdAt || r.CreatedAt || '';
   r.createdAt = r.createdAt || r.CreatedAt || r.receivedAt || '';
 
+  // Normalize Status
+  r.status = String(r.status || r.Status || 'قيد الفحص');
+  r.Status = r.status;
+
   // Normalize Customer
   const cTitle = extractCustomerTitle(r);
   const cName = extractCustomerName(r) || 'عميل';
@@ -6269,6 +6275,10 @@ function normalizeReceipt(r){
         faults: Array.isArray(r.faults) ? [...r.faults] : [],
         faultNotes: String(r.faultNotes || ''),
         technician: String(r.technician || ''),
+        status: String(r.status || 'قيد الفحص'),
+        deliveredAt: String(r.deliveryDate || ''),
+        deliveredBy: '',
+        deliveryNotes: '',
         photos: r.photos || []
       }
     ];
@@ -6284,6 +6294,10 @@ function normalizeReceipt(r){
       faults: Array.isArray(d.faults) ? d.faults.map(String) : (typeof d.faults === 'string' ? d.faults.split('، ').filter(Boolean) : []),
       faultNotes: String(d.faultNotes != null ? d.faultNotes : ''),
       technician: String(d.technician != null ? d.technician : (r.technician || '')),
+      status: String(d.status || r.status || 'قيد الفحص'),
+      deliveredAt: String(d.deliveredAt || (d.status === 'تم التسليم' && r.deliveryDate ? r.deliveryDate : '')),
+      deliveredBy: String(d.deliveredBy || ''),
+      deliveryNotes: String(d.deliveryNotes || ''),
       photos: Array.isArray(d.photos) ? d.photos : []
     }));
   }
@@ -6399,6 +6413,35 @@ function getReceiptRemaining(rawR){
 
 window.getReceiptTotalDue = getReceiptTotalDue;
 window.getReceiptRemaining = getReceiptRemaining;
+
+/**
+ * Calculates the overall status of a receipt based on its devices.
+ * If all devices are delivered -> 'تم التسليم'
+ * If some are delivered and some are not -> 'تسليم جزئي'
+ * Otherwise preserves active status.
+ * @param {object} r - Receipt object
+ * @returns {string} Overall receipt status
+ */
+function computeReceiptOverallStatus(r){
+  if(!r) return 'قيد الفحص';
+  const devs = Array.isArray(r.devices) && r.devices.length ? r.devices : null;
+  if(!devs || devs.length === 1){
+    return (devs && devs[0] && devs[0].status) || r.status || 'قيد الفحص';
+  }
+  const deliveredCount = devs.filter(d => d.status === 'تم التسليم').length;
+  if(deliveredCount === devs.length){
+    return 'تم التسليم';
+  }
+  if(deliveredCount > 0){
+    return 'تسليم جزئي';
+  }
+  if(r.status === 'تم التسليم' || r.status === 'تسليم جزئي'){
+    const anyDone = devs.some(d => d.status === 'مكتمل');
+    return anyDone ? 'مكتمل' : 'قيد الفحص';
+  }
+  return r.status || 'قيد الفحص';
+}
+window.computeReceiptOverallStatus = computeReceiptOverallStatus;
 
 /* Safe universal receipt finder by String ID or Receipt Number */
 function findReceiptByIdOrNum(queryId, queryNum){
@@ -10750,6 +10793,7 @@ const STATUSES = [
   {v:'بانتظار قطعة غيار', cls:'st-await-parts', icon:'', desc:'بانتظار توفير قطع الغيار المطلوبة'},
   {v:'الصيانة', cls:'st-repair', icon:'', desc:'قيد الإصلاح الفعلي'},
   {v:'مكتمل', cls:'st-done', icon:'', desc:'تم الانتهاء وجاهز للتسليم'},
+  {v:'تسليم جزئي', cls:'st-partial', icon:'📦', desc:'تم تسليم بعض الأجهزة وجاري العمل على الباقي'},
   {v:'تم التسليم', cls:'st-delivered', icon:'', desc:'تم تسليم الجهاز للعميل بنجاح'},
   {v:'تعذرت الصيانة', cls:'st-failed', icon:'', desc:'تعذر الإصلاح'},
   {v:'رفض العميل', cls:'st-rejected', icon:'', desc:'رفض العميل التكلفة/الإصلاح'},
@@ -10815,6 +10859,7 @@ const DEFAULT_WA_TEMPLATES = {
   check: `مرحبًا {customer_name}\nنحيطكم علماً بأن جهازكم ({device}) قيد الفحص والتشخيص الفني الدقيق حالياً\nرقم الإيصال: #{receipt_no}\nتتبع حالة الفحص مباشرة: {track_url}\n{shop_name}`,
   repair: `مرحبًا {customer_name}\nتمت المباشرة والبدء في أعمال صيانة وإصلاح جهازكم ({device}) بمركز {shop_name}\nرقم الإيصال: #{receipt_no}\nتتبع حالة جهازك مباشرة: {track_url}`,
   done: `مرحبًا {customer_name}\nيسعدنا إبلاغكم بأنه تم الانتهاء من صيانة جهازكم ({device}) بنجاح وهو جاهز للاستلام الآن بفرع {shop_name}\n\nرقم الإيصال: #{receipt_no}\nالمبلغ المتبقي المطلوب: *{remaining} ج.م*\nتفاصيل الإيصال والمتابعة:\n{track_url}\n\nشكراً لثقتكم الغالية بنا!`,
+  partial_delivery: `مرحبًا {customer_name}\nنود إحاطتكم بأنه تم تسليم جهازكم بنجاح بموجب الإيصال رقم #{receipt_no} بمركز {shop_name}.\nعلماً بأن باقي أجهزة الإيصال قيد العمل والمتابعة بالورشة وسنوافيكم فور جاهزيتها.\nالمتبقي المطلوب للإيصال: *{remaining} ج.م*\nتتبع الأجهزة: {track_url}\n{shop_name}`,
   delivered: `مرحبًا {customer_name}\nتم تسليم جهازكم ({device}) بنجاح بموجب الإيصال رقم #{receipt_no}\nيسري الضمان المعتمد على الخدمة وقطع الغيار المبدلة وفق شروط الإيصال.\nسعدنا بخدمتكم في {shop_name}، ونتطلع دائماً لخدمتكم!`,
   pending: `مرحبًا {customer_name}\nنود إحاطتكم بأن صيانة جهازكم ({device}) بموجب الإيصال #{receipt_no} معلقة مؤقتاً\nيرجى التواصل معنا لتأكيد مقايسة التكلفة أو التوجيه بشأن الصيانة.\nتتبع الجهاز: {track_url}\n{shop_name} - هاتف: {shop_phone}`,
   warranty: `مرحبًا {customer_name}\nتم قيد جهازكم ({device}) بموجب الإيصال #{receipt_no} تحت مظلة الضمان المعتمد\nجاري المتابعة والفحص الفني اللازم مجاناً.\nرابط المتابعة: {track_url}\n{shop_name}`,
@@ -18026,11 +18071,11 @@ async function saveReceipt(d, printA5, sendWa, printSticker){
 /* ---------------- Archive & Overdue Reminders ---------------- */
 const STATUS_GROUPS = {
   all: {label:'الكل', statuses:null},
-  active: {label:'قيد العمل', statuses:['قيد الفحص','بانتظار موافقة العميل','بانتظار قطعة غيار','الصيانة']},
+  active: {label:'قيد العمل', statuses:['قيد الفحص','بانتظار موافقة العميل','بانتظار قطعة غيار','الصيانة','تسليم جزئي']},
   quotationWaiting: {label:'عروض بانتظار موافقة العميل', statuses:null},
   delayed48h: {label:'متأخرة بالورشة (+48 س)', statuses:null},
   done: {label:'جاهزة للاستلام', statuses:['مكتمل']},
-  delivered: {label:'تم التسليم', statuses:['تم التسليم']},
+  delivered: {label:'تم التسليم', statuses:['تم التسليم','تسليم جزئي']},
   overdue: {label:'متروكة +7 أيام', statuses:null},
   unclaimed: {label:'أجهزة لم تُطالَب (+30 يوم)', statuses:null},
   warranty: {label:'إصلاحات داخل الضمان', statuses:null},
@@ -18084,12 +18129,20 @@ function archiveTable(list){
     const isMultiDev = Array.isArray(r.devices) && r.devices.length > 1;
     const deviceHtml = isMultiDev ? `
       <div>
-        <div style="display:flex;align-items:center;gap:4px;">
+        <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
           <span class="badge" style="background:#e0e7ff;color:#3730a3;font-size:10px;font-weight:800;padding:1px 5px;border-radius:4px;">${r.devices.length} أجهزة</span>
           <b style="font-size:12px;color:var(--ink);">${escapeHtml(r.devices[0].category || 'جهاز')} ${escapeHtml(r.devices[0].brand === 'أخرى' ? r.devices[0].brandOther : (r.devices[0].brand || ''))}</b>
+          <span class="status-badge ${(STATUSES.find(s=>s.v===(r.devices[0].status||r.status))||{}).cls||'st-check'}" style="font-size:9.5px;padding:0 4px;">${escapeHtml(r.devices[0].status || r.status || 'قيد الفحص')}</span>
         </div>
-        <div style="font-size:11px;color:var(--ink-secondary);margin-top:2px;">
-          + ${r.devices.slice(1).map(d => escapeHtml((d.category || 'جهاز') + ' ' + (d.brand === 'أخرى' ? d.brandOther : (d.brand || '')) + ' ' + (d.model || ''))).join('، ')}
+        <div style="font-size:11px;color:var(--ink-secondary);margin-top:3px;display:flex;flex-direction:column;gap:2px;">
+          ${r.devices.slice(1).map(d => {
+            const dSt = (STATUSES.find(s=>s.v===(d.status||r.status))||{}).cls || 'st-check';
+            const dName = (d.category || 'جهاز') + ' ' + (d.brand === 'أخرى' ? d.brandOther : (d.brand || '')) + ' ' + (d.model || '');
+            return `<div style="display:flex;align-items:center;gap:4px;">
+              <span>• ${escapeHtml(dName)}</span>
+              <span class="status-badge ${dSt}" style="font-size:9px;padding:0 3px;">${escapeHtml(d.status || r.status || 'قيد الفحص')}</span>
+            </div>`;
+          }).join('')}
         </div>
       </div>
     ` : `
@@ -18200,9 +18253,19 @@ function archiveCards(list){
         <div style="margin-top:10px;">
           ${isMultiDev ? `
             <div class="smart-card-device">
-              <b>${escapeHtml(r.devices[0].category || 'جهاز')} ${escapeHtml(r.devices[0].brand === 'أخرى' ? r.devices[0].brandOther : (r.devices[0].brand || ''))}</b> <span style="color:var(--ink-secondary);font-weight:500;">${escapeHtml(r.devices[0].model || '')}</span>
-              <div style="font-size:11px;color:var(--ink-secondary);margin-top:2px;">
-                + ${r.devices.slice(1).map(d => escapeHtml((d.category || 'جهاز') + ' ' + (d.brand === 'أخرى' ? d.brandOther : (d.brand || '')) + ' ' + (d.model || ''))).join('، ')}
+              <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+                <b>${escapeHtml(r.devices[0].category || 'جهاز')} ${escapeHtml(r.devices[0].brand === 'أخرى' ? r.devices[0].brandOther : (r.devices[0].brand || ''))}</b> <span style="color:var(--ink-secondary);font-weight:500;">${escapeHtml(r.devices[0].model || '')}</span>
+                <span class="status-badge ${(STATUSES.find(s=>s.v===(r.devices[0].status||r.status))||{}).cls||'st-check'}" style="font-size:9.5px;padding:0 4px;">${escapeHtml(r.devices[0].status || r.status || 'قيد الفحص')}</span>
+              </div>
+              <div style="font-size:11px;color:var(--ink-secondary);margin-top:3px;display:flex;flex-direction:column;gap:2px;">
+                ${r.devices.slice(1).map(d => {
+                  const dSt = (STATUSES.find(s=>s.v===(d.status||r.status))||{}).cls || 'st-check';
+                  const dName = (d.category || 'جهاز') + ' ' + (d.brand === 'أخرى' ? d.brandOther : (d.brand || '')) + ' ' + (d.model || '');
+                  return `<div style="display:flex;align-items:center;gap:4px;">
+                    <span>• ${escapeHtml(dName)}</span>
+                    <span class="status-badge ${dSt}" style="font-size:9px;padding:0 3px;">${escapeHtml(d.status || r.status || 'قيد الفحص')}</span>
+                  </div>`;
+                }).join('')}
               </div>
             </div>
           ` : `
@@ -18559,6 +18622,17 @@ window.openQuickStatusModalDirect = function(receiptId, receiptNum){
   }catch(err){
     console.error('Error in openQuickStatusModalDirect:', err);
     showToast('حدث خطأ أثناء فتح تغيير الحالة: ' + (err.message || err), 'error');
+  }
+};
+
+window.openDeliverDeviceModalDirect = function(receiptId, receiptNum, devIdx){
+  try{
+    const r = findReceiptByIdOrNum(receiptId, receiptNum);
+    if(!r){ showToast('لم يتم العثور على الإيصال المطلوب', 'error'); return; }
+    openDeliverDeviceModal(r.id || r.receiptNumber, r.receiptNumber, devIdx);
+  }catch(err){
+    console.error('Error in openDeliverDeviceModalDirect:', err);
+    showToast('حدث خطأ أثناء فتح تسليم الجهاز: ' + (err.message || err), 'error');
   }
 };
 
@@ -19332,6 +19406,11 @@ window.renderUnifiedSelectionBar = function(){
           <button class="unified-bar-btn btn-status-quick" style="background:var(--green-bg);color:var(--green-text);border-color:rgba(5,150,105,0.25);" onclick="openQuickStatusModalDirect('${safeTargetId}', '${rNum}')" title="تغيير سريع لحالة الجهاز">
             ${getSvgIcon('maintenance', 13)} الحالة
           </button>
+          ${(Array.isArray(r.devices) && r.devices.length > 1) ? `
+            <button class="unified-bar-btn" style="background:#e0f2fe;color:#0369a1;border-color:rgba(14,165,233,0.35);font-weight:700;" onclick="openDeliverDeviceModalDirect('${safeTargetId}', '${rNum}')" title="تسليم جهاز من أجهزة هذا الإيصال">
+              ${getSvgIcon('check', 13)} تسليم جهاز
+            </button>
+          ` : ''}
           <button class="unified-bar-btn" style="background:#ecfdf5;color:#047857;border-color:rgba(16,185,129,0.35);font-weight:700;" onclick="openCostEstimateModalDirect('${safeTargetId}', '${rNum}')" title="عرض ومقايسة التكلفة عبر واتساب">
             ${getSvgIcon('finance', 13)} عرض التكلفة
           </button>
@@ -20332,6 +20411,13 @@ window.openReceiptActionSheet = function(receiptId, receiptNum){
           <div class="act-label">تغيير الحالة</div>
           <div class="act-desc">تحديث فوري لموقف الجهاز</div>
         </div>
+        ${(Array.isArray(r.devices) && r.devices.length > 1) ? `
+          <div class="action-sheet-card-btn" style="border-color:rgba(14,165,233,0.35);background:rgba(14,165,233,0.06);" onclick="document.getElementById('receiptActionSheetModal').remove(); openDeliverDeviceModalDirect('${safeTargetId}', '${rNum}');">
+            <div class="act-icon" style="color:#0284c7;">${getSvgIcon('check', 20)}</div>
+            <div class="act-label" style="color:#0369a1;">تسليم جهاز محدد</div>
+            <div class="act-desc">تسليم أحد أجهزة الإيصال للعميل</div>
+          </div>
+        ` : ''}
         <div class="action-sheet-card-btn" onclick="document.getElementById('receiptActionSheetModal').remove(); openReceiptDetailModal('${safeTargetId}', '${rNum}');">
           <div class="act-icon">${getSvgIcon('edit', 20)}</div>
           <div class="act-label">تعديل الإيصال</div>
@@ -20546,6 +20632,322 @@ window.openCustomerActionSheet = function(custName, custPhone, custTitle, custEm
   document.body.appendChild(overlay);
 };
 
+/* ---------------- Partial Device Delivery Engine (تسليم جهاز من إيصال متعدد) ---------------- */
+
+function syncReceiptStateAndStorage(r){
+  if(!r) return;
+  const targetId = String(r.id || '');
+  const targetNum = String(r.receiptNumber || '');
+  const idx = (state.receipts || []).findIndex(x => x && (
+    (targetId && (String(x.id) === targetId || String(x.receiptNumber) === targetId)) ||
+    (targetNum && (String(x.id) === targetNum || String(x.receiptNumber) === targetNum))
+  ));
+  if(idx > -1) state.receipts[idx] = r;
+  else if(Array.isArray(state.receipts)) state.receipts.push(r);
+
+  if(typeof setCache === 'function') setCache('receipts', state.receipts);
+  if(typeof safeLocalStorageSet === 'function') safeLocalStorageSet('microerp_cache_receipts', state.receipts);
+  if(typeof markReceiptOptimisticallyUpdated === 'function'){
+    markReceiptOptimisticallyUpdated(r.id || r.receiptNumber, r.status);
+  }
+  if(typeof window.updateReceiptStatusDOM === 'function'){
+    window.updateReceiptStatusDOM(r.id || r.receiptNumber, r.status);
+  }
+  if(typeof window.updateArchiveListOnly === 'function'){
+    window.updateArchiveListOnly();
+  } else if(typeof renderMain === 'function' && state.currentSection === 'maintenance'){
+    renderMain();
+  }
+}
+
+function sendPartialDeliveryWhatsapp(r, dev, collectedAmount){
+  if(!r || !dev) return;
+  const b = dev.brand === 'أخرى' ? dev.brandOther : (dev.brand || '');
+  const devTitle = `${dev.category || 'جهاز'} ${b} ${dev.model || ''}`.trim() || 'جهاز';
+  const cName = (typeof formatCustomerFullName === 'function') ? formatCustomerFullName(r) : ((r.customer && r.customer.name) || 'عميلنا العزيز');
+  const shop = (state.settings && state.settings.shopName) || 'مركز الصيانة';
+  const rNum = r.receiptNumber || '';
+  const trackUrl = (typeof getReceiptTrackingUrl === 'function') ? getReceiptTrackingUrl(r) : '';
+  const remaining = (typeof getReceiptRemaining === 'function') ? getReceiptRemaining(r) : 0;
+
+  const remainingDevs = (r.devices || []).filter(d => d.status !== 'تم التسليم');
+  let remInfo = '';
+  if(remainingDevs.length > 0){
+    remInfo = `\n\n📌 *الأجهزة المتبقية بالورشة قيد الصيانة (${remainingDevs.length} أجهزة):*\n` +
+      remainingDevs.map((d, i) => {
+        const db = d.brand === 'أخرى' ? d.brandOther : (d.brand || '');
+        const dt = `${d.category || 'جهاز'} ${db} ${d.model || ''}`.trim();
+        return `• [جهاز ${i+1}]: ${dt} (${d.status || 'قيد العمل'})`;
+      }).join('\n') +
+      `\nوسنوافيكم فور جاهزية باقي الأجهزة للاستلام.`;
+  } else {
+    remInfo = `\n\n🎉 تم تسليم جميع أجهزة هذا الإيصال بنجاح. يسري الضمان المعتمد على الخدمة وقطع الغيار المبدلة.`;
+  }
+
+  const payInfo = collectedAmount > 0 ? `\n• المبلغ المسدد عند الاستلام: *${collectedAmount.toLocaleString()} ج.م*` : '';
+  const remMoney = remaining > 0 ? `\n• المتبقي الإجمالي على الإيصال: *${remaining.toLocaleString()} ج.م*` : '\n• الحساب خالص المسدد بالكامل ✅';
+
+  const msg = `مرحبًا ${cName}\nتم تسليم جهازكم (*${devTitle}*) بنجاح بموجب الإيصال رقم #${rNum} بمركز ${shop}.${payInfo}${remMoney}${remInfo}\n\nلمتابعة تفاصيل الصيانة مباشرة:\n${trackUrl}\n\nسعداء بخدمتكم دائماً في ${shop}!`;
+
+  if(typeof sendWhatsapp === 'function'){
+    sendWhatsapp(r, msg, 'partial_delivery', 'تسليم جهاز');
+  }
+}
+
+function openDeliverDeviceModal(receiptId, receiptNum, initialDevIdx){
+  const rawR = findReceiptByIdOrNum(receiptId, receiptNum);
+  if(!rawR){
+    showToast('لم يتم العثور على الإيصال المطلوب', 'error');
+    return;
+  }
+  const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
+  const devs = Array.isArray(r.devices) && r.devices.length ? r.devices : [r.device || {}];
+  let curDevIdx = (typeof initialDevIdx === 'number' && initialDevIdx >= 0 && initialDevIdx < devs.length) ? initialDevIdx : 0;
+
+  // Remove any existing delivery modal
+  const existing = document.getElementById('deliverDeviceModalOverlay');
+  if(existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'deliverDeviceModalOverlay';
+
+  const cFullName = (typeof formatCustomerFullName === 'function') ? formatCustomerFullName(r) : ((r.customer && r.customer.name) || extractCustomerName(r) || 'عميل');
+  const rNum = escapeHtml(String(r.receiptNumber || ''));
+
+  function renderContent(){
+    const remaining = (typeof getReceiptRemaining === 'function') ? getReceiptRemaining(r) : 0;
+    const targetDev = devs[curDevIdx] || devs[0];
+    const devBrand = targetDev.brand === 'أخرى' ? targetDev.brandOther : (targetDev.brand || '');
+    const devTitle = `${targetDev.category || 'جهاز'} ${devBrand} ${targetDev.model || ''}`.trim() || `جهاز #${curDevIdx + 1}`;
+    const devStatus = targetDev.status || r.status || 'قيد الفحص';
+    const isAlreadyDelivered = devStatus === 'تم التسليم';
+    const targetDevFaults = Array.isArray(targetDev.faults) ? targetDev.faults.join('، ') : (targetDev.faults || '-');
+
+    overlay.innerHTML = `
+      <div class="modal-content" style="max-width:540px;padding:22px;border-radius:var(--radius-md);">
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:16px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:22px;">📦</span>
+            <div>
+              <h3 style="margin:0;font-size:16px;color:var(--ink);">تسليم جهاز من إيصال متعدد</h3>
+              <div style="font-size:12px;color:var(--ink-secondary);">إيصال رقم: <b class="mono" style="color:var(--primary);">#${rNum}</b> • العميل: <b>${escapeHtml(cFullName)}</b></div>
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-xs" id="closeDeliverDevModal" style="font-size:16px;padding:2px 8px;">&times;</button>
+        </div>
+
+        ${devs.length > 1 ? `
+          <div style="margin-bottom:14px;">
+            <label style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px;display:block;">اختر الجهاز المراد تسليمه:</label>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;" id="deliverDevSelectorTabs">
+              ${devs.map((d, dIdx) => {
+                const b = d.brand === 'أخرى' ? d.brandOther : (d.brand || '');
+                const t = `${d.category || 'جهاز'} ${b} ${d.model || ''}`.trim() || `جهاز #${dIdx+1}`;
+                const isSelected = dIdx === curDevIdx;
+                const dSt = d.status || r.status || 'قيد الفحص';
+                const isDDelivered = dSt === 'تم التسليم';
+                const stCls = (STATUSES.find(s=>s.v===dSt)||{}).cls || 'st-check';
+                return `
+                  <button type="button" class="btn btn-xs ${isSelected ? 'btn-primary' : 'btn-ghost'}" data-seldevidx="${dIdx}" style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;font-size:12px;border-radius:var(--radius-sm);">
+                    <span>${isDDelivered ? '✅' : '🔧'} ${escapeHtml(t)}</span>
+                    <span class="status-badge ${stCls}" style="font-size:9.5px;padding:1px 5px;">${escapeHtml(dSt)}</span>
+                  </button>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        ` : ''}
+
+        <!-- بطاقة تفاصيل الجهاز المختار -->
+        <div style="background:var(--paper2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px;margin-bottom:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <b style="font-size:14px;color:var(--ink);">${escapeHtml(devTitle)}</b>
+            <span class="status-badge ${(STATUSES.find(s=>s.v===devStatus)||{}).cls||'st-check'}">${escapeHtml(devStatus)}</span>
+          </div>
+          <div style="font-size:12px;color:var(--ink-secondary);line-height:1.6;">
+            <div><b>الأعطال المسجلة:</b> ${escapeHtml(targetDevFaults)}</div>
+            ${targetDev.faultNotes ? `<div><b>ملاحظات الفحص:</b> ${escapeHtml(targetDev.faultNotes)}</div>` : ''}
+            <div><b>الملحقات المستلمة:</b> ${escapeHtml(targetDev.accessories || 'لا توجد')}</div>
+            ${targetDev.technician ? `<div><b>الفني القائم بالصيانة:</b> ${escapeHtml(targetDev.technician)}</div>` : ''}
+          </div>
+        </div>
+
+        ${isAlreadyDelivered ? `
+          <div style="background:#ecfdf5;border:1px solid #10b981;padding:12px;border-radius:var(--radius-sm);margin-bottom:16px;">
+            <div style="color:#047857;font-weight:700;font-size:13px;display:flex;align-items:center;gap:6px;">
+              <span>✅</span>
+              <span>تم تسليم هذا الجهاز للعميل بالفعل!</span>
+            </div>
+            <div style="font-size:11.5px;color:#065f46;margin-top:4px;">
+              ${targetDev.deliveredAt ? `تاريخ التسليم: ${new Date(targetDev.deliveredAt).toLocaleString('ar-EG')}` : ''}
+              ${targetDev.deliveredBy ? ` • المستلم/المسؤول: ${escapeHtml(targetDev.deliveredBy)}` : ''}
+              ${targetDev.deliveryNotes ? ` • ملاحظات: ${escapeHtml(targetDev.deliveryNotes)}` : ''}
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+            <button class="btn btn-ghost btn-sm" id="revertDevDeliveryBtn" style="color:var(--red);border-color:var(--red);">
+              تراجع عن تسليم هذا الجهاز (إعادة للورشة)
+            </button>
+            <button class="btn btn-ghost btn-sm" id="cancelDevDelivery">إغلاق</button>
+          </div>
+        ` : `
+          <!-- خيارات التسليم والتحصيل -->
+          <div style="background:var(--paper3);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px;margin-bottom:14px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-size:12.5px;">
+              <span style="font-weight:700;color:var(--ink);">الموقف المالي للإيصال بالكامل:</span>
+              <span class="mono" style="font-weight:800;${remaining > 0 ? 'color:var(--red);' : 'color:var(--green);'}">
+                المتبقي الإجمالي: ${remaining.toLocaleString()} ج.م
+              </span>
+            </div>
+
+            <div class="grid2" style="gap:10px;margin-bottom:10px;">
+              <div class="field" style="margin:0;">
+                <label style="font-size:12px;">المبلغ المحصل عند تسليم هذا الجهاز (ج.م)</label>
+                <input type="number" id="devCollectAmount" min="0" max="${Math.max(0, remaining)}" value="0" placeholder="0" class="mono" style="font-weight:700;">
+              </div>
+              <div class="field" style="margin:0;">
+                <label style="font-size:12px;">طريقة الدفع</label>
+                <select id="devPayMethod">
+                  <option value="نقدي (كاش)">نقدي (كاش)</option>
+                  <option value="فودافون كاش ومحافظ">فودافون كاش ومحافظ</option>
+                  <option value="إنستاباي InstaPay">إنستاباي InstaPay</option>
+                  <option value="فيزا وبطاقات بنكية">فيزا وبطاقات بنكية</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="field" style="margin:0;">
+              <label style="font-size:12px;">ملاحظات التسليم (اختياري)</label>
+              <input type="text" id="devDeliveryNotes" placeholder="مثال: تم تجربة الجهاز وتسليمه مع الشاحن والملحقات">
+            </div>
+          </div>
+
+          <div style="background:var(--green-bg);border:1px solid var(--green);padding:9px 12px;border-radius:var(--radius-sm);margin-bottom:14px;">
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--green-text);cursor:pointer;margin:0;">
+              <input type="checkbox" id="sendWaDevDelivery" checked style="width:auto;"> إرسال إشعار استلام وتسليم هذا الجهاز عبر واتساب للعميل
+            </label>
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;">
+            <button class="btn btn-ghost btn-sm" id="cancelDevDelivery">إلغاء</button>
+            <button class="btn btn-primary btn-sm" id="confirmDevDeliveryBtn" style="font-weight:800;padding:8px 16px;">
+              ✅ تأكيد تسليم هذا الجهاز للعميل
+            </button>
+          </div>
+        `}
+      </div>
+    `;
+
+    // Bind close events
+    const closeBtn = overlay.querySelector('#closeDeliverDevModal');
+    if(closeBtn) closeBtn.onclick = () => overlay.remove();
+    const cancelBtn = overlay.querySelector('#cancelDevDelivery');
+    if(cancelBtn) cancelBtn.onclick = () => overlay.remove();
+
+    // Bind tab switching
+    overlay.querySelectorAll('[data-seldevidx]').forEach(btn => {
+      btn.onclick = () => {
+        curDevIdx = Number(btn.dataset.seldevidx);
+        renderContent();
+      };
+    });
+
+    // Revert delivery handler
+    const revertBtn = overlay.querySelector('#revertDevDeliveryBtn');
+    if(revertBtn){
+      revertBtn.onclick = async () => {
+        if(!confirm(`هل أنت متأكد من التراجع عن تسليم «${devTitle}» وإعادته للورشة؟`)) return;
+        targetDev.status = 'مكتمل';
+        targetDev.deliveredAt = '';
+        targetDev.deliveredBy = '';
+        targetDev.deliveryNotes = '';
+        r.status = computeReceiptOverallStatus(r);
+        r.updatedBy = (state.user && state.user.name) || 'نظام';
+        r.updatedAt = new Date().toISOString();
+        r._localModifiedAt = Date.now();
+
+        recordAuditLog('تراجع عن تسليم جهاز', 'صيانة', `تم التراجع عن تسليم «${devTitle}» للإيصال #${rNum}`, r.id);
+
+        syncReceiptStateAndStorage(r);
+        overlay.remove();
+        showToast(`تم التراجع عن تسليم «${devTitle}» بنجاح`, 'info');
+      };
+    }
+
+    // Confirm delivery handler
+    const confirmBtn = overlay.querySelector('#confirmDevDeliveryBtn');
+    if(confirmBtn){
+      confirmBtn.onclick = async () => {
+        const collectAmount = Math.max(0, Number(overlay.querySelector('#devCollectAmount')?.value || 0));
+        const payMethod = overlay.querySelector('#devPayMethod')?.value || 'نقدي (كاش)';
+        const deliveryNotes = (overlay.querySelector('#devDeliveryNotes')?.value || '').trim();
+        const shouldSendWa = overlay.querySelector('#sendWaDevDelivery')?.checked;
+
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'جاري تسجيل التسليم...';
+
+        targetDev.status = 'تم التسليم';
+        targetDev.deliveredAt = new Date().toISOString();
+        targetDev.deliveredBy = (state.user && state.user.name) || 'نظام';
+        targetDev.deliveryNotes = deliveryNotes;
+
+        // Recalculate overall receipt status
+        r.status = computeReceiptOverallStatus(r);
+        r.updatedBy = (state.user && state.user.name) || 'نظام';
+        r.updatedAt = new Date().toISOString();
+        r._localModifiedAt = Date.now();
+
+        // If whole receipt delivered and has deliveryDate
+        if(r.status === 'تم التسليم' && !r.deliveryDate){
+          r.deliveryDate = new Date().toISOString().slice(0, 10);
+        }
+
+        // If cash collected at delivery
+        if(collectAmount > 0){
+          r.deposit = Number(r.deposit || 0) + collectAmount;
+          if(getReceiptRemaining(r) <= 0){
+            r.paid = true;
+          }
+        }
+
+        recordAuditLog('تسليم جهاز جزئي', 'صيانة', `تم تسليم جهاز «${devTitle}» للإيصال #${rNum} للعميل (${cFullName})` + (collectAmount > 0 ? ` مع تحصيل ${collectAmount.toLocaleString()} ج.م بواسطة [${payMethod}]` : ''), r.id);
+
+        syncReceiptStateAndStorage(r);
+        overlay.remove();
+
+        showToast(`✅ تم تسليم «${devTitle}» بنجاح` + (collectAmount > 0 ? ` وتحصيل ${collectAmount.toLocaleString()} ج.م` : ''), 'success');
+
+        if(shouldSendWa){
+          setTimeout(() => {
+            sendPartialDeliveryWhatsapp(r, targetDev, collectAmount);
+          }, 350);
+        }
+
+        // Persist payment & receipt remotely
+        (async () => {
+          try {
+            if(collectAmount > 0){
+              await savePaymentRemote(r.id, collectAmount, `تحصيل عند تسليم: ${devTitle}`, payMethod);
+              if(typeof refreshPayments === 'function') await refreshPayments();
+            }
+            await saveReceiptRemote(r);
+          } catch(err){
+            console.warn('Background sync error on dev delivery:', err);
+          }
+        })();
+      };
+    }
+  }
+
+  renderContent();
+  document.body.appendChild(overlay);
+}
+
+window.openDeliverDeviceModal = openDeliverDeviceModal;
+window.sendPartialDeliveryWhatsapp = sendPartialDeliveryWhatsapp;
+window.syncReceiptStateAndStorage = syncReceiptStateAndStorage;
+
 
 /* === [Module: js/modules/10d-receipt-detail.js] === */
 /* ---------------- Receipt Detail & Full Edit ---------------- */
@@ -20626,13 +21028,18 @@ async function openReceiptDetail(rawR){
               const isAct = idx === 0;
               const b = dv.brand === 'أخرى' ? dv.brandOther : (dv.brand || '');
               const t = `${dv.category || 'جهاز'} ${b} ${dv.model || ''}`.trim() || `جهاز #${idx+1}`;
+              const dSt = dv.status || r.status || 'قيد الفحص';
+              const isDel = dSt === 'تم التسليم';
+              const stCls = (STATUSES.find(s=>s.v===dSt)||{}).cls || 'st-check';
               return `
-                <button type="button" class="btn btn-xs ${isAct ? 'btn-primary' : 'btn-ghost'} detail-dev-tab-btn" data-didx="${idx}" style="font-size:12px;">
-                  ${escapeHtml(t)}
+                <button type="button" class="btn btn-xs ${isAct ? 'btn-primary' : 'btn-ghost'} detail-dev-tab-btn" data-didx="${idx}" style="font-size:12px;display:inline-flex;align-items:center;gap:5px;">
+                  <span>${isDel ? '✅' : '🔧'} ${escapeHtml(t)}</span>
+                  <span class="status-badge ${stCls}" style="font-size:9.5px;padding:1px 5px;">${escapeHtml(dSt)}</span>
                 </button>
               `;
             }).join('')}
           </div>
+          <div id="activeDevStatusBanner" style="margin-top:10px;"></div>
         </div>
       ` : ''}
       <div class="grid4">
@@ -21401,15 +21808,84 @@ async function openReceiptDetail(rawR){
       else c.classList.remove('sel');
     });
 
-    // Update active tab styling
+    // Update active tab styling & badges
     overlay.querySelectorAll('.detail-dev-tab-btn').forEach(btn => {
       const bIdx = Number(btn.dataset.didx);
-      if(bIdx === idx){
-        btn.className = 'btn btn-xs btn-primary detail-dev-tab-btn';
-      } else {
-        btn.className = 'btn btn-xs btn-ghost detail-dev-tab-btn';
-      }
+      const bDev = r.devices[bIdx] || {};
+      const bSt = bDev.status || r.status || 'قيد الفحص';
+      const bDel = bSt === 'تم التسليم';
+      const bStCls = (STATUSES.find(s=>s.v===bSt)||{}).cls || 'st-check';
+      const bBrand = bDev.brand === 'أخرى' ? bDev.brandOther : (bDev.brand || '');
+      const bTitle = `${bDev.category || 'جهاز'} ${bBrand} ${bDev.model || ''}`.trim() || `جهاز #${bIdx+1}`;
+
+      btn.className = `btn btn-xs ${bIdx === idx ? 'btn-primary' : 'btn-ghost'} detail-dev-tab-btn`;
+      btn.innerHTML = `<span>${bDel ? '✅' : '🔧'} ${escapeHtml(bTitle)}</span><span class="status-badge ${bStCls}" style="font-size:9.5px;padding:1px 5px;">${escapeHtml(bSt)}</span>`;
     });
+
+    // Render active device delivery banner
+    const bannerEl = overlay.querySelector('#activeDevStatusBanner');
+    if(bannerEl && hasMultipleDevices){
+      const dSt = dev.status || r.status || 'قيد الفحص';
+      const isDel = dSt === 'تم التسليم';
+      const stCls = (STATUSES.find(s=>s.v===dSt)||{}).cls || 'st-check';
+      if(isDel){
+        bannerEl.innerHTML = `
+          <div style="background:#ecfdf5;border:1px solid #10b981;border-radius:var(--radius-sm);padding:8px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <div>
+              <div style="color:#047857;font-weight:700;font-size:12px;">✅ تم تسليم هذا الجهاز للعميل</div>
+              <div style="color:#065f46;font-size:11px;">
+                ${dev.deliveredAt ? `تاريخ التسليم: ${new Date(dev.deliveredAt).toLocaleDateString('ar-EG')}` : ''}
+                ${dev.deliveredBy ? ` • المسؤول: ${escapeHtml(dev.deliveredBy)}` : ''}
+                ${dev.deliveryNotes ? ` • ملاحظات: ${escapeHtml(dev.deliveryNotes)}` : ''}
+              </div>
+            </div>
+            <button type="button" class="btn btn-xs btn-ghost" style="color:var(--red);border-color:var(--red);" id="activeDevRevertBtn">
+              تراجع عن تسليم هذا الجهاز
+            </button>
+          </div>
+        `;
+        const revBtn = bannerEl.querySelector('#activeDevRevertBtn');
+        if(revBtn){
+          revBtn.onclick = () => {
+            if(!confirm('هل أنت متأكد من التراجع عن تسليم هذا الجهاز وإعادته للورشة؟')) return;
+            dev.status = 'مكتمل';
+            dev.deliveredAt = '';
+            dev.deliveredBy = '';
+            dev.deliveryNotes = '';
+            if(typeof computeReceiptOverallStatus === 'function'){
+              r.status = computeReceiptOverallStatus(r);
+            }
+            syncCurrentDevToDom(idx);
+            showToast('تم التراجع عن تسليم الجهاز', 'info');
+          };
+        }
+      } else {
+        bannerEl.innerHTML = `
+          <div style="background:#f0fdf4;border:1px dashed #22c55e;border-radius:var(--radius-sm);padding:8px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <div>
+              <div style="font-size:12px;color:#15803d;font-weight:700;">
+                📦 تسليم مستقل: يمكنك تسليم هذا الجهاز للعميل الآن مع إمكانية تحصيل دفعة نقدية
+              </div>
+              <div style="font-size:11px;color:#166534;">
+                حالة هذا الجهاز الحالية: <span class="status-badge ${stCls}">${escapeHtml(dSt)}</span>
+              </div>
+            </div>
+            <button type="button" class="btn btn-xs btn-primary" id="activeDevDeliverBtn" style="background:#16a34a;border-color:#16a34a;font-weight:700;">
+              تسليم هذا الجهاز للعميل
+            </button>
+          </div>
+        `;
+        const delBtn = bannerEl.querySelector('#activeDevDeliverBtn');
+        if(delBtn){
+          delBtn.onclick = () => {
+            saveDomToCurrentDev(idx);
+            if(typeof window.openDeliverDeviceModalDirect === 'function'){
+              window.openDeliverDeviceModalDirect(r.id || r.receiptNumber, r.receiptNumber, idx);
+            }
+          };
+        }
+      }
+    }
   }
 
   function saveDomToCurrentDev(idx){
@@ -21431,6 +21907,7 @@ async function openReceiptDetail(rawR){
         syncCurrentDevToDom(currentEditDevIdx);
       };
     });
+    syncCurrentDevToDom(0);
   }
 
   overlay.querySelectorAll('#editFaultChips .chip').forEach(c=>{
@@ -21486,7 +21963,20 @@ async function openReceiptDetail(rawR){
     }
 
     r.technician = overlay.querySelector('#eTech').value;
-    r.status = overlay.querySelector('#eStatus').value.replace(/^[^\s]+\s/, '');
+    const formStatus = overlay.querySelector('#eStatus').value.replace(/^[^\s]+\s/, '');
+    if(hasMultipleDevices){
+      if(formStatus === 'تم التسليم'){
+        r.devices.forEach(d => {
+          d.status = 'تم التسليم';
+          if(!d.deliveredAt) d.deliveredAt = new Date().toISOString();
+        });
+        r.status = 'تم التسليم';
+      } else {
+        r.status = (typeof computeReceiptOverallStatus === 'function') ? computeReceiptOverallStatus(r) : formStatus;
+      }
+    } else {
+      r.status = formStatus;
+    }
     r.photos = detailPhotos;
     if(Array.isArray(r.devices) && r.devices.length > 0){
       if(r.devices[currentEditDevIdx]){
@@ -22037,6 +22527,7 @@ function openReceiptPrint(rawR, kind){
                 <th style="border:1px solid #cbd5e1;padding:1px 2px;text-align:right;">الجهاز والموديل</th>
                 <th style="border:1px solid #cbd5e1;padding:1px 2px;text-align:right;">الأعطال وملاحظات الفحص</th>
                 <th style="border:1px solid #cbd5e1;padding:1px 2px;width:38px;text-align:center;">الملحقات</th>
+                <th style="border:1px solid #cbd5e1;padding:1px 2px;width:45px;text-align:center;">حالة الجهاز</th>
               </tr>
             </thead>
             <tbody>
@@ -22049,12 +22540,17 @@ function openReceiptPrint(rawR, kind){
                 const n = dv.faultNotes ? ` (${escapeHtml(dv.faultNotes)})` : '';
                 const fStr = escapeHtml(f) + n;
                 const acc = escapeHtml(dv.accessories || 'بدون');
+                const devSt = escapeHtml(dv.status || r.status || 'قيد الفحص');
+                const isDelivered = devSt === 'تم التسليم';
                 return `
                   <tr>
                     <td style="border:1px solid #cbd5e1;padding:1px 2px;text-align:center;font-weight:bold;">${idx+1}</td>
                     <td style="border:1px solid #cbd5e1;padding:1px 2px;font-weight:800;">${c} ${b} ${m}${p}</td>
                     <td style="border:1px solid #cbd5e1;padding:1px 2px;color:#0f172a;">${fStr || '-'}</td>
                     <td style="border:1px solid #cbd5e1;padding:1px 2px;text-align:center;font-size:6.5px;">${acc}</td>
+                    <td style="border:1px solid #cbd5e1;padding:1px 2px;text-align:center;font-weight:bold;font-size:6.5px;${isDelivered ? 'color:#15803d;' : 'color:#0369a1;'}">
+                      ${devSt}
+                    </td>
                   </tr>
                 `;
               }).join('')}
@@ -24325,6 +24821,18 @@ function openQuickStatusModal(rawR){
         <div><b>الحالة الحالية:</b> <span class="status-badge ${(STATUSES.find(s=>s.v===r.status)||{}).cls||'st-check'}">${escapeHtml(r.status)}</span></div>
       </div>
 
+      ${(Array.isArray(r.devices) && r.devices.length > 1) ? `
+        <div style="background:#e0f2fe;border:1px solid #7dd3fc;border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <div>
+            <div style="font-size:12px;font-weight:700;color:#0369a1;">📦 إيصال متعدد (${r.devices.length} أجهزة)</div>
+            <div style="font-size:11px;color:#075985;">يمكنك تسليم جهاز واحد محدد للعميل دون باقي الأجهزة</div>
+          </div>
+          <button type="button" class="btn btn-xs" style="background:#0284c7;color:#fff;border:none;font-weight:700;padding:6px 12px;border-radius:var(--radius-sm);" id="quickDeliverSingleDevBtn">
+            تسليم جهاز محدد
+          </button>
+        </div>
+      ` : ''}
+
       <label style="margin-bottom:8px;font-size:12.5px;">اختر الحالة الجديدة للجهاز:</label>
       <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:16px;">
         ${STATUSES.map(s=>`
@@ -24366,11 +24874,27 @@ function openQuickStatusModal(rawR){
   overlay.querySelector('#cancelQuickStatus').onclick = ()=>overlay.remove();
   const quickStatusCostEstBtn = overlay.querySelector('#quickStatusCostEstBtn');
   if(quickStatusCostEstBtn) quickStatusCostEstBtn.onclick = ()=>{ overlay.remove(); openCostEstimateModal(r); };
+  const quickDeliverSingleDevBtn = overlay.querySelector('#quickDeliverSingleDevBtn');
+  if(quickDeliverSingleDevBtn){
+    quickDeliverSingleDevBtn.onclick = () => {
+      overlay.remove();
+      if(typeof window.openDeliverDeviceModalDirect === 'function'){
+        window.openDeliverDeviceModalDirect(r.id || r.receiptNumber, r.receiptNumber);
+      }
+    };
+  }
 
   let isQuickStatusBusy = false;
 
   function applyQuickStatusChange(statusToSet, techToSet, shouldSendWa){
     r.status = statusToSet;
+    if(statusToSet === 'تم التسليم' && Array.isArray(r.devices)){
+      r.devices.forEach(d => {
+        d.status = 'تم التسليم';
+        if(!d.deliveredAt) d.deliveredAt = new Date().toISOString();
+        if(!d.deliveredBy) d.deliveredBy = (state.user && state.user.name) || 'نظام';
+      });
+    }
     if(techToSet) r.technician = techToSet;
     r.updatedBy = (state.user && state.user.name) || 'نظام';
     r.updatedAt = new Date().toISOString();
@@ -24428,6 +24952,13 @@ function openQuickStatusModal(rawR){
     btn.onclick = async ()=>{
       if(isQuickStatusBusy) return;
       const newStatus = btn.dataset.setstatus;
+      if(newStatus === 'تسليم جزئي'){
+        overlay.remove();
+        if(typeof window.openDeliverDeviceModalDirect === 'function'){
+          window.openDeliverDeviceModalDirect(r.id || r.receiptNumber, r.receiptNumber);
+        }
+        return;
+      }
       const newTech = overlay.querySelector('#quickTechSelect').value;
       const sendWa = overlay.querySelector('#sendWaAfterStatus').checked;
       const remaining = (typeof getReceiptRemaining === 'function') ? getReceiptRemaining(r) : Math.max(0, (Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0)) - Number(r.deposit||0) + Number(r.refunded||0));
@@ -24450,6 +24981,13 @@ function openQuickStatusModal(rawR){
         promptDeliveryRemainingPayment(r, remaining, async (shouldPay, payMethodName)=>{
           if(newTech) r.technician = newTech;
           r.status = 'تم التسليم';
+          if(Array.isArray(r.devices)){
+            r.devices.forEach(d => {
+              d.status = 'تم التسليم';
+              if(!d.deliveredAt) d.deliveredAt = new Date().toISOString();
+              if(!d.deliveredBy) d.deliveredBy = (state.user && state.user.name) || 'نظام';
+            });
+          }
           r.updatedBy = (state.user && state.user.name) || 'نظام';
           r.updatedAt = new Date().toISOString();
           r._localModifiedAt = Date.now();
@@ -25095,6 +25633,7 @@ const WA_TEMPLATE_TITLES = {
   await_parts: 'بانتظار قطعة غيار',
   repair: 'الصيانة',
   done: 'جاهز للاستلام',
+  partial_delivery: 'تسليم جزئي',
   delivered: 'تم التسليم',
   pending: 'معلق',
   warranty: 'تحت الضمان',
@@ -25322,6 +25861,7 @@ function openWhatsappChat(rawPhone, msg, opts){
 function resolveWaTemplateKey(status){
   const s = String(status || '').trim();
   if(s === 'مكتمل' || s === 'done') return 'done';
+  if(s === 'تسليم جزئي' || s === 'partial_delivery') return 'partial_delivery';
   if(s === 'تم التسليم' || s === 'delivered') return 'delivered';
   if(s === 'الصيانة' || s === 'repair') return 'repair';
   if(s === 'قيد الفحص' || s === 'check') return 'check';
@@ -25464,6 +26004,7 @@ function openWhatsappStatusNotificationModal(rawR, statusOrKey, onSent){
     { k: 'repair', icon: getSvgIcon('tool', 14), label: 'الصيانة' },
     { k: 'await_parts', icon: getSvgIcon('tool', 14), label: 'بانتظار قطعة غيار' },
     { k: 'done', icon: getSvgIcon('check', 14), label: 'جاهز للاستلام' },
+    { k: 'partial_delivery', icon: getSvgIcon('check', 14), label: 'تسليم جزئي' },
     { k: 'delivered', icon: getSvgIcon('truck', 14), label: 'تم التسليم' },
     { k: 'pending', icon: getSvgIcon('pause', 14), label: 'معلق' },
     { k: 'warranty', icon: getSvgIcon('shield', 14), label: 'تحت الضمان' },

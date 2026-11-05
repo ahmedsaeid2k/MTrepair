@@ -1,11 +1,11 @@
 /* ---------------- Archive & Overdue Reminders ---------------- */
 const STATUS_GROUPS = {
   all: {label:'الكل', statuses:null},
-  active: {label:'قيد العمل', statuses:['قيد الفحص','بانتظار موافقة العميل','بانتظار قطعة غيار','الصيانة']},
+  active: {label:'قيد العمل', statuses:['قيد الفحص','بانتظار موافقة العميل','بانتظار قطعة غيار','الصيانة','تسليم جزئي']},
   quotationWaiting: {label:'عروض بانتظار موافقة العميل', statuses:null},
   delayed48h: {label:'متأخرة بالورشة (+48 س)', statuses:null},
   done: {label:'جاهزة للاستلام', statuses:['مكتمل']},
-  delivered: {label:'تم التسليم', statuses:['تم التسليم']},
+  delivered: {label:'تم التسليم', statuses:['تم التسليم','تسليم جزئي']},
   overdue: {label:'متروكة +7 أيام', statuses:null},
   unclaimed: {label:'أجهزة لم تُطالَب (+30 يوم)', statuses:null},
   warranty: {label:'إصلاحات داخل الضمان', statuses:null},
@@ -59,12 +59,20 @@ function archiveTable(list){
     const isMultiDev = Array.isArray(r.devices) && r.devices.length > 1;
     const deviceHtml = isMultiDev ? `
       <div>
-        <div style="display:flex;align-items:center;gap:4px;">
+        <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
           <span class="badge" style="background:#e0e7ff;color:#3730a3;font-size:10px;font-weight:800;padding:1px 5px;border-radius:4px;">${r.devices.length} أجهزة</span>
           <b style="font-size:12px;color:var(--ink);">${escapeHtml(r.devices[0].category || 'جهاز')} ${escapeHtml(r.devices[0].brand === 'أخرى' ? r.devices[0].brandOther : (r.devices[0].brand || ''))}</b>
+          <span class="status-badge ${(STATUSES.find(s=>s.v===(r.devices[0].status||r.status))||{}).cls||'st-check'}" style="font-size:9.5px;padding:0 4px;">${escapeHtml(r.devices[0].status || r.status || 'قيد الفحص')}</span>
         </div>
-        <div style="font-size:11px;color:var(--ink-secondary);margin-top:2px;">
-          + ${r.devices.slice(1).map(d => escapeHtml((d.category || 'جهاز') + ' ' + (d.brand === 'أخرى' ? d.brandOther : (d.brand || '')) + ' ' + (d.model || ''))).join('، ')}
+        <div style="font-size:11px;color:var(--ink-secondary);margin-top:3px;display:flex;flex-direction:column;gap:2px;">
+          ${r.devices.slice(1).map(d => {
+            const dSt = (STATUSES.find(s=>s.v===(d.status||r.status))||{}).cls || 'st-check';
+            const dName = (d.category || 'جهاز') + ' ' + (d.brand === 'أخرى' ? d.brandOther : (d.brand || '')) + ' ' + (d.model || '');
+            return `<div style="display:flex;align-items:center;gap:4px;">
+              <span>• ${escapeHtml(dName)}</span>
+              <span class="status-badge ${dSt}" style="font-size:9px;padding:0 3px;">${escapeHtml(d.status || r.status || 'قيد الفحص')}</span>
+            </div>`;
+          }).join('')}
         </div>
       </div>
     ` : `
@@ -175,9 +183,19 @@ function archiveCards(list){
         <div style="margin-top:10px;">
           ${isMultiDev ? `
             <div class="smart-card-device">
-              <b>${escapeHtml(r.devices[0].category || 'جهاز')} ${escapeHtml(r.devices[0].brand === 'أخرى' ? r.devices[0].brandOther : (r.devices[0].brand || ''))}</b> <span style="color:var(--ink-secondary);font-weight:500;">${escapeHtml(r.devices[0].model || '')}</span>
-              <div style="font-size:11px;color:var(--ink-secondary);margin-top:2px;">
-                + ${r.devices.slice(1).map(d => escapeHtml((d.category || 'جهاز') + ' ' + (d.brand === 'أخرى' ? d.brandOther : (d.brand || '')) + ' ' + (d.model || ''))).join('، ')}
+              <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+                <b>${escapeHtml(r.devices[0].category || 'جهاز')} ${escapeHtml(r.devices[0].brand === 'أخرى' ? r.devices[0].brandOther : (r.devices[0].brand || ''))}</b> <span style="color:var(--ink-secondary);font-weight:500;">${escapeHtml(r.devices[0].model || '')}</span>
+                <span class="status-badge ${(STATUSES.find(s=>s.v===(r.devices[0].status||r.status))||{}).cls||'st-check'}" style="font-size:9.5px;padding:0 4px;">${escapeHtml(r.devices[0].status || r.status || 'قيد الفحص')}</span>
+              </div>
+              <div style="font-size:11px;color:var(--ink-secondary);margin-top:3px;display:flex;flex-direction:column;gap:2px;">
+                ${r.devices.slice(1).map(d => {
+                  const dSt = (STATUSES.find(s=>s.v===(d.status||r.status))||{}).cls || 'st-check';
+                  const dName = (d.category || 'جهاز') + ' ' + (d.brand === 'أخرى' ? d.brandOther : (d.brand || '')) + ' ' + (d.model || '');
+                  return `<div style="display:flex;align-items:center;gap:4px;">
+                    <span>• ${escapeHtml(dName)}</span>
+                    <span class="status-badge ${dSt}" style="font-size:9px;padding:0 3px;">${escapeHtml(d.status || r.status || 'قيد الفحص')}</span>
+                  </div>`;
+                }).join('')}
               </div>
             </div>
           ` : `

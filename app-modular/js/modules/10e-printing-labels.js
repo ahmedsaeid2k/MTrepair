@@ -178,6 +178,7 @@ function openReceiptPrint(rawR, kind){
                 <th style="border:1px solid #cbd5e1;padding:1px 2px;text-align:right;">الجهاز والموديل</th>
                 <th style="border:1px solid #cbd5e1;padding:1px 2px;text-align:right;">الأعطال وملاحظات الفحص</th>
                 <th style="border:1px solid #cbd5e1;padding:1px 2px;width:38px;text-align:center;">الملحقات</th>
+                <th style="border:1px solid #cbd5e1;padding:1px 2px;width:45px;text-align:center;">حالة الجهاز</th>
               </tr>
             </thead>
             <tbody>
@@ -190,12 +191,17 @@ function openReceiptPrint(rawR, kind){
                 const n = dv.faultNotes ? ` (${escapeHtml(dv.faultNotes)})` : '';
                 const fStr = escapeHtml(f) + n;
                 const acc = escapeHtml(dv.accessories || 'بدون');
+                const devSt = escapeHtml(dv.status || r.status || 'قيد الفحص');
+                const isDelivered = devSt === 'تم التسليم';
                 return `
                   <tr>
                     <td style="border:1px solid #cbd5e1;padding:1px 2px;text-align:center;font-weight:bold;">${idx+1}</td>
                     <td style="border:1px solid #cbd5e1;padding:1px 2px;font-weight:800;">${c} ${b} ${m}${p}</td>
                     <td style="border:1px solid #cbd5e1;padding:1px 2px;color:#0f172a;">${fStr || '-'}</td>
                     <td style="border:1px solid #cbd5e1;padding:1px 2px;text-align:center;font-size:6.5px;">${acc}</td>
+                    <td style="border:1px solid #cbd5e1;padding:1px 2px;text-align:center;font-weight:bold;font-size:6.5px;${isDelivered ? 'color:#15803d;' : 'color:#0369a1;'}">
+                      ${devSt}
+                    </td>
                   </tr>
                 `;
               }).join('')}

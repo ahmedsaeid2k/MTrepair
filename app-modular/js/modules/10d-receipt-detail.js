@@ -923,17 +923,9 @@ async function openReceiptDetail(rawR){
 
     if(hasMultipleDevices){
       saveDomToCurrentDev(currentEditDevIdx);
-      r.device = {
-        category: r.devices[0].category,
-        brand: r.devices[0].brand,
-        brandOther: r.devices[0].brandOther || '',
-        model: r.devices[0].model,
-        accessories: r.devices[0].accessories || '',
-        password: r.devices[0].password || ''
-      };
-      r.password = r.device.password;
+      r.password = (r.devices[0] && r.devices[0].password) || '';
       r.faults = Array.from(new Set(r.devices.flatMap(x => x.faults || [])));
-      r.faultNotes = r.devices[0].faultNotes || '';
+      r.faultNotes = (r.devices[0] && r.devices[0].faultNotes) || '';
     } else {
       r.device.category = overlay.querySelector('#eCat').value.trim();
       r.device.brand = overlay.querySelector('#eBrand').value.trim();

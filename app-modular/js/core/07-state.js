@@ -231,7 +231,11 @@ function newDraft(){
     set device(val) {
       if(!this.devices) this.devices = [];
       const idx = (this.activeDeviceIndex != null && this.activeDeviceIndex >= 0) ? this.activeDeviceIndex : 0;
-      this.devices[idx] = val;
+      if(val && typeof val === 'object'){
+        this.devices[idx] = Object.assign({}, this.devices[idx] || {}, val);
+      } else {
+        this.devices[idx] = val;
+      }
     },
     password: '',
     faults: [],

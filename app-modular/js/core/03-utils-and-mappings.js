@@ -850,7 +850,9 @@ function receiptToRow(d){
   const cPhone = extractCustomerPhone(d);
   const cEmail = extractCustomerEmail(d);
 
-  const pass = (d.device && d.device.password) || d.password || '';
+  const primaryDev = (Array.isArray(d.devices) && d.devices.length > 0) ? d.devices[0] : (d.device || {});
+  const devBrand = primaryDev.brand === 'أخرى' ? (primaryDev.brandOther || '') : (primaryDev.brand || '');
+  const pass = primaryDev.password || (d.device && d.device.password) || d.password || '';
   const timeStr = d.time || formatReceiptTime(d) || '';
   const wMonths = Number(d.warrantyMonths != null ? d.warrantyMonths : (d.WarrantyMonths != null ? d.WarrantyMonths : 0));
   const wEnd = d.warrantyEnd || (wMonths > 0 && (d.deliveryDate || d.date) ? computeWarrantyEndDate(d.deliveryDate || d.date, wMonths) : '');
@@ -860,10 +862,10 @@ function receiptToRow(d){
     ID: d.id, ReceiptNumber: d.receiptNumber, TrackToken: d.trackToken || d.TrackToken || '', Date: d.date, Time: timeStr,
     ReceivedAt: d.receivedAt || d.createdAt || '',
     CustomerTitle: cTitle, CustomerName: cName, CustomerPhone: cPhone, CustomerEmail: cEmail,
-    Category: d.device.category, Brand: d.device.brand==='أخرى' ? d.device.brandOther : d.device.brand,
-    Model: d.device.model, Accessories: d.device.accessories, Password: pass,
-    Faults: (d.faults||[]).join('، '), FaultNotes: d.faultNotes,
-    Technician: d.technician, Cost: d.cost, Deposit: d.deposit, Refunded: d.refunded || 0, PartsCost: d.partsCost || 0, PartsUsed: d.partsUsed || '',
+    Category: primaryDev.category || 'لابتوب', Brand: devBrand,
+    Model: primaryDev.model || '', Accessories: primaryDev.accessories || '', Password: pass,
+    Faults: (d.faults||[]).join('، '), FaultNotes: d.faultNotes || primaryDev.faultNotes || '',
+    Technician: d.technician || primaryDev.technician || '', Cost: d.cost, Deposit: d.deposit, Refunded: d.refunded || 0, PartsCost: d.partsCost || 0, PartsUsed: d.partsUsed || '',
     PartsJSON: (Array.isArray(d.partsList) && d.partsList.length) ? JSON.stringify(d.partsList) : (typeof d.partsJSON === 'string' ? d.partsJSON : ''),
     InspectionFee: d.inspectionFee != null ? d.inspectionFee : '',
     EstimateTime: d.estimateTime || '',
@@ -1165,12 +1167,12 @@ function normalizeReceipt(r){
   } else {
     rawDevs = rawDevs.map((d, idx) => ({
       id: String(d.id || ('dev_' + (idx + 1))),
-      category: String(d.category || r.device.category || 'لابتوب'),
-      brand: String(d.brand != null ? d.brand : (r.device.brand || '')),
+      category: String(d.category || (idx === 0 ? (r.device && r.device.category) : '') || 'لابتوب'),
+      brand: String(d.brand != null ? d.brand : (idx === 0 ? (r.device && r.device.brand) : '')),
       brandOther: String(d.brandOther != null ? d.brandOther : ''),
       model: String(d.model != null ? d.model : ''),
       accessories: String(d.accessories != null ? d.accessories : ''),
-      password: String(d.password != null ? d.password : (pass || '')),
+      password: String(d.password != null ? d.password : (idx === 0 ? pass : '')),
       faults: Array.isArray(d.faults) ? d.faults.map(String) : (typeof d.faults === 'string' ? d.faults.split('، ').filter(Boolean) : []),
       faultNotes: String(d.faultNotes != null ? d.faultNotes : ''),
       technician: String(d.technician != null ? d.technician : (r.technician || '')),
@@ -1195,7 +1197,11 @@ function normalizeReceipt(r){
       set(val) {
         if(!this.devices) this.devices = [];
         const idx = (this.activeDeviceIndex != null && this.activeDeviceIndex >= 0) ? this.activeDeviceIndex : 0;
-        this.devices[idx] = val;
+        if(val && typeof val === 'object'){
+          this.devices[idx] = Object.assign({}, this.devices[idx] || {}, val);
+        } else {
+          this.devices[idx] = val;
+        }
       }
     });
   } catch(e){}

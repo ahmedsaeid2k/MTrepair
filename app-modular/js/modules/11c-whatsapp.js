@@ -264,10 +264,20 @@ function getStatusCustomMessage(rawR, status){
   const shop = (state.settings && state.settings.shopName) || 'مركز الصيانة';
   const shopPhone = (state.settings && (state.settings.shopPhone || state.settings.phone)) || '';
   const shopAddress = (state.settings && (state.settings.shopAddress || state.settings.address)) || '';
-  const devCat = (r.device && r.device.category) || 'جهاز';
-  const devBrand = r.device ? (r.device.brand==='أخرى' ? r.device.brandOther : r.device.brand) : '';
-  const devModel = (r.device && r.device.model) || '';
-  const device = `${devCat} - ${devBrand} ${devModel}`.trim();
+  let device = '';
+  if(Array.isArray(r.devices) && r.devices.length > 1){
+    device = r.devices.map((dv, i) => {
+      const c = dv.category || 'جهاز';
+      const b = dv.brand === 'أخرى' ? dv.brandOther : (dv.brand || '');
+      const m = dv.model || '';
+      return `[جهاز ${i+1}: ${c} ${b} ${m}`.trim() + `]`;
+    }).join(' و ');
+  } else {
+    const devCat = (r.device && r.device.category) || 'جهاز';
+    const devBrand = r.device ? (r.device.brand==='أخرى' ? r.device.brandOther : r.device.brand) : '';
+    const devModel = (r.device && r.device.model) || '';
+    device = `${devCat} - ${devBrand} ${devModel}`.trim();
+  }
   const trackUrl = getReceiptTrackingUrl(r);
   const faultsStr = (Array.isArray(r.faults) ? r.faults.join('، ') : String(r.faults || '')) || r.faultNotes || '-';
 
@@ -1059,10 +1069,20 @@ function openBulkOverdueWhatsappModal(initialDays){
 
 function buildCostEstimateWhatsappText(rawR, vals){
   const r = (typeof normalizeReceipt === 'function') ? (normalizeReceipt(rawR) || rawR) : rawR;
-  const devCat = (r.device && r.device.category) || 'جهاز';
-  const devBrand = r.device ? (r.device.brand==='أخرى' ? r.device.brandOther : r.device.brand) : '';
-  const devModel = (r.device && r.device.model) || '';
-  const device = `${devCat} - ${devBrand} ${devModel}`.trim();
+  let device = '';
+  if(Array.isArray(r.devices) && r.devices.length > 1){
+    device = r.devices.map((dv, i) => {
+      const c = dv.category || 'جهاز';
+      const b = dv.brand === 'أخرى' ? dv.brandOther : (dv.brand || '');
+      const m = dv.model || '';
+      return `[جهاز ${i+1}: ${c} ${b} ${m}`.trim() + `]`;
+    }).join(' و ');
+  } else {
+    const devCat = (r.device && r.device.category) || 'جهاز';
+    const devBrand = r.device ? (r.device.brand==='أخرى' ? r.device.brandOther : r.device.brand) : '';
+    const devModel = (r.device && r.device.model) || '';
+    device = `${devCat} - ${devBrand} ${devModel}`.trim();
+  }
   const trackUrl = getReceiptTrackingUrl(r);
   const shop = (state.settings && state.settings.shopName) || 'مركز الصيانة';
   const shopPhone = (state.settings && state.settings.shopPhone) || '';

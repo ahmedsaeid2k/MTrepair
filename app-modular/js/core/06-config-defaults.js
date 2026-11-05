@@ -2,9 +2,9 @@
 const DEFAULT_BRANDS = {
   'لابتوب': ['Apple','HP','Dell','Lenovo','Toshiba','Asus','Acer','Huawei','MSI','أخرى'],
   'موبايل': ['iPhone','Samsung','Oppo','Xiaomi','Redmi','Realme','Infinix','Huawei','أخرى'],
-  'تابلت': ['Apple','Samsung','Lenovo','Huawei','أخرى'],
+  'تابلت': ['Apple','Samsung','Lenovo','Huawei','Xiaomi','Honor','Realme','أخرى'],
   'كاميرات مراقبة': ['Hikvision','Dahua','EZVIZ','Uniview','أخرى'],
-  'كمبيوتر مكتبي': ['Dell','HP','Lenovo','تجميع','أخرى'],
+  'كمبيوتر مكتبي': ['Dell','HP','Lenovo','Apple','Asus','Acer','MSI','Gigabyte','تجميع','أخرى'],
   'شاشات': ['Samsung','LG','Dell','HP','BenQ','أخرى'],
   'طابعات': ['HP','Canon','Epson','Brother','أخرى'],
   'اكسسوار': ['أخرى'],

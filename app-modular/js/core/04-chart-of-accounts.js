@@ -190,8 +190,9 @@ function reconcileHistoricalJournalEntries(){
 
   // 2. Reconcile POS Sales
   (state.sales || []).forEach(s => {
-    const refKey = `Sale_${s.ID}`;
-    if (!existingRefs.has(refKey)) {
+    const refKey = `POS_Sale_${s.ID}`;
+    const legacyKey = `Sale_${s.ID}`;
+    if (!existingRefs.has(refKey) && !existingRefs.has(legacyKey)) {
       const total = Number(s.Total || 0);
       const rawPaid = Number(s.AmountPaid != null ? s.AmountPaid : total);
       const change = Number(s.ChangeDue != null ? s.ChangeDue : (rawPaid > total ? rawPaid - total : 0));
@@ -286,7 +287,7 @@ function reconcileHistoricalJournalEntries(){
           EntryNumber: getNextJournalEntryNumber(),
           Date: (s.Date || new Date().toISOString()).slice(0, 10),
           Description: `مبيعات كاشير POS (${s.ItemsSummary || 'أصناف متنوعة'})`,
-          ReferenceType: 'Sale',
+          ReferenceType: 'POS_Sale',
           ReferenceID: s.ID,
           Lines: lines,
           TotalDebit: entryTot,
@@ -297,6 +298,7 @@ function reconcileHistoricalJournalEntries(){
         newEntries.push(entry);
         state.journalEntries.push(entry);
         existingRefs.add(refKey);
+        existingRefs.add(legacyKey);
       }
     }
   });

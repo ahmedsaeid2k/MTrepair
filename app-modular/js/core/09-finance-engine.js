@@ -63,7 +63,8 @@
    */
   function round2(num) {
     const n = parseMoney(num);
-    const r = Math.round((n + Number.EPSILON) * 100) / 100;
+    const sign = n < 0 ? -1 : 1;
+    const r = (sign * Math.round((Math.abs(n) + Number.EPSILON) * 100)) / 100;
     return r === 0 ? 0 : r;
   }
 
@@ -868,10 +869,28 @@
    */
   function buildPayrollJournalLines({ month, totalGross, totalAdvancesDeducted = 0, totalPurchasesDeducted = 0, totalPenalties = 0, totalNetPaid, paymentMethod = 'نقدي (الخزينة)' }) {
     const gross = round2(totalGross);
-    const adv = round2(totalAdvancesDeducted);
-    const pur = round2(totalPurchasesDeducted);
-    const pen = round2(totalPenalties);
-    const net = round2(totalNetPaid);
+    let adv = round2(totalAdvancesDeducted);
+    let pur = round2(totalPurchasesDeducted);
+    let pen = round2(totalPenalties);
+
+    // Safeguard: Ensure total deductions do not exceed gross to guarantee double-entry balance
+    const totalDeductions = round2(adv + pur + pen);
+    if (totalDeductions > gross) {
+      let available = gross;
+      const effectivePen = Math.min(available, pen);
+      available = round2(available - effectivePen);
+      const effectivePur = Math.min(available, pur);
+      available = round2(available - effectivePur);
+      const effectiveAdv = Math.min(available, adv);
+      available = round2(available - effectiveAdv);
+
+      pen = effectivePen;
+      pur = effectivePur;
+      adv = effectiveAdv;
+    }
+
+    const calculatedNet = Math.max(0, round2(gross - (adv + pur + pen)));
+    const net = totalNetPaid != null && Number(totalNetPaid) >= 0 ? Math.min(calculatedNet, round2(totalNetPaid)) : calculatedNet;
 
     const isBank = String(paymentMethod || '').toLowerCase().includes('بنك') || 
                    String(paymentMethod || '').toLowerCase().includes('فيزا') || 

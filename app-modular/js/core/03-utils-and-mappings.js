@@ -1983,9 +1983,11 @@ async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, cust
 
   if (Array.isArray(splits) && splits.length > 0) {
     // Multi-payment split routing [U11]
+    let splitSum = 0;
     splits.forEach(s => {
       const sAmt = Number(s.amount || 0);
       if (sAmt <= 0) return;
+      splitSum += sAmt;
       const mId = String(s.methodId || '').toLowerCase();
       const isEmpCr = mId === 'employee_credit' || mId === 'employee' || mId.includes('موظف');
       const isCr = mId === 'credit' || mId.includes('آجل') || mId.includes('اجل') || isEmpCr;
@@ -2000,6 +2002,18 @@ async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, cust
         Notes: `مقبوضات مبيعات [${s.methodName || s.methodId || 'نقدي'}]`
       });
     });
+
+    if (round2(splitSum) < round2(numTotal)) {
+      const remainder = round2(numTotal - splitSum);
+      const isEmp = splits.some(s => String(s.methodId || '').includes('employee') || String(s.methodId || '').includes('موظف'));
+      journalLines.push({
+        AccountCode: isEmp ? '1107' : '1103',
+        AccountName: isEmp ? 'مشتريات الموظفين بالآجل' : 'العملاء والمدينون',
+        Debit: remainder,
+        Credit: 0,
+        Notes: isEmp ? `متبقي آجل مشتريات موظف (${customerName})` : `متبقي آجل مبيعات POS للعميل (${customerName || 'عميل'})`
+      });
+    }
   } else {
     // Single payment method routing
     const pLow = String(paymentMethod || '').toLowerCase();
@@ -2237,7 +2251,7 @@ async function saveExpenseRemote(exp){
       exp.ID,
       [
         {AccountCode:debitCode, AccountName:debitName, Debit:Number(exp.Amount), Credit:0, Notes:exp.Title},
-        {AccountCode:'42', AccountName:'إيرادات أخرى متنوعة', Debit:0, Credit:Number(exp.Amount), Notes:exp.Notes||exp.Title}
+        {AccountCode:'4201', AccountName:'إيرادات وأرباح متنوعة وزيادة الجرد', Debit:0, Credit:Number(exp.Amount), Notes:exp.Notes||exp.Title}
       ]
     ).catch(e=>{});
   } else if(isDraw){
@@ -2255,8 +2269,8 @@ async function saveExpenseRemote(exp){
       ]
     ).catch(e=>{});
   } else {
-    const expAccCode = EXPENSE_ACCOUNT_MAP[exp.Category] || (isPetty ? '5204' : '52');
-    const expAcc = state.accounts.find(a=>a.Code===expAccCode) || {Name: isPetty ? 'بوفيه ونثريات وضيافة' : 'المصروفات التشغيلية'};
+    const expAccCode = EXPENSE_ACCOUNT_MAP[exp.Category] || (isPetty ? '5204' : '5208');
+    const expAcc = state.accounts.find(a=>a.Code===expAccCode) || {Name: isPetty ? 'بوفيه ونثريات وضيافة' : 'مصروفات تشغيلية أخرى وفروق الدرج'};
     const pLow = String(exp.PaymentMethod || 'نقدي').toLowerCase();
     const isBank = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('إنستاباي') || pLow.includes('محفظ') || pLow.includes('فودافون');
     const creditCode = isBank ? '1102' : '1101';
@@ -2316,9 +2330,9 @@ async function savePurchaseRemote(p, itemsList = []){
         const totalQty = oldQty + newQty;
         invItem.Quantity = totalQty;
         if(newCost > 0){
-          invItem.PurchasePrice = totalQty > 0
-            ? round4(((Math.max(0, oldQty) * oldCost) + (newQty * newCost)) / totalQty)
-            : newCost;
+          invItem.PurchasePrice = oldQty <= 0
+            ? newCost
+            : (totalQty > 0 ? round4(((oldQty * oldCost) + (newQty * newCost)) / totalQty) : newCost);
         }
       }
     }
@@ -2963,9 +2977,13 @@ async function savePurchaseReturnRemote(pret, itemsList = []){
   const debitName = (debitAccount === '1101') ? 'الخزينة الرئيسية (النقدية)' :
                     (debitAccount === '1102') ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الموردون والدائنون';
 
+  const retTaxAmt = Math.max(0, Number(pret.TaxAmount || 0));
+  const netInventoryReversal = Math.max(0, round2(Number(pret.Total || 0) - retTaxAmt));
+
   const journalLines = [
-    { AccountCode: debitAccount, AccountName: debitName, Debit: pret.Total, Credit: 0, Notes: `استرداد قيمة مرتجع مشتريات #${pret.ReturnNumber} من المورد ${pret.SupplierName}` },
-    { AccountCode: '1104', AccountName: 'مخزون البضائع وقطع الغيار', Debit: 0, Credit: pret.Total, Notes: `إخراج بضاعة مرتجعة لمورد فاتورة #${pret.ReturnNumber}` }
+    { AccountCode: debitAccount, AccountName: debitName, Debit: Number(pret.Total || 0), Credit: 0, Notes: `استرداد قيمة مرتجع مشتريات #${pret.ReturnNumber} من المورد ${pret.SupplierName}` },
+    { AccountCode: '1104', AccountName: 'مخزون البضائع وقطع الغيار', Debit: 0, Credit: netInventoryReversal, Notes: `إخراج بضاعة مرتجعة لمورد فاتورة #${pret.ReturnNumber}` },
+    ...(retTaxAmt > 0 ? [{ AccountCode: '1105', AccountName: 'ضريبة القيمة المضافة القابلة للخصم (مدخلات)', Debit: 0, Credit: retTaxAmt, Notes: `عكس ضريبة مدخلات لمرتجع مشتريات #${pret.ReturnNumber}` }] : [])
   ];
 
   const je = await recordAutoJournalEntry(

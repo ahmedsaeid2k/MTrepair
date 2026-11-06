@@ -1038,7 +1038,7 @@ function closeActiveShift(actualCountedCash, closingNotes = '', printFormat = 't
         shift.id,
         [
           { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: surplusAmt, Credit: 0, Description: `زيادة نقدية محصلة بدرج وردية #${shift.shiftNumber}` },
-          { AccountCode: '42', AccountName: 'إيرادات أخرى متنوعة', Debit: 0, Credit: surplusAmt, Description: `فائض نقدية غير معرّف وردية #${shift.shiftNumber}` }
+          { AccountCode: '4201', AccountName: 'إيرادات وأرباح متنوعة وزيادة الجرد', Debit: 0, Credit: surplusAmt, Description: `فائض نقدية غير معرّف وردية #${shift.shiftNumber}` }
         ]
       ).catch(e => console.error('Shift_Variance Surplus JE error:', e));
     }

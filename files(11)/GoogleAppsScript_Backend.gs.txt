@@ -1841,8 +1841,9 @@ function doPost(e) {
               if (item.purchasePrice != null && buyPriceCol >= 0) {
                 const currentBuyPrice = Number(values[i][buyPriceCol] || 0);
                 const itemBuyPrice = Number(item.purchasePrice || 0);
-                const totalCost = (Math.max(0, currentQty) * currentBuyPrice) + (addQty * itemBuyPrice);
-                const wacPrice = newQty > 0 ? round4(totalCost / newQty) : itemBuyPrice;
+                const wacPrice = currentQty <= 0
+                  ? itemBuyPrice
+                  : (newQty > 0 ? round4(((currentQty * currentBuyPrice) + (addQty * itemBuyPrice)) / (currentQty + addQty)) : itemBuyPrice);
                 values[i][buyPriceCol] = wacPrice;
                 shInv.getRange(i + 1, buyPriceCol + 1).setValue(wacPrice);
               }

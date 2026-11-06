@@ -1269,7 +1269,8 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
         finalChangeDue = round2(totalSplitPaid - grandTotal);
       }
 
-      if (splitCash > 0) splits.push({ methodId: 'cash', methodName: 'نقدي', amount: splitCash });
+      const netSplitCash = splitCash > finalChangeDue ? round2(splitCash - finalChangeDue) : 0;
+      if (netSplitCash > 0) splits.push({ methodId: 'cash', methodName: 'نقدي', amount: netSplitCash });
       if (splitCard > 0) splits.push({ methodId: cardType, methodName: cardName, amount: splitCard });
 
       const diff = round2(totalSplitPaid - grandTotal);
@@ -2618,8 +2619,17 @@ function openPosReturnModal(sale){
           }
         });
 
+        const saleTaxRate = Number(sale.TaxPercent || 0) > 0 ? (Number(sale.TaxPercent) / 100) : (Number(sale.TaxAmount || 0) > 0 && Number(sale.Total || 0) > 0 ? (Number(sale.TaxAmount) / (Number(sale.Total) - Number(sale.TaxAmount))) : 0);
+        let retTax = 0;
+        let retNet = Number(totalRefund);
+        if (saleTaxRate > 0) {
+          retTax = round2(totalRefund - (totalRefund / (1 + saleTaxRate)));
+          retNet = round2(totalRefund - retTax);
+        }
+
         const retJournalLines = [
-          {AccountCode:'4102', AccountName:'مردودات ومسموحات مبيعات الأجهزة والإكسسوار', Debit:Number(totalRefund), Credit:0, Notes:`مرتجع أصناف للعميل ${sale.CustomerName||'عميل زائر'}`},
+          {AccountCode:'4102', AccountName:'مردودات ومسموحات مبيعات الأجهزة والإكسسوار', Debit:retNet, Credit:0, Notes:`مرتجع أصناف للعميل ${sale.CustomerName||'عميل زائر'}`},
+          ...(retTax > 0 ? [{AccountCode:'2104', AccountName:'ضريبة القيمة المضافة المستحقة (مخرجات)', Debit:retTax, Credit:0, Notes:`عكس ضريبة مخرجات لمرتجع مبيعات فاتورة #${sale.ID.slice(-8)}`}] : []),
           {AccountCode:creditAccCode, AccountName:creditAccName, Debit:0, Credit:Number(totalRefund), Notes:`رد واسترداد بنفس وسيلة الدفع الأصلية (${refundMethod})`}
         ];
         if(restockedCOGS > 0){

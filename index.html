@@ -7087,9 +7087,11 @@ async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, cust
 
   if (Array.isArray(splits) && splits.length > 0) {
     // Multi-payment split routing [U11]
+    let splitSum = 0;
     splits.forEach(s => {
       const sAmt = Number(s.amount || 0);
       if (sAmt <= 0) return;
+      splitSum += sAmt;
       const mId = String(s.methodId || '').toLowerCase();
       const isEmpCr = mId === 'employee_credit' || mId === 'employee' || mId.includes('موظف');
       const isCr = mId === 'credit' || mId.includes('آجل') || mId.includes('اجل') || isEmpCr;
@@ -7104,6 +7106,18 @@ async function saveSaleRemote(itemsSummary, itemsJson, total, customerName, cust
         Notes: `مقبوضات مبيعات [${s.methodName || s.methodId || 'نقدي'}]`
       });
     });
+
+    if (round2(splitSum) < round2(numTotal)) {
+      const remainder = round2(numTotal - splitSum);
+      const isEmp = splits.some(s => String(s.methodId || '').includes('employee') || String(s.methodId || '').includes('موظف'));
+      journalLines.push({
+        AccountCode: isEmp ? '1107' : '1103',
+        AccountName: isEmp ? 'مشتريات الموظفين بالآجل' : 'العملاء والمدينون',
+        Debit: remainder,
+        Credit: 0,
+        Notes: isEmp ? `متبقي آجل مشتريات موظف (${customerName})` : `متبقي آجل مبيعات POS للعميل (${customerName || 'عميل'})`
+      });
+    }
   } else {
     // Single payment method routing
     const pLow = String(paymentMethod || '').toLowerCase();
@@ -7341,7 +7355,7 @@ async function saveExpenseRemote(exp){
       exp.ID,
       [
         {AccountCode:debitCode, AccountName:debitName, Debit:Number(exp.Amount), Credit:0, Notes:exp.Title},
-        {AccountCode:'42', AccountName:'إيرادات أخرى متنوعة', Debit:0, Credit:Number(exp.Amount), Notes:exp.Notes||exp.Title}
+        {AccountCode:'4201', AccountName:'إيرادات وأرباح متنوعة وزيادة الجرد', Debit:0, Credit:Number(exp.Amount), Notes:exp.Notes||exp.Title}
       ]
     ).catch(e=>{});
   } else if(isDraw){
@@ -7359,8 +7373,8 @@ async function saveExpenseRemote(exp){
       ]
     ).catch(e=>{});
   } else {
-    const expAccCode = EXPENSE_ACCOUNT_MAP[exp.Category] || (isPetty ? '5204' : '52');
-    const expAcc = state.accounts.find(a=>a.Code===expAccCode) || {Name: isPetty ? 'بوفيه ونثريات وضيافة' : 'المصروفات التشغيلية'};
+    const expAccCode = EXPENSE_ACCOUNT_MAP[exp.Category] || (isPetty ? '5204' : '5208');
+    const expAcc = state.accounts.find(a=>a.Code===expAccCode) || {Name: isPetty ? 'بوفيه ونثريات وضيافة' : 'مصروفات تشغيلية أخرى وفروق الدرج'};
     const pLow = String(exp.PaymentMethod || 'نقدي').toLowerCase();
     const isBank = pLow.includes('فيزا') || pLow.includes('card') || pLow.includes('انستاباي') || pLow.includes('إنستاباي') || pLow.includes('محفظ') || pLow.includes('فودافون');
     const creditCode = isBank ? '1102' : '1101';
@@ -7420,9 +7434,9 @@ async function savePurchaseRemote(p, itemsList = []){
         const totalQty = oldQty + newQty;
         invItem.Quantity = totalQty;
         if(newCost > 0){
-          invItem.PurchasePrice = totalQty > 0
-            ? round4(((Math.max(0, oldQty) * oldCost) + (newQty * newCost)) / totalQty)
-            : newCost;
+          invItem.PurchasePrice = oldQty <= 0
+            ? newCost
+            : (totalQty > 0 ? round4(((oldQty * oldCost) + (newQty * newCost)) / totalQty) : newCost);
         }
       }
     }
@@ -8067,9 +8081,13 @@ async function savePurchaseReturnRemote(pret, itemsList = []){
   const debitName = (debitAccount === '1101') ? 'الخزينة الرئيسية (النقدية)' :
                     (debitAccount === '1102') ? 'البنك والحسابات الإلكترونية والمحافظ' : 'الموردون والدائنون';
 
+  const retTaxAmt = Math.max(0, Number(pret.TaxAmount || 0));
+  const netInventoryReversal = Math.max(0, round2(Number(pret.Total || 0) - retTaxAmt));
+
   const journalLines = [
-    { AccountCode: debitAccount, AccountName: debitName, Debit: pret.Total, Credit: 0, Notes: `استرداد قيمة مرتجع مشتريات #${pret.ReturnNumber} من المورد ${pret.SupplierName}` },
-    { AccountCode: '1104', AccountName: 'مخزون البضائع وقطع الغيار', Debit: 0, Credit: pret.Total, Notes: `إخراج بضاعة مرتجعة لمورد فاتورة #${pret.ReturnNumber}` }
+    { AccountCode: debitAccount, AccountName: debitName, Debit: Number(pret.Total || 0), Credit: 0, Notes: `استرداد قيمة مرتجع مشتريات #${pret.ReturnNumber} من المورد ${pret.SupplierName}` },
+    { AccountCode: '1104', AccountName: 'مخزون البضائع وقطع الغيار', Debit: 0, Credit: netInventoryReversal, Notes: `إخراج بضاعة مرتجعة لمورد فاتورة #${pret.ReturnNumber}` },
+    ...(retTaxAmt > 0 ? [{ AccountCode: '1105', AccountName: 'ضريبة القيمة المضافة القابلة للخصم (مدخلات)', Debit: 0, Credit: retTaxAmt, Notes: `عكس ضريبة مدخلات لمرتجع مشتريات #${pret.ReturnNumber}` }] : [])
   ];
 
   const je = await recordAutoJournalEntry(
@@ -8294,8 +8312,9 @@ function reconcileHistoricalJournalEntries(){
 
   // 2. Reconcile POS Sales
   (state.sales || []).forEach(s => {
-    const refKey = `Sale_${s.ID}`;
-    if (!existingRefs.has(refKey)) {
+    const refKey = `POS_Sale_${s.ID}`;
+    const legacyKey = `Sale_${s.ID}`;
+    if (!existingRefs.has(refKey) && !existingRefs.has(legacyKey)) {
       const total = Number(s.Total || 0);
       const rawPaid = Number(s.AmountPaid != null ? s.AmountPaid : total);
       const change = Number(s.ChangeDue != null ? s.ChangeDue : (rawPaid > total ? rawPaid - total : 0));
@@ -8390,7 +8409,7 @@ function reconcileHistoricalJournalEntries(){
           EntryNumber: getNextJournalEntryNumber(),
           Date: (s.Date || new Date().toISOString()).slice(0, 10),
           Description: `مبيعات كاشير POS (${s.ItemsSummary || 'أصناف متنوعة'})`,
-          ReferenceType: 'Sale',
+          ReferenceType: 'POS_Sale',
           ReferenceID: s.ID,
           Lines: lines,
           TotalDebit: entryTot,
@@ -8401,6 +8420,7 @@ function reconcileHistoricalJournalEntries(){
         newEntries.push(entry);
         state.journalEntries.push(entry);
         existingRefs.add(refKey);
+        existingRefs.add(legacyKey);
       }
     }
   });
@@ -13115,7 +13135,8 @@ async function renderPublicTrackingPortal(receiptNum = ''){
    */
   function round2(num) {
     const n = parseMoney(num);
-    const r = Math.round((n + Number.EPSILON) * 100) / 100;
+    const sign = n < 0 ? -1 : 1;
+    const r = (sign * Math.round((Math.abs(n) + Number.EPSILON) * 100)) / 100;
     return r === 0 ? 0 : r;
   }
 
@@ -13920,10 +13941,28 @@ async function renderPublicTrackingPortal(receiptNum = ''){
    */
   function buildPayrollJournalLines({ month, totalGross, totalAdvancesDeducted = 0, totalPurchasesDeducted = 0, totalPenalties = 0, totalNetPaid, paymentMethod = 'نقدي (الخزينة)' }) {
     const gross = round2(totalGross);
-    const adv = round2(totalAdvancesDeducted);
-    const pur = round2(totalPurchasesDeducted);
-    const pen = round2(totalPenalties);
-    const net = round2(totalNetPaid);
+    let adv = round2(totalAdvancesDeducted);
+    let pur = round2(totalPurchasesDeducted);
+    let pen = round2(totalPenalties);
+
+    // Safeguard: Ensure total deductions do not exceed gross to guarantee double-entry balance
+    const totalDeductions = round2(adv + pur + pen);
+    if (totalDeductions > gross) {
+      let available = gross;
+      const effectivePen = Math.min(available, pen);
+      available = round2(available - effectivePen);
+      const effectivePur = Math.min(available, pur);
+      available = round2(available - effectivePur);
+      const effectiveAdv = Math.min(available, adv);
+      available = round2(available - effectiveAdv);
+
+      pen = effectivePen;
+      pur = effectivePur;
+      adv = effectiveAdv;
+    }
+
+    const calculatedNet = Math.max(0, round2(gross - (adv + pur + pen)));
+    const net = totalNetPaid != null && Number(totalNetPaid) >= 0 ? Math.min(calculatedNet, round2(totalNetPaid)) : calculatedNet;
 
     const isBank = String(paymentMethod || '').toLowerCase().includes('بنك') || 
                    String(paymentMethod || '').toLowerCase().includes('فيزا') || 
@@ -29788,7 +29827,7 @@ function closeActiveShift(actualCountedCash, closingNotes = '', printFormat = 't
         shift.id,
         [
           { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: surplusAmt, Credit: 0, Description: `زيادة نقدية محصلة بدرج وردية #${shift.shiftNumber}` },
-          { AccountCode: '42', AccountName: 'إيرادات أخرى متنوعة', Debit: 0, Credit: surplusAmt, Description: `فائض نقدية غير معرّف وردية #${shift.shiftNumber}` }
+          { AccountCode: '4201', AccountName: 'إيرادات وأرباح متنوعة وزيادة الجرد', Debit: 0, Credit: surplusAmt, Description: `فائض نقدية غير معرّف وردية #${shift.shiftNumber}` }
         ]
       ).catch(e => console.error('Shift_Variance Surplus JE error:', e));
     }
@@ -35581,7 +35620,8 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
         finalChangeDue = round2(totalSplitPaid - grandTotal);
       }
 
-      if (splitCash > 0) splits.push({ methodId: 'cash', methodName: 'نقدي', amount: splitCash });
+      const netSplitCash = splitCash > finalChangeDue ? round2(splitCash - finalChangeDue) : 0;
+      if (netSplitCash > 0) splits.push({ methodId: 'cash', methodName: 'نقدي', amount: netSplitCash });
       if (splitCard > 0) splits.push({ methodId: cardType, methodName: cardName, amount: splitCard });
 
       const diff = round2(totalSplitPaid - grandTotal);
@@ -36930,8 +36970,17 @@ function openPosReturnModal(sale){
           }
         });
 
+        const saleTaxRate = Number(sale.TaxPercent || 0) > 0 ? (Number(sale.TaxPercent) / 100) : (Number(sale.TaxAmount || 0) > 0 && Number(sale.Total || 0) > 0 ? (Number(sale.TaxAmount) / (Number(sale.Total) - Number(sale.TaxAmount))) : 0);
+        let retTax = 0;
+        let retNet = Number(totalRefund);
+        if (saleTaxRate > 0) {
+          retTax = round2(totalRefund - (totalRefund / (1 + saleTaxRate)));
+          retNet = round2(totalRefund - retTax);
+        }
+
         const retJournalLines = [
-          {AccountCode:'4102', AccountName:'مردودات ومسموحات مبيعات الأجهزة والإكسسوار', Debit:Number(totalRefund), Credit:0, Notes:`مرتجع أصناف للعميل ${sale.CustomerName||'عميل زائر'}`},
+          {AccountCode:'4102', AccountName:'مردودات ومسموحات مبيعات الأجهزة والإكسسوار', Debit:retNet, Credit:0, Notes:`مرتجع أصناف للعميل ${sale.CustomerName||'عميل زائر'}`},
+          ...(retTax > 0 ? [{AccountCode:'2104', AccountName:'ضريبة القيمة المضافة المستحقة (مخرجات)', Debit:retTax, Credit:0, Notes:`عكس ضريبة مخرجات لمرتجع مبيعات فاتورة #${sale.ID.slice(-8)}`}] : []),
           {AccountCode:creditAccCode, AccountName:creditAccName, Debit:0, Credit:Number(totalRefund), Notes:`رد واسترداد بنفس وسيلة الدفع الأصلية (${refundMethod})`}
         ];
         if(restockedCOGS > 0){

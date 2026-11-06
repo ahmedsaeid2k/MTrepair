@@ -232,6 +232,8 @@ function render(){
   if(state.currentSection==='settings') return renderSettingsSectionApp(app);
   renderSectionPicker(app);
 }
+window.__appRenderer = render;
+window.render = render;
 
 const SECTION_INFO = {
   // 1. العمليات التشغيلية (Core Operations)

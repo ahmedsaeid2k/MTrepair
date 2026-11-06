@@ -121,13 +121,12 @@ let state = {
 window.state = state;
 
 // Expose the renderer to late-bound callers (inline handlers, other scripts).
-// The real function reference is captured ONCE at load time: re-reading the global
-// `render` identifier inside the wrapper would resolve to this very wrapper in the
-// single-file bundle (function declarations are hoisted), recursing forever and
-// leaving the app with a blank screen.
+// The real function reference is captured at load time or delegated to __appRenderer,
+// ensuring no self-recursion occurs in single-bundle environments.
 const _renderBridgeTarget = (typeof render === 'function') ? render : null;
 window.render = function(...args){
-  return _renderBridgeTarget ? _renderBridgeTarget.apply(this, args) : undefined;
+  const target = _renderBridgeTarget || (typeof window !== 'undefined' ? window.__appRenderer : null);
+  return target ? target.apply(this, args) : undefined;
 };
 
 function applyThemeAndAppearance(){

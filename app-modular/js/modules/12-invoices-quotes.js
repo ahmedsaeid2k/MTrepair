@@ -732,16 +732,20 @@ function startNewShift(openingFloat = 0, notes = ''){
   setCache('activeShift', state.activeShift);
   recordAuditLog('فتح وردية جديدة', 'الخزينة والورديات', `فتح الوردية #${shiftNumber} برصيد افتتاحي: ${openingFloat} ج.م للكاشير: ${shift.cashierName}`, shift.id);
 
-  // Journal Entry: Custody of drawer float (Debit 1101 Cash Drawer, Credit 2105 Shift Custody) [F6]
+  // Journal Entry: Custody of drawer float (Debit 1101 Cash Drawer, Credit 2105 Shift Custody) [F6] via centralized FinanceEngine
   if (Number(shift.openingFloat) > 0 && typeof recordAutoJournalEntry === 'function') {
+    const shiftOpenLines = (typeof FinanceEngine !== 'undefined' && typeof FinanceEngine.createShiftOpenLines === 'function')
+      ? FinanceEngine.createShiftOpenLines({ shiftNumber, cashierName: shift.cashierName, openingFloat: shift.openingFloat })
+      : [
+        { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: Number(shift.openingFloat), Credit: 0, Description: `عهدة درج الكاشير وردية #${shiftNumber}` },
+        { AccountCode: '2105', AccountName: 'عهدة وأمانات مسؤولي الورديات', Debit: 0, Credit: Number(shift.openingFloat), Description: `عهدة وأمانات مسؤولي الورديات وردية #${shiftNumber}` }
+      ];
+
     recordAutoJournalEntry(
       `رصيد افتتاحي عهدة وردية #${shiftNumber} - الكاشير: ${shift.cashierName}`,
       'Shift_Open',
       shift.id,
-      [
-        { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: Number(shift.openingFloat), Credit: 0, Description: `عهدة درج الكاشير وردية #${shiftNumber}` },
-        { AccountCode: '2105', AccountName: 'عهدة وأمانات مسؤولي الورديات', Debit: 0, Credit: Number(shift.openingFloat), Description: `عهدة وأمانات مسؤولي الورديات وردية #${shiftNumber}` }
-      ]
+      shiftOpenLines
     ).catch(e => console.error('Shift_Open JE error:', e));
   }
 
@@ -1002,45 +1006,47 @@ function closeActiveShift(actualCountedCash, closingNotes = '', printFormat = 't
 
   // Post closing journal entries [F6]
   if (typeof recordAutoJournalEntry === 'function') {
-    // 1. Settle opening float if it existed (Release cashier custody)
+    // 1. Settle opening float if it existed (Release cashier custody) via centralized FinanceEngine
     if (Number(shift.openingFloat) > 0) {
+      const shiftCloseLines = (typeof FinanceEngine !== 'undefined' && typeof FinanceEngine.createShiftCloseLines === 'function')
+        ? FinanceEngine.createShiftCloseLines({ shiftNumber: shift.shiftNumber, cashierName: shift.cashierName, openingFloat: shift.openingFloat })
+        : [
+          { AccountCode: '2105', AccountName: 'عهدة وأمانات مسؤولي الورديات', Debit: Number(shift.openingFloat), Credit: 0, Description: `تسوية عهدة كاشير وردية #${shift.shiftNumber}` },
+          { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: 0, Credit: Number(shift.openingFloat), Description: `استرداد عهدة كاشير وردية #${shift.shiftNumber}` }
+        ];
+
       recordAutoJournalEntry(
         `إخلاء وتسوية عهدة افتتاح وردية #${shift.shiftNumber} - الكاشير: ${shift.cashierName}`,
         'Shift_Close',
         shift.id,
-        [
-          { AccountCode: '2105', AccountName: 'عهدة وأمانات مسؤولي الورديات', Debit: Number(shift.openingFloat), Credit: 0, Description: `تسوية عهدة كاشير وردية #${shift.shiftNumber}` },
-          { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: 0, Credit: Number(shift.openingFloat), Description: `استرداد عهدة كاشير وردية #${shift.shiftNumber}` }
-        ]
+        shiftCloseLines
       ).catch(e => console.error('Shift_Close JE error:', e));
     }
 
-    // 2. Discrepancy accounting (variance)
+    // 2. Discrepancy accounting (variance) via centralized FinanceEngine
     const discrepancy = Number(shift.discrepancy || 0);
-    if (discrepancy < -0.009) {
-      // Shortage (عجز الدرج) -> Expense 5208, Cash Cr 1101
-      const shortageAmt = Math.abs(discrepancy);
+    if (Math.abs(discrepancy) > 0.009) {
+      const isShortage = discrepancy < -0.009;
+      const varianceLines = (typeof FinanceEngine !== 'undefined' && typeof FinanceEngine.createShiftVarianceLines === 'function')
+        ? FinanceEngine.createShiftVarianceLines({ shiftNumber: shift.shiftNumber, cashierName: shift.cashierName, discrepancy })
+        : (isShortage ? [
+          { AccountCode: '5208', AccountName: 'مصروفات تشغيلية أخرى وفروق الدرج', Debit: Math.abs(discrepancy), Credit: 0, Description: `عجز درج وردية #${shift.shiftNumber}: ${Math.abs(discrepancy)} ج.م` },
+          { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: 0, Credit: Math.abs(discrepancy), Description: `تسوية نقص نقدية الدرج وردية #${shift.shiftNumber}` }
+        ] : [
+          { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: discrepancy, Credit: 0, Description: `زيادة نقدية محصلة بدرج وردية #${shift.shiftNumber}` },
+          { AccountCode: '4201', AccountName: 'إيرادات وأرباح متنوعة وزيادة الجرد', Debit: 0, Credit: discrepancy, Description: `فائض نقدية غير معرّف وردية #${shift.shiftNumber}` }
+        ]);
+
+      const varianceDesc = isShortage
+        ? `إثبات عجز درج نقدية وردية #${shift.shiftNumber} (${shift.cashierName})`
+        : `إثبات زيادة نقدية غير معلومة بدرج وردية #${shift.shiftNumber} (${shift.cashierName})`;
+
       recordAutoJournalEntry(
-        `إثبات عجز درج نقدية وردية #${shift.shiftNumber} (${shift.cashierName})`,
+        varianceDesc,
         'Shift_Variance',
         shift.id,
-        [
-          { AccountCode: '5208', AccountName: 'مصروفات تشغيلية أخرى وفروق الدرج', Debit: shortageAmt, Credit: 0, Description: `عجز درج وردية #${shift.shiftNumber}: ${shortageAmt} ج.م` },
-          { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: 0, Credit: shortageAmt, Description: `تسوية نقص نقدية الدرج وردية #${shift.shiftNumber}` }
-        ]
-      ).catch(e => console.error('Shift_Variance Shortage JE error:', e));
-    } else if (discrepancy > 0.009) {
-      // Surplus (زيادة الدرج) -> Cash Dr 1101, Other Revenue Cr 42
-      const surplusAmt = discrepancy;
-      recordAutoJournalEntry(
-        `إثبات زيادة نقدية غير معلومة بدرج وردية #${shift.shiftNumber} (${shift.cashierName})`,
-        'Shift_Variance',
-        shift.id,
-        [
-          { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: surplusAmt, Credit: 0, Description: `زيادة نقدية محصلة بدرج وردية #${shift.shiftNumber}` },
-          { AccountCode: '4201', AccountName: 'إيرادات وأرباح متنوعة وزيادة الجرد', Debit: 0, Credit: surplusAmt, Description: `فائض نقدية غير معرّف وردية #${shift.shiftNumber}` }
-        ]
-      ).catch(e => console.error('Shift_Variance Surplus JE error:', e));
+        varianceLines
+      ).catch(e => console.error('Shift_Variance JE error:', e));
     }
   }
 

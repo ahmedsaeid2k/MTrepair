@@ -299,30 +299,13 @@ window.openReceiptRefundModal = function(receiptId, receiptNum){
 
       await saveReceiptRemote(r);
 
-      // 2. Journal Entry (Receipt_Void)
-      // Dr 4101 (مردودات خدمات صيانة وتصليح) / Cr 1101 (الخزينة) or 1102 (البنك) or 1103 (العملاء)
-      const mLow = method.toLowerCase();
-      const isBank = mLow.includes('بنك') || mLow.includes('فيزا') || mLow.includes('card') || mLow.includes('محفظ') || mLow.includes('إلكتروني');
-      const isCredit = mLow.includes('آجل') || mLow.includes('حساب');
-      const creditAccCode = isBank ? '1102' : (isCredit ? '1103' : '1101');
-      const creditAccName = isBank ? 'البنك والحسابات الإلكترونية والمحافظ' : (isCredit ? 'العملاء والمدينون' : 'الخزينة الرئيسية (النقدية بالدرج)');
-
-      const lines = [
-        {
-          AccountCode: '4101',
-          AccountName: 'مردودات خدمات صيانة وتصليح',
-          Debit: amt,
-          Credit: 0,
-          Notes: `استرداد مبالغ صيانة للعميل: ${cName} (إيصال #${rNum}) - سبب: ${reason}`
-        },
-        {
-          AccountCode: creditAccCode,
-          AccountName: creditAccName,
-          Debit: 0,
-          Credit: amt,
-          Notes: `صرف مردودات صيانة عبر ${method} - إيصال #${rNum}`
-        }
-      ];
+      // 2. Journal Entry (Receipt_Void) via centralized FinanceEngine
+      const lines = (typeof FinanceEngine !== 'undefined' && typeof FinanceEngine.createReceiptVoidLines === 'function')
+        ? FinanceEngine.createReceiptVoidLines({ amount: amt, method, customerName: cName, receiptNumber: rNum, reason })
+        : [
+          { AccountCode: '4101', AccountName: 'مردودات خدمات صيانة وتصليح', Debit: amt, Credit: 0, Notes: `استرداد مبالغ صيانة للعميل: ${cName} (إيصال #${rNum}) - سبب: ${reason}` },
+          { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية بالدرج)', Debit: 0, Credit: amt, Notes: `صرف مردودات صيانة عبر ${method} - إيصال #${rNum}` }
+        ];
 
       await recordAutoJournalEntry(
         `استرداد مبالغ صيانة إيصال #${rNum} للعميل: ${cName}`,

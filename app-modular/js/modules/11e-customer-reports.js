@@ -782,24 +782,12 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
           const diff = Math.round((newTot - oldTot) * 100) / 100;
 
           if(Math.abs(diff) > 0.005){
-            const isDebit = diff > 0;
-            const absDiff = Math.abs(diff);
-            const adjLines = [
-              {
-                AccountCode: isDebit ? '1103' : '4102',
-                AccountName: isDebit ? 'حساب العميل (مدينون عملاء)' : 'مردودات ومسموحات مبيعات الأجهزة والإكسسوار',
-                Debit: absDiff,
-                Credit: 0,
-                Notes: `تسوية تعديل إجمالي فاتورة مسددة #${inv.InvoiceNumber} بتصريح المشرف (${authorizedBy})`
-              },
-              {
-                AccountCode: isDebit ? '4102' : '1103',
-                AccountName: isDebit ? 'إيرادات مبيعات الأجهزة والإكسسوار' : 'حساب العميل (مدينون عملاء)',
-                Debit: 0,
-                Credit: absDiff,
-                Notes: `تسوية فارق إجمالي فاتورة مسددة #${inv.InvoiceNumber} (السابق: ${oldTot} -> الجديد: ${newTot})`
-              }
-            ];
+            const adjLines = (typeof FinanceEngine !== 'undefined' && typeof FinanceEngine.createInvoiceAdjustmentLines === 'function')
+              ? FinanceEngine.createInvoiceAdjustmentLines({ invoiceNumber: inv.InvoiceNumber, customerName: inv.CustomerName, supervisorName: authorizedBy, oldTotal: oldTot, newTotal: newTot })
+              : [
+                { AccountCode: diff > 0 ? '1103' : '4102', AccountName: diff > 0 ? 'حساب العميل (مدينون عملاء)' : 'مردودات ومسموحات مبيعات الأجهزة والإكسسوار', Debit: Math.abs(diff), Credit: 0, Notes: `تسوية تعديل إجمالي فاتورة مسددة #${inv.InvoiceNumber} بتصريح المشرف (${authorizedBy})` },
+                { AccountCode: diff > 0 ? '4102' : '1103', AccountName: diff > 0 ? 'إيرادات مبيعات الأجهزة والإكسسوار' : 'حساب العميل (مدينون عملاء)', Debit: 0, Credit: Math.abs(diff), Notes: `تسوية فارق إجمالي فاتورة مسددة #${inv.InvoiceNumber} (السابق: ${oldTot} -> الجديد: ${newTot})` }
+              ];
 
             await recordAutoJournalEntry(
               `تسوية تعديل فاتورة مسددة #${inv.InvoiceNumber} للعميل: ${inv.CustomerName}`,

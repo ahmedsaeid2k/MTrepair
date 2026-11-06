@@ -12245,13 +12245,12 @@ let state = {
 window.state = state;
 
 // Expose the renderer to late-bound callers (inline handlers, other scripts).
-// The real function reference is captured ONCE at load time: re-reading the global
-// `render` identifier inside the wrapper would resolve to this very wrapper in the
-// single-file bundle (function declarations are hoisted), recursing forever and
-// leaving the app with a blank screen.
+// The real function reference is captured at load time or delegated to __appRenderer,
+// ensuring no self-recursion occurs in single-bundle environments.
 const _renderBridgeTarget = (typeof render === 'function') ? render : null;
 window.render = function(...args){
-  return _renderBridgeTarget ? _renderBridgeTarget.apply(this, args) : undefined;
+  const target = _renderBridgeTarget || (typeof window !== 'undefined' ? window.__appRenderer : null);
+  return target ? target.apply(this, args) : undefined;
 };
 
 function applyThemeAndAppearance(){
@@ -14024,6 +14023,156 @@ async function renderPublicTrackingPortal(receiptNum = ''){
     return lines;
   }
 
+  /**
+   * Helper to build journal lines for receipt refund/void.
+   */
+  function createReceiptVoidLines({ amount, method, customerName, receiptNumber, reason } = {}) {
+    const amt = round2(amount || 0);
+    const mLow = String(method || '').toLowerCase();
+    const isBank = mLow.includes('بنك') || mLow.includes('فيزا') || mLow.includes('card') || mLow.includes('محفظ') || mLow.includes('إلكتروني');
+    const isCredit = mLow.includes('آجل') || mLow.includes('حساب');
+    const creditAccCode = isBank ? '1102' : (isCredit ? '1103' : '1101');
+    const creditAccName = isBank ? 'البنك والحسابات الإلكترونية والمحافظ' : (isCredit ? 'العملاء والمدينون' : 'الخزينة الرئيسية (النقدية بالدرج)');
+
+    return [
+      {
+        AccountCode: '4101',
+        AccountName: 'مردودات خدمات صيانة وتصليح',
+        Debit: amt,
+        Credit: 0,
+        Notes: `استرداد مبالغ صيانة للعميل: ${customerName || ''} (إيصال #${receiptNumber || ''}) - سبب: ${reason || ''}`
+      },
+      {
+        AccountCode: creditAccCode,
+        AccountName: creditAccName,
+        Debit: 0,
+        Credit: amt,
+        Notes: `صرف مردودات صيانة عبر ${method || 'نقدي'} - إيصال #${receiptNumber || ''}`
+      }
+    ];
+  }
+
+  /**
+   * Helper to build journal lines for shift opening custody float.
+   */
+  function createShiftOpenLines({ shiftNumber, cashierName, openingFloat } = {}) {
+    const floatAmt = round2(openingFloat || 0);
+    return [
+      {
+        AccountCode: '1101',
+        AccountName: 'الخزينة الرئيسية (النقدية)',
+        Debit: floatAmt,
+        Credit: 0,
+        Description: `عهدة درج الكاشير وردية #${shiftNumber || ''}`
+      },
+      {
+        AccountCode: '2105',
+        AccountName: 'عهدة وأمانات مسؤولي الورديات',
+        Debit: 0,
+        Credit: floatAmt,
+        Description: `عهدة وأمانات مسؤولي الورديات وردية #${shiftNumber || ''}`
+      }
+    ];
+  }
+
+  /**
+   * Helper to build journal lines for shift closing custody release.
+   */
+  function createShiftCloseLines({ shiftNumber, cashierName, openingFloat } = {}) {
+    const floatAmt = round2(openingFloat || 0);
+    return [
+      {
+        AccountCode: '2105',
+        AccountName: 'عهدة وأمانات مسؤولي الورديات',
+        Debit: floatAmt,
+        Credit: 0,
+        Description: `تسوية عهدة كاشير وردية #${shiftNumber || ''}`
+      },
+      {
+        AccountCode: '1101',
+        AccountName: 'الخزينة الرئيسية (النقدية)',
+        Debit: 0,
+        Credit: floatAmt,
+        Description: `استرداد عهدة كاشير وردية #${shiftNumber || ''}`
+      }
+    ];
+  }
+
+  /**
+   * Helper to build journal lines for shift cash variance (shortage or surplus).
+   */
+  function createShiftVarianceLines({ shiftNumber, cashierName, discrepancy } = {}) {
+    const disc = round2(discrepancy || 0);
+    if (disc < -0.009) {
+      const shortageAmt = Math.abs(disc);
+      return [
+        {
+          AccountCode: '5208',
+          AccountName: 'مصروفات تشغيلية أخرى وفروق الدرج',
+          Debit: shortageAmt,
+          Credit: 0,
+          Description: `عجز درج وردية #${shiftNumber || ''}: ${shortageAmt} ج.م`
+        },
+        {
+          AccountCode: '1101',
+          AccountName: 'الخزينة الرئيسية (النقدية)',
+          Debit: 0,
+          Credit: shortageAmt,
+          Description: `تسوية نقص نقدية الدرج وردية #${shiftNumber || ''}`
+        }
+      ];
+    } else if (disc > 0.009) {
+      const surplusAmt = disc;
+      return [
+        {
+          AccountCode: '1101',
+          AccountName: 'الخزينة الرئيسية (النقدية)',
+          Debit: surplusAmt,
+          Credit: 0,
+          Description: `إثبات زيادة نقدية الدرج وردية #${shiftNumber || ''}`
+        },
+        {
+          AccountCode: '4201',
+          AccountName: 'إيرادات وأرباح متنوعة وزيادة الجرد',
+          Debit: 0,
+          Credit: surplusAmt,
+          Description: `زيادة درج وردية #${shiftNumber || ''}: ${surplusAmt} ج.م`
+        }
+      ];
+    }
+    return [];
+  }
+
+  /**
+   * Helper to build journal lines for invoice total adjustments.
+   */
+  function createInvoiceAdjustmentLines({ invoiceNumber, customerName, supervisorName, oldTotal, newTotal } = {}) {
+    const oldTot = round2(oldTotal || 0);
+    const newTot = round2(newTotal || 0);
+    const diff = round2(newTot - oldTot);
+    if (Math.abs(diff) <= 0.005) return [];
+
+    const isDebit = diff > 0;
+    const absDiff = Math.abs(diff);
+
+    return [
+      {
+        AccountCode: isDebit ? '1103' : '4102',
+        AccountName: isDebit ? 'حساب العميل (مدينون عملاء)' : 'مردودات ومسموحات مبيعات الأجهزة والإكسسوار',
+        Debit: absDiff,
+        Credit: 0,
+        Notes: `تسوية تعديل إجمالي فاتورة مسددة #${invoiceNumber || ''} بتصريح المشرف (${supervisorName || 'الإدارة'})`
+      },
+      {
+        AccountCode: isDebit ? '4102' : '1103',
+        AccountName: isDebit ? 'إيرادات مبيعات الأجهزة والإكسسوار' : 'حساب العميل (مدينون عملاء)',
+        Debit: 0,
+        Credit: absDiff,
+        Notes: `تسوية فارق إجمالي فاتورة مسددة #${invoiceNumber || ''} (السابق: ${oldTot} -> الجديد: ${newTot})`
+      }
+    ];
+  }
+
   return {
     toEngDigits,
     parseMoney,
@@ -14056,7 +14205,12 @@ async function renderPublicTrackingPortal(receiptNum = ''){
     buildAdvanceDisbursementJournalLines,
     buildAdvanceRepaymentJournalLines,
     buildEmployeePurchasePaymentJournalLines,
-    buildPayrollJournalLines
+    buildPayrollJournalLines,
+    createReceiptVoidLines,
+    createShiftOpenLines,
+    createShiftCloseLines,
+    createShiftVarianceLines,
+    createInvoiceAdjustmentLines
   };
 });
 
@@ -14585,6 +14739,8 @@ function render(){
   if(state.currentSection==='settings') return renderSettingsSectionApp(app);
   renderSectionPicker(app);
 }
+window.__appRenderer = render;
+window.render = render;
 
 const SECTION_INFO = {
   // 1. العمليات التشغيلية (Core Operations)
@@ -18888,30 +19044,13 @@ window.openReceiptRefundModal = function(receiptId, receiptNum){
 
       await saveReceiptRemote(r);
 
-      // 2. Journal Entry (Receipt_Void)
-      // Dr 4101 (مردودات خدمات صيانة وتصليح) / Cr 1101 (الخزينة) or 1102 (البنك) or 1103 (العملاء)
-      const mLow = method.toLowerCase();
-      const isBank = mLow.includes('بنك') || mLow.includes('فيزا') || mLow.includes('card') || mLow.includes('محفظ') || mLow.includes('إلكتروني');
-      const isCredit = mLow.includes('آجل') || mLow.includes('حساب');
-      const creditAccCode = isBank ? '1102' : (isCredit ? '1103' : '1101');
-      const creditAccName = isBank ? 'البنك والحسابات الإلكترونية والمحافظ' : (isCredit ? 'العملاء والمدينون' : 'الخزينة الرئيسية (النقدية بالدرج)');
-
-      const lines = [
-        {
-          AccountCode: '4101',
-          AccountName: 'مردودات خدمات صيانة وتصليح',
-          Debit: amt,
-          Credit: 0,
-          Notes: `استرداد مبالغ صيانة للعميل: ${cName} (إيصال #${rNum}) - سبب: ${reason}`
-        },
-        {
-          AccountCode: creditAccCode,
-          AccountName: creditAccName,
-          Debit: 0,
-          Credit: amt,
-          Notes: `صرف مردودات صيانة عبر ${method} - إيصال #${rNum}`
-        }
-      ];
+      // 2. Journal Entry (Receipt_Void) via centralized FinanceEngine
+      const lines = (typeof FinanceEngine !== 'undefined' && typeof FinanceEngine.createReceiptVoidLines === 'function')
+        ? FinanceEngine.createReceiptVoidLines({ amount: amt, method, customerName: cName, receiptNumber: rNum, reason })
+        : [
+          { AccountCode: '4101', AccountName: 'مردودات خدمات صيانة وتصليح', Debit: amt, Credit: 0, Notes: `استرداد مبالغ صيانة للعميل: ${cName} (إيصال #${rNum}) - سبب: ${reason}` },
+          { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية بالدرج)', Debit: 0, Credit: amt, Notes: `صرف مردودات صيانة عبر ${method} - إيصال #${rNum}` }
+        ];
 
       await recordAutoJournalEntry(
         `استرداد مبالغ صيانة إيصال #${rNum} للعميل: ${cName}`,
@@ -28562,24 +28701,12 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
           const diff = Math.round((newTot - oldTot) * 100) / 100;
 
           if(Math.abs(diff) > 0.005){
-            const isDebit = diff > 0;
-            const absDiff = Math.abs(diff);
-            const adjLines = [
-              {
-                AccountCode: isDebit ? '1103' : '4102',
-                AccountName: isDebit ? 'حساب العميل (مدينون عملاء)' : 'مردودات ومسموحات مبيعات الأجهزة والإكسسوار',
-                Debit: absDiff,
-                Credit: 0,
-                Notes: `تسوية تعديل إجمالي فاتورة مسددة #${inv.InvoiceNumber} بتصريح المشرف (${authorizedBy})`
-              },
-              {
-                AccountCode: isDebit ? '4102' : '1103',
-                AccountName: isDebit ? 'إيرادات مبيعات الأجهزة والإكسسوار' : 'حساب العميل (مدينون عملاء)',
-                Debit: 0,
-                Credit: absDiff,
-                Notes: `تسوية فارق إجمالي فاتورة مسددة #${inv.InvoiceNumber} (السابق: ${oldTot} -> الجديد: ${newTot})`
-              }
-            ];
+            const adjLines = (typeof FinanceEngine !== 'undefined' && typeof FinanceEngine.createInvoiceAdjustmentLines === 'function')
+              ? FinanceEngine.createInvoiceAdjustmentLines({ invoiceNumber: inv.InvoiceNumber, customerName: inv.CustomerName, supervisorName: authorizedBy, oldTotal: oldTot, newTotal: newTot })
+              : [
+                { AccountCode: diff > 0 ? '1103' : '4102', AccountName: diff > 0 ? 'حساب العميل (مدينون عملاء)' : 'مردودات ومسموحات مبيعات الأجهزة والإكسسوار', Debit: Math.abs(diff), Credit: 0, Notes: `تسوية تعديل إجمالي فاتورة مسددة #${inv.InvoiceNumber} بتصريح المشرف (${authorizedBy})` },
+                { AccountCode: diff > 0 ? '4102' : '1103', AccountName: diff > 0 ? 'إيرادات مبيعات الأجهزة والإكسسوار' : 'حساب العميل (مدينون عملاء)', Debit: 0, Credit: Math.abs(diff), Notes: `تسوية فارق إجمالي فاتورة مسددة #${inv.InvoiceNumber} (السابق: ${oldTot} -> الجديد: ${newTot})` }
+              ];
 
             await recordAutoJournalEntry(
               `تسوية تعديل فاتورة مسددة #${inv.InvoiceNumber} للعميل: ${inv.CustomerName}`,
@@ -29545,16 +29672,20 @@ function startNewShift(openingFloat = 0, notes = ''){
   setCache('activeShift', state.activeShift);
   recordAuditLog('فتح وردية جديدة', 'الخزينة والورديات', `فتح الوردية #${shiftNumber} برصيد افتتاحي: ${openingFloat} ج.م للكاشير: ${shift.cashierName}`, shift.id);
 
-  // Journal Entry: Custody of drawer float (Debit 1101 Cash Drawer, Credit 2105 Shift Custody) [F6]
+  // Journal Entry: Custody of drawer float (Debit 1101 Cash Drawer, Credit 2105 Shift Custody) [F6] via centralized FinanceEngine
   if (Number(shift.openingFloat) > 0 && typeof recordAutoJournalEntry === 'function') {
+    const shiftOpenLines = (typeof FinanceEngine !== 'undefined' && typeof FinanceEngine.createShiftOpenLines === 'function')
+      ? FinanceEngine.createShiftOpenLines({ shiftNumber, cashierName: shift.cashierName, openingFloat: shift.openingFloat })
+      : [
+        { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: Number(shift.openingFloat), Credit: 0, Description: `عهدة درج الكاشير وردية #${shiftNumber}` },
+        { AccountCode: '2105', AccountName: 'عهدة وأمانات مسؤولي الورديات', Debit: 0, Credit: Number(shift.openingFloat), Description: `عهدة وأمانات مسؤولي الورديات وردية #${shiftNumber}` }
+      ];
+
     recordAutoJournalEntry(
       `رصيد افتتاحي عهدة وردية #${shiftNumber} - الكاشير: ${shift.cashierName}`,
       'Shift_Open',
       shift.id,
-      [
-        { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: Number(shift.openingFloat), Credit: 0, Description: `عهدة درج الكاشير وردية #${shiftNumber}` },
-        { AccountCode: '2105', AccountName: 'عهدة وأمانات مسؤولي الورديات', Debit: 0, Credit: Number(shift.openingFloat), Description: `عهدة وأمانات مسؤولي الورديات وردية #${shiftNumber}` }
-      ]
+      shiftOpenLines
     ).catch(e => console.error('Shift_Open JE error:', e));
   }
 
@@ -29815,45 +29946,47 @@ function closeActiveShift(actualCountedCash, closingNotes = '', printFormat = 't
 
   // Post closing journal entries [F6]
   if (typeof recordAutoJournalEntry === 'function') {
-    // 1. Settle opening float if it existed (Release cashier custody)
+    // 1. Settle opening float if it existed (Release cashier custody) via centralized FinanceEngine
     if (Number(shift.openingFloat) > 0) {
+      const shiftCloseLines = (typeof FinanceEngine !== 'undefined' && typeof FinanceEngine.createShiftCloseLines === 'function')
+        ? FinanceEngine.createShiftCloseLines({ shiftNumber: shift.shiftNumber, cashierName: shift.cashierName, openingFloat: shift.openingFloat })
+        : [
+          { AccountCode: '2105', AccountName: 'عهدة وأمانات مسؤولي الورديات', Debit: Number(shift.openingFloat), Credit: 0, Description: `تسوية عهدة كاشير وردية #${shift.shiftNumber}` },
+          { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: 0, Credit: Number(shift.openingFloat), Description: `استرداد عهدة كاشير وردية #${shift.shiftNumber}` }
+        ];
+
       recordAutoJournalEntry(
         `إخلاء وتسوية عهدة افتتاح وردية #${shift.shiftNumber} - الكاشير: ${shift.cashierName}`,
         'Shift_Close',
         shift.id,
-        [
-          { AccountCode: '2105', AccountName: 'عهدة وأمانات مسؤولي الورديات', Debit: Number(shift.openingFloat), Credit: 0, Description: `تسوية عهدة كاشير وردية #${shift.shiftNumber}` },
-          { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: 0, Credit: Number(shift.openingFloat), Description: `استرداد عهدة كاشير وردية #${shift.shiftNumber}` }
-        ]
+        shiftCloseLines
       ).catch(e => console.error('Shift_Close JE error:', e));
     }
 
-    // 2. Discrepancy accounting (variance)
+    // 2. Discrepancy accounting (variance) via centralized FinanceEngine
     const discrepancy = Number(shift.discrepancy || 0);
-    if (discrepancy < -0.009) {
-      // Shortage (عجز الدرج) -> Expense 5208, Cash Cr 1101
-      const shortageAmt = Math.abs(discrepancy);
+    if (Math.abs(discrepancy) > 0.009) {
+      const isShortage = discrepancy < -0.009;
+      const varianceLines = (typeof FinanceEngine !== 'undefined' && typeof FinanceEngine.createShiftVarianceLines === 'function')
+        ? FinanceEngine.createShiftVarianceLines({ shiftNumber: shift.shiftNumber, cashierName: shift.cashierName, discrepancy })
+        : (isShortage ? [
+          { AccountCode: '5208', AccountName: 'مصروفات تشغيلية أخرى وفروق الدرج', Debit: Math.abs(discrepancy), Credit: 0, Description: `عجز درج وردية #${shift.shiftNumber}: ${Math.abs(discrepancy)} ج.م` },
+          { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: 0, Credit: Math.abs(discrepancy), Description: `تسوية نقص نقدية الدرج وردية #${shift.shiftNumber}` }
+        ] : [
+          { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: discrepancy, Credit: 0, Description: `زيادة نقدية محصلة بدرج وردية #${shift.shiftNumber}` },
+          { AccountCode: '4201', AccountName: 'إيرادات وأرباح متنوعة وزيادة الجرد', Debit: 0, Credit: discrepancy, Description: `فائض نقدية غير معرّف وردية #${shift.shiftNumber}` }
+        ]);
+
+      const varianceDesc = isShortage
+        ? `إثبات عجز درج نقدية وردية #${shift.shiftNumber} (${shift.cashierName})`
+        : `إثبات زيادة نقدية غير معلومة بدرج وردية #${shift.shiftNumber} (${shift.cashierName})`;
+
       recordAutoJournalEntry(
-        `إثبات عجز درج نقدية وردية #${shift.shiftNumber} (${shift.cashierName})`,
+        varianceDesc,
         'Shift_Variance',
         shift.id,
-        [
-          { AccountCode: '5208', AccountName: 'مصروفات تشغيلية أخرى وفروق الدرج', Debit: shortageAmt, Credit: 0, Description: `عجز درج وردية #${shift.shiftNumber}: ${shortageAmt} ج.م` },
-          { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: 0, Credit: shortageAmt, Description: `تسوية نقص نقدية الدرج وردية #${shift.shiftNumber}` }
-        ]
-      ).catch(e => console.error('Shift_Variance Shortage JE error:', e));
-    } else if (discrepancy > 0.009) {
-      // Surplus (زيادة الدرج) -> Cash Dr 1101, Other Revenue Cr 42
-      const surplusAmt = discrepancy;
-      recordAutoJournalEntry(
-        `إثبات زيادة نقدية غير معلومة بدرج وردية #${shift.shiftNumber} (${shift.cashierName})`,
-        'Shift_Variance',
-        shift.id,
-        [
-          { AccountCode: '1101', AccountName: 'الخزينة الرئيسية (النقدية)', Debit: surplusAmt, Credit: 0, Description: `زيادة نقدية محصلة بدرج وردية #${shift.shiftNumber}` },
-          { AccountCode: '4201', AccountName: 'إيرادات وأرباح متنوعة وزيادة الجرد', Debit: 0, Credit: surplusAmt, Description: `فائض نقدية غير معرّف وردية #${shift.shiftNumber}` }
-        ]
-      ).catch(e => console.error('Shift_Variance Surplus JE error:', e));
+        varianceLines
+      ).catch(e => console.error('Shift_Variance JE error:', e));
     }
   }
 
@@ -48119,6 +48252,8 @@ function openInvoiceBarcodePrintModal(type = 'purchase', targetId = ''){
   });
 }
 
+
+/* === [Module: js/modules/18f-backup.js] === */
 /* ============================================================
    U4: Full System Backup, Automated Drive Snapshots & Restore Engine
    ============================================================ */
@@ -48449,8 +48584,6 @@ async function exportAllSheetsCSV(){
   }
 }
 
-
-/* === [Module: js/modules/18f-backup.js] === */
 function openRestoreConfirmationModal(backupData){
   const existingModal = document.getElementById('restoreConfirmModalOverlay');
   if(existingModal) existingModal.remove();

@@ -952,6 +952,156 @@
     return lines;
   }
 
+  /**
+   * Helper to build journal lines for receipt refund/void.
+   */
+  function createReceiptVoidLines({ amount, method, customerName, receiptNumber, reason } = {}) {
+    const amt = round2(amount || 0);
+    const mLow = String(method || '').toLowerCase();
+    const isBank = mLow.includes('بنك') || mLow.includes('فيزا') || mLow.includes('card') || mLow.includes('محفظ') || mLow.includes('إلكتروني');
+    const isCredit = mLow.includes('آجل') || mLow.includes('حساب');
+    const creditAccCode = isBank ? '1102' : (isCredit ? '1103' : '1101');
+    const creditAccName = isBank ? 'البنك والحسابات الإلكترونية والمحافظ' : (isCredit ? 'العملاء والمدينون' : 'الخزينة الرئيسية (النقدية بالدرج)');
+
+    return [
+      {
+        AccountCode: '4101',
+        AccountName: 'مردودات خدمات صيانة وتصليح',
+        Debit: amt,
+        Credit: 0,
+        Notes: `استرداد مبالغ صيانة للعميل: ${customerName || ''} (إيصال #${receiptNumber || ''}) - سبب: ${reason || ''}`
+      },
+      {
+        AccountCode: creditAccCode,
+        AccountName: creditAccName,
+        Debit: 0,
+        Credit: amt,
+        Notes: `صرف مردودات صيانة عبر ${method || 'نقدي'} - إيصال #${receiptNumber || ''}`
+      }
+    ];
+  }
+
+  /**
+   * Helper to build journal lines for shift opening custody float.
+   */
+  function createShiftOpenLines({ shiftNumber, cashierName, openingFloat } = {}) {
+    const floatAmt = round2(openingFloat || 0);
+    return [
+      {
+        AccountCode: '1101',
+        AccountName: 'الخزينة الرئيسية (النقدية)',
+        Debit: floatAmt,
+        Credit: 0,
+        Description: `عهدة درج الكاشير وردية #${shiftNumber || ''}`
+      },
+      {
+        AccountCode: '2105',
+        AccountName: 'عهدة وأمانات مسؤولي الورديات',
+        Debit: 0,
+        Credit: floatAmt,
+        Description: `عهدة وأمانات مسؤولي الورديات وردية #${shiftNumber || ''}`
+      }
+    ];
+  }
+
+  /**
+   * Helper to build journal lines for shift closing custody release.
+   */
+  function createShiftCloseLines({ shiftNumber, cashierName, openingFloat } = {}) {
+    const floatAmt = round2(openingFloat || 0);
+    return [
+      {
+        AccountCode: '2105',
+        AccountName: 'عهدة وأمانات مسؤولي الورديات',
+        Debit: floatAmt,
+        Credit: 0,
+        Description: `تسوية عهدة كاشير وردية #${shiftNumber || ''}`
+      },
+      {
+        AccountCode: '1101',
+        AccountName: 'الخزينة الرئيسية (النقدية)',
+        Debit: 0,
+        Credit: floatAmt,
+        Description: `استرداد عهدة كاشير وردية #${shiftNumber || ''}`
+      }
+    ];
+  }
+
+  /**
+   * Helper to build journal lines for shift cash variance (shortage or surplus).
+   */
+  function createShiftVarianceLines({ shiftNumber, cashierName, discrepancy } = {}) {
+    const disc = round2(discrepancy || 0);
+    if (disc < -0.009) {
+      const shortageAmt = Math.abs(disc);
+      return [
+        {
+          AccountCode: '5208',
+          AccountName: 'مصروفات تشغيلية أخرى وفروق الدرج',
+          Debit: shortageAmt,
+          Credit: 0,
+          Description: `عجز درج وردية #${shiftNumber || ''}: ${shortageAmt} ج.م`
+        },
+        {
+          AccountCode: '1101',
+          AccountName: 'الخزينة الرئيسية (النقدية)',
+          Debit: 0,
+          Credit: shortageAmt,
+          Description: `تسوية نقص نقدية الدرج وردية #${shiftNumber || ''}`
+        }
+      ];
+    } else if (disc > 0.009) {
+      const surplusAmt = disc;
+      return [
+        {
+          AccountCode: '1101',
+          AccountName: 'الخزينة الرئيسية (النقدية)',
+          Debit: surplusAmt,
+          Credit: 0,
+          Description: `إثبات زيادة نقدية الدرج وردية #${shiftNumber || ''}`
+        },
+        {
+          AccountCode: '4201',
+          AccountName: 'إيرادات وأرباح متنوعة وزيادة الجرد',
+          Debit: 0,
+          Credit: surplusAmt,
+          Description: `زيادة درج وردية #${shiftNumber || ''}: ${surplusAmt} ج.م`
+        }
+      ];
+    }
+    return [];
+  }
+
+  /**
+   * Helper to build journal lines for invoice total adjustments.
+   */
+  function createInvoiceAdjustmentLines({ invoiceNumber, customerName, supervisorName, oldTotal, newTotal } = {}) {
+    const oldTot = round2(oldTotal || 0);
+    const newTot = round2(newTotal || 0);
+    const diff = round2(newTot - oldTot);
+    if (Math.abs(diff) <= 0.005) return [];
+
+    const isDebit = diff > 0;
+    const absDiff = Math.abs(diff);
+
+    return [
+      {
+        AccountCode: isDebit ? '1103' : '4102',
+        AccountName: isDebit ? 'حساب العميل (مدينون عملاء)' : 'مردودات ومسموحات مبيعات الأجهزة والإكسسوار',
+        Debit: absDiff,
+        Credit: 0,
+        Notes: `تسوية تعديل إجمالي فاتورة مسددة #${invoiceNumber || ''} بتصريح المشرف (${supervisorName || 'الإدارة'})`
+      },
+      {
+        AccountCode: isDebit ? '4102' : '1103',
+        AccountName: isDebit ? 'إيرادات مبيعات الأجهزة والإكسسوار' : 'حساب العميل (مدينون عملاء)',
+        Debit: 0,
+        Credit: absDiff,
+        Notes: `تسوية فارق إجمالي فاتورة مسددة #${invoiceNumber || ''} (السابق: ${oldTot} -> الجديد: ${newTot})`
+      }
+    ];
+  }
+
   return {
     toEngDigits,
     parseMoney,
@@ -984,6 +1134,11 @@
     buildAdvanceDisbursementJournalLines,
     buildAdvanceRepaymentJournalLines,
     buildEmployeePurchasePaymentJournalLines,
-    buildPayrollJournalLines
+    buildPayrollJournalLines,
+    createReceiptVoidLines,
+    createShiftOpenLines,
+    createShiftCloseLines,
+    createShiftVarianceLines,
+    createInvoiceAdjustmentLines
   };
 });

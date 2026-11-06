@@ -1,3 +1,333 @@
+/* ============================================================
+   U4: Full System Backup, Automated Drive Snapshots & Restore Engine
+   ============================================================ */
+
+function downloadJsonFile(filename, dataObj){
+  const jsonStr = JSON.stringify(dataObj, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 2000);
+}
+
+function createLocalBackupPayload(){
+  const dateStr = new Date().toISOString();
+  return {
+    appName: 'microERP',
+    appVersion: '1.0.0',
+    schemaVersion: 10,
+    timestamp: dateStr,
+    exportedBy: (state.user ? state.user.name : 'admin') + ' (محلي)',
+    sheetCounts: {
+      Receipts: (state.receipts || []).length,
+      Invoices: (state.invoices || []).length,
+      Customers: (state.customers || []).length,
+      Inventory: (state.inventory || []).length,
+      Sales: (state.sales || []).length,
+      Expenses: (state.expenses || []).length,
+      JournalEntries: (state.journalEntries || []).length,
+      Accounts: (state.accounts || []).length,
+      Purchases: (state.purchases || []).length,
+      Suppliers: (state.suppliers || []).length,
+      Quotations: (state.quotations || []).length,
+      Sites: (state.cctvSites || []).length,
+      Projects: (state.cctvProjects || []).length,
+      ProjectDevices: (state.cctvDevices || []).length,
+      ServiceVisits: (state.cctvVisits || []).length,
+      MaintenanceContracts: (state.cctvContracts || []).length,
+      ProjectMilestones: (state.cctvMilestones || []).length
+    },
+    sheets: {
+      Receipts: state.receipts || [],
+      Invoices: state.invoices || [],
+      Customers: state.customers || [],
+      Inventory: state.inventory || [],
+      Sales: state.sales || [],
+      Expenses: state.expenses || [],
+      JournalEntries: state.journalEntries || [],
+      Accounts: state.accounts || [],
+      Purchases: state.purchases || [],
+      Suppliers: state.suppliers || [],
+      Quotations: state.quotations || [],
+      Sites: state.cctvSites || [],
+      Projects: state.cctvProjects || [],
+      ProjectDevices: state.cctvDevices || [],
+      ServiceVisits: state.cctvVisits || [],
+      MaintenanceContracts: state.cctvContracts || [],
+      ProjectMilestones: state.cctvMilestones || []
+    }
+  };
+}
+
+function exportSheetToCSV(sheetKey){
+  const dateStr = new Date().toISOString().slice(0, 10);
+  let filename = '';
+  let headers = [];
+  let rows = [];
+
+  switch(sheetKey){
+    case 'receipts': {
+      filename = `Receipts_${dateStr}.csv`;
+      headers = ['رقم الإيصال', 'التاريخ', 'اسم العميل', 'الهاتف', 'نوع الجهاز', 'الماركة', 'الموديل', 'الأعطال', 'التكلفة', 'الدفعة', 'المتبقي', 'الحالة', 'الفني', 'شهور الضمان', 'انتهاء الضمان'];
+      rows = (state.receipts || []).map(r => [
+        r.receiptNumber || r.ReceiptNumber || '',
+        r.date || r.Date || '',
+        r.customerName || r.CustomerName || '',
+        r.customerPhone || r.CustomerPhone || '',
+        r.category || r.Category || '',
+        r.brand || r.Brand || '',
+        r.model || r.Model || '',
+        Array.isArray(r.faults) ? r.faults.join(' - ') : (r.faults || r.Faults || ''),
+        r.cost || r.Cost || 0,
+        r.deposit || r.Deposit || 0,
+        (Number(r.cost || r.Cost || 0) - Number(r.deposit || r.Deposit || 0) + Number(r.refunded || r.Refunded || 0)),
+        r.status || r.Status || '',
+        r.technician || r.Technician || '',
+        r.warrantyMonths || r.WarrantyMonths || '',
+        r.warrantyEnd || r.WarrantyEnd || ''
+      ]);
+      break;
+    }
+    case 'invoices': {
+      filename = `Invoices_${dateStr}.csv`;
+      headers = ['رقم الفاتورة', 'النوع', 'التاريخ', 'تاريخ الاستحقاق', 'اسم العميل', 'الهاتف', 'المبلغ قبل الضريبة', 'الضريبة', 'الإجمالي', 'المدفوع', 'المتبقي', 'طريقة الدفع', 'الحالة'];
+      rows = (state.invoices || []).map(inv => [
+        inv.InvoiceNumber || inv.id || '',
+        inv.Type || 'فاتورة ضريبية',
+        inv.Date || '',
+        inv.DueDate || '',
+        inv.CustomerName || '',
+        inv.CustomerPhone || '',
+        inv.Subtotal || 0,
+        inv.TaxAmount || 0,
+        inv.Total || 0,
+        inv.AmountPaid || 0,
+        inv.Remaining || 0,
+        inv.PaymentMethod || '',
+        inv.Status || ''
+      ]);
+      break;
+    }
+    case 'customers': {
+      filename = `Customers_${dateStr}.csv`;
+      headers = ['اسم العميل', 'الهاتف', 'البريد الإلكتروني', 'العنوان', 'الرقم الضريبي', 'المديونية', 'ملاحظات'];
+      rows = (state.customers || []).map(c => [
+        c.Name || c.name || '',
+        c.Phone || c.phone || '',
+        c.Email || c.email || '',
+        c.Address || c.address || '',
+        c.TaxNumber || c.taxNumber || '',
+        c.Debt || c.debt || 0,
+        c.Notes || c.notes || ''
+      ]);
+      break;
+    }
+    case 'inventory': {
+      filename = `Inventory_${dateStr}.csv`;
+      headers = ['الباركود', 'اسم الصنف', 'التصنيف', 'الكمية', 'سعر الشراء', 'سعر البيع', 'سعر الجملة', 'الموقع'];
+      rows = (state.inventory || []).map(item => [
+        item.Barcode || item.barcode || '',
+        item.Name || item.name || '',
+        item.Category || item.category || '',
+        item.Quantity != null ? item.Quantity : (item.quantity != null ? item.quantity : 0),
+        item.PurchasePrice || item.purchasePrice || 0,
+        item.SellPrice || item.sellPrice || 0,
+        item.WholesalePrice || item.wholesalePrice || 0,
+        item.ShelfLocation || item.shelfLocation || ''
+      ]);
+      break;
+    }
+    case 'sales': {
+      filename = `Sales_${dateStr}.csv`;
+      headers = ['رقم الحركة', 'التاريخ', 'العميل', 'الهاتف', 'الأصناف', 'الإجمالي', 'طريقة الدفع', 'المدفوع', 'المسؤول'];
+      rows = (state.sales || []).map(s => [
+        s.ID || s.id || '',
+        s.Date || s.date || '',
+        s.CustomerName || s.customerName || '',
+        s.CustomerPhone || s.customerPhone || '',
+        s.ItemsSummary || s.itemsSummary || '',
+        s.Total || s.total || 0,
+        s.PaymentMethod || s.paymentMethod || '',
+        s.AmountPaid || s.amountPaid || 0,
+        s.By || s.by || ''
+      ]);
+      break;
+    }
+    case 'returns': {
+      filename = `Sales_Returns_${dateStr}.csv`;
+      headers = ['رقم الإشعار', 'رقم الفاتورة الأصلية', 'التاريخ', 'الأصناف المسترجعة', 'مبلغ الاسترداد', 'طريقة الاسترداد', 'المسؤول'];
+      const returns = getCache('returns', []);
+      rows = returns.map(ret => [
+        ret.CreditNoteNumber || ret.ID || '',
+        ret.SaleID || '',
+        ret.Date || '',
+        ret.ItemsSummary || '',
+        ret.RefundAmount || 0,
+        ret.RefundMethod || '',
+        ret.By || ''
+      ]);
+      break;
+    }
+    case 'expenses': {
+      filename = `Expenses_${dateStr}.csv`;
+      headers = ['رقم السند', 'التاريخ', 'التصنيف', 'البيان', 'المبلغ', 'طريقة الدفع', 'المورد/المستفيد', 'كود الحساب', 'المسؤول'];
+      rows = (state.expenses || []).map(e => [
+        e.ID || e.id || '',
+        e.Date || e.date || '',
+        e.Category || e.category || '',
+        e.Title || e.title || '',
+        e.Amount || e.amount || 0,
+        e.PaymentMethod || e.paymentMethod || '',
+        e.Supplier || e.supplier || '',
+        e.AccountCode || e.accountCode || '',
+        e.By || e.by || ''
+      ]);
+      break;
+    }
+    case 'journal': {
+      filename = `JournalEntries_${dateStr}.csv`;
+      headers = ['رقم القيد', 'التاريخ', 'البيان', 'نوع المرجع', 'رقم المرجع', 'إجمالي المدين', 'إجمالي الدائن', 'المسؤول'];
+      rows = (state.journalEntries || []).map(j => [
+        j.EntryNumber || j.ID || '',
+        j.Date || '',
+        j.Description || '',
+        j.ReferenceType || '',
+        j.ReferenceID || '',
+        j.TotalDebit || 0,
+        j.TotalCredit || 0,
+        j.By || ''
+      ]);
+      break;
+    }
+    case 'accounts': {
+      filename = `Chart_Of_Accounts_${dateStr}.csv`;
+      headers = ['كود الحساب', 'اسم الحساب', 'النوع', 'طبيعة الحساب', 'الحساب الرئيسي', 'الرصيد'];
+      rows = (state.accounts || []).map(a => [
+        a.Code || '',
+        a.Name || '',
+        a.Type || '',
+        a.Nature || '',
+        a.ParentCode || '',
+        a.Balance || 0
+      ]);
+      break;
+    }
+    case 'purchases': {
+      filename = `Purchases_${dateStr}.csv`;
+      headers = ['رقم الفاتورة', 'التاريخ', 'المورد', 'الأصناف', 'الإجمالي', 'المدفوع', 'شهور الضمان', 'المسؤول'];
+      rows = (state.purchases || []).map(p => [
+        p.ID || p.id || '',
+        p.Date || p.date || '',
+        p.Supplier || p.supplier || '',
+        p.ItemsSummary || p.itemsSummary || '',
+        p.Total || p.total || 0,
+        p.AmountPaid || p.amountPaid || 0,
+        p.WarrantyMonths || p.warrantyMonths || '',
+        p.By || p.by || ''
+      ]);
+      break;
+    }
+    case 'suppliers': {
+      filename = `Suppliers_${dateStr}.csv`;
+      headers = ['اسم المورد', 'الهاتف', 'المديونية', 'ملاحظات'];
+      rows = (state.suppliers || []).map(sup => [
+        sup.Name || sup.name || '',
+        sup.Phone || sup.phone || '',
+        sup.Debt || sup.debt || 0,
+        sup.Notes || sup.notes || ''
+      ]);
+      break;
+    }
+    case 'quotations': {
+      filename = `Quotations_${dateStr}.csv`;
+      headers = ['رقم العرض', 'التاريخ', 'العميل', 'الهاتف', 'ملخص الأصناف', 'تكلفة التركيب', 'الإجمالي', 'الحالة', 'المسؤول'];
+      rows = (state.quotations || []).map(q => [
+        q.ID || q.id || '',
+        q.Date || q.date || '',
+        q.ClientName || q.clientName || '',
+        q.ClientPhone || q.clientPhone || '',
+        q.ItemsSummary || q.itemsSummary || '',
+        q.LaborCost || q.laborCost || 0,
+        q.Total || q.total || 0,
+        q.Status || q.status || '',
+        q.By || q.by || ''
+      ]);
+      break;
+    }
+    case 'cctv_projects': {
+      filename = `CCTV_Projects_${dateStr}.csv`;
+      headers = ['رقم المشروع', 'عنوان المشروع', 'الموقع', 'النوع', 'قيمة العقد', 'تاريخ البدء', 'المهندس', 'الحالة'];
+      rows = (state.cctvProjects || []).map(proj => [
+        proj.ID || '',
+        proj.Title || '',
+        proj.SiteID || '',
+        proj.Type || '',
+        proj.ContractValue || 0,
+        proj.StartDate || '',
+        proj.Engineer || '',
+        proj.Status || ''
+      ]);
+      break;
+    }
+    case 'cctv_contracts': {
+      filename = `Maintenance_Contracts_${dateStr}.csv`;
+      headers = ['رقم العقد', 'المشروع', 'الموقع', 'تاريخ البدء', 'تاريخ الانتهاء', 'القيمة السنوية', 'دورية الزيارات', 'الحالة'];
+      rows = (state.cctvContracts || []).map(c => [
+        c.ID || '',
+        c.ProjectID || '',
+        c.SiteID || '',
+        c.StartDate || '',
+        c.EndDate || '',
+        c.AnnualValue || 0,
+        c.VisitFrequency || '',
+        c.Status || ''
+      ]);
+      break;
+    }
+    case 'audit_log': {
+      filename = `Audit_Logs_${dateStr}.csv`;
+      headers = ['التاريخ والوقت', 'المستخدم', 'الإجراء', 'المرجع', 'التفاصيل'];
+      const logs = (state.auditLogs && state.auditLogs.length) ? state.auditLogs : getCache('audit_logs', []);
+      rows = logs.map(l => [
+        l.Timestamp || l.timestamp || '',
+        l.User || l.user || '',
+        l.Action || l.action || '',
+        l.ReceiptID || l.ReceiptNumber || l.refId || '',
+        typeof l.Details === 'object' ? JSON.stringify(l.Details) : (l.Details || l.details || '')
+      ]);
+      break;
+    }
+    default:
+      showToast('جدول غير معروف للتصدير', 'error');
+      return;
+  }
+
+  if (!rows.length) {
+    showToast('لا توجد بيانات متاحة في هذا الجدول للتصدير', 'warning');
+    return;
+  }
+
+  downloadCSV(filename, headers, rows);
+}
+
+async function exportAllSheetsCSV(){
+  const sheets = [
+    'receipts', 'invoices', 'customers', 'inventory', 'sales',
+    'expenses', 'journal', 'accounts', 'purchases', 'suppliers',
+    'quotations', 'cctv_projects', 'cctv_contracts', 'audit_log'
+  ];
+  showToast('جاري تصدير كافة الجداول كملفات CSV...', 'info');
+  for (let i = 0; i < sheets.length; i++) {
+    exportSheetToCSV(sheets[i]);
+    await new Promise(r => setTimeout(r, 250));
+  }
+}
+
 function openRestoreConfirmationModal(backupData){
   const existingModal = document.getElementById('restoreConfirmModalOverlay');
   if(existingModal) existingModal.remove();

@@ -723,10 +723,24 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
       inv.ItemsJSON = JSON.stringify(inv.Items);
     }
 
+    let isSavingInvoice = false;
     async function handleSave(andPrint, docType='invoice'){
+      if(isSavingInvoice) return;
       collectData();
       if(!inv.CustomerName){ showToast('يرجى اختيار اسم العميل', 'error'); return; }
       if(!inv.Items.length || !inv.Items[0].Name){ showToast('يرجى إضافة بنود للفاتورة', 'error'); return; }
+
+      const saveInvOnlyBtn = overlay.querySelector('#saveInvOnlyBtn');
+      const saveAndPrintInvBtn = overlay.querySelector('#saveAndPrintInvBtn');
+      const saveAndPrintQuoteBtn = overlay.querySelector('#saveAndPrintQuoteBtn');
+
+      const setButtonsDisabled = (val) => {
+        isSavingInvoice = val;
+        if(saveInvOnlyBtn) saveInvOnlyBtn.disabled = val;
+        if(saveAndPrintInvBtn) saveAndPrintInvBtn.disabled = val;
+        if(saveAndPrintQuoteBtn) saveAndPrintQuoteBtn.disabled = val;
+      };
+      setButtonsDisabled(true);
 
       // 1. Below-cost check in invoice items [F10]
       const belowCostInvItems = [];
@@ -746,6 +760,7 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
           details: `أصناف بسعر بيع أقل من سعر الشراء: (${belowCostInvItems.map(x=>`${x.name}: بيع ${x.price} ج.م / تكلفة ${x.cost} ج.م`).join('، ')})`
         });
         if(!auth || !auth.approved){
+          setButtonsDisabled(false);
           return;
         }
       }
@@ -756,6 +771,7 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
         const totalChanged = Math.abs(Number(inv.Total || 0) - Number(existingInv.Total || 0)) > 0.005;
 
         if((itemsChanged || totalChanged) && !editAuthorized){
+          setButtonsDisabled(false);
           showToast('لا يمكن تعديل بنود أو إجمالي فاتورة مسددة دون تصريح إداري', 'error');
           return;
         }
@@ -818,6 +834,7 @@ function openInvoiceModal(existingInv, isFromReceipt=false){
         }
         if(andPrint) openInvoicePrint(inv, docType);
       }catch(e){
+        setButtonsDisabled(false);
         showToast('خطأ في حفظ البيانات', 'error');
       }
     }

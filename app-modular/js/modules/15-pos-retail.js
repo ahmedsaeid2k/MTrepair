@@ -1342,6 +1342,7 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
     const btn = document.getElementById(isTaxInvoice ? 'completeSaleWithTaxInvBtn' : 'completeSaleBtn');
     if(btn){ btn.disabled = true; btn.textContent = 'جارٍ تسجيل العملية...'; }
 
+    let inventoryBackup = null;
     try {
       // Capture items snapshot with unit cost at sale time (costAtSale) [F4]
       let hasZeroCost = false;
@@ -1406,6 +1407,9 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
           return;
         }
       }
+
+      // Take snapshot of inventory before deducting, for rollback on unexpected failure
+      inventoryBackup = JSON.parse(JSON.stringify(state.inventory || []));
 
       // Update local inventory quantities immediately (respecting allowNegativeStock) [U11]
       for(const c of cartSnapshot){
@@ -1483,8 +1487,15 @@ function attachPosTerminalEvents(main, grandTotal, subtotal){
         }
       }
     } catch(e) {
-      showToast('تم تسجيل البيع محلياً', 'info');
-      if(btn) btn.disabled = false;
+      if(inventoryBackup){
+        state.inventory = inventoryBackup;
+        setCache('inventory', state.inventory);
+      }
+      showToast('خطأ في إتمام عملية البيع: ' + (e.message || e), 'error');
+      if(btn){
+        btn.disabled = false;
+        btn.textContent = isTaxInvoice ? 'إتمام وطباعة فاتورة رسمية' : 'إتمام البيع السريع (Enter)';
+      }
     }
   }
 

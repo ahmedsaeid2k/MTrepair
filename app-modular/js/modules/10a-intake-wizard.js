@@ -1743,7 +1743,11 @@ async function saveReceipt(d, printA5, sendWa, printSticker){
   d.updatedBy = state.user.name;
   d.updatedAt = now.toISOString();
   const btns = document.querySelectorAll('#saveOnlyBtn,#savePrintBtn,#saveWaBtn,#saveStickerBtn');
-  btns.forEach(b=>{ b.disabled = true; b.textContent = 'جارٍ الحفظ...'; });
+  btns.forEach(b=>{
+    b.dataset.origText = b.textContent;
+    b.disabled = true;
+    b.textContent = 'جارٍ الحفظ...';
+  });
   try{
     await saveReceiptRemote(d);
     if(d.previousReceiptId || d.previousReceiptNumber){
@@ -1775,6 +1779,9 @@ async function saveReceipt(d, printA5, sendWa, printSticker){
     if(sendWa){ setTimeout(()=>openWhatsappChoice(d), 300); }
   }catch(e){
     showToast('تم حفظ الإيصال محلياً: '+e.message, 'info');
-    btns.forEach(b=>{ b.disabled = false; });
+    btns.forEach(b=>{
+      b.disabled = false;
+      if(b.dataset.origText) b.textContent = b.dataset.origText;
+    });
   }
 }

@@ -101,7 +101,7 @@ function archiveTable(list){
         </div>
         ${cPhone && cPhone !== '0000000000' ? `
           <div style="color:var(--ink-secondary);font-size:11.5px;display:flex;align-items:center;gap:4px;margin-top:2px;" class="mono">
-            <span>${escapeHtml(cPhone)}</span>
+            <span dir="ltr" style="unicode-bidi:isolate;">${escapeHtml(cPhone)}</span>
             <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" style="color:#22c55e;text-decoration:none;font-size:12px;" title="محادثة واتساب" onclick="event.stopPropagation();">${getSvgIcon('message', 12)}</a>
           </div>
         ` : `
@@ -206,7 +206,7 @@ function archiveCards(list){
             <b style="color:var(--ink);">${escapeHtml(cName)}</b>
             ${cPhone && cPhone !== '0000000000' ? `
               <span class="mono" style="color:var(--ink-secondary);font-size:11.5px;display:inline-flex;align-items:center;gap:3px;margin-right:auto;">
-                <span>${escapeHtml(cPhone)}</span>
+                <span dir="ltr" style="unicode-bidi:isolate;">${escapeHtml(cPhone)}</span>
                 <a href="https://wa.me/${normalizePhoneForWa(cPhone)}" target="_blank" style="color:#22c55e;text-decoration:none;font-size:13px;" title="واتساب">${getSvgIcon('message', 12)}</a>
               </span>
             ` : `

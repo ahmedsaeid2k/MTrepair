@@ -146,6 +146,7 @@ function openManualJournalModal(){
 
     const saveBtn = overlay.querySelector('#saveJournalModalBtn');
     if(saveBtn) saveBtn.onclick = async ()=>{
+      if(saveBtn.disabled) return;
       const desc = overlay.querySelector('#jeDesc').value.trim();
       const date = overlay.querySelector('#jeDate').value;
       if(!desc){ showToast('اكتب بيان القيد', 'error'); return; }
@@ -171,6 +172,10 @@ function openManualJournalModal(){
         };
       });
 
+      saveBtn.disabled = true;
+      const origText = saveBtn.innerHTML;
+      saveBtn.innerHTML = 'جارٍ الترحيل...';
+
       try{
         await saveJournalEntryRemote({
           Date: date,
@@ -183,7 +188,11 @@ function openManualJournalModal(){
         overlay.remove();
         showToast('تم ترحيل وحفظ القيد اليومي بنجاح', 'success');
         renderJournalEntries(document.getElementById('main'));
-      }catch(e){ showToast('حدث خطأ أثناء حفظ القيد: ' + (e.message || e), 'error'); }
+      }catch(e){
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = origText;
+        showToast('حدث خطأ أثناء حفظ القيد: ' + (e.message || e), 'error');
+      }
     };
   }
 

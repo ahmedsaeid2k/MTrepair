@@ -472,6 +472,8 @@ function renderAppHtml() {
  */
 function executeReadAction(action, session, params) {
   const isAdmin = (session.role === 'admin' || !!session.superuser);
+  const role = session.role || 'cashier';
+  const isPrivileged = role === 'admin' || role === 'accountant' || isAdmin;
 
   if (action === 'nextDocumentNumber') {
     const docType = params.type || params.docType || 'Receipt';
@@ -526,11 +528,11 @@ function executeReadAction(action, session, params) {
     const sales = getAllRows(SHEET_SALES);
     const quotations = getAllRows(SHEET_QUOTATIONS);
     const services = getAllRows(SHEET_SERVICES);
-    const purchases = getAllRows(SHEET_PURCHASES);
-    const suppliers = getAllRows(SHEET_SUPPLIERS);
-    const expenses = getAllRows(SHEET_EXPENSES);
-    const accounts = getAllRows(SHEET_ACCOUNTS);
-    const journalEntries = getAllRows(SHEET_JOURNAL);
+    const purchases = isPrivileged ? getAllRows(SHEET_PURCHASES) : [];
+    const suppliers = isPrivileged ? getAllRows(SHEET_SUPPLIERS) : [];
+    const expenses = isPrivileged ? getAllRows(SHEET_EXPENSES) : [];
+    const accounts = isPrivileged ? getAllRows(SHEET_ACCOUNTS) : [];
+    const journalEntries = isPrivileged ? getAllRows(SHEET_JOURNAL) : [];
     const invoices = getAllRows(SHEET_INVOICES);
     const users = getAllRows(SHEET_USERS).map(u => ({
       Name: u.Name,
@@ -540,14 +542,14 @@ function executeReadAction(action, session, params) {
     }));
     const returns = getAllRows(SHEET_RETURNS);
     const serials = getAllRows(SHEET_SERIALS);
-    const supplierPayments = getAllRows(SHEET_SUPPLIER_PAYMENTS);
+    const supplierPayments = isPrivileged ? getAllRows(SHEET_SUPPLIER_PAYMENTS) : [];
     const cctvSites = getAllRows(SHEET_SITES);
     const cctvProjects = getAllRows(SHEET_PROJECTS);
     const cctvDevices = getAllRows(SHEET_PROJECT_DEVICES);
     const cctvVisits = getAllRows(SHEET_SERVICE_VISITS);
     const cctvContracts = getAllRows(SHEET_MAINTENANCE_CONTRACTS);
     const cctvMilestones = getAllRows(SHEET_PROJECT_MILESTONES);
-    const purchaseReturns = getAllRows(SHEET_PURCHASE_RETURNS);
+    const purchaseReturns = isPrivileged ? getAllRows(SHEET_PURCHASE_RETURNS) : [];
     const bundleItems = getAllRows(SHEET_BUNDLE_ITEMS);
     const stocktakeSessions = getAllRows(SHEET_STOCKTAKE_SESSIONS);
     const stocktakeLines = getAllRows(SHEET_STOCKTAKE_LINES);
@@ -626,15 +628,24 @@ function executeReadAction(action, session, params) {
   if (action === 'getReturns') return jsonOut(getAllRows(SHEET_RETURNS));
   if (action === 'getQuotations') return jsonOut(getAllRows(SHEET_QUOTATIONS));
   if (action === 'getServices') return jsonOut(getAllRows(SHEET_SERVICES));
-  if (action === 'getPurchases') return jsonOut(getAllRows(SHEET_PURCHASES));
-  if (action === 'getSuppliers') return jsonOut(getAllRows(SHEET_SUPPLIERS));
+  if (action === 'getPurchases') {
+    if (!isPrivileged) return jsonOut({ error: 'غير مصرح' }, 403);
+    return jsonOut(getAllRows(SHEET_PURCHASES));
+  }
+  if (action === 'getSuppliers') {
+    if (!isPrivileged) return jsonOut({ error: 'غير مصرح' }, 403);
+    return jsonOut(getAllRows(SHEET_SUPPLIERS));
+  }
   if (action === 'getSerials') {
     let rows = getAllRows(SHEET_SERIALS);
     if (params && params.itemId) rows = rows.filter(r => String(r.ItemID) === String(params.itemId));
     if (params && params.status) rows = rows.filter(r => r.Status === params.status);
     return jsonOut(rows);
   }
-  if (action === 'getPurchaseReturns') return jsonOut(getAllRows(SHEET_PURCHASE_RETURNS));
+  if (action === 'getPurchaseReturns') {
+    if (!isPrivileged) return jsonOut({ error: 'غير مصرح' }, 403);
+    return jsonOut(getAllRows(SHEET_PURCHASE_RETURNS));
+  }
   if (action === 'getBundleItems') return jsonOut(getAllRows(SHEET_BUNDLE_ITEMS));
   if (action === 'getStocktakeSessions') return jsonOut(getAllRows(SHEET_STOCKTAKE_SESSIONS));
   if (action === 'getStocktakeLines') {
@@ -642,10 +653,22 @@ function executeReadAction(action, session, params) {
     if (params && params.sessionId) rows = rows.filter(r => String(r.SessionID) === String(params.sessionId));
     return jsonOut(rows);
   }
-  if (action === 'getSupplierPayments') return jsonOut(getAllRows(SHEET_SUPPLIER_PAYMENTS));
-  if (action === 'getExpenses') return jsonOut(getAllRows(SHEET_EXPENSES));
-  if (action === 'getAccounts') return jsonOut(getAllRows(SHEET_ACCOUNTS));
-  if (action === 'getJournalEntries') return jsonOut(getAllRows(SHEET_JOURNAL));
+  if (action === 'getSupplierPayments') {
+    if (!isPrivileged) return jsonOut({ error: 'غير مصرح' }, 403);
+    return jsonOut(getAllRows(SHEET_SUPPLIER_PAYMENTS));
+  }
+  if (action === 'getExpenses') {
+    if (!isPrivileged) return jsonOut({ error: 'غير مصرح' }, 403);
+    return jsonOut(getAllRows(SHEET_EXPENSES));
+  }
+  if (action === 'getAccounts') {
+    if (!isPrivileged) return jsonOut({ error: 'غير مصرح' }, 403);
+    return jsonOut(getAllRows(SHEET_ACCOUNTS));
+  }
+  if (action === 'getJournalEntries') {
+    if (!isPrivileged) return jsonOut({ error: 'غير مصرح' }, 403);
+    return jsonOut(getAllRows(SHEET_JOURNAL));
+  }
   if (action === 'getInvoices') return jsonOut(getAllRows(SHEET_INVOICES));
   if (action === 'getSites') return jsonOut(getAllRows(SHEET_SITES));
   if (action === 'getProjects') return jsonOut(getAllRows(SHEET_PROJECTS));
@@ -835,20 +858,6 @@ function doPost(e) {
         if (verifyPassword(pass, u.Password, u.Salt)) {
           found = u;
           break;
-        }
-      }
-
-      // Emergency admin bootstrap on server if admin user has default/empty password
-      if (!found && uname === 'admin' && (pass === 'admin' || pass === '123456')) {
-        const adminCandidate = users.find(u => u.Name && u.Name.trim().toLowerCase() === 'admin');
-        if (!adminCandidate || !adminCandidate.Password || verifyPassword(pass, adminCandidate.Password, adminCandidate.Salt)) {
-          found = adminCandidate || {
-            ID: 'usr_admin',
-            Name: 'admin',
-            Role: 'admin',
-            Superuser: true,
-            Sections: 'maintenance,pos,invoices,cameras,cashdrawer,daily,finance,inventory,barcode,audit,users,settings'
-          };
         }
       }
 

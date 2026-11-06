@@ -336,36 +336,36 @@ function renderCompanySettings(main){
       <div class="grid2">
         <div class="field">
           <label>اسم المحل / الشركة *</label>
-          <input id="setShopName" value="${s.shopName||''}" placeholder="مثال: صيانة ميكروتك">
+          <input id="setShopName" value="${escapeHtml(s.shopName||'')}" placeholder="مثال: صيانة ميكروتك">
         </div>
         <div class="field">
           <label>رابط الشعار / اللوجو (Logo URL)</label>
-          <input id="setLogoUrl" value="${s.logoUrl||''}" placeholder="https://domain.com/logo.png">
+          <input id="setLogoUrl" value="${escapeHtml(s.logoUrl||'')}" placeholder="https://domain.com/logo.png">
         </div>
       </div>
 
       ${s.logoUrl ? `
         <div style="margin:8px 0 16px;padding:10px;background:var(--paper3);border-radius:var(--radius-sm);display:inline-flex;align-items:center;gap:12px;">
           <span style="font-size:11px;font-weight:700;color:var(--ink-secondary);">معاينة الشعار:</span>
-          <img src="${s.logoUrl}" style="max-height:45px;max-width:140px;object-fit:contain;">
+          <img src="${escapeHtml(s.logoUrl)}" style="max-height:45px;max-width:140px;object-fit:contain;">
         </div>
       ` : ''}
 
       <div class="grid2">
         <div class="field">
           <label>أرقام الهواتف الرسمية للاتصال</label>
-          <input id="setShopPhone" class="mono" value="${s.shopPhone||''}" placeholder="010xxxxxxxx - 011xxxxxxxx">
+          <input id="setShopPhone" class="mono" value="${escapeHtml(s.shopPhone||'')}" placeholder="010xxxxxxxx - 011xxxxxxxx">
         </div>
         <div class="field">
           <label>رقم الواتساب الرسمي لخدمة العملاء</label>
-          <input id="setShopWhatsapp" class="mono" value="${s.shopWhatsapp||''}" placeholder="010xxxxxxxx">
+          <input id="setShopWhatsapp" class="mono" value="${escapeHtml(s.shopWhatsapp||'')}" placeholder="010xxxxxxxx">
         </div>
       </div>
 
       <div class="grid2">
         <div class="field">
           <label>كود الدولة الافتراضي لأرقام واتساب</label>
-          <input id="setWaCountryCode" class="mono" value="${s.waCountryCode||'20'}" placeholder="20">
+          <input id="setWaCountryCode" class="mono" value="${escapeHtml(s.waCountryCode||'20')}" placeholder="20">
           <div style="font-size:11px;color:var(--ink-secondary);margin-top:4px;line-height:1.5;">
             يُستخدم تلقائياً عند كتابة رقم محلي بدون كود الدولة (مثال: 01012345678 ← 201012345678). اتركه <b class="mono">20</b> لمصر، و<b class="mono">966</b> للسعودية، و<b class="mono">971</b> للإمارات.
           </div>
@@ -375,17 +375,17 @@ function renderCompanySettings(main){
       <div class="grid2">
         <div class="field">
           <label>عنوان المقر والفرع</label>
-          <input id="setShopAddress" value="${s.shopAddress||''}" placeholder="مثال: 15 شارع التحرير، الدقي، الجيزة">
+          <input id="setShopAddress" value="${escapeHtml(s.shopAddress||'')}" placeholder="مثال: 15 شارع التحرير، الدقي، الجيزة">
         </div>
         <div class="field">
           <label>الرقم الضريبي / السجل التجاري (إن وجد)</label>
-          <input id="setShopTaxNumber" class="mono" value="${s.shopTaxNumber||''}" placeholder="مثال: 123-456-789">
+          <input id="setShopTaxNumber" class="mono" value="${escapeHtml(s.shopTaxNumber||'')}" placeholder="مثال: 123-456-789">
         </div>
       </div>
 
       <div class="field">
         <label>العبارة الختامية أسفل المطبوعات والفواتير</label>
-        <input id="setPrintFooterText" value="${s.printFooterText||'شكراً لتعاملكم معنا • نسعد دائماً بخدمتكم'}" placeholder="عبارة شكر أو رسالة ختامية">
+        <input id="setPrintFooterText" value="${escapeHtml(s.printFooterText||'شكراً لتعاملكم معنا • نسعد دائماً بخدمتكم')}" placeholder="عبارة شكر أو رسالة ختامية">
       </div>
 
       <div style="text-align:left;margin-top:16px;">

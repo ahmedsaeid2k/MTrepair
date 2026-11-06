@@ -3758,12 +3758,6 @@ async function trySilentReauth() {
           const vault = JSON.parse(rawVault);
           const entry = vault[userName.toLowerCase()];
           if (entry) {
-            if (entry._cred) {
-              try {
-                const decoded = decodeURIComponent(escape(atob(entry._cred)));
-                if (decoded) candidates.push(decoded);
-              } catch(e) {}
-            }
             if (entry.serverHash) candidates.push(entry.serverHash);
           }
         }
@@ -9764,7 +9758,18 @@ const AUTH_VAULT_KEY = 'microerp_auth_vault';
 function getAuthVault() {
   try {
     const raw = localStorage.getItem(AUTH_VAULT_KEY);
-    return raw ? JSON.parse(raw) : {};
+    const vault = raw ? JSON.parse(raw) : {};
+    let sanitized = false;
+    if (vault && typeof vault === 'object') {
+      for (const k in vault) {
+        if (vault[k] && vault[k]._cred) {
+          delete vault[k]._cred;
+          sanitized = true;
+        }
+      }
+      if (sanitized) saveAuthVault(vault);
+    }
+    return vault;
   } catch(e) {
     return {};
   }
@@ -9962,7 +9967,6 @@ async function saveUserRemote(usr){
       const cleanPass = String(usr.Password).trim();
       const { hash, salt } = await hashPasswordWithSalt(cleanPass);
       const serverHash = await sha256Hex(cleanPass);
-      const _cred = btoa(unescape(encodeURIComponent(cleanPass)));
       const vault = getAuthVault();
       vault[usr.Name.trim().toLowerCase()] = {
         name: usr.Name.trim(),
@@ -9972,7 +9976,6 @@ async function saveUserRemote(usr){
         hash,
         salt,
         serverHash,
-        _cred,
         updatedAt: Date.now()
       };
       saveAuthVault(vault);
@@ -10672,7 +10675,6 @@ async function loginRemote(name, password){
     try {
       const { hash, salt } = await hashPasswordWithSalt(cleanPass);
       const serverHash = await sha256Hex(cleanPass);
-      const _cred = btoa(unescape(encodeURIComponent(cleanPass)));
       const vault = getAuthVault();
       vault[cleanName.toLowerCase()] = {
         name: remoteRes.name,
@@ -10682,7 +10684,6 @@ async function loginRemote(name, password){
         hash,
         salt,
         serverHash,
-        _cred,
         lastLogin: Date.now()
       };
       saveAuthVault(vault);
@@ -10707,7 +10708,6 @@ async function loginRemote(name, password){
     if(valid){
       try {
         vaultUser.serverHash = await sha256Hex(cleanPass);
-        vaultUser._cred = btoa(unescape(encodeURIComponent(cleanPass)));
         vault[cleanName.toLowerCase()] = vaultUser;
         saveAuthVault(vault);
       } catch(e){}
@@ -10720,40 +10720,6 @@ async function loginRemote(name, password){
         superuser: isSuper,
         Superuser: isSuper,
         sections: effectiveSecs,
-        sessionToken: 'offline_token_' + Date.now(),
-        isOffline: true
-      };
-    }
-  }
-
-  // 4. Emergency Administrative Bootstrap
-  // If user is 'admin' and no custom password has been saved in the vault yet, allow default admin credentials
-  if(cleanName.toLowerCase() === 'admin'){
-    if(!vaultUser && (cleanPass === 'admin' || cleanPass === '123456')){
-      const allSecs = ['maintenance', 'pos', 'invoices', 'cameras', 'cameras_projects', 'cameras_visits', 'cameras_contracts', 'cashdrawer', 'daily', 'finance', 'inventory', 'barcode', 'audit', 'users', 'settings'];
-      try {
-        const { hash, salt } = await hashPasswordWithSalt(cleanPass);
-        const serverHash = await sha256Hex(cleanPass);
-        const _cred = btoa(unescape(encodeURIComponent(cleanPass)));
-        vault['admin'] = {
-          name: 'admin',
-          role: 'admin',
-          superuser: true,
-          sections: allSecs,
-          hash,
-          salt,
-          serverHash,
-          _cred,
-          lastLogin: Date.now()
-        };
-        saveAuthVault(vault);
-      } catch(e){}
-      return {
-        name: 'admin',
-        role: 'admin',
-        superuser: true,
-        Superuser: true,
-        sections: allSecs,
         sessionToken: 'offline_token_' + Date.now(),
         isOffline: true
       };
@@ -28851,7 +28817,7 @@ function renderInvoicesPage(main){
 
     <!-- Filters Bar -->
     <div class="filters-bar" style="margin-bottom:14px;">
-      <input id="invSearchInp" placeholder="بحث برقم الفاتورة، اسم العميل، الهاتف، أو رقم إيصال الصيانة..." value="${state.invoiceSearchQ}" style="flex:1;min-width:240px;">
+      <input id="invSearchInp" placeholder="بحث برقم الفاتورة، اسم العميل، الهاتف، أو رقم إيصال الصيانة..." value="${escapeHtml(state.invoiceSearchQ || '')}" style="flex:1;min-width:240px;">
       <select id="invStatusFilterSelect" style="min-width:150px;">
         <option value="all" ${state.invoiceStatusFilter==='all'?'selected':''}>كل الحالات</option>
         <option value="paid" ${state.invoiceStatusFilter==='paid'?'selected':''}>مدفوعة بالكامل</option>
@@ -44161,36 +44127,36 @@ function renderCompanySettings(main){
       <div class="grid2">
         <div class="field">
           <label>اسم المحل / الشركة *</label>
-          <input id="setShopName" value="${s.shopName||''}" placeholder="مثال: صيانة ميكروتك">
+          <input id="setShopName" value="${escapeHtml(s.shopName||'')}" placeholder="مثال: صيانة ميكروتك">
         </div>
         <div class="field">
           <label>رابط الشعار / اللوجو (Logo URL)</label>
-          <input id="setLogoUrl" value="${s.logoUrl||''}" placeholder="https://domain.com/logo.png">
+          <input id="setLogoUrl" value="${escapeHtml(s.logoUrl||'')}" placeholder="https://domain.com/logo.png">
         </div>
       </div>
 
       ${s.logoUrl ? `
         <div style="margin:8px 0 16px;padding:10px;background:var(--paper3);border-radius:var(--radius-sm);display:inline-flex;align-items:center;gap:12px;">
           <span style="font-size:11px;font-weight:700;color:var(--ink-secondary);">معاينة الشعار:</span>
-          <img src="${s.logoUrl}" style="max-height:45px;max-width:140px;object-fit:contain;">
+          <img src="${escapeHtml(s.logoUrl)}" style="max-height:45px;max-width:140px;object-fit:contain;">
         </div>
       ` : ''}
 
       <div class="grid2">
         <div class="field">
           <label>أرقام الهواتف الرسمية للاتصال</label>
-          <input id="setShopPhone" class="mono" value="${s.shopPhone||''}" placeholder="010xxxxxxxx - 011xxxxxxxx">
+          <input id="setShopPhone" class="mono" value="${escapeHtml(s.shopPhone||'')}" placeholder="010xxxxxxxx - 011xxxxxxxx">
         </div>
         <div class="field">
           <label>رقم الواتساب الرسمي لخدمة العملاء</label>
-          <input id="setShopWhatsapp" class="mono" value="${s.shopWhatsapp||''}" placeholder="010xxxxxxxx">
+          <input id="setShopWhatsapp" class="mono" value="${escapeHtml(s.shopWhatsapp||'')}" placeholder="010xxxxxxxx">
         </div>
       </div>
 
       <div class="grid2">
         <div class="field">
           <label>كود الدولة الافتراضي لأرقام واتساب</label>
-          <input id="setWaCountryCode" class="mono" value="${s.waCountryCode||'20'}" placeholder="20">
+          <input id="setWaCountryCode" class="mono" value="${escapeHtml(s.waCountryCode||'20')}" placeholder="20">
           <div style="font-size:11px;color:var(--ink-secondary);margin-top:4px;line-height:1.5;">
             يُستخدم تلقائياً عند كتابة رقم محلي بدون كود الدولة (مثال: 01012345678 ← 201012345678). اتركه <b class="mono">20</b> لمصر، و<b class="mono">966</b> للسعودية، و<b class="mono">971</b> للإمارات.
           </div>
@@ -44200,17 +44166,17 @@ function renderCompanySettings(main){
       <div class="grid2">
         <div class="field">
           <label>عنوان المقر والفرع</label>
-          <input id="setShopAddress" value="${s.shopAddress||''}" placeholder="مثال: 15 شارع التحرير، الدقي، الجيزة">
+          <input id="setShopAddress" value="${escapeHtml(s.shopAddress||'')}" placeholder="مثال: 15 شارع التحرير، الدقي، الجيزة">
         </div>
         <div class="field">
           <label>الرقم الضريبي / السجل التجاري (إن وجد)</label>
-          <input id="setShopTaxNumber" class="mono" value="${s.shopTaxNumber||''}" placeholder="مثال: 123-456-789">
+          <input id="setShopTaxNumber" class="mono" value="${escapeHtml(s.shopTaxNumber||'')}" placeholder="مثال: 123-456-789">
         </div>
       </div>
 
       <div class="field">
         <label>العبارة الختامية أسفل المطبوعات والفواتير</label>
-        <input id="setPrintFooterText" value="${s.printFooterText||'شكراً لتعاملكم معنا • نسعد دائماً بخدمتكم'}" placeholder="عبارة شكر أو رسالة ختامية">
+        <input id="setPrintFooterText" value="${escapeHtml(s.printFooterText||'شكراً لتعاملكم معنا • نسعد دائماً بخدمتكم')}" placeholder="عبارة شكر أو رسالة ختامية">
       </div>
 
       <div style="text-align:left;margin-top:16px;">

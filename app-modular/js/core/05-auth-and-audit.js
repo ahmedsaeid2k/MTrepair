@@ -13,7 +13,18 @@ const AUTH_VAULT_KEY = 'microerp_auth_vault';
 function getAuthVault() {
   try {
     const raw = localStorage.getItem(AUTH_VAULT_KEY);
-    return raw ? JSON.parse(raw) : {};
+    const vault = raw ? JSON.parse(raw) : {};
+    let sanitized = false;
+    if (vault && typeof vault === 'object') {
+      for (const k in vault) {
+        if (vault[k] && vault[k]._cred) {
+          delete vault[k]._cred;
+          sanitized = true;
+        }
+      }
+      if (sanitized) saveAuthVault(vault);
+    }
+    return vault;
   } catch(e) {
     return {};
   }
@@ -211,7 +222,6 @@ async function saveUserRemote(usr){
       const cleanPass = String(usr.Password).trim();
       const { hash, salt } = await hashPasswordWithSalt(cleanPass);
       const serverHash = await sha256Hex(cleanPass);
-      const _cred = btoa(unescape(encodeURIComponent(cleanPass)));
       const vault = getAuthVault();
       vault[usr.Name.trim().toLowerCase()] = {
         name: usr.Name.trim(),
@@ -221,7 +231,6 @@ async function saveUserRemote(usr){
         hash,
         salt,
         serverHash,
-        _cred,
         updatedAt: Date.now()
       };
       saveAuthVault(vault);
@@ -921,7 +930,6 @@ async function loginRemote(name, password){
     try {
       const { hash, salt } = await hashPasswordWithSalt(cleanPass);
       const serverHash = await sha256Hex(cleanPass);
-      const _cred = btoa(unescape(encodeURIComponent(cleanPass)));
       const vault = getAuthVault();
       vault[cleanName.toLowerCase()] = {
         name: remoteRes.name,
@@ -931,7 +939,6 @@ async function loginRemote(name, password){
         hash,
         salt,
         serverHash,
-        _cred,
         lastLogin: Date.now()
       };
       saveAuthVault(vault);
@@ -956,7 +963,6 @@ async function loginRemote(name, password){
     if(valid){
       try {
         vaultUser.serverHash = await sha256Hex(cleanPass);
-        vaultUser._cred = btoa(unescape(encodeURIComponent(cleanPass)));
         vault[cleanName.toLowerCase()] = vaultUser;
         saveAuthVault(vault);
       } catch(e){}
@@ -969,40 +975,6 @@ async function loginRemote(name, password){
         superuser: isSuper,
         Superuser: isSuper,
         sections: effectiveSecs,
-        sessionToken: 'offline_token_' + Date.now(),
-        isOffline: true
-      };
-    }
-  }
-
-  // 4. Emergency Administrative Bootstrap
-  // If user is 'admin' and no custom password has been saved in the vault yet, allow default admin credentials
-  if(cleanName.toLowerCase() === 'admin'){
-    if(!vaultUser && (cleanPass === 'admin' || cleanPass === '123456')){
-      const allSecs = ['maintenance', 'pos', 'invoices', 'cameras', 'cameras_projects', 'cameras_visits', 'cameras_contracts', 'cashdrawer', 'daily', 'finance', 'inventory', 'barcode', 'audit', 'users', 'settings'];
-      try {
-        const { hash, salt } = await hashPasswordWithSalt(cleanPass);
-        const serverHash = await sha256Hex(cleanPass);
-        const _cred = btoa(unescape(encodeURIComponent(cleanPass)));
-        vault['admin'] = {
-          name: 'admin',
-          role: 'admin',
-          superuser: true,
-          sections: allSecs,
-          hash,
-          salt,
-          serverHash,
-          _cred,
-          lastLogin: Date.now()
-        };
-        saveAuthVault(vault);
-      } catch(e){}
-      return {
-        name: 'admin',
-        role: 'admin',
-        superuser: true,
-        Superuser: true,
-        sections: allSecs,
         sessionToken: 'offline_token_' + Date.now(),
         isOffline: true
       };

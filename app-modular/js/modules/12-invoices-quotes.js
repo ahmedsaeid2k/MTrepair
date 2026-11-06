@@ -67,7 +67,7 @@ function renderInvoicesPage(main){
 
     <!-- Filters Bar -->
     <div class="filters-bar" style="margin-bottom:14px;">
-      <input id="invSearchInp" placeholder="بحث برقم الفاتورة، اسم العميل، الهاتف، أو رقم إيصال الصيانة..." value="${state.invoiceSearchQ}" style="flex:1;min-width:240px;">
+      <input id="invSearchInp" placeholder="بحث برقم الفاتورة، اسم العميل، الهاتف، أو رقم إيصال الصيانة..." value="${escapeHtml(state.invoiceSearchQ || '')}" style="flex:1;min-width:240px;">
       <select id="invStatusFilterSelect" style="min-width:150px;">
         <option value="all" ${state.invoiceStatusFilter==='all'?'selected':''}>كل الحالات</option>
         <option value="paid" ${state.invoiceStatusFilter==='paid'?'selected':''}>مدفوعة بالكامل</option>

@@ -63,12 +63,6 @@ async function trySilentReauth() {
           const vault = JSON.parse(rawVault);
           const entry = vault[userName.toLowerCase()];
           if (entry) {
-            if (entry._cred) {
-              try {
-                const decoded = decodeURIComponent(escape(atob(entry._cred)));
-                if (decoded) candidates.push(decoded);
-              } catch(e) {}
-            }
             if (entry.serverHash) candidates.push(entry.serverHash);
           }
         }

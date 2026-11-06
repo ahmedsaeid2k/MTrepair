@@ -240,6 +240,29 @@ function destroySession(token) {
   try { PropertiesService.getScriptProperties().deleteProperty('sess_' + cleanToken); } catch(e) {}
 }
 
+function cleanupExpiredSessions() {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const all = props.getProperties();
+    const now = Date.now();
+    const maxAgeMs = 24 * 60 * 60 * 1000;
+    for (const k in all) {
+      if (k.startsWith('sess_')) {
+        try {
+          const s = JSON.parse(all[k]);
+          if (!s.created || (now - s.created > maxAgeMs)) {
+            props.deleteProperty(k);
+          }
+        } catch(parseErr) {
+          props.deleteProperty(k);
+        }
+      }
+    }
+  } catch(err) {
+    console.warn('cleanupExpiredSessions warning:', err);
+  }
+}
+
 /**
  * Server-side Admin Role Verification
  * Uses session data directly when available, preventing client-side role forgery.
@@ -302,6 +325,10 @@ const ACTION_ROLES = {
   deleteMaintenanceContract:  ['admin'],
   saveProjectMilestone:       ['admin','accountant'],
   deleteProjectMilestone:     ['admin'],
+  saveEmployeeAdvance:        ['admin','accountant'],
+  deleteEmployeeAdvance:      ['admin'],
+  saveEmployeeAdvanceRepayment: ['admin','accountant','cashier'],
+  savePayrollRun:             ['admin','accountant'],
   exportBackup:               ['admin'],
   importBackup:               ['admin'],
   setupDailyBackupTrigger:    ['admin'],
@@ -322,7 +349,7 @@ const AUTOPOST_REFS = [
   'Invoice', 'Invoice_Void', 'Invoice_Adjustment', 'Quotation_Payment', 'Quotation_Delivery', 'Quotation',
   'Project_Milestone', 'Project_Delivery', 'CCTV_Project',
   'CashIn', 'CashOut', 'Shift_Open', 'Shift_Close', 'Shift_Variance', 'Opening_Balance',
-  'Stocktake_Adjustment', 'Purchase_Return'
+  'Stocktake_Adjustment', 'Purchase_Return', 'Payroll', 'Advance', 'AdvanceRepayment'
 ];
 
 function postAutoJournal(desc, refType, refId, lines, actorUser) {
@@ -1334,7 +1361,7 @@ function doPost(e) {
       for (let i = 1; i < values.length; i++) {
         if (String(values[i][idCol]) === String(body.id)) {
           const oldQty = safeNumber(values[i][qtyCol], 0);
-          const newQty = oldQty + safeNumber(body.delta, 0);
+          const newQty = body.delta != null ? (oldQty + safeNumber(body.delta, 0)) : safeNumber(body.quantity, oldQty);
           sh.getRange(i + 1, qtyCol + 1).setValue(newQty);
           logAudit(body.id, actorUser, 'تعديل كمية صنف مخزني', 'Inventory', { before: oldQty, delta: body.delta, after: newQty, reason: body.reason || '' });
           return jsonOut({ ok: true, newQty });
@@ -2233,7 +2260,9 @@ function doPost(e) {
         EntryNumber: body.data.EntryNumber || ('JE-' + new Date().getFullYear() + '-' + String(new Date().getTime()).slice(-4)),
         Date: body.data.Date || new Date().toISOString().slice(0, 10),
         Description: body.data.Description || 'قيد يدوي',
-        ReferenceType: 'Manual', // Client can ONLY submit Manual entries
+        ReferenceType: (body.data.ReferenceType && AUTOPOST_REFS.includes(body.data.ReferenceType))
+          ? body.data.ReferenceType
+          : (body.data.ReferenceType || 'Manual'),
         ReferenceID: body.data.ReferenceID || '',
         LinesJSON: JSON.stringify(lines),
         TotalDebit: Math.round(td * 100) / 100,
@@ -3041,19 +3070,32 @@ function checkIdempotency(key, action, user, details) {
     }
   }
 
-  // Not processed yet -> record it
-  sh.appendRow([cleanKey, action || '', new Date().toISOString(), user || '', details || '']);
+  return false;
+}
+
+function recordIdempotencySuccess(key, action, user, details) {
+  if (!key) return;
+  const cleanKey = String(key).trim();
+  if (!cleanKey) return;
+  const cacheKey = 'idemp_' + cleanKey;
+
   try {
     const cache = CacheService.getScriptCache();
     if (cache) cache.put(cacheKey, '1', 21600);
   } catch(cErr) {}
 
-  // Prune keys older than 30 days if table grows large
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName(SHEET_IDEMPOTENCY);
+  if (!sh) {
+    sh = ss.insertSheet(SHEET_IDEMPOTENCY);
+    sh.appendRow(['Key', 'Action', 'CreatedAt', 'User', 'Details']);
+  }
+  sh.appendRow([cleanKey, action || '', new Date().toISOString(), user || '', details || '']);
+
+  const lastRow = sh.getLastRow();
   if (lastRow > 300) {
     pruneOldIdempotencyKeys(sh);
   }
-
-  return false;
 }
 
 function pruneOldIdempotencyKeys(sh) {

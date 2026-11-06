@@ -1030,7 +1030,7 @@ function openAddDeviceModal(p, onDone){
       if(invItem){
         invItem.Quantity = Math.max(0, Number(invItem.Quantity || 0) - 1);
         setCache('inventory', state.inventory);
-        try { apiPost('adjustInventoryQty', { id: invId, quantity: invItem.Quantity }); } catch(err){}
+        try { apiPost('adjustInventoryQty', { id: invId, delta: -1, quantity: invItem.Quantity }); } catch(err){}
       }
     }
 
@@ -1863,7 +1863,7 @@ function openVisitExecutionModal(v){
 
     it.Quantity = Math.max(0, Number(it.Quantity||0) - pQty);
     setCache('inventory', state.inventory);
-    try { apiPost('adjustInventoryQty', { id: itId, quantity: it.Quantity }); } catch(err){}
+    try { apiPost('adjustInventoryQty', { id: itId, delta: -pQty, quantity: it.Quantity }); } catch(err){}
 
     const pText = overlay.querySelector('#vPartsUsedText');
     const entry = `${it.Name} × ${pQty}`;

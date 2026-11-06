@@ -117,7 +117,7 @@ function getWaTemplate(key){
 const DEFAULT_GEMINI_SETTINGS = {
   enabled: true,
   apiKey: '',
-  model: 'gemini-3.5-flash',
+  model: 'gemini-2.5-flash',
   temperature: 0.7,
   systemInstruction: 'أنت مهندس خبير ومساعد ذكي متخصص في صيانة أجهزة الكمبيوتر واللابتوب والهواتف الذكية والإلكترونيات لمركز صيانة ميكروتك (MicroTech). تقدم تحليلات فنية دقيقة ومباشرة باللغة العربية، وتقترح نقاط الفحص والقياس بالآفوميتر والقطع البديلة وخطوات الإصلاح، وتصيغ تقارير فحص احترافية للعملاء.'
 };
@@ -140,7 +140,7 @@ function getGeminiSettings(){
         return sessionStorage.getItem('microtech_gemini_api_key') || '';
       } catch(e){ return ''; }
     })() || '').trim(),
-    model: s.model || 'gemini-3.5-flash',
+    model: s.model || 'gemini-2.5-flash',
     temperature: s.temperature ?? 0.7,
     systemInstruction: s.systemInstruction || DEFAULT_GEMINI_SETTINGS.systemInstruction
   };

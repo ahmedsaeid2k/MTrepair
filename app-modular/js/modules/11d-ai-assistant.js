@@ -42,7 +42,7 @@ async function callGeminiAI(options = {}){
     throw err;
   }
 
-  const model = options.model || cfg.model || 'gemini-3.5-flash';
+  const model = options.model || cfg.model || 'gemini-2.5-flash';
   const temperature = options.temperature != null ? options.temperature : (cfg.temperature ?? 0.7);
   const maxTokens = options.maxTokens || 2048;
   const systemPrompt = options.systemPrompt || cfg.systemInstruction || DEFAULT_GEMINI_SETTINGS.systemInstruction;
@@ -97,10 +97,10 @@ async function callGeminiAI(options = {}){
       throw new Error('تم تجاوز حد الاستخدام المسموح لنموذج Gemini مؤقتاً (Rate Limit). يرجى المحاولة بعد قليل.');
     }
     if(response.status === 503 || errMsg.includes('high demand') || errMsg.includes('overloaded')){
-      throw new Error('خوادم Google تواجه ضغطاً مؤقتاً حالياً (503). يرجى المحاولة بعد قليل أو تجربة نموذج gemini-3.5-flash-lite.');
+      throw new Error('خوادم Google تواجه ضغطاً مؤقتاً حالياً (503). يرجى المحاولة بعد قليل أو تجربة نموذج gemini-2.5-flash-lite.');
     }
     if(response.status === 404 || errMsg.includes('models/')){
-      throw new Error(`النموذج (${model}) غير متاح لحسابك. يرجى اختيار gemini-3.5-flash من الإعدادات.`);
+      throw new Error(`النموذج (${model}) غير متاح لحسابك. يرجى اختيار gemini-2.5-flash من الإعدادات.`);
     }
     throw new Error(`خطأ Gemini (${response.status}): ${errMsg}`);
   }
@@ -129,7 +129,7 @@ async function callGeminiAI(options = {}){
 
   if(!visibleText.trim()){
     if(candidate.finishReason === 'MAX_TOKENS'){
-      throw new Error('تم استهلاك حد الرموز أثناء تفكير النموذج (Thinking). يرجى زيادة حد الرموز أو استخدام gemini-3.5-flash-lite.');
+      throw new Error('تم استهلاك حد الرموز أثناء تفكير النموذج (Thinking). يرجى زيادة حد الرموز أو استخدام gemini-2.5-flash-lite.');
     }
     throw new Error('لم يُرجع نموذج Gemini أي محتوى في الرد.');
   }
@@ -140,7 +140,7 @@ async function callGeminiAI(options = {}){
 async function testGeminiConnection(apiKey, model){
   const start = Date.now();
   const testApiKey = (apiKey || getGeminiSettings().apiKey || '').trim();
-  const testModel = model || getGeminiSettings().model || 'gemini-3.5-flash';
+  const testModel = model || getGeminiSettings().model || 'gemini-2.5-flash';
 
   if(!testApiKey){
     throw new Error('يرجى كتابة أو لصق مفتاح API أولاً لتجربة الاتصال.');
@@ -297,7 +297,7 @@ function openAiDiagnosisModal(rawR){
             <h3 style="margin:0;font-size:16px;color:var(--ink);display:flex;align-items:center;gap:8px;">
               المساعد الذكي لتشخيص الأعطال
               <span class="mono" style="background:rgba(124,58,237,0.1);color:#7c3aed;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;border:1px solid rgba(124,58,237,0.25);">
-                ${cfg.model || 'gemini-3.5-flash'}
+                ${cfg.model || 'gemini-2.5-flash'}
               </span>
             </h3>
             <div style="font-size:11.5px;color:var(--ink-secondary);margin-top:2px;">

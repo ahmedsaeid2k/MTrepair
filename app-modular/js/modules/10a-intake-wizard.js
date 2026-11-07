@@ -555,8 +555,8 @@ function stepDevice(body,d){
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
         <h3 style="margin:0;display:flex;align-items:center;gap:6px;">${getSvgIcon("laptop", 18)} ${isMultiDev ? `بيانات الأجهزة المستلمة (${d.devices.length})` : 'بيانات الجهاز المستلم'}</h3>
         ${isMultiDev ? `
-          <button type="button" class="btn btn-primary btn-sm" id="addNewDeviceBtn" style="font-weight:700;display:inline-flex;align-items:center;gap:4px;">
-            <span>${getSvgIcon("plus", 14)}</span> إضافة جهاز آخر لهذا الإيصال
+          <button type="button" class="btn btn-ghost btn-xs" onclick="state.formStep = 4; renderMain();" style="font-weight:700;">
+            الانتقال للمراجعة والحفظ &larr;
           </button>
         ` : ''}
       </div>
@@ -675,8 +675,9 @@ function stepDevice(body,d){
 
   function fillBrands(){
     const currentBrandsObj = getBrands();
-    const cat = document.getElementById('devCat').value;
+    const cat = document.getElementById('devCat') ? document.getElementById('devCat').value : (currDev.category || 'لابتوب');
     const sel = document.getElementById('devBrand');
+    if(!sel) return;
     const availableBrands = currentBrandsObj[cat] || ['أخرى'];
 
     let activeBrand = (currDev.brand != null ? currDev.brand : '');
@@ -684,9 +685,7 @@ function stepDevice(body,d){
     const hasCustom = activeBrand && !isKnown && activeBrand !== 'أخرى';
 
     let optionsHtml = '';
-    if(!activeBrand && !hasCustom){
-      optionsHtml += `<option value="" disabled selected>-- اختر الماركة --</option>`;
-    }
+    optionsHtml += `<option value="" disabled ${(!activeBrand && !hasCustom) ? 'selected' : ''}>-- اختر الماركة --</option>`;
     if(hasCustom){
       optionsHtml += `<option value="${escapeHtml(activeBrand)}" selected>${escapeHtml(activeBrand)}</option>`;
     }
@@ -696,8 +695,13 @@ function stepDevice(body,d){
     }).join('');
 
     sel.innerHTML = optionsHtml;
-    if(sel.value && sel.value !== activeBrand){
-      currDev.brand = sel.value;
+    if(activeBrand && isKnown){
+      sel.value = activeBrand;
+    } else if(hasCustom){
+      sel.value = activeBrand;
+    } else {
+      sel.value = '';
+      currDev.brand = '';
     }
     const isOther = sel.value === 'أخرى';
     const wrap = document.getElementById('brandOtherWrap');
@@ -709,8 +713,12 @@ function stepDevice(body,d){
   if(devCatEl){
     devCatEl.onchange = () => {
       currDev.category = devCatEl.value;
+      const currentBrandsObj = getBrands();
+      const avail = currentBrandsObj[currDev.category] || ['أخرى'];
+      if(currDev.brand && !avail.includes(currDev.brand)){
+        currDev.brand = '';
+      }
       fillBrands();
-      currDev.brand = document.getElementById('devBrand') ? document.getElementById('devBrand').value : '';
       triggerDraftAutosave(false);
     };
   }
@@ -1312,7 +1320,7 @@ function stepFinance(body,d){
       `).join('');
     }
     attachDraftItemListeners();
-    recalcDraftFinances();
+    recalcDraftFinances('serviceItem');
   }
 
   function attachDraftItemListeners(){
@@ -1331,7 +1339,7 @@ function stepFinance(body,d){
         const idx = Number(row.dataset.sidx);
         const parsedP = parseFloat(toEngDigits(e.target.value)) || 0;
         if(d.serviceItems[idx]) d.serviceItems[idx].price = parsedP;
-        recalcDraftFinances();
+        recalcDraftFinances('serviceItem');
       };
     });
     document.querySelectorAll('#draftServiceItemsList .draft-del-s-item').forEach(btn => {
@@ -1344,7 +1352,7 @@ function stepFinance(body,d){
     });
   }
 
-  function recalcDraftFinances(){
+  function recalcDraftFinances(fromSource){
     let sTotal = 0;
     document.querySelectorAll('#draftServiceItemsList .draft-s-item-row').forEach(row => {
       const pInp = row.querySelector('.draft-s-price');
@@ -1354,9 +1362,10 @@ function stepFinance(body,d){
     const sTotalEl = document.getElementById('draftServiceItemsTotal');
     if(sTotalEl) sTotalEl.textContent = sTotal.toLocaleString();
     
-    if(d.serviceItems.length > 0 || sTotal > 0){
-      const finCostInp = document.getElementById('finCost');
-      if(finCostInp) finCostInp.value = sTotal;
+    const finCostInp = document.getElementById('finCost');
+    if(fromSource === 'serviceItem' && finCostInp){
+      finCostInp.value = sTotal;
+      d.cost = sTotal;
     }
 
     const otherInp = document.getElementById('finOtherAmount');
@@ -1364,11 +1373,16 @@ function stepFinance(body,d){
     const otherDisp = document.getElementById('finOtherDisplay');
     if(otherDisp) otherDisp.value = otherAmt;
 
-    const costInp = document.getElementById('finCost');
-    const cost = costInp ? (parseFloat(toEngDigits(costInp.value)) || 0) : Number(d.cost || 0);
+    const cost = finCostInp ? (parseFloat(toEngDigits(finCostInp.value)) || 0) : Number(d.cost || 0);
+    d.cost = cost;
+    if(fromSource === 'costInput' && d.serviceItems && d.serviceItems.length === 1){
+      d.serviceItems[0].price = cost;
+      if(sTotalEl) sTotalEl.textContent = cost.toLocaleString();
+    }
     const parts = Number(d.partsCost || 0);
     const depInp = document.getElementById('finDep');
     const dep = depInp ? (parseFloat(toEngDigits(depInp.value)) || 0) : Number(d.deposit || 0);
+    d.deposit = dep;
     const totalDue = cost + parts + otherAmt;
     const rem = Math.max(0, totalDue - dep);
 
@@ -1390,11 +1404,11 @@ function stepFinance(body,d){
   }
 
   const finCostInp = document.getElementById('finCost');
-  if(finCostInp) finCostInp.oninput = recalcDraftFinances;
+  if(finCostInp) finCostInp.oninput = () => recalcDraftFinances('costInput');
   const finOtherAmtInp = document.getElementById('finOtherAmount');
-  if(finOtherAmtInp) finOtherAmtInp.oninput = recalcDraftFinances;
+  if(finOtherAmtInp) finOtherAmtInp.oninput = () => recalcDraftFinances('otherInput');
   const finDepInp = document.getElementById('finDep');
-  if(finDepInp) finDepInp.oninput = recalcDraftFinances;
+  if(finDepInp) finDepInp.oninput = () => recalcDraftFinances('depInput');
 
   document.querySelectorAll('#draftDepositPayGrid .pos-pay-btn').forEach(btn => {
     btn.onclick = () => {
@@ -1748,6 +1762,21 @@ async function saveReceipt(d, printA5, sendWa, printSticker){
     b.disabled = true;
     b.textContent = 'جارٍ الحفظ...';
   });
+
+  // Collision protection: ensure d.receiptNumber is completely unique across existing receipts
+  const hasCollision = (state.receipts || []).some(x => {
+    if(!x) return false;
+    const xNum = String(x.receiptNumber || x.ReceiptNumber || '').trim().toLowerCase();
+    const dNum = String(d.receiptNumber || '').trim().toLowerCase();
+    const xId = String(x.id || x.ID || '').trim().toLowerCase();
+    const dId = String(d.id || '').trim().toLowerCase();
+    return dNum && xNum === dNum && xId !== dId;
+  });
+  if(hasCollision || !d.receiptNumber){
+    console.warn(`Receipt number collision detected for ${d.receiptNumber}. Re-assigning unique sequence.`);
+    d.receiptNumber = (typeof nextReceiptNumberLocal === 'function') ? nextReceiptNumberLocal() : ('MT-' + new Date().getFullYear() + '-' + Date.now().toString().slice(-4));
+  }
+
   try{
     await saveReceiptRemote(d);
     if(d.previousReceiptId || d.previousReceiptNumber){

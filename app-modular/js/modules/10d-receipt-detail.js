@@ -278,12 +278,12 @@ async function openReceiptDetail(rawR){
     </div>
 
     <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(115px, 1fr));gap:8px;margin-top:10px;">
-      <div class="field"><label>أجور الصيانة (ج.م)</label><input id="eCost" type="number" value="${r.cost||0}"></div>
-      <div class="field"><label>قطع الغيار (ج.م)</label><input id="ePartsCost" type="number" value="${r.partsCost||0}" disabled style="background:var(--paper3);font-weight:bold;color:var(--purple);"></div>
-      <div class="field"><label>حساب إضافي (ج.م)</label><input id="eOtherDisplay" type="number" value="${r.otherAccountAmount||0}" disabled style="background:var(--paper3);"></div>
-      <div class="field"><label>إجمالي المدفوع (ج.م)</label><input id="eDeposit" type="number" value="${r.deposit||0}" disabled style="background:var(--paper3);"></div>
-      <div class="field"><label>مسترد سابقاً (ج.م)</label><input id="eRefundedDisplay" type="number" value="${r.refunded||0}" disabled style="background:var(--paper3);color:var(--red);font-weight:bold;"></div>
-      <div class="field"><label>المتبقي المطلوب (ج.م)</label><input id="eRem" type="number" value="${remaining}" disabled style="background:var(--paper3);font-weight:bold;color:var(--primary);"></div>
+      <div class="field"><label>أجور الصيانة (ج.م)</label><input id="eCost" type="text" inputmode="decimal" class="mono" style="font-weight:700;" value="${r.cost||0}"></div>
+      <div class="field"><label>قطع الغيار (ج.م)</label><input id="ePartsCost" type="text" value="${r.partsCost||0}" disabled style="background:var(--paper3);font-weight:bold;color:var(--purple);" class="mono"></div>
+      <div class="field"><label>حساب إضافي (ج.م)</label><input id="eOtherDisplay" type="text" value="${r.otherAccountAmount||0}" disabled style="background:var(--paper3);" class="mono"></div>
+      <div class="field"><label>إجمالي المدفوع (ج.م)</label><input id="eDeposit" type="text" value="${r.deposit||0}" disabled style="background:var(--paper3);" class="mono"></div>
+      <div class="field"><label>مسترد سابقاً (ج.م)</label><input id="eRefundedDisplay" type="text" value="${r.refunded||0}" disabled style="background:var(--paper3);color:var(--red);font-weight:bold;" class="mono"></div>
+      <div class="field"><label>المتبقي المطلوب (ج.م)</label><input id="eRem" type="text" value="${remaining}" disabled style="background:var(--paper3);font-weight:bold;color:var(--primary);" class="mono"></div>
     </div>
 
     <div class="card" style="background:var(--paper3);padding:12px;border-radius:var(--radius-sm);margin-top:8px;">
@@ -297,7 +297,7 @@ async function openReceiptDetail(rawR){
       <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
         <div class="field" style="flex:1;min-width:110px;margin-bottom:0;">
           <label>مبلغ دفعة جديدة</label>
-          <input id="newPayAmt" type="number" placeholder="0" min="1" max="${remaining}">
+          <input id="newPayAmt" type="text" inputmode="decimal" placeholder="0" class="mono" style="font-weight:700;">
           <div id="newPayAmtHint" style="font-size:11px;color:var(--ink-secondary);margin-top:2px;">الحد الأقصى: <b class="mono">${remaining}</b> ج.م</div>
         </div>
         <div class="field" style="flex:1.3;min-width:150px;margin-bottom:0;">
@@ -421,8 +421,8 @@ async function openReceiptDetail(rawR){
       inp.oninput = (e) => {
         const idx = Number(e.target.dataset.idx);
         if(detailServiceItems[idx]){
-          detailServiceItems[idx].price = Number(e.target.value || 0);
-          recalcDetailFinances();
+          detailServiceItems[idx].price = parseFloat(toEngDigits(e.target.value)) || 0;
+          recalcDetailFinances('serviceItem');
         }
       };
     });
@@ -431,7 +431,7 @@ async function openReceiptDetail(rawR){
         const idx = Number(btn.dataset.idx);
         detailServiceItems.splice(idx, 1);
         renderDetailServiceItems();
-        recalcDetailFinances();
+        recalcDetailFinances('serviceItem');
       };
     });
   }
@@ -442,18 +442,25 @@ async function openReceiptDetail(rawR){
     : [];
   const initiallyDeductedParts = detailSpareParts.filter(p => p.isStockDeducted && p.itemId);
 
-  function recalcDetailFinances(){
-    const sumSvc = detailServiceItems.reduce((acc, cur) => acc + Number(cur.price || 0), 0);
+  function recalcDetailFinances(fromSource){
+    const sumSvc = detailServiceItems.reduce((acc, cur) => acc + (parseFloat(toEngDigits(cur.price)) || 0), 0);
     const costInput = overlay.querySelector('#eCost');
-    if(detailServiceItems.length > 0 && costInput){
+    if(fromSource === 'serviceItem' && costInput){
       costInput.value = sumSvc;
     }
-    const costVal = Number(costInput ? costInput.value : 0) || 0;
-    const otherVal = Number(overlay.querySelector('#eOtherAmount')?.value || 0);
+    const costVal = parseFloat(toEngDigits(costInput ? costInput.value : '0')) || 0;
+    if(fromSource === 'costInput' && detailServiceItems.length === 1){
+      detailServiceItems[0].price = costVal;
+      const firstPriceInp = overlay.querySelector('.detail-svc-price[data-idx="0"]');
+      if(firstPriceInp && String(firstPriceInp.value) !== String(costVal)){
+        firstPriceInp.value = costVal;
+      }
+    }
+    const otherVal = parseFloat(toEngDigits(overlay.querySelector('#eOtherAmount')?.value || '0')) || 0;
 
     // Calculate spare parts (sell price to client and cost price to shop)
-    const partsSellTotal = detailSpareParts.reduce((acc, cur) => acc + (Number(cur.sellPrice || 0) * Number(cur.qty || 1)), 0);
-    const partsCostTotal = detailSpareParts.reduce((acc, cur) => acc + (Number(cur.costPrice || 0) * Number(cur.qty || 1)), 0);
+    const partsSellTotal = detailSpareParts.reduce((acc, cur) => acc + ((parseFloat(toEngDigits(cur.sellPrice)) || 0) * (Number(cur.qty || 1))), 0);
+    const partsCostTotal = detailSpareParts.reduce((acc, cur) => acc + ((parseFloat(toEngDigits(cur.costPrice)) || 0) * (Number(cur.qty || 1))), 0);
     r.partsCost = partsSellTotal;
     r.partsBuyCost = partsCostTotal;
 
@@ -681,9 +688,9 @@ async function openReceiptDetail(rawR){
   }
 
   const eCostInp = overlay.querySelector('#eCost');
-  if(eCostInp) eCostInp.oninput = recalcDetailFinances;
+  if(eCostInp) eCostInp.oninput = () => recalcDetailFinances('costInput');
   const eOtherInp = overlay.querySelector('#eOtherAmount');
-  if(eOtherInp) eOtherInp.oninput = recalcDetailFinances;
+  if(eOtherInp) eOtherInp.oninput = () => recalcDetailFinances('otherInput');
 
   const custApprBtn = overlay.querySelector('#detailCustomerApprovalBtn');
   if(custApprBtn){
@@ -1039,8 +1046,8 @@ async function openReceiptDetail(rawR){
     r.partsBuyCost = detailSpareParts.reduce((sum, p) => sum + (Number(p.costPrice || 0) * Number(p.qty || 1)), 0);
     r.partsUsed = detailSpareParts.map(p => `${p.name} (x${p.qty||1})`).join('، ');
     r.otherAccountDesc = (overlay.querySelector('#eOtherDesc')?.value || '').trim();
-    r.otherAccountAmount = Number(overlay.querySelector('#eOtherAmount')?.value || 0);
-    r.cost = Number(overlay.querySelector('#eCost').value || 0);
+    r.otherAccountAmount = parseFloat(toEngDigits(overlay.querySelector('#eOtherAmount')?.value || '0')) || 0;
+    r.cost = parseFloat(toEngDigits(overlay.querySelector('#eCost')?.value || '0')) || 0;
     const wMonthsVal = Number(overlay.querySelector('#eWarrantyMonths')?.value != null ? overlay.querySelector('#eWarrantyMonths').value : 0);
     r.warrantyMonths = wMonthsVal;
     r.warrantyEnd = wMonthsVal > 0 ? (overlay.querySelector('#eWarrantyEnd')?.value || '') : '';
@@ -1092,12 +1099,12 @@ async function openReceiptDetail(rawR){
     const totalDue = (typeof getReceiptTotalDue === 'function') ? getReceiptTotalDue(r) : (Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0));
     const totalPaid = Number(r.deposit||0);
 
-    // التحقق: لا يجوز تقليل التكلفة لتصبح أقل من المبلغ المدفوع مسبقاً دون تسوية استرداد
+    // إذا كان إجمالي المطلوب أقل من المبلغ المسدد مسبقاً، تنبيه الكاشير دون حظر الحفظ
     if(totalDue > 0 && totalPaid > totalDue){
-      showToast(`عفواً: إجمالي التكلفة والحساب المطلوب (${totalDue.toLocaleString()} ج.م) أقل من إجمالي المبلغ المسدد مسبقاً (${totalPaid.toLocaleString()} ج.م). يرجى إثبات استرداد أولاً.`, 'error');
-      const costInp = overlay.querySelector('#eCost');
-      if(costInp) costInp.focus();
-      return;
+      const refundDue = totalPaid - totalDue - Number(r.refunded || 0);
+      if(refundDue > 0){
+        showToast(`تنبيه: المبلغ المدفوع (${totalPaid.toLocaleString()} ج.م) أكبر من التكلفة المطلوبة (${totalDue.toLocaleString()} ج.م). متبقي للعميل رصيد استرداد: ${refundDue.toLocaleString()} ج.م.`, 'warning');
+      }
     }
 
     const remainingNow = (typeof getReceiptRemaining === 'function') ? getReceiptRemaining(r) : Math.max(0, totalDue - totalPaid + Number(r.refunded||0));
@@ -1224,7 +1231,7 @@ async function openReceiptDetail(rawR){
   overlay.querySelector('#addPayBtn').onclick = async ()=>{
     if(isAddPaySubmitting) return;
     const addPayBtn = overlay.querySelector('#addPayBtn');
-    const amt = Number(overlay.querySelector('#newPayAmt').value);
+    const amt = parseFloat(toEngDigits(overlay.querySelector('#newPayAmt')?.value || '0')) || 0;
     const note = overlay.querySelector('#newPayNote').value.trim();
     const payMethodInp = overlay.querySelector('#newPayMethod');
     const chosenMethod = payMethodInp ? payMethodInp.value : 'نقدي (كاش)';

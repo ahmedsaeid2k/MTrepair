@@ -1002,7 +1002,7 @@ function normalizeReceipt(r){
 
   // Guarantee ID is ALWAYS present and string
   if(!r.id){
-    r.id = r.ID || r['رقم الجهاز'] || r['كود'] || r.receiptNumber || r.ReceiptNumber || r['رقم الإيصال'] || ('rec_' + Date.now() + '_' + Math.floor(Math.random()*1000));
+    r.id = r.ID || r['رقم الجهاز'] || r['كود'] || ('rec_' + Date.now() + '_' + Math.floor(Math.random()*100000));
   }
   r.id = String(r.id);
 
@@ -1175,8 +1175,8 @@ function normalizeReceipt(r){
   } else {
     rawDevs = rawDevs.map((d, idx) => ({
       id: String(d.id || ('dev_' + (idx + 1))),
-      category: String(d.category || (idx === 0 ? (r.device && r.device.category) : '') || 'لابتوب'),
-      brand: String(d.brand != null ? d.brand : (idx === 0 ? (r.device && r.device.brand) : '')),
+      category: String(d.category || (idx === 0 && r.device ? r.device.category : '') || 'لابتوب'),
+      brand: String(d.brand != null && d.brand !== '' ? d.brand : (idx === 0 && r.device ? (r.device.brand || '') : '')),
       brandOther: String(d.brandOther != null ? d.brandOther : ''),
       model: String(d.model != null ? d.model : ''),
       accessories: String(d.accessories != null ? d.accessories : ''),
@@ -1340,16 +1340,40 @@ function findReceiptByIdOrNum(queryId, queryNum){
   const qNum = queryNum != null ? String(queryNum).trim().toLowerCase() : '';
   if(!qId && !qNum) return null;
 
-  const found = (state.receipts || []).find(x => {
-    if(!x) return false;
-    const xId = String(x.id != null ? x.id : (x.ID != null ? x.ID : (x['رقم الجهاز'] || ''))).trim().toLowerCase();
-    const xNum = String(x.receiptNumber != null ? x.receiptNumber : (x.ReceiptNumber != null ? x.ReceiptNumber : (x['رقم الإيصال'] || (x['رقم الايصال'] || '')))).trim().toLowerCase();
-    
-    if(qId && (xId === qId || xNum === qId)) return true;
-    if(qNum && (xId === qNum || xNum === qNum)) return true;
-    return false;
-  });
-  return found ? normalizeReceipt(found) : null;
+  const list = state.receipts || [];
+
+  // Phase 1: STRICT ID match first! (unique record ID)
+  if(qId){
+    const matchById = list.find(x => {
+      if(!x) return false;
+      const xId = String(x.id != null ? x.id : (x.ID != null ? x.ID : (x['رقم الجهاز'] || ''))).trim().toLowerCase();
+      return xId === qId;
+    });
+    if(matchById) return normalizeReceipt(matchById);
+  }
+
+  // Phase 2: If queryId didn't match any record's xId, check if queryId is a receiptNumber
+  if(qId && (!qNum || qId === qNum)){
+    const matchByNumAsId = list.find(x => {
+      if(!x) return false;
+      const xNum = String(x.receiptNumber != null ? x.receiptNumber : (x.ReceiptNumber != null ? x.ReceiptNumber : (x['رقم الإيصال'] || (x['رقم الايصال'] || '')))).trim().toLowerCase();
+      return xNum === qId;
+    });
+    if(matchByNumAsId) return normalizeReceipt(matchByNumAsId);
+  }
+
+  // Phase 3: Fallback to queryNum only if queryId did not match any record
+  if(qNum){
+    const matchByNum = list.find(x => {
+      if(!x) return false;
+      const xNum = String(x.receiptNumber != null ? x.receiptNumber : (x.ReceiptNumber != null ? x.ReceiptNumber : (x['رقم الإيصال'] || (x['رقم الايصال'] || '')))).trim().toLowerCase();
+      const xId = String(x.id != null ? x.id : (x.ID != null ? x.ID : (x['رقم الجهاز'] || ''))).trim().toLowerCase();
+      return xNum === qNum || xId === qNum;
+    });
+    if(matchByNum) return normalizeReceipt(matchByNum);
+  }
+
+  return null;
 }
 
 /* ---------------- Optimistic Status & Conflict Protection Engine ---------------- */

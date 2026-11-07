@@ -201,7 +201,7 @@ function newDraft(){
   const initialDev = {
     id: 'dev_' + now.getTime() + '_1',
     category: 'لابتوب',
-    brand: 'Apple',
+    brand: '',
     brandOther: '',
     model: '',
     accessories: '',
@@ -293,7 +293,8 @@ function nextReceiptNumberLocal(){
   const prefix = 'MT-' + y + '-';
   let maxSeq = 0;
   for(const r of list){
-    const rn = String(r.receiptNumber || r.ReceiptNumber || '');
+    if(!r) continue;
+    const rn = String(r.receiptNumber || r.ReceiptNumber || '').trim();
     if(rn.startsWith(prefix)){
       const numPart = parseInt(rn.slice(prefix.length), 10);
       if(!isNaN(numPart) && numPart > maxSeq){
@@ -305,9 +306,32 @@ function nextReceiptNumberLocal(){
 }
 
 async function nextReceiptNumber(){
+  const localNext = nextReceiptNumberLocal();
   const srvNum = await fetchServerNextDocNumber('Receipt');
-  if(srvNum) return srvNum;
-  return nextReceiptNumberLocal();
+  if(srvNum){
+    const y = new Date().getFullYear();
+    const prefix = 'MT-' + y + '-';
+    let srvSeq = 0;
+    if(String(srvNum).startsWith(prefix)){
+      const parsed = parseInt(String(srvNum).slice(prefix.length), 10);
+      if(!isNaN(parsed)) srvSeq = parsed;
+    }
+    let localSeq = 0;
+    if(String(localNext).startsWith(prefix)){
+      const parsed = parseInt(String(localNext).slice(prefix.length), 10);
+      if(!isNaN(parsed)) localSeq = parsed;
+    }
+    const targetSeq = Math.max(srvSeq, localSeq);
+    const candidate = prefix + String(targetSeq).padStart(4, '0');
+    // Ensure candidate is NOT already used by any existing receipt
+    const isUsed = (state.receipts || []).some(x => {
+      if(!x) return false;
+      const xNum = String(x.receiptNumber || x.ReceiptNumber || '').trim().toLowerCase();
+      return xNum === candidate.toLowerCase();
+    });
+    if(!isUsed) return candidate;
+  }
+  return localNext;
 }
 
 function nextInvoiceNumber(){

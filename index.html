@@ -6106,7 +6106,7 @@ function normalizeReceipt(r){
 
   // Guarantee ID is ALWAYS present and string
   if(!r.id){
-    r.id = r.ID || r['رقم الجهاز'] || r['كود'] || r.receiptNumber || r.ReceiptNumber || r['رقم الإيصال'] || ('rec_' + Date.now() + '_' + Math.floor(Math.random()*1000));
+    r.id = r.ID || r['رقم الجهاز'] || r['كود'] || ('rec_' + Date.now() + '_' + Math.floor(Math.random()*100000));
   }
   r.id = String(r.id);
 
@@ -6279,8 +6279,8 @@ function normalizeReceipt(r){
   } else {
     rawDevs = rawDevs.map((d, idx) => ({
       id: String(d.id || ('dev_' + (idx + 1))),
-      category: String(d.category || (idx === 0 ? (r.device && r.device.category) : '') || 'لابتوب'),
-      brand: String(d.brand != null ? d.brand : (idx === 0 ? (r.device && r.device.brand) : '')),
+      category: String(d.category || (idx === 0 && r.device ? r.device.category : '') || 'لابتوب'),
+      brand: String(d.brand != null && d.brand !== '' ? d.brand : (idx === 0 && r.device ? (r.device.brand || '') : '')),
       brandOther: String(d.brandOther != null ? d.brandOther : ''),
       model: String(d.model != null ? d.model : ''),
       accessories: String(d.accessories != null ? d.accessories : ''),
@@ -6444,16 +6444,40 @@ function findReceiptByIdOrNum(queryId, queryNum){
   const qNum = queryNum != null ? String(queryNum).trim().toLowerCase() : '';
   if(!qId && !qNum) return null;
 
-  const found = (state.receipts || []).find(x => {
-    if(!x) return false;
-    const xId = String(x.id != null ? x.id : (x.ID != null ? x.ID : (x['رقم الجهاز'] || ''))).trim().toLowerCase();
-    const xNum = String(x.receiptNumber != null ? x.receiptNumber : (x.ReceiptNumber != null ? x.ReceiptNumber : (x['رقم الإيصال'] || (x['رقم الايصال'] || '')))).trim().toLowerCase();
-    
-    if(qId && (xId === qId || xNum === qId)) return true;
-    if(qNum && (xId === qNum || xNum === qNum)) return true;
-    return false;
-  });
-  return found ? normalizeReceipt(found) : null;
+  const list = state.receipts || [];
+
+  // Phase 1: STRICT ID match first! (unique record ID)
+  if(qId){
+    const matchById = list.find(x => {
+      if(!x) return false;
+      const xId = String(x.id != null ? x.id : (x.ID != null ? x.ID : (x['رقم الجهاز'] || ''))).trim().toLowerCase();
+      return xId === qId;
+    });
+    if(matchById) return normalizeReceipt(matchById);
+  }
+
+  // Phase 2: If queryId didn't match any record's xId, check if queryId is a receiptNumber
+  if(qId && (!qNum || qId === qNum)){
+    const matchByNumAsId = list.find(x => {
+      if(!x) return false;
+      const xNum = String(x.receiptNumber != null ? x.receiptNumber : (x.ReceiptNumber != null ? x.ReceiptNumber : (x['رقم الإيصال'] || (x['رقم الايصال'] || '')))).trim().toLowerCase();
+      return xNum === qId;
+    });
+    if(matchByNumAsId) return normalizeReceipt(matchByNumAsId);
+  }
+
+  // Phase 3: Fallback to queryNum only if queryId did not match any record
+  if(qNum){
+    const matchByNum = list.find(x => {
+      if(!x) return false;
+      const xNum = String(x.receiptNumber != null ? x.receiptNumber : (x.ReceiptNumber != null ? x.ReceiptNumber : (x['رقم الإيصال'] || (x['رقم الايصال'] || '')))).trim().toLowerCase();
+      const xId = String(x.id != null ? x.id : (x.ID != null ? x.ID : (x['رقم الجهاز'] || ''))).trim().toLowerCase();
+      return xNum === qNum || xId === qNum;
+    });
+    if(matchByNum) return normalizeReceipt(matchByNum);
+  }
+
+  return null;
 }
 
 /* ---------------- Optimistic Status & Conflict Protection Engine ---------------- */
@@ -12325,7 +12349,7 @@ function newDraft(){
   const initialDev = {
     id: 'dev_' + now.getTime() + '_1',
     category: 'لابتوب',
-    brand: 'Apple',
+    brand: '',
     brandOther: '',
     model: '',
     accessories: '',
@@ -12417,7 +12441,8 @@ function nextReceiptNumberLocal(){
   const prefix = 'MT-' + y + '-';
   let maxSeq = 0;
   for(const r of list){
-    const rn = String(r.receiptNumber || r.ReceiptNumber || '');
+    if(!r) continue;
+    const rn = String(r.receiptNumber || r.ReceiptNumber || '').trim();
     if(rn.startsWith(prefix)){
       const numPart = parseInt(rn.slice(prefix.length), 10);
       if(!isNaN(numPart) && numPart > maxSeq){
@@ -12429,9 +12454,32 @@ function nextReceiptNumberLocal(){
 }
 
 async function nextReceiptNumber(){
+  const localNext = nextReceiptNumberLocal();
   const srvNum = await fetchServerNextDocNumber('Receipt');
-  if(srvNum) return srvNum;
-  return nextReceiptNumberLocal();
+  if(srvNum){
+    const y = new Date().getFullYear();
+    const prefix = 'MT-' + y + '-';
+    let srvSeq = 0;
+    if(String(srvNum).startsWith(prefix)){
+      const parsed = parseInt(String(srvNum).slice(prefix.length), 10);
+      if(!isNaN(parsed)) srvSeq = parsed;
+    }
+    let localSeq = 0;
+    if(String(localNext).startsWith(prefix)){
+      const parsed = parseInt(String(localNext).slice(prefix.length), 10);
+      if(!isNaN(parsed)) localSeq = parsed;
+    }
+    const targetSeq = Math.max(srvSeq, localSeq);
+    const candidate = prefix + String(targetSeq).padStart(4, '0');
+    // Ensure candidate is NOT already used by any existing receipt
+    const isUsed = (state.receipts || []).some(x => {
+      if(!x) return false;
+      const xNum = String(x.receiptNumber || x.ReceiptNumber || '').trim().toLowerCase();
+      return xNum === candidate.toLowerCase();
+    });
+    if(!isUsed) return candidate;
+  }
+  return localNext;
 }
 
 function nextInvoiceNumber(){
@@ -17003,8 +17051,8 @@ function stepDevice(body,d){
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
         <h3 style="margin:0;display:flex;align-items:center;gap:6px;">${getSvgIcon("laptop", 18)} ${isMultiDev ? `بيانات الأجهزة المستلمة (${d.devices.length})` : 'بيانات الجهاز المستلم'}</h3>
         ${isMultiDev ? `
-          <button type="button" class="btn btn-primary btn-sm" id="addNewDeviceBtn" style="font-weight:700;display:inline-flex;align-items:center;gap:4px;">
-            <span>${getSvgIcon("plus", 14)}</span> إضافة جهاز آخر لهذا الإيصال
+          <button type="button" class="btn btn-ghost btn-xs" onclick="state.formStep = 4; renderMain();" style="font-weight:700;">
+            الانتقال للمراجعة والحفظ &larr;
           </button>
         ` : ''}
       </div>
@@ -17123,8 +17171,9 @@ function stepDevice(body,d){
 
   function fillBrands(){
     const currentBrandsObj = getBrands();
-    const cat = document.getElementById('devCat').value;
+    const cat = document.getElementById('devCat') ? document.getElementById('devCat').value : (currDev.category || 'لابتوب');
     const sel = document.getElementById('devBrand');
+    if(!sel) return;
     const availableBrands = currentBrandsObj[cat] || ['أخرى'];
 
     let activeBrand = (currDev.brand != null ? currDev.brand : '');
@@ -17132,9 +17181,7 @@ function stepDevice(body,d){
     const hasCustom = activeBrand && !isKnown && activeBrand !== 'أخرى';
 
     let optionsHtml = '';
-    if(!activeBrand && !hasCustom){
-      optionsHtml += `<option value="" disabled selected>-- اختر الماركة --</option>`;
-    }
+    optionsHtml += `<option value="" disabled ${(!activeBrand && !hasCustom) ? 'selected' : ''}>-- اختر الماركة --</option>`;
     if(hasCustom){
       optionsHtml += `<option value="${escapeHtml(activeBrand)}" selected>${escapeHtml(activeBrand)}</option>`;
     }
@@ -17144,8 +17191,13 @@ function stepDevice(body,d){
     }).join('');
 
     sel.innerHTML = optionsHtml;
-    if(sel.value && sel.value !== activeBrand){
-      currDev.brand = sel.value;
+    if(activeBrand && isKnown){
+      sel.value = activeBrand;
+    } else if(hasCustom){
+      sel.value = activeBrand;
+    } else {
+      sel.value = '';
+      currDev.brand = '';
     }
     const isOther = sel.value === 'أخرى';
     const wrap = document.getElementById('brandOtherWrap');
@@ -17157,8 +17209,12 @@ function stepDevice(body,d){
   if(devCatEl){
     devCatEl.onchange = () => {
       currDev.category = devCatEl.value;
+      const currentBrandsObj = getBrands();
+      const avail = currentBrandsObj[currDev.category] || ['أخرى'];
+      if(currDev.brand && !avail.includes(currDev.brand)){
+        currDev.brand = '';
+      }
       fillBrands();
-      currDev.brand = document.getElementById('devBrand') ? document.getElementById('devBrand').value : '';
       triggerDraftAutosave(false);
     };
   }
@@ -17760,7 +17816,7 @@ function stepFinance(body,d){
       `).join('');
     }
     attachDraftItemListeners();
-    recalcDraftFinances();
+    recalcDraftFinances('serviceItem');
   }
 
   function attachDraftItemListeners(){
@@ -17779,7 +17835,7 @@ function stepFinance(body,d){
         const idx = Number(row.dataset.sidx);
         const parsedP = parseFloat(toEngDigits(e.target.value)) || 0;
         if(d.serviceItems[idx]) d.serviceItems[idx].price = parsedP;
-        recalcDraftFinances();
+        recalcDraftFinances('serviceItem');
       };
     });
     document.querySelectorAll('#draftServiceItemsList .draft-del-s-item').forEach(btn => {
@@ -17792,7 +17848,7 @@ function stepFinance(body,d){
     });
   }
 
-  function recalcDraftFinances(){
+  function recalcDraftFinances(fromSource){
     let sTotal = 0;
     document.querySelectorAll('#draftServiceItemsList .draft-s-item-row').forEach(row => {
       const pInp = row.querySelector('.draft-s-price');
@@ -17802,9 +17858,10 @@ function stepFinance(body,d){
     const sTotalEl = document.getElementById('draftServiceItemsTotal');
     if(sTotalEl) sTotalEl.textContent = sTotal.toLocaleString();
     
-    if(d.serviceItems.length > 0 || sTotal > 0){
-      const finCostInp = document.getElementById('finCost');
-      if(finCostInp) finCostInp.value = sTotal;
+    const finCostInp = document.getElementById('finCost');
+    if(fromSource === 'serviceItem' && finCostInp){
+      finCostInp.value = sTotal;
+      d.cost = sTotal;
     }
 
     const otherInp = document.getElementById('finOtherAmount');
@@ -17812,11 +17869,16 @@ function stepFinance(body,d){
     const otherDisp = document.getElementById('finOtherDisplay');
     if(otherDisp) otherDisp.value = otherAmt;
 
-    const costInp = document.getElementById('finCost');
-    const cost = costInp ? (parseFloat(toEngDigits(costInp.value)) || 0) : Number(d.cost || 0);
+    const cost = finCostInp ? (parseFloat(toEngDigits(finCostInp.value)) || 0) : Number(d.cost || 0);
+    d.cost = cost;
+    if(fromSource === 'costInput' && d.serviceItems && d.serviceItems.length === 1){
+      d.serviceItems[0].price = cost;
+      if(sTotalEl) sTotalEl.textContent = cost.toLocaleString();
+    }
     const parts = Number(d.partsCost || 0);
     const depInp = document.getElementById('finDep');
     const dep = depInp ? (parseFloat(toEngDigits(depInp.value)) || 0) : Number(d.deposit || 0);
+    d.deposit = dep;
     const totalDue = cost + parts + otherAmt;
     const rem = Math.max(0, totalDue - dep);
 
@@ -17838,11 +17900,11 @@ function stepFinance(body,d){
   }
 
   const finCostInp = document.getElementById('finCost');
-  if(finCostInp) finCostInp.oninput = recalcDraftFinances;
+  if(finCostInp) finCostInp.oninput = () => recalcDraftFinances('costInput');
   const finOtherAmtInp = document.getElementById('finOtherAmount');
-  if(finOtherAmtInp) finOtherAmtInp.oninput = recalcDraftFinances;
+  if(finOtherAmtInp) finOtherAmtInp.oninput = () => recalcDraftFinances('otherInput');
   const finDepInp = document.getElementById('finDep');
-  if(finDepInp) finDepInp.oninput = recalcDraftFinances;
+  if(finDepInp) finDepInp.oninput = () => recalcDraftFinances('depInput');
 
   document.querySelectorAll('#draftDepositPayGrid .pos-pay-btn').forEach(btn => {
     btn.onclick = () => {
@@ -18196,6 +18258,21 @@ async function saveReceipt(d, printA5, sendWa, printSticker){
     b.disabled = true;
     b.textContent = 'جارٍ الحفظ...';
   });
+
+  // Collision protection: ensure d.receiptNumber is completely unique across existing receipts
+  const hasCollision = (state.receipts || []).some(x => {
+    if(!x) return false;
+    const xNum = String(x.receiptNumber || x.ReceiptNumber || '').trim().toLowerCase();
+    const dNum = String(d.receiptNumber || '').trim().toLowerCase();
+    const xId = String(x.id || x.ID || '').trim().toLowerCase();
+    const dId = String(d.id || '').trim().toLowerCase();
+    return dNum && xNum === dNum && xId !== dId;
+  });
+  if(hasCollision || !d.receiptNumber){
+    console.warn(`Receipt number collision detected for ${d.receiptNumber}. Re-assigning unique sequence.`);
+    d.receiptNumber = (typeof nextReceiptNumberLocal === 'function') ? nextReceiptNumberLocal() : ('MT-' + new Date().getFullYear() + '-' + Date.now().toString().slice(-4));
+  }
+
   try{
     await saveReceiptRemote(d);
     if(d.previousReceiptId || d.previousReceiptNumber){
@@ -20955,7 +21032,7 @@ function openDeliverDeviceModal(receiptId, receiptNum, initialDevIdx){
             <div class="grid2" style="gap:10px;margin-bottom:10px;">
               <div class="field" style="margin:0;">
                 <label style="font-size:12px;">المبلغ المحصل عند تسليم هذا الجهاز (ج.م)</label>
-                <input type="number" id="devCollectAmount" min="0" max="${Math.max(0, remaining)}" value="0" placeholder="0" class="mono" style="font-weight:700;">
+                <input type="text" inputmode="decimal" id="devCollectAmount" value="0" placeholder="0" class="mono" style="font-weight:700;">
               </div>
               <div class="field" style="margin:0;">
                 <label style="font-size:12px;">طريقة الدفع</label>
@@ -21030,7 +21107,7 @@ function openDeliverDeviceModal(receiptId, receiptNum, initialDevIdx){
     const confirmBtn = overlay.querySelector('#confirmDevDeliveryBtn');
     if(confirmBtn){
       confirmBtn.onclick = async () => {
-        const collectAmount = Math.max(0, Number(overlay.querySelector('#devCollectAmount')?.value || 0));
+        const collectAmount = Math.max(0, parseFloat(toEngDigits(overlay.querySelector('#devCollectAmount')?.value || '0')) || 0);
         const payMethod = overlay.querySelector('#devPayMethod')?.value || 'نقدي (كاش)';
         const deliveryNotes = (overlay.querySelector('#devDeliveryNotes')?.value || '').trim();
         const shouldSendWa = overlay.querySelector('#sendWaDevDelivery')?.checked;
@@ -21381,12 +21458,12 @@ async function openReceiptDetail(rawR){
     </div>
 
     <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(115px, 1fr));gap:8px;margin-top:10px;">
-      <div class="field"><label>أجور الصيانة (ج.م)</label><input id="eCost" type="number" value="${r.cost||0}"></div>
-      <div class="field"><label>قطع الغيار (ج.م)</label><input id="ePartsCost" type="number" value="${r.partsCost||0}" disabled style="background:var(--paper3);font-weight:bold;color:var(--purple);"></div>
-      <div class="field"><label>حساب إضافي (ج.م)</label><input id="eOtherDisplay" type="number" value="${r.otherAccountAmount||0}" disabled style="background:var(--paper3);"></div>
-      <div class="field"><label>إجمالي المدفوع (ج.م)</label><input id="eDeposit" type="number" value="${r.deposit||0}" disabled style="background:var(--paper3);"></div>
-      <div class="field"><label>مسترد سابقاً (ج.م)</label><input id="eRefundedDisplay" type="number" value="${r.refunded||0}" disabled style="background:var(--paper3);color:var(--red);font-weight:bold;"></div>
-      <div class="field"><label>المتبقي المطلوب (ج.م)</label><input id="eRem" type="number" value="${remaining}" disabled style="background:var(--paper3);font-weight:bold;color:var(--primary);"></div>
+      <div class="field"><label>أجور الصيانة (ج.م)</label><input id="eCost" type="text" inputmode="decimal" class="mono" style="font-weight:700;" value="${r.cost||0}"></div>
+      <div class="field"><label>قطع الغيار (ج.م)</label><input id="ePartsCost" type="text" value="${r.partsCost||0}" disabled style="background:var(--paper3);font-weight:bold;color:var(--purple);" class="mono"></div>
+      <div class="field"><label>حساب إضافي (ج.م)</label><input id="eOtherDisplay" type="text" value="${r.otherAccountAmount||0}" disabled style="background:var(--paper3);" class="mono"></div>
+      <div class="field"><label>إجمالي المدفوع (ج.م)</label><input id="eDeposit" type="text" value="${r.deposit||0}" disabled style="background:var(--paper3);" class="mono"></div>
+      <div class="field"><label>مسترد سابقاً (ج.م)</label><input id="eRefundedDisplay" type="text" value="${r.refunded||0}" disabled style="background:var(--paper3);color:var(--red);font-weight:bold;" class="mono"></div>
+      <div class="field"><label>المتبقي المطلوب (ج.م)</label><input id="eRem" type="text" value="${remaining}" disabled style="background:var(--paper3);font-weight:bold;color:var(--primary);" class="mono"></div>
     </div>
 
     <div class="card" style="background:var(--paper3);padding:12px;border-radius:var(--radius-sm);margin-top:8px;">
@@ -21400,7 +21477,7 @@ async function openReceiptDetail(rawR){
       <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
         <div class="field" style="flex:1;min-width:110px;margin-bottom:0;">
           <label>مبلغ دفعة جديدة</label>
-          <input id="newPayAmt" type="number" placeholder="0" min="1" max="${remaining}">
+          <input id="newPayAmt" type="text" inputmode="decimal" placeholder="0" class="mono" style="font-weight:700;">
           <div id="newPayAmtHint" style="font-size:11px;color:var(--ink-secondary);margin-top:2px;">الحد الأقصى: <b class="mono">${remaining}</b> ج.م</div>
         </div>
         <div class="field" style="flex:1.3;min-width:150px;margin-bottom:0;">
@@ -21524,8 +21601,8 @@ async function openReceiptDetail(rawR){
       inp.oninput = (e) => {
         const idx = Number(e.target.dataset.idx);
         if(detailServiceItems[idx]){
-          detailServiceItems[idx].price = Number(e.target.value || 0);
-          recalcDetailFinances();
+          detailServiceItems[idx].price = parseFloat(toEngDigits(e.target.value)) || 0;
+          recalcDetailFinances('serviceItem');
         }
       };
     });
@@ -21534,7 +21611,7 @@ async function openReceiptDetail(rawR){
         const idx = Number(btn.dataset.idx);
         detailServiceItems.splice(idx, 1);
         renderDetailServiceItems();
-        recalcDetailFinances();
+        recalcDetailFinances('serviceItem');
       };
     });
   }
@@ -21545,18 +21622,25 @@ async function openReceiptDetail(rawR){
     : [];
   const initiallyDeductedParts = detailSpareParts.filter(p => p.isStockDeducted && p.itemId);
 
-  function recalcDetailFinances(){
-    const sumSvc = detailServiceItems.reduce((acc, cur) => acc + Number(cur.price || 0), 0);
+  function recalcDetailFinances(fromSource){
+    const sumSvc = detailServiceItems.reduce((acc, cur) => acc + (parseFloat(toEngDigits(cur.price)) || 0), 0);
     const costInput = overlay.querySelector('#eCost');
-    if(detailServiceItems.length > 0 && costInput){
+    if(fromSource === 'serviceItem' && costInput){
       costInput.value = sumSvc;
     }
-    const costVal = Number(costInput ? costInput.value : 0) || 0;
-    const otherVal = Number(overlay.querySelector('#eOtherAmount')?.value || 0);
+    const costVal = parseFloat(toEngDigits(costInput ? costInput.value : '0')) || 0;
+    if(fromSource === 'costInput' && detailServiceItems.length === 1){
+      detailServiceItems[0].price = costVal;
+      const firstPriceInp = overlay.querySelector('.detail-svc-price[data-idx="0"]');
+      if(firstPriceInp && String(firstPriceInp.value) !== String(costVal)){
+        firstPriceInp.value = costVal;
+      }
+    }
+    const otherVal = parseFloat(toEngDigits(overlay.querySelector('#eOtherAmount')?.value || '0')) || 0;
 
     // Calculate spare parts (sell price to client and cost price to shop)
-    const partsSellTotal = detailSpareParts.reduce((acc, cur) => acc + (Number(cur.sellPrice || 0) * Number(cur.qty || 1)), 0);
-    const partsCostTotal = detailSpareParts.reduce((acc, cur) => acc + (Number(cur.costPrice || 0) * Number(cur.qty || 1)), 0);
+    const partsSellTotal = detailSpareParts.reduce((acc, cur) => acc + ((parseFloat(toEngDigits(cur.sellPrice)) || 0) * (Number(cur.qty || 1))), 0);
+    const partsCostTotal = detailSpareParts.reduce((acc, cur) => acc + ((parseFloat(toEngDigits(cur.costPrice)) || 0) * (Number(cur.qty || 1))), 0);
     r.partsCost = partsSellTotal;
     r.partsBuyCost = partsCostTotal;
 
@@ -21784,9 +21868,9 @@ async function openReceiptDetail(rawR){
   }
 
   const eCostInp = overlay.querySelector('#eCost');
-  if(eCostInp) eCostInp.oninput = recalcDetailFinances;
+  if(eCostInp) eCostInp.oninput = () => recalcDetailFinances('costInput');
   const eOtherInp = overlay.querySelector('#eOtherAmount');
-  if(eOtherInp) eOtherInp.oninput = recalcDetailFinances;
+  if(eOtherInp) eOtherInp.oninput = () => recalcDetailFinances('otherInput');
 
   const custApprBtn = overlay.querySelector('#detailCustomerApprovalBtn');
   if(custApprBtn){
@@ -22142,8 +22226,8 @@ async function openReceiptDetail(rawR){
     r.partsBuyCost = detailSpareParts.reduce((sum, p) => sum + (Number(p.costPrice || 0) * Number(p.qty || 1)), 0);
     r.partsUsed = detailSpareParts.map(p => `${p.name} (x${p.qty||1})`).join('، ');
     r.otherAccountDesc = (overlay.querySelector('#eOtherDesc')?.value || '').trim();
-    r.otherAccountAmount = Number(overlay.querySelector('#eOtherAmount')?.value || 0);
-    r.cost = Number(overlay.querySelector('#eCost').value || 0);
+    r.otherAccountAmount = parseFloat(toEngDigits(overlay.querySelector('#eOtherAmount')?.value || '0')) || 0;
+    r.cost = parseFloat(toEngDigits(overlay.querySelector('#eCost')?.value || '0')) || 0;
     const wMonthsVal = Number(overlay.querySelector('#eWarrantyMonths')?.value != null ? overlay.querySelector('#eWarrantyMonths').value : 0);
     r.warrantyMonths = wMonthsVal;
     r.warrantyEnd = wMonthsVal > 0 ? (overlay.querySelector('#eWarrantyEnd')?.value || '') : '';
@@ -22195,12 +22279,12 @@ async function openReceiptDetail(rawR){
     const totalDue = (typeof getReceiptTotalDue === 'function') ? getReceiptTotalDue(r) : (Number(r.cost||0) + Number(r.partsCost||0) + Number(r.otherAccountAmount||0));
     const totalPaid = Number(r.deposit||0);
 
-    // التحقق: لا يجوز تقليل التكلفة لتصبح أقل من المبلغ المدفوع مسبقاً دون تسوية استرداد
+    // إذا كان إجمالي المطلوب أقل من المبلغ المسدد مسبقاً، تنبيه الكاشير دون حظر الحفظ
     if(totalDue > 0 && totalPaid > totalDue){
-      showToast(`عفواً: إجمالي التكلفة والحساب المطلوب (${totalDue.toLocaleString()} ج.م) أقل من إجمالي المبلغ المسدد مسبقاً (${totalPaid.toLocaleString()} ج.م). يرجى إثبات استرداد أولاً.`, 'error');
-      const costInp = overlay.querySelector('#eCost');
-      if(costInp) costInp.focus();
-      return;
+      const refundDue = totalPaid - totalDue - Number(r.refunded || 0);
+      if(refundDue > 0){
+        showToast(`تنبيه: المبلغ المدفوع (${totalPaid.toLocaleString()} ج.م) أكبر من التكلفة المطلوبة (${totalDue.toLocaleString()} ج.م). متبقي للعميل رصيد استرداد: ${refundDue.toLocaleString()} ج.م.`, 'warning');
+      }
     }
 
     const remainingNow = (typeof getReceiptRemaining === 'function') ? getReceiptRemaining(r) : Math.max(0, totalDue - totalPaid + Number(r.refunded||0));
@@ -22327,7 +22411,7 @@ async function openReceiptDetail(rawR){
   overlay.querySelector('#addPayBtn').onclick = async ()=>{
     if(isAddPaySubmitting) return;
     const addPayBtn = overlay.querySelector('#addPayBtn');
-    const amt = Number(overlay.querySelector('#newPayAmt').value);
+    const amt = parseFloat(toEngDigits(overlay.querySelector('#newPayAmt')?.value || '0')) || 0;
     const note = overlay.querySelector('#newPayNote').value.trim();
     const payMethodInp = overlay.querySelector('#newPayMethod');
     const chosenMethod = payMethodInp ? payMethodInp.value : 'نقدي (كاش)';
@@ -27195,7 +27279,8 @@ function openCostEstimateModal(rawR){
     let hasChanges = false;
 
     if(saveChecked){
-      r.cost = vals.cost;
+      const pCost = Number(r.partsCost || 0);
+      r.cost = pCost > 0 ? Math.max(0, vals.cost - pCost) : vals.cost;
       r.deposit = vals.deposit;
       r.inspectionFee = vals.inspectionFee;
       r.estimateTime = vals.estimateTime;

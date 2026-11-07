@@ -1425,7 +1425,8 @@ function openCostEstimateModal(rawR){
     let hasChanges = false;
 
     if(saveChecked){
-      r.cost = vals.cost;
+      const pCost = Number(r.partsCost || 0);
+      r.cost = pCost > 0 ? Math.max(0, vals.cost - pCost) : vals.cost;
       r.deposit = vals.deposit;
       r.inspectionFee = vals.inspectionFee;
       r.estimateTime = vals.estimateTime;

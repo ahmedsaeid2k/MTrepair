@@ -2210,7 +2210,7 @@ function openDeliverDeviceModal(receiptId, receiptNum, initialDevIdx){
             <div class="grid2" style="gap:10px;margin-bottom:10px;">
               <div class="field" style="margin:0;">
                 <label style="font-size:12px;">المبلغ المحصل عند تسليم هذا الجهاز (ج.م)</label>
-                <input type="number" id="devCollectAmount" min="0" max="${Math.max(0, remaining)}" value="0" placeholder="0" class="mono" style="font-weight:700;">
+                <input type="text" inputmode="decimal" id="devCollectAmount" value="0" placeholder="0" class="mono" style="font-weight:700;">
               </div>
               <div class="field" style="margin:0;">
                 <label style="font-size:12px;">طريقة الدفع</label>
@@ -2285,7 +2285,7 @@ function openDeliverDeviceModal(receiptId, receiptNum, initialDevIdx){
     const confirmBtn = overlay.querySelector('#confirmDevDeliveryBtn');
     if(confirmBtn){
       confirmBtn.onclick = async () => {
-        const collectAmount = Math.max(0, Number(overlay.querySelector('#devCollectAmount')?.value || 0));
+        const collectAmount = Math.max(0, parseFloat(toEngDigits(overlay.querySelector('#devCollectAmount')?.value || '0')) || 0);
         const payMethod = overlay.querySelector('#devPayMethod')?.value || 'نقدي (كاش)';
         const deliveryNotes = (overlay.querySelector('#devDeliveryNotes')?.value || '').trim();
         const shouldSendWa = overlay.querySelector('#sendWaDevDelivery')?.checked;
